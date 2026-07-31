@@ -1,0 +1,535 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function incomingData() {
+      return request.resource.data;
+    }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    // Counter updates: an interaction may move exactly one counter by exactly
+    // one, in either direction. Without the delta check a client could simply
+    // write likeCount = 1000000.
+    function onlyKey(field) {
+      return incomingData().diff(resource.data).affectedKeys().hasOnly([field]);
+    }
+    // `before` is read with a default so documents written before a counter
+    // existed don't blow up rule evaluation — a missing counter reads as 0.
+    function delta1(before, after) {
+      return after is int && (after == before + 1 || after == before - 1);
+    }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // Users must be 16+ to post publicly. birthYear == 0 means "not set" and
+    // is treated as adult only for pre-existing accounts; new signups require it.
+    function isAdult() {
+      return myProfile().birthYear > 0
+        && request.time.year() - myProfile().birthYear >= 16;
+    }
+
+    // ---------- reports ----------
+    // Anyone signed in can file one; only admins can read or resolve them, so
+    // reporters can't see each other's reports.
+    match /reports/{reportId} {
+      allow get, list: if isAdmin();
+      allow create: if signedIn()
+        && incomingData().reporterId == request.auth.uid
+        && incomingData().status == 'open'
+        && incomingData().reason is string
+        && incomingData().reason.size() <= 60;
+      allow update: if isAdmin()
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- admins (managed manually in console) ----------
+    match /admins/{uid} {
+      allow read: if isUser(uid);
+      allow write: if false;
+    }
+
+    // ---------- users ----------
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isUser(uid)
+        && incomingData().keys().hasOnly([
+          'username', 'name', 'usernameChangedAt', 'email', 'phone', 'bio',
+          'pronouns', 'town', 'spouseUsername', 'birthYear', 'photoURL',
+          'followerCount', 'followingCount', 'createdAt'
+        ])
+        && incomingData().name is string
+        && incomingData().name.size() <= 50
+        && incomingData().username is string
+        && incomingData().username.size() >= 3
+        && incomingData().username.size() <= 30
+        && incomingData().username.matches('^[a-z0-9_]+$')
+        && incomingData().bio is string
+        && incomingData().bio.size() <= 300
+        && incomingData().birthYear is int
+        && incomingData().followerCount == 0
+        && incomingData().followingCount == 0;
+      allow update: if signedIn() && (
+        (isUser(uid)
+          && incomingData().diff(resource.data).affectedKeys().hasOnly([
+            'name', 'bio', 'photoURL', 'pronouns', 'town', 'spouseUsername', 'birthYear'
+          ])
+          && incomingData().name is string
+          && incomingData().name.size() >= 1
+          && incomingData().name.size() <= 50
+          && incomingData().bio is string
+          && incomingData().bio.size() <= 300
+          && incomingData().pronouns is string
+          && incomingData().pronouns.size() <= 40
+          && incomingData().town is string
+          && incomingData().town.size() <= 80)
+        // Handle change: unique, and rate-limited to once every 30 days so it
+        // can't be churned. Display names above are free to repeat and change.
+        || (isUser(uid)
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['username', 'usernameChangedAt'])
+          && incomingData().username is string
+          && incomingData().username.matches('^[a-z0-9_]{3,30}$')
+          && incomingData().usernameChangedAt == request.time
+          // Accounts created before this field existed have no cooldown yet.
+          && (!('usernameChangedAt' in resource.data)
+              || resource.data.usernameChangedAt == null
+              || request.time > resource.data.usernameChangedAt + duration.value(30, 'd')))
+        // follow/unfollow counter updates by other users
+        || (onlyKey('followerCount') && delta1(resource.data.get('followerCount', 0), incomingData().followerCount))
+        || (onlyKey('followingCount') && delta1(resource.data.get('followingCount', 0), incomingData().followingCount))
+      );
+      allow delete: if false;
+
+      // who this user follows — only the user themself writes here
+      match /following/{targetUid} {
+        allow read: if signedIn();
+        allow create, delete: if isUser(uid);
+        allow update: if false;
+      }
+      // who follows this user — only the *follower* writes their own entry
+      match /followers/{followerUid} {
+        allow read: if signedIn();
+        allow create, delete: if isUser(followerUid);
+        allow update: if false;
+      }
+      // personalization signals — private to the user
+      match /affinity/{authorId} {
+        allow read, write: if isUser(uid);
+      }
+      // saved posts and "not interested" hides — private to the user
+      match /saved/{postId} {
+        allow read, write: if isUser(uid);
+      }
+      match /hidden/{postId} {
+        allow read, write: if isUser(uid);
+      }
+    }
+
+    // ---------- usernames (uniqueness registry) ----------
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly(['uid'])
+        && incomingData().uid == request.auth.uid
+        && name.matches('^[a-z0-9_]{3,30}$');
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---------- posts ----------
+    match /posts/{postId} {
+      // Single-document reads enforce follower-gating exactly.
+      allow get: if signedIn()
+        && (resource.data.visibility != 'followers'
+            || resource.data.authorId == request.auth.uid
+            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
+
+      // Queries are evaluated statically: Firestore only permits a list when
+      // the query itself proves every match satisfies this rule. That means
+      // callers must constrain visibility == 'public' (feeds, other people's
+      // profiles) or authorId == their own uid (own profile). A followers-only
+      // post therefore can never be enumerated by someone else — reaching one
+      // requires a direct get, which runs the follower check above.
+      allow list: if signedIn()
+        && (resource.data.visibility == 'public'
+            || resource.data.authorId == request.auth.uid);
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly([
+          'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
+          'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
+          'likeCount', 'commentCount', 'saveCount', 'sendCount',
+          'viewCount', 'completeCount', 'createdAt'
+        ])
+        && incomingData().authorId == request.auth.uid
+        && incomingData().kind in ['post', 'short', 'video']
+        && incomingData().visibility in ['public', 'followers']
+        // under-16s may post to groups and to followers, never to the public feed
+        && (incomingData().groupId != ''
+            || incomingData().visibility == 'followers'
+            || isAdult())
+        && incomingData().text is string
+        && incomingData().text.size() <= 5000
+        && incomingData().title is string
+        && incomingData().title.size() <= 150
+        && incomingData().likeCount == 0
+        && incomingData().commentCount == 0
+        && incomingData().saveCount == 0
+        && incomingData().sendCount == 0
+        // Every post carries media, and it must live in our own bucket.
+        && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
+        && (incomingData().groupId == ''
+            || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
+      allow update: if signedIn() && (
+        (resource.data.authorId == request.auth.uid
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'visibility'])
+          && incomingData().text is string
+          && incomingData().text.size() <= 5000)
+        // a circle admin or moderator may lock a thread
+        || (onlyKey('locked')
+          && resource.data.groupId != ''
+          && exists(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator'])
+        || (onlyKey('likeCount') && delta1(resource.data.get('likeCount', 0), incomingData().likeCount))
+        || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))
+        || (onlyKey('saveCount') && delta1(resource.data.get('saveCount', 0), incomingData().saveCount))
+        || (onlyKey('sendCount') && delta1(resource.data.get('sendCount', 0), incomingData().sendCount))
+        || (onlyKey('viewCount') && delta1(resource.data.get('viewCount', 0), incomingData().viewCount))
+        || (onlyKey('completeCount') && delta1(resource.data.get('completeCount', 0), incomingData().completeCount))
+      );
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+
+      match /likes/{uid} {
+        allow read: if signedIn();
+        allow create, update, delete: if isUser(uid);
+      }
+
+      // A save is private to the person who made it. Re-writing your own
+      // save doc is idempotent, so update is allowed alongside create.
+      match /saves/{uid} {
+        allow read: if isUser(uid);
+        allow create, update, delete: if isUser(uid);
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && incomingData().authorId == request.auth.uid
+          && incomingData().text is string
+          && incomingData().text.size() > 0
+          && incomingData().text.size() <= 2000;
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.authorId == request.auth.uid
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+      }
+    }
+
+    // ---------- stories (client filters to last 24h) ----------
+    match /stories/{storyId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly([
+          'authorId', 'authorName', 'authorPhoto', 'mediaUrl', 'mediaPath', 'mediaType', 'createdAt'
+        ])
+        && incomingData().authorId == request.auth.uid
+        && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*');
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- news (must cite sources; admin-reviewed) ----------
+    match /news/{newsId} {
+      allow read: if signedIn()
+        && (resource.data.status == 'approved'
+            || resource.data.authorId == request.auth.uid
+            || isAdmin());
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly([
+          'authorId', 'authorName', 'title', 'script', 'sources',
+          'status', 'reviewNote', 'likeCount', 'commentCount', 'createdAt'
+        ])
+        && incomingData().authorId == request.auth.uid
+        && incomingData().status == 'pending'
+        && incomingData().title is string
+        && incomingData().title.size() >= 10
+        && incomingData().title.size() <= 200
+        && incomingData().script is string
+        && incomingData().script.size() >= 100
+        && incomingData().script.size() <= 20000
+        && incomingData().sources is list
+        && incomingData().sources.size() >= 2
+        && incomingData().sources.size() <= 10
+        && isAdult();
+      // only admins change status (approve/reject); authors may not self-approve
+      allow update: if (isAdmin()
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote'])
+          && incomingData().status in ['approved', 'rejected'])
+        || (signedIn() && ((onlyKey('likeCount') && delta1(resource.data.get('likeCount', 0), incomingData().likeCount))
+            || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))));
+      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    // ---------- chats & messages ----------
+    match /chats/{chatId} {
+      function chatData() {
+        return get(/databases/$(database)/documents/chats/$(chatId)).data;
+      }
+      function inChat() {
+        return signedIn() && request.auth.uid in chatData().members;
+      }
+      // Only your own key inside a uid-keyed map may change.
+      function onlyMyKeyIn(field) {
+        return incomingData()[field].diff(resource.data[field]).affectedKeys()
+          .hasOnly([request.auth.uid]);
+      }
+
+      // A get on a chat that doesn't exist yet must not blow up on
+      // resource.data — the client checks existence before opening a DM.
+      allow get: if signedIn()
+        && (resource == null || request.auth.uid in resource.data.members);
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn()
+        && request.auth.uid in incomingData().members
+        && incomingData().members.size() >= 2
+        && incomingData().members.size() <= 250
+        && incomingData().name is string
+        && incomingData().name.size() <= 60;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.members
+        && request.auth.uid in incomingData().members
+        && (
+          // metadata any member may change
+          incomingData().diff(resource.data).affectedKeys().hasOnly([
+            'lastMessage', 'lastSenderId', 'updatedAt', 'theme',
+            'nicknames', 'members', 'memberNames', 'name'
+          ])
+          // pin and mute are per-user: you may only add or remove yourself
+          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedBy'])
+              && incomingData().pinnedBy.toSet().difference(resource.data.get('pinnedBy', []).toSet())
+                   .union(resource.data.get('pinnedBy', []).toSet().difference(incomingData().pinnedBy.toSet()))
+                   .hasOnly([request.auth.uid]))
+          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['mutedBy'])
+              && incomingData().mutedBy.toSet().difference(resource.data.get('mutedBy', []).toSet())
+                   .union(resource.data.get('mutedBy', []).toSet().difference(incomingData().mutedBy.toSet()))
+                   .hasOnly([request.auth.uid]))
+        );
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read: if inChat();
+        allow create: if inChat()
+          && incomingData().senderId == request.auth.uid
+          && incomingData().text is string
+          && incomingData().text.size() <= 2000;
+        allow update: if inChat() && (
+          // sender may edit their own text inside the 15-minute window
+          (resource.data.senderId == request.auth.uid
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+            && incomingData().text is string
+            && incomingData().text.size() <= 2000
+            && request.time < resource.data.createdAt + duration.value(15, 'm'))
+          // sender may unsend at any time
+          || (resource.data.senderId == request.auth.uid
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'deleted', 'sharedPost'])
+            && incomingData().deleted == true)
+          // any member may set or clear their own reaction
+          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            && onlyMyKeyIn('reactions'))
+          // any member may cast their own poll vote
+          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['poll'])
+            && incomingData().poll.votes.diff(resource.data.poll.votes).affectedKeys()
+                 .hasOnly([request.auth.uid]))
+        );
+        allow delete: if signedIn() && resource.data.senderId == request.auth.uid;
+      }
+
+      // Typing indicators and read markers: your own doc only.
+      match /typing/{uid} {
+        allow read: if inChat();
+        allow write: if isUser(uid) && inChat();
+      }
+      match /reads/{uid} {
+        allow read: if inChat();
+        allow write: if isUser(uid) && inChat();
+      }
+    }
+
+    // ---------- presence & thoughts ----------
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow write: if isUser(uid);
+    }
+    match /thoughts/{uid} {
+      allow read: if signedIn();
+      allow write: if isUser(uid)
+        && (request.method == 'delete'
+            || (incomingData().text is string && incomingData().text.size() <= 60));
+    }
+
+    // ---------- spouse requests ----------
+    match /spouseRequests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if signedIn()
+        && incomingData().fromUid == request.auth.uid
+        && incomingData().status == 'pending';
+      allow update: if signedIn()
+        && resource.data.toUid == request.auth.uid
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status'])
+        && incomingData().status in ['accepted', 'declined'];
+      allow delete: if signedIn() && resource.data.fromUid == request.auth.uid;
+    }
+
+    // ---------- circles (groups) ----------
+    match /groups/{groupId} {
+      function isCircleOwner() {
+        return signedIn() && resource.data.ownerId == request.auth.uid;
+      }
+
+      // A hidden circle is reachable by direct link (get) but never listed.
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.privacy in ['public', 'private'];
+
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly([
+          'name', 'description', 'privacy', 'ownerId', 'memberCount',
+          'requireApproval', 'rules', 'coverColor', 'pinnedPostId',
+          'screeningQuestions', 'automod', 'createdAt'
+        ])
+        && incomingData().ownerId == request.auth.uid
+        && incomingData().privacy in ['public', 'private', 'hidden']
+        && incomingData().name is string
+        && incomingData().name.size() >= 3
+        && incomingData().name.size() <= 80
+        && incomingData().description is string
+        && incomingData().description.size() <= 1000
+        && incomingData().memberCount == 1;
+      allow update: if signedIn() && (
+        (isCircleOwner()
+          && incomingData().diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'description', 'privacy', 'requireApproval',
+                         'rules', 'coverColor', 'pinnedPostId',
+                         'screeningQuestions', 'automod'])
+          && incomingData().privacy in ['public', 'private', 'hidden'])
+        // moderators may pin a post without touching anything else
+        || (signedIn()
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedPostId']))
+        || (onlyKey('memberCount') && delta1(resource.data.get('memberCount', 0), incomingData().memberCount))
+      );
+      allow delete: if isCircleOwner();
+
+      // Screening answers are visible to the applicant and to circle admins.
+      match /joinRequests/{uid} {
+        allow read: if isUser(uid)
+          || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+          || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+        allow create: if isUser(uid) && incomingData().agreedToRules == true;
+        allow delete: if isUser(uid)
+          || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+          || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+        allow update: if false;
+      }
+
+      match /members/{uid} {
+        allow read: if signedIn();
+        // You add yourself; owners and moderators can't fabricate members.
+        allow create: if (isUser(uid) && incomingData().role == 'member')
+          || (isUser(uid) && incomingData().role == 'owner'
+              && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == uid)
+          // an admin or moderator approving a join request
+          || (signedIn() && incomingData().role == 'member'
+              && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+        // Only the circle owner changes roles, and never to owner.
+        allow update: if signedIn() && (
+          (get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['role'])
+            && incomingData().role in ['member', 'moderator'])
+          // Admins and moderators apply graduated penalties.
+          || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+            && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['penalty', 'mutedUntil']))
+        );
+        // Leave yourself, or be removed by an admin/moderator.
+        allow delete: if isUser(uid)
+          || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+          || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+      }
+    }
+
+    // ---------- gatherings (events) ----------
+    match /events/{eventId} {
+      function isHost() {
+        return signedIn() && resource.data.hostId == request.auth.uid;
+      }
+
+      // Private gatherings are reachable by link or invite, not by listing.
+      allow get: if signedIn();
+      allow list: if signedIn()
+        && (resource.data.privacy == 'public' || resource.data.groupId != '');
+
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly([
+          'title', 'description', 'location', 'startsAt', 'privacy', 'groupId',
+          'ticketUrl', 'showGuestList', 'hostId', 'hostName',
+          'goingCount', 'interestedCount', 'createdAt'
+        ])
+        && incomingData().hostId == request.auth.uid
+        && incomingData().privacy in ['public', 'private']
+        && incomingData().title is string
+        && incomingData().title.size() >= 3
+        && incomingData().title.size() <= 150
+        && incomingData().description is string
+        && incomingData().description.size() <= 2000
+        && incomingData().location is string
+        && incomingData().location.size() <= 300
+        && incomingData().startsAt is timestamp
+        && incomingData().goingCount == 1
+        && incomingData().interestedCount == 0
+        && (incomingData().ticketUrl == '' || incomingData().ticketUrl.matches('^https?://.*'))
+        // A gathering attached to a circle requires membership of that circle.
+        && (incomingData().groupId == ''
+            || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
+      allow update: if signedIn() && (
+        (isHost()
+          && incomingData().diff(resource.data).affectedKeys()
+               .hasOnly(['title', 'description', 'location', 'startsAt', 'ticketUrl', 'showGuestList']))
+        || (onlyKey('goingCount') && delta1(resource.data.get('goingCount', 0), incomingData().goingCount))
+        || (onlyKey('interestedCount') && delta1(resource.data.get('interestedCount', 0), incomingData().interestedCount))
+      );
+      allow delete: if isHost();
+
+      match /rsvps/{uid} {
+        allow read: if signedIn();
+        allow create, update: if isUser(uid)
+          && incomingData().status in ['going', 'interested', 'maybe', 'cant'];
+        allow delete: if isUser(uid);
+      }
+
+      // Only the host makes announcements; guests read them.
+      match /announcements/{announcementId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && incomingData().authorId == request.auth.uid
+          && get(/databases/$(database)/documents/events/$(eventId)).data.hostId == request.auth.uid
+          && incomingData().text is string
+          && incomingData().text.size() > 0
+          && incomingData().text.size() <= 1000;
+        allow update: if false;
+        allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      }
+    }
+  }
+}
