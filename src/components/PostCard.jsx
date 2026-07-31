@@ -64,10 +64,10 @@ export default function PostCard({
   return (
     <article className="rounded-2xl border border-zinc-800 bg-zinc-900/60 overflow-hidden transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/40">
       <div className="flex items-center justify-between px-4 py-3">
-        <button className="flex items-center gap-3 text-left" onClick={() => openUserProfile(post.authorId)}>
+        <button className="flex items-center gap-3 text-left min-w-0 flex-1" onClick={() => openUserProfile(post.authorId)}>
           <Avatar profile={{ username: post.authorName, photoURL: post.authorPhoto }} size={9} />
-          <div>
-            <p className="text-sm font-semibold hover:text-violet-300 transition">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold hover:text-violet-300 transition truncate">
               {post.authorDisplayName || post.authorName}
               <span className="ml-1.5 font-normal text-zinc-500">@{post.authorName}</span>
             </p>
@@ -83,7 +83,7 @@ export default function PostCard({
           </div>
         </button>
         {removable && (
-          <button onClick={handleDelete} className="text-xs text-zinc-500 hover:text-red-400 min-h-[36px] px-1">
+          <button onClick={handleDelete} className="shrink-0 text-xs text-zinc-500 hover:text-red-400 min-h-[36px] px-1">
             {mine ? "Delete" : "Remove"}
           </button>
         )}

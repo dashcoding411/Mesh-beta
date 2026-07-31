@@ -27,7 +27,7 @@ metaphor (quick vs. long); Circles and Sourced describe what they actually do.
 | **Weave** | The For You feed — every format mixed and ranked, stories rail on top |
 | **Flicks** | Quick vertical video, snap-scrolled, autoplay on visibility |
 | **Features** | Long-form video with titles, judged on retention |
-| **Stills** | Photos and thoughts |
+| **Stills** | Photos with captions |
 | **Circles** | Communities, with **Gatherings** (events) nested inside them |
 | **Sourced** | Fact-checked news — see below |
 | **Chats** | Realtime 1:1 and group messaging — see below |
@@ -93,6 +93,16 @@ inflates counts on its own; freshness decays with a ~20h half-life; per-session
 jitter gives unproven accounts a test run; and a diversity pass caps any author
 at twice per six slots.
 
+## Posts are visual
+
+Every post carries media — a Still needs a photo the way a Flick needs a video.
+Text rides along as a caption, never as the whole post. This is enforced in
+`firestore.rules`, not just the composer, and the `mediaUrl` must point at our
+own Storage bucket.
+
+Because Storage needs the Blaze plan (below), the composer probes for it on open
+and explains exactly why posting is blocked rather than failing at submit.
+
 ## Chats
 
 Modelled closely on Instagram DMs, because that interaction model is the one
@@ -111,9 +121,10 @@ three chats can be pinned to the top.
 **Personalisation** — five chat themes, and per-thread nicknames that only
 display inside that conversation.
 
-**Extras** — group polls with live percentages, posts shared into a thread from
-the feed's Send button, and 60-character Notes that sit above the inbox for 24
-hours.
+**Extras** — group polls with live percentages, and 60-character **Thoughts**
+that sit above the inbox for 24 hours. Sharing a post from the feed's Send
+button produces a real preview card — thumbnail, format label and author — that
+opens the full post, rather than a line of text saying something was shared.
 
 Every per-user field is enforced server-side: you can only write your own
 reaction, your own read marker, your own typing indicator, your own pin and
@@ -121,6 +132,30 @@ mute. Verified by probing the live rules — reacting as another user, faking
 someone's typing indicator, writing their read receipt, pinning on their behalf,
 setting their note, removing yourself from a chat while editing it, and
 enumerating all chats are each rejected.
+
+## Circles
+
+Modelled on Facebook Groups, because that model is what makes communities
+self-govern rather than decay.
+
+**Layout** — hero banner, then tabbed sub-navigation (Featured / Discussion /
+Gatherings / Members) with a sticky side panel carrying About, Rules and the
+admin list. Featured leads with the pinned post.
+
+**Governance** — three privacy levels, Admin / Moderator / Member roles, rules
+with a tick-to-agree gate, up to three screening questions whose answers land in
+an approval queue, and graduated penalties: a 12-hour mute, then removal.
+
+**Admin Assist** — an if-this-then-that rule engine that runs before a post is
+written: block links, block accounts under seven days old, and a blocked-word
+list. Mesh's platform-wide hate-speech and spam filters apply on top and can't
+be switched off by a circle admin.
+
+**Moderation** — pin a post to Featured, pause comments on a thread while
+leaving it visible, and remove posts as a moderator.
+
+**Badges** — earned from real activity rather than handed out: Admin, Mod, Top
+contributor (20+ posts), Regular (5+), New here.
 
 ## What Mesh deliberately doesn't do
 
@@ -263,7 +298,11 @@ npm run build && npx firebase-tools deploy --only hosting --project mesh-a293c
 - `stories/{id}` — 24-hour media, filtered client-side
 - `news/{id}` — script + sources + review status
 - `chats/{id}` — with `messages/`
-- `groups/{id}` (Circles) — `privacy`, `ownerId`, with `members/` carrying roles
+- `groups/{id}` (Circles) — `privacy`, `ownerId`, `rules`, `screeningQuestions`,
+  `automod`, `pinnedPostId`, with `members/` (roles, penalties) and
+  `joinRequests/` (screening answers)
 - `events/{id}` (Gatherings) — `privacy`, optional `groupId`, with `rsvps/` and
   `announcements/`
+- `thoughts/{uid}` — 24-hour status above the inbox
+- `presence/{uid}` — last-active timestamp
 - `spouseRequests/{id}`; `admins/{uid}`

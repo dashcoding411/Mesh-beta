@@ -145,7 +145,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
           )}
           <textarea
             className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-sm h-24 resize-none focus:outline-none focus:border-violet-500"
-            placeholder="Write a caption\u2026"
+            placeholder="Write a caption…"
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={LIMITS.text}

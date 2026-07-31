@@ -151,14 +151,21 @@ let storageOk = null;
 
 export async function storageAvailable() {
   if (storageOk !== null) return storageOk;
-  try {
-    const probe = ref(storage, `uploads/${me()}/.probe`);
-    await getDownloadURL(probe);
-    storageOk = true;
-  } catch (err) {
-    // "object not found" means the bucket exists and answered — that's a pass.
-    storageOk = err?.code === "storage/object-not-found";
-  }
+  // A missing bucket can leave the SDK retrying instead of erroring, so the
+  // probe races a timeout — an unanswered bucket is treated as unavailable.
+  const probe = (async () => {
+    try {
+      await getDownloadURL(ref(storage, `uploads/${me()}/.probe`));
+      return true;
+    } catch (err) {
+      // "object not found" means the bucket exists and answered: that's a pass.
+      return err?.code === "storage/object-not-found";
+    }
+  })();
+  storageOk = await Promise.race([
+    probe,
+    new Promise((res) => setTimeout(() => res(false), 6000)),
+  ]);
   return storageOk;
 }
 
