@@ -1,105 +1,120 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { AlertTriangle } from "lucide-react";
 import { DOCUMENTS } from "../legal/content";
 import { BUSINESS, missingFields } from "../legal/business";
+import { navigate } from "../lib/router";
+import TopBar from "./shell/TopBar";
+import { LogoMark } from "./shell/Sidebar";
 
-/* One surface for every policy. It works signed-out too, because the signup
-   page has to link here before an account exists. */
-export default function Legal({ doc = "privacy", onBack }) {
-  const [active, setActive] = useState(doc);
+/* Every policy, each on its own URL (/legal/privacy, /legal/terms, …) so they
+   can be linked from anywhere. Readable signed-out too, the signup form has
+   to link here before an account exists. */
+export default function Legal({ doc = "privacy", standalone = false }) {
   const headingRef = useRef(null);
-  const mounted = useRef(false);
-
-  // Switching document is a navigation, so send focus to the new title rather
-  // than leaving it stranded on the tab just left. Not on first render, though
-  // — arriving on the page should not yank focus out of wherever it was.
-  useEffect(() => {
-    if (mounted.current) headingRef.current?.focus();
-    mounted.current = true;
-  }, [active]);
-
-  const current = DOCUMENTS.find((d) => d.id === active) || DOCUMENTS[0];
+  const current = DOCUMENTS.find((d) => d.id === doc) || DOCUMENTS[0];
   const gaps = missingFields();
+  const first = useRef(true);
+
+  // Switching document is a navigation: move focus to the new title, but not
+  // on first arrival, since that would yank focus out of wherever it was.
+  useEffect(() => {
+    if (!first.current) headingRef.current?.focus();
+    first.current = false;
+  }, [doc]);
+
+  const open = (id) => navigate(`/legal/${id}`, { replace: true });
 
   return (
-    <div className="h-full overflow-y-auto pb-24 md:pb-6">
-      <div className="max-w-3xl mx-auto px-4 py-6">
-        {onBack && (
-          <button onClick={onBack}
-            className="mb-4 min-h-[44px] -ml-2 px-2 text-sm text-zinc-400 hover:text-zinc-100 transition">
-            ← Back
+    <>
+      {standalone ? (
+        <header className="sticky top-0 z-nav flex h-14 items-center gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur">
+          <button type="button" onClick={() => navigate("/")} className="press flex items-center gap-2 rounded-control" aria-label="Mesh, back to sign in">
+            <LogoMark size={26} />
+            <span className="font-display text-title-3 font-extrabold">Mesh</span>
           </button>
-        )}
+        </header>
+      ) : (
+        <TopBar title="Policies" back backTo="/account/settings" />
+      )}
 
-        <h1 className="text-2xl font-bold">Legal</h1>
-        <p className="text-sm text-zinc-400 mt-1">
-          The full set, in plain English. Last updated {BUSINESS.lastUpdated}.
-        </p>
+      <div data-scroll className={standalone ? "" : "min-h-0 flex-1 overflow-y-auto"}>
+        <div className="mx-auto max-w-[760px] px-4 pb-16 pt-6 md:px-6">
+          <p className="text-caption text-fg-subtle">Last updated {BUSINESS.lastUpdated}</p>
+          <h1 className="mt-1 text-display font-display">Policies</h1>
+          <p className="mt-2 text-body text-fg-muted">Written in plain English, and describing what Mesh actually does.</p>
 
-        {gaps.length > 0 && (
-          <div role="alert"
-            className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-            <p className="font-semibold text-amber-300">These policies are not ready to publish</p>
-            <p className="text-amber-200/90 mt-1 leading-relaxed">
-              {gaps.length} business detail{gaps.length === 1 ? "" : "s"} still unset
-              in <code className="text-xs">src/legal/business.js</code>: {gaps.join(", ")}.
-              Australian Consumer Law expects a real trader to be identifiable, and a policy
-              naming "TODO" as its operator is worse than none.
-            </p>
-          </div>
-        )}
+          {gaps.length > 0 && (
+            <div role="alert" className="mt-5 flex gap-3 rounded-card border border-amber-500/40 bg-amber-500/10 p-4">
+              <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
+              <div>
+                <p className="text-callout font-semibold text-warning-text">These policies aren't ready to publish</p>
+                <p className="mt-1 text-caption text-fg-muted">
+                  {gaps.length} business detail{gaps.length === 1 ? "" : "s"} still unset
+                  in <code className="rounded bg-surface-3 px-1">src/legal/business.js</code>: {gaps.join(", ")}.
+                  Australian Consumer Law expects a real trader to be identifiable. A policy naming "TODO" as its
+                  operator is worse than none.
+                </p>
+              </div>
+            </div>
+          )}
 
-        <nav aria-label="Policies" className="mt-5 flex flex-wrap gap-1.5">
-          {DOCUMENTS.map((d) => (
-            <button key={d.id} onClick={() => setActive(d.id)}
-              aria-current={d.id === active ? "page" : undefined}
-              className={`min-h-[40px] rounded-xl px-3.5 text-sm font-medium transition ${
-                d.id === active
-                  ? "bg-violet-600/20 text-violet-200 border border-violet-500/40"
-                  : "border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700"
-              }`}>
-              {d.title}
-            </button>
-          ))}
-        </nav>
+          <nav aria-label="Policies" className="mt-6">
+            <ul className="flex flex-wrap gap-2">
+              {DOCUMENTS.map((d) => {
+                const on = d.id === current.id;
+                return (
+                  <li key={d.id}>
+                    <a href={`/legal/${d.id}`} aria-current={on ? "page" : undefined}
+                      onClick={(e) => { e.preventDefault(); open(d.id); }}
+                      className={`press inline-flex min-h-10 items-center rounded-full px-4 text-callout font-medium transition-colors ${
+                        on ? "bg-fg text-canvas" : "bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg"
+                      }`}>
+                      {d.title}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
 
-        <article className="mt-6 anim-fade" key={current.id}>
-          <h2 ref={headingRef} tabIndex={-1} className="text-xl font-bold outline-none">
-            {current.title}
-          </h2>
-          <p className="text-sm text-zinc-300 mt-1.5 leading-relaxed">{current.summary}</p>
+          <article className="mt-8 anim-fade" key={current.id}>
+            <h2 ref={headingRef} tabIndex={-1} className="text-title-1 outline-none">{current.title}</h2>
+            <p className="mt-2 text-body text-fg-muted">{current.summary}</p>
 
-          <div className="mt-6 space-y-7">
-            {current.sections.map((s) => (
-              <section key={s.h}>
-                <h3 className="font-semibold text-zinc-100">{s.h}</h3>
-                {s.p?.map((para, i) => (
-                  <p key={i} className="text-sm text-zinc-300 leading-relaxed mt-2">{para}</p>
-                ))}
-                {s.list && (
-                  <dl className="mt-3 space-y-2.5">
-                    {s.list.map(([term, def]) => (
-                      <div key={term} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5">
-                        <dt className="text-sm font-medium text-zinc-100">{term}</dt>
-                        <dd className="text-sm text-zinc-300 leading-relaxed mt-1">{def}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </section>
-            ))}
-          </div>
+            <div className="mt-8 space-y-9">
+              {current.sections.map((s) => (
+                <section key={s.h} aria-labelledby={`h-${current.id}-${s.h}`}>
+                  <h3 id={`h-${current.id}-${s.h}`} className="text-title-3">{s.h}</h3>
+                  {s.p?.map((para, i) => (
+                    <p key={i} className="mt-3 max-w-[68ch] text-body text-fg-muted">{para}</p>
+                  ))}
+                  {s.list && (
+                    <dl className="mt-4 divide-y divide-line overflow-hidden rounded-card border border-line">
+                      {s.list.map(([term, def]) => (
+                        <div key={term} className="bg-surface p-4">
+                          <dt className="text-callout font-semibold text-fg">{term}</dt>
+                          <dd className="mt-1 max-w-[68ch] text-callout text-fg-muted">{def}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </section>
+              ))}
+            </div>
 
-          <footer className="mt-10 border-t border-zinc-800 pt-5 text-sm text-zinc-400 space-y-1">
-            <p className="font-medium text-zinc-300">{BUSINESS.legalName}</p>
-            <p>ABN {BUSINESS.abn}</p>
-            <p>{BUSINESS.address}</p>
-            <p>
-              General: {BUSINESS.supportEmail} · Privacy: {BUSINESS.privacyEmail} · Copyright:{" "}
-              {BUSINESS.copyrightEmail}
-            </p>
-          </footer>
-        </article>
+            <footer className="mt-12 border-t border-line pt-6 text-caption text-fg-subtle">
+              <p className="text-callout font-semibold text-fg">{BUSINESS.legalName}</p>
+              <p className="mt-1">ABN {BUSINESS.abn}</p>
+              <p>{BUSINESS.address}</p>
+              <dl className="mt-3 grid gap-1 sm:grid-cols-[auto_1fr] sm:gap-x-4">
+                <dt>General</dt><dd className="text-fg-muted">{BUSINESS.supportEmail}</dd>
+                <dt>Privacy</dt><dd className="text-fg-muted">{BUSINESS.privacyEmail}</dd>
+                <dt>Copyright</dt><dd className="text-fg-muted">{BUSINESS.copyrightEmail}</dd>
+              </dl>
+            </footer>
+          </article>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

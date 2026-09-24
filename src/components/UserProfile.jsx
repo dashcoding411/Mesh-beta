@@ -1,132 +1,148 @@
 import { useEffect, useState } from "react";
+import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2 } from "lucide-react";
 import {
-  fetchProfile, fetchPostsByAuthor, fetchMyLikes, toggleFollow,
-  openDirectChat, timeAgo, me,
+  fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
 } from "../lib/db";
-import { Avatar } from "./Nav";
-import PostCard from "./PostCard";
+import { goBack, navigate } from "../lib/router";
+import { useShell } from "./shell/ShellContext";
+import Tabs from "./ui/Tabs";
+import Button from "./ui/Button";
+import IconButton from "./ui/IconButton";
+import { EmptyState, Skeleton } from "./ui/States";
+import { useToast } from "./ui/toast-context";
+import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
-// Overlay profile for other users, with follow + message actions.
-export default function UserProfile({ uid, following, setFollowing, onClose }) {
-  const [profile, setProfile] = useState(null);
+/* Someone else's profile, opened over whatever you were doing. It has its
+   own URL, so Back closes it and the page underneath is exactly as you left it. */
+export default function UserProfile({ uid }) {
+  const { following, setFollowing } = useShell();
+  const toast = useToast();
+  const [profile, setProfile] = useState(undefined);
   const [posts, setPosts] = useState(null);
-  const [liked, setLiked] = useState(new Set());
+  const [reposts, setReposts] = useState(null);
+  const [tab, setTab] = useState("posts");
   const [busy, setBusy] = useState(false);
+  const [messaging, setMessaging] = useState(false);
+  const [follows, setFollows] = useState(null);
   const followed = following.has(uid);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const p = await fetchProfile(uid);
-      if (cancelled) return;
-      setProfile(p);
-      try {
-        const list = await fetchPostsByAuthor(uid);
-        if (cancelled) return;
-        // hide followers-only posts unless we follow them
-        setPosts(list.filter((x) => x.visibility !== "followers" || following.has(uid)));
-        const likes = await fetchMyLikes(list.map((x) => x.id));
-        if (!cancelled) setLiked(likes);
-      } catch {
-        if (!cancelled) setPosts([]);
-      }
-    })();
+    fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
+    fetchPostsByAuthor(uid)
+      .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
+      .catch(() => { if (!cancelled) setPosts([]); });
     return () => { cancelled = true; };
-  }, [uid, following]);
+    // Following changes are reflected by the button; refetching posts on every follow would flash the grid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
-  const handleFollow = async () => {
+  useEffect(() => {
+    if (tab === "reposts" && reposts === null) fetchRepostedPosts(uid).then(setReposts).catch(() => setReposts([]));
+  }, [tab, reposts, uid]);
+
+  useEffect(() => {
+    const opener = document.activeElement;
+    const onKey = (e) => { if (e.key === "Escape" && !document.querySelector("[role=dialog] [role=dialog], .z-sheet")) goBack("/"); };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); opener?.focus?.(); };
+  }, []);
+
+  const follow = async () => {
     if (busy || !profile) return;
     setBusy(true);
     try {
       await toggleFollow(profile, followed);
       setFollowing((prev) => {
         const next = new Set(prev);
-        followed ? next.delete(uid) : next.add(uid);
+        if (followed) next.delete(uid); else next.add(uid);
         return next;
       });
-      setProfile((p) => ({ ...p, followerCount: (p.followerCount || 0) + (followed ? -1 : 1) }));
+      setProfile((p) => ({ ...p, followerCount: Math.max(0, (p.followerCount || 0) + (followed ? -1 : 1)) }));
+    } catch {
+      toast({ tone: "error", title: "Couldn't update follow", body: "Try again in a moment." });
     } finally {
       setBusy(false);
     }
   };
 
-  const handleMessage = async () => {
-    await openDirectChat(profile);
-    onClose();
-    window.dispatchEvent(new CustomEvent("mesh:goto-tab", { detail: "messages" }));
+  const message = async () => {
+    setMessaging(true);
+    try {
+      const chatId = await openDirectChat(profile);
+      navigate(`/messages/${chatId}`);
+    } catch {
+      setMessaging(false);
+      toast({ tone: "error", title: "Couldn't open the conversation" });
+    }
   };
 
-  const onLikedChange = (id, isLiked) => {
-    setLiked((prev) => {
-      const next = new Set(prev);
-      isLiked ? next.add(id) : next.delete(id);
-      return next;
-    });
+  const share = async () => {
+    const url = `${window.location.origin}/u/${uid}`;
+    try {
+      if (navigator.share) await navigator.share({ title: `@${profile.username} on Mesh`, url });
+      else { await navigator.clipboard.writeText(url); toast({ title: "Profile link copied" }); }
+    } catch { /* dismissed */ }
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-zinc-950/98 backdrop-blur anim-fade overflow-y-auto">
-      <div className="max-w-xl mx-auto px-4 py-6 pb-24">
-        <button onClick={onClose} className="text-sm text-zinc-400 hover:text-zinc-200 mb-4">← Back</button>
+    <div role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
+      className="fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64">
+      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+        <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
+        <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>
+        {profile && <IconButton icon={Link2} label="Share profile" onClick={share} />}
+      </header>
 
-        {!profile ? (
-          <p className="text-zinc-400">Loading…</p>
-        ) : (
+      <div className="mx-auto max-w-[760px] pb-16">
+        {profile === undefined && (
+          <div className="flex items-start gap-4 px-4 pt-5 md:px-6" role="status" aria-label="Loading profile">
+            <Skeleton className="h-[88px] w-[88px] !rounded-full" />
+            <div className="flex-1 space-y-3 pt-2"><Skeleton className="h-5 w-40" /><Skeleton className="h-3 w-24" /><Skeleton className="h-8 w-56" /></div>
+          </div>
+        )}
+
+        {profile === null && (
+          <EmptyState icon={UserX} title="This account isn't available"
+            body="It may have been deleted, or the link is wrong."
+            action={<Button onClick={() => goBack("/")}>Go back</Button>} />
+        )}
+
+        {profile && (
           <>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 mb-6 anim-rise">
-              <div className="flex items-center gap-4">
-                <Avatar profile={profile} size={16} />
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold truncate">
-                    @{profile.username}
-                    {profile.pronouns && <span className="ml-2 text-sm font-normal text-zinc-400">({profile.pronouns})</span>}
-                  </h2>
-                  <div className="flex gap-4 mt-1 text-sm">
-                    <span><strong>{profile.followerCount || 0}</strong> <span className="text-zinc-400">followers</span></span>
-                    <span><strong>{profile.followingCount || 0}</strong> <span className="text-zinc-400">following</span></span>
-                  </div>
-                </div>
-              </div>
+            <ProfileHeader profile={profile} postCount={posts?.length ?? null} onShowFollows={setFollows}
+              actions={
+                <>
+                  <Button className="flex-1" variant={followed ? "secondary" : "primary"} icon={followed ? UserCheck : UserPlus}
+                    loading={busy} onClick={follow} aria-label={followed ? `Unfollow @${profile.username}` : `Follow @${profile.username}`}>
+                    {followed ? "Following" : "Follow"}
+                  </Button>
+                  <Button className="flex-1" icon={MessageCircle} loading={messaging} onClick={message}>Message</Button>
+                </>
+              } />
 
-              {(profile.bio || profile.town || profile.spouseUsername) && (
-                <div className="mt-4 space-y-1 text-sm text-zinc-300">
-                  {profile.bio && <p className="whitespace-pre-wrap">{profile.bio}</p>}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400 pt-1">
-                    {profile.town && <span>📍 {profile.town}</span>}
-                    {profile.spouseUsername && !profile.spouseUsername.includes("pending") && <span>💍 {profile.spouseUsername}</span>}
-                    <span>joined {timeAgo(profile.createdAt)}</span>
-                  </div>
-                </div>
-              )}
+            <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
+              tabs={[{ id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
 
-              {uid !== me() && (
-                <div className="flex gap-2 mt-4">
-                  <button onClick={handleFollow} disabled={busy}
-                    className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition ${
-                      followed
-                        ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                        : "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500"
-                    }`}>
-                    {followed ? "Following ✓" : "Follow"}
-                  </button>
-                  <button onClick={handleMessage}
-                    className="flex-1 rounded-xl border border-zinc-700 hover:border-violet-500 py-2.5 text-sm font-semibold transition">
-                    Message
-                  </button>
-                </div>
+            <div role="tabpanel" className="pt-0.5">
+              {tab === "posts" ? (
+                <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
+                  emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
+              ) : (
+                <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet" />
               )}
             </div>
 
-            {posts === null && <p className="text-zinc-400">Loading posts…</p>}
-            {posts?.length === 0 && <p className="text-zinc-400 text-sm">No posts to show.</p>}
-            <div className="space-y-6 stagger">
-              {posts?.map((p) => (
-                <PostCard key={p.id} post={p} liked={liked.has(p.id)} onLikedChange={onLikedChange} />
-              ))}
-            </div>
+            {!followed && posts?.length === 0 && (
+              <p className="flex items-center justify-center gap-1.5 px-4 text-caption text-fg-subtle">
+                <Lock size={13} aria-hidden="true" /> Some posts may be for followers only.
+              </p>
+            )}
           </>
         )}
       </div>
+
+      {follows && <FollowListDialog uid={uid} kind={follows} onClose={() => setFollows(null)} />}
     </div>
   );
 }

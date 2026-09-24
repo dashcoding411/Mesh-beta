@@ -21,7 +21,7 @@ service cloud.firestore {
       return incomingData().diff(resource.data).affectedKeys().hasOnly([field]);
     }
     // `before` is read with a default so documents written before a counter
-    // existed don't blow up rule evaluation — a missing counter reads as 0.
+    // existed don't blow up rule evaluation; a missing counter reads as 0.
     function delta1(before, after) {
       return after is int && (after == before + 1 || after == before - 1);
     }
@@ -90,6 +90,11 @@ service cloud.firestore {
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
             'name', 'bio', 'photoURL', 'pronouns', 'town', 'spouseUsername', 'birthYear'
           ])
+          // Birth year can be set once, if it was never set. After that it's
+          // fixed: otherwise an under-16 could edit their way past the age
+          // protections with one form field.
+          && (!incomingData().diff(resource.data).affectedKeys().hasAny(['birthYear'])
+              || (resource.data.get('birthYear', 0) == 0 && incomingData().birthYear is int))
           && incomingData().name is string
           && incomingData().name.size() >= 1
           && incomingData().name.size() <= 50
@@ -116,23 +121,23 @@ service cloud.firestore {
       );
       allow delete: if false;
 
-      // who this user follows — only the user themself writes here
+      // who this user follows, only the user themself writes here
       match /following/{targetUid} {
         allow read: if signedIn();
         allow create, delete: if isUser(uid);
         allow update: if false;
       }
-      // who follows this user — only the *follower* writes their own entry
+      // who follows this user, only the *follower* writes their own entry
       match /followers/{followerUid} {
         allow read: if signedIn();
         allow create, delete: if isUser(followerUid);
         allow update: if false;
       }
-      // personalization signals — private to the user
+      // personalization signals: private to the user
       match /affinity/{authorId} {
         allow read, write: if isUser(uid);
       }
-      // saved posts and "not interested" hides — private to the user
+      // saved posts and "not interested" hides, private to the user
       match /saved/{postId} {
         allow read, write: if isUser(uid);
       }
@@ -164,7 +169,7 @@ service cloud.firestore {
       // the query itself proves every match satisfies this rule. That means
       // callers must constrain visibility == 'public' (feeds, other people's
       // profiles) or authorId == their own uid (own profile). A followers-only
-      // post therefore can never be enumerated by someone else — reaching one
+      // post therefore can never be enumerated by someone else; reaching one
       // requires a direct get, which runs the follower check above.
       allow list: if signedIn()
         && (resource.data.visibility == 'public'
@@ -173,11 +178,14 @@ service cloud.firestore {
         && incomingData().keys().hasOnly([
           'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
           'alt', 'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
-          'likeCount', 'commentCount', 'saveCount', 'sendCount',
+          'duration', 'trailerStart', 'aiGenerated',
+          'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
           'viewCount', 'completeCount', 'createdAt'
         ])
         && incomingData().authorId == request.auth.uid
-        && incomingData().kind in ['post', 'short', 'video']
+        // post = Still (photo), text = Strand, short/video = Flick (video
+        // over three minutes plays as a trailer in the feed).
+        && incomingData().kind in ['post', 'text', 'short', 'video']
         && incomingData().visibility in ['public', 'followers']
         // under-16s may post to groups and to followers, never to the public feed
         && (incomingData().groupId != ''
@@ -193,15 +201,30 @@ service cloud.firestore {
         && incomingData().commentCount == 0
         && incomingData().saveCount == 0
         && incomingData().sendCount == 0
-        // Every post carries media, and it must live in our own bucket.
-        && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
+        && incomingData().get('repostCount', 0) == 0
+        && incomingData().get('duration', 0) is number
+        && incomingData().get('duration', 0) >= 0
+        && incomingData().get('duration', 0) <= 43200
+        && incomingData().get('trailerStart', 0) is number
+        && incomingData().get('trailerStart', 0) >= 0
+        && incomingData().get('aiGenerated', false) is bool
+        // A Strand is words only: no media, 1–500 characters. Every other
+        // format carries media, and it must live in our own bucket.
+        && ((incomingData().kind == 'text'
+              && incomingData().mediaUrl == ''
+              && incomingData().mediaPath == ''
+              && incomingData().text.size() >= 1
+              && incomingData().text.size() <= 500)
+            || (incomingData().kind != 'text'
+              && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')))
         && (incomingData().groupId == ''
             || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
       allow update: if signedIn() && (
         (resource.data.authorId == request.auth.uid
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility'])
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated'])
           && incomingData().text is string
-          && incomingData().text.size() <= 5000)
+          && incomingData().text.size() <= 5000
+          && (resource.data.kind != 'text' || incomingData().text.size() <= 500))
         // a circle admin or moderator may lock a thread
         || (onlyKey('locked')
           && resource.data.groupId != ''
@@ -211,10 +234,18 @@ service cloud.firestore {
         || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))
         || (onlyKey('saveCount') && delta1(resource.data.get('saveCount', 0), incomingData().saveCount))
         || (onlyKey('sendCount') && delta1(resource.data.get('sendCount', 0), incomingData().sendCount))
+        || (onlyKey('repostCount') && delta1(resource.data.get('repostCount', 0), incomingData().repostCount))
         || (onlyKey('viewCount') && delta1(resource.data.get('viewCount', 0), incomingData().viewCount))
         || (onlyKey('completeCount') && delta1(resource.data.get('completeCount', 0), incomingData().completeCount))
       );
-      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      // Authors delete their own posts; a circle's admins and moderators can
+      // remove posts made inside that circle.
+      allow delete: if signedIn() && (
+        resource.data.authorId == request.auth.uid
+        || (resource.data.get('groupId', '') != ''
+          && exists(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator'])
+      );
 
       match /likes/{uid} {
         allow read: if signedIn();
@@ -242,6 +273,25 @@ service cloud.firestore {
       }
     }
 
+    // ---------- reposts ----------
+    // One per (post, person): the id is fixed as `{postId}_{uid}`, so a repost
+    // can't be doubled or written on someone else's behalf. Only public posts
+    // by other people can be reposted: reposting a followers-only post would
+    // carry it past the audience its author chose.
+    match /reposts/{repostId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt'])
+        && incomingData().uid == request.auth.uid
+        && repostId == incomingData().postId + '_' + request.auth.uid
+        && incomingData().createdAt == request.time
+        && get(/databases/$(database)/documents/posts/$(incomingData().postId)).data.visibility == 'public'
+        && get(/databases/$(database)/documents/posts/$(incomingData().postId)).data.authorId != request.auth.uid
+        && get(/databases/$(database)/documents/posts/$(incomingData().postId)).data.authorId == incomingData().postAuthorId;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     // ---------- stories (client filters to last 24h) ----------
     match /stories/{storyId} {
       allow read: if signedIn();
@@ -264,9 +314,12 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'title', 'script', 'sources',
-          'status', 'reviewNote', 'likeCount', 'commentCount', 'createdAt'
+          'status', 'reviewNote', 'likeCount', 'commentCount', 'createdAt', 'attestedAt'
         ])
         && incomingData().authorId == request.auth.uid
+        // The author's declaration that the story is accurate and contains no
+        // AI-fabricated evidence, stamped by the server clock.
+        && incomingData().attestedAt == request.time
         && incomingData().status == 'pending'
         && incomingData().title is string
         && incomingData().title.size() >= 10
@@ -302,7 +355,7 @@ service cloud.firestore {
       }
 
       // A get on a chat that doesn't exist yet must not blow up on
-      // resource.data — the client checks existence before opening a DM.
+      // resource.data; the client checks existence before opening a DM.
       allow get: if signedIn()
         && (resource == null || request.auth.uid in resource.data.members);
       allow list: if signedIn() && request.auth.uid in resource.data.members;

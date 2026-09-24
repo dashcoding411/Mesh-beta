@@ -1,225 +1,224 @@
-import { useEffect, useState } from "react";
-import { fetchGroups, createGroup, timeAgo, CIRCLE_PRIVACY, fetchEvents, fetchMyRsvps } from "../lib/db";
+import { useCallback, useEffect, useState } from "react";
+import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus } from "lucide-react";
+import { fetchGroups, createGroup, CIRCLE_PRIVACY, fetchEvents, fetchMyRsvps } from "../lib/db";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkName } from "../lib/moderation";
+import { navigate } from "../lib/router";
+import { plural } from "../lib/format";
+import HomeHeader from "./shell/HomeHeader";
+import Tabs from "./ui/Tabs";
+import Button from "./ui/Button";
+import Badge from "./ui/Badge";
+import Dialog from "./ui/Dialog";
+import { Field, Input, Textarea } from "./ui/Field";
+import { EmptyState, ErrorState, Skeleton, InlineMessage } from "./ui/States";
 import CirclePage from "./CirclePage";
-import { GatheringCard, NewGatheringForm } from "./Events";
+import { GatheringCard, NewGatheringDialog } from "./Events";
 
-/* Circles are communities; Gatherings are the moments those communities plan.
-   They share one surface because you look for both in the same place — a
-   separate events tab was dead weight in the rail. */
-export default function Circles({ profile }) {
-  const [view, setView] = useState("circles"); // 'circles' | 'gatherings'
-  const [active, setActive] = useState(null);
+/* Circles are communities; Gatherings are what they plan. One section,
+   two tabs: you look for both in the same place. */
+export default function Circles({ circleId, view }) {
+  const [creating, setCreating] = useState(null); // 'circle' | 'gathering'
+  const tab = view === "gatherings" ? "gatherings" : "circles";
 
-  if (active) return <CirclePage group={active} profile={profile} onBack={() => setActive(null)} />;
-
-  return (
-    <div className="h-full overflow-y-auto pb-24 md:pb-6">
-      <div className="max-w-3xl mx-auto px-4 py-6">
-        <h2 className="text-xl font-bold mb-1">Circles</h2>
-        <p className="text-sm text-zinc-400 mb-5">Communities you're part of, and what they've got planned.</p>
-
-        <div role="tablist" className="flex rounded-xl bg-zinc-900 p-1 mb-5 max-w-xs">
-          {[["circles", "Circles"], ["gatherings", "Gatherings"]].map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)}
-              className={`flex-1 min-h-[40px] rounded-lg text-sm font-medium transition ${
-                view === id ? "bg-zinc-800 text-white shadow" : "text-zinc-400 hover:text-zinc-200"
-              }`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {view === "circles" ? <CircleList onOpen={setActive} /> : <GatheringList />}
-      </div>
-    </div>
-  );
-}
-
-function CircleList({ onOpen }) {
-  const [groups, setGroups] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-
-  useEffect(() => {
-    fetchGroups().then(setGroups).catch((e) => { console.error(e); setGroups([]); });
-  }, []);
+  if (circleId) return <CirclePage circleId={circleId} />;
 
   return (
     <>
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setShowCreate(true)}
-          className="min-h-[44px] rounded-xl bg-violet-600 hover:bg-violet-500 px-4 text-sm font-semibold">
-          New circle
-        </button>
-      </div>
+      <HomeHeader section="circles"
+        actions={
+          <Button size="sm" variant="primary" icon={tab === "circles" ? Plus : CalendarPlus} className="hidden md:inline-flex"
+            onClick={() => setCreating(tab === "circles" ? "circle" : "gathering")}>
+            {tab === "circles" ? "New circle" : "New gathering"}
+          </Button>
+        }>
+        <Tabs variant="underline" label="Circles or gatherings" value={tab} className="px-2 md:px-4"
+          onChange={(id) => navigate(id === "gatherings" ? "/circles?view=gatherings" : "/circles", { replace: true })}
+          tabs={[{ id: "circles", label: "Circles" }, { id: "gatherings", label: "Gatherings" }]} />
+      </HomeHeader>
 
-      {groups === null && <p className="text-zinc-400">Loading circles…</p>}
-      {groups?.length === 0 && (
-        <div className="text-center text-zinc-400 mt-16">
-          <p className="text-lg font-semibold text-zinc-300">No circles yet</p>
-          <p className="text-sm mt-1">Start one for your people.</p>
+      <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[720px] px-4 pb-16 pt-5 md:px-6">
+          <Button full variant="secondary" icon={tab === "circles" ? Plus : CalendarPlus} className="mb-5 md:hidden"
+            onClick={() => setCreating(tab === "circles" ? "circle" : "gathering")}>
+            {tab === "circles" ? "Start a circle" : "Plan a gathering"}
+          </Button>
+          {tab === "circles" ? <CircleList onCreate={() => setCreating("circle")} /> : <GatheringList key={creating} onCreate={() => setCreating("gathering")} />}
         </div>
-      )}
-
-      <div className="space-y-3 stagger">
-        {groups?.map((g) => (
-          <button key={g.id} onClick={() => onOpen(g)}
-            className="w-full text-left rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-violet-600/50 transition">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold">{g.name}</p>
-              <PrivacyPill privacy={g.privacy} />
-            </div>
-            {g.description && <p className="text-sm text-zinc-400 mt-1 line-clamp-2">{g.description}</p>}
-            <p className="text-xs text-zinc-400 mt-2">
-              {g.memberCount || 0} member{g.memberCount === 1 ? "" : "s"} · created {timeAgo(g.createdAt)}
-            </p>
-          </button>
-        ))}
       </div>
 
-      {showCreate && (
-        <NewCircleModal onClose={() => setShowCreate(false)}
-          onCreated={(g) => { setGroups((prev) => [g, ...(prev || [])]); setShowCreate(false); onOpen(g); }} />
+      {creating === "circle" && (
+        <NewCircleDialog onClose={() => setCreating(null)} onCreated={(g) => { setCreating(null); navigate(`/circles/${g.id}`); }} />
+      )}
+      {creating === "gathering" && (
+        <NewGatheringDialog onClose={() => setCreating(null)} onCreated={() => setCreating(null)} />
       )}
     </>
   );
 }
 
-export function PrivacyPill({ privacy }) {
-  const map = {
-    public: ["Public", "bg-emerald-500/15 text-emerald-400"],
-    private: ["Private", "bg-amber-500/15 text-amber-400"],
-    hidden: ["Hidden", "bg-zinc-700/40 text-zinc-400"],
-  };
-  const [label, cls] = map[privacy] || map.public;
-  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cls}`}>{label}</span>;
+const PRIVACY = {
+  public: { label: "Public", icon: Globe, tone: "neutral" },
+  private: { label: "Private", icon: Lock, tone: "warning" },
+  hidden: { label: "Hidden", icon: EyeOff, tone: "neutral" },
+};
+
+export function PrivacyBadge({ privacy }) {
+  const p = PRIVACY[privacy] || PRIVACY.public;
+  return <Badge tone={p.tone} icon={p.icon}>{p.label}</Badge>;
 }
 
-function GatheringList() {
+function CircleList({ onCreate }) {
+  const [groups, setGroups] = useState(null);
+  const [error, setError] = useState(false);
+  const load = useCallback(async () => {
+    try { setGroups(await fetchGroups()); setError(false); }
+    catch { setError(true); }
+  }, []);
+  useEffect(() => { (async () => { await load(); })(); }, [load]);
+
+  if (error) return <ErrorState title="Couldn't load circles" onRetry={() => { setError(false); setGroups(null); load(); }} />;
+  if (groups === null) return <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 !rounded-card" />)}</div>;
+  if (!groups.length) {
+    return (
+      <EmptyState icon={Blend} title="No circles yet"
+        body="Circles are communities with their own rules, admins and gatherings. Start one for your people."
+        action={<Button variant="primary" icon={Plus} onClick={onCreate}>Start a circle</Button>} />
+    );
+  }
+
+  return (
+    <ul className="space-y-3 stagger">
+      {groups.map((g) => (
+        <li key={g.id}>
+          <button type="button" onClick={() => navigate(`/circles/${g.id}`)}
+            className="press flex w-full items-center gap-4 overflow-hidden rounded-card border border-line bg-surface p-3 text-left transition-colors hover:border-line-strong">
+            <span className={`h-16 w-16 shrink-0 rounded-control bg-gradient-to-br ${g.coverColor || "from-violet-600 via-fuchsia-600 to-rose-500"}`} aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-title-3">{g.name}</span>
+                <PrivacyBadge privacy={g.privacy} />
+              </span>
+              {g.description && <span className="mt-0.5 line-clamp-1 block text-callout text-fg-muted">{g.description}</span>}
+              <span className="mt-1 block text-caption text-fg-subtle">{plural(g.memberCount || 0, "member")}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function GatheringList({ onCreate }) {
   const [events, setEvents] = useState(null);
   const [rsvps, setRsvps] = useState(new Map());
-  const [showCreate, setShowCreate] = useState(false);
+  const [error, setError] = useState(false);
 
-  const load = async () => {
-    await Promise.resolve();
+  const load = useCallback(async () => {
+    setError(false);
     try {
       const list = await fetchEvents();
       setEvents(list);
       setRsvps(await fetchMyRsvps(list.map((e) => e.id)).catch(() => new Map()));
-    } catch (err) { console.error(err); setEvents([]); }
-  };
+    } catch { setError(true); }
+  }, []);
 
-  useEffect(() => { (async () => { await load(); })(); }, []);
+  useEffect(() => { (async () => { await load(); })(); }, [load]);
+
+  if (error) return <ErrorState title="Couldn't load gatherings" onRetry={load} />;
+  if (events === null) return <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>;
+  if (!events.length) {
+    return (
+      <EmptyState icon={CalendarDays} title="Nothing planned yet"
+        body="Gatherings are events: a run, a dinner, a stream. Put one on the calendar."
+        action={<Button variant="primary" icon={CalendarPlus} onClick={onCreate}>Plan a gathering</Button>} />
+    );
+  }
 
   return (
-    <>
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setShowCreate(true)}
-          className="min-h-[44px] rounded-xl bg-violet-600 hover:bg-violet-500 px-4 text-sm font-semibold">
-          New gathering
-        </button>
-      </div>
-
-      {events === null && <p className="text-zinc-400">Loading gatherings…</p>}
-      {events?.length === 0 && (
-        <div className="text-center text-zinc-400 mt-16">
-          <p className="text-lg font-semibold text-zinc-300">Nothing planned</p>
-          <p className="text-sm mt-1">Get something on the calendar.</p>
-        </div>
-      )}
-
-      <div className="space-y-3 stagger">
-        {events?.map((ev) => (
-          <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null}
-            onStatusChange={(id, status) => setRsvps((prev) => {
-              const next = new Map(prev);
-              if (status) next.set(id, status); else next.delete(id);
-              return next;
-            })} />
-        ))}
-      </div>
-
-      {showCreate && (
-        <NewGatheringForm onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); load(); }} />
-      )}
-    </>
+    <div className="space-y-3 stagger">
+      {events.map((ev) => (
+        <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null}
+          onStatusChange={(id, status) => setRsvps((prev) => {
+            const next = new Map(prev);
+            if (status) next.set(id, status); else next.delete(id);
+            return next;
+          })} />
+      ))}
+    </div>
   );
 }
 
-function NewCircleModal({ onClose, onCreated }) {
+function NewCircleDialog({ onClose, onCreated }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [privacy, setPrivacy] = useState("public");
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
-
-  const field =
-    "w-full min-h-[44px] rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-base " +
-    "focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30";
 
   const submit = async (e) => {
     e.preventDefault();
-    setError("");
+    const errs = {};
     const trimmed = name.trim();
     if (trimmed.length < LIMITS.groupName.min || trimmed.length > LIMITS.groupName.max) {
-      return setError(`Name must be ${LIMITS.groupName.min}–${LIMITS.groupName.max} characters.`);
-    }
-    const nameCheck = checkName(trimmed);
-    if (nameCheck.error) return setError(nameCheck.error);
+      errs.name = `Names need ${LIMITS.groupName.min}–${LIMITS.groupName.max} characters.`;
+    } else if (checkName(trimmed).error) errs.name = checkName(trimmed).error;
     const vDesc = validateText(description, LIMITS.groupDescription, "Description");
-    if (vDesc.error) return setError(vDesc.error);
-
+    if (vDesc.error) errs.description = vDesc.error;
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
     setBusy(true);
     try {
       onCreated(await createGroup({ name: trimmed, description: vDesc.text, privacy }));
     } catch (err) {
       console.error(err);
-      setError("Couldn't create the circle. Try again.");
+      setErrors({ submit: "Couldn't create the circle. Check your connection and try again." });
       setBusy(false);
     }
   };
 
+  const icons = { public: Globe, private: Lock, hidden: EyeOff };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 anim-fade"
-      role="dialog" aria-modal="true" onClick={onClose}>
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4 anim-pop">
-        <h3 className="font-bold text-lg">New circle</h3>
-
-        <input className={field} placeholder="Circle name" value={name}
-          onChange={(e) => setName(e.target.value)} maxLength={LIMITS.groupName.max}
-          aria-label="Circle name" autoFocus />
-        <textarea className={`${field} h-20 resize-none`} placeholder="What's this circle about?"
-          value={description} onChange={(e) => setDescription(e.target.value)}
-          maxLength={LIMITS.groupDescription} aria-label="Description" />
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-zinc-300 mb-1.5">Who can see it?</legend>
-          {CIRCLE_PRIVACY.map((p) => (
-            <label key={p.id}
-              className={`flex gap-3 rounded-xl border p-3 cursor-pointer transition ${
-                privacy === p.id ? "border-violet-500 bg-violet-600/10" : "border-zinc-800 hover:border-zinc-700"
-              }`}>
-              <input type="radio" name="privacy" value={p.id} checked={privacy === p.id}
-                onChange={() => setPrivacy(p.id)} className="mt-0.5 accent-violet-600" />
-              <span>
-                <span className="block text-sm font-medium">{p.label}</span>
-                <span className="block text-xs text-zinc-400">{p.blurb}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-
-        <div aria-live="polite" className="min-h-[1rem]">
-          {error && <p className="text-sm text-red-400">{error}</p>}
+    <Dialog title="Start a circle" onClose={onClose} variant="full" size="lg"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <div aria-live="polite" className="min-w-0"><InlineMessage>{errors.submit}</InlineMessage></div>
+          <div className="flex shrink-0 gap-2">
+            <Button onClick={onClose}>Cancel</Button>
+            <Button type="submit" form="circle-form" variant="primary" loading={busy}>Create circle</Button>
+          </div>
         </div>
-        <button disabled={busy}
-          className="w-full min-h-[44px] rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-50 text-sm font-semibold">
-          {busy ? "Creating…" : "Create circle"}
-        </button>
+      }>
+      <form id="circle-form" onSubmit={submit} className="space-y-5" noValidate>
+        <Field label="Name" error={errors.name} count={name.length} max={LIMITS.groupName.max}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.groupName.max} placeholder="e.g. Melbourne Night Runners" />
+        </Field>
+        <Field label="What's it about?" optional error={errors.description} count={description.length} max={LIMITS.groupDescription}>
+          <Textarea autoGrow rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.groupDescription} />
+        </Field>
+        <fieldset>
+          <legend className="mb-2 text-callout font-medium">Who can see it?</legend>
+          <div className="space-y-2">
+            {CIRCLE_PRIVACY.map((p) => {
+              const Icon = icons[p.id] || Globe;
+              return (
+                <label key={p.id} className={`press flex min-h-14 cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${
+                  privacy === p.id ? "border-accent-text bg-accent-soft" : "border-line hover:border-line-strong"
+                }`}>
+                  <input type="radio" name="privacy" value={p.id} checked={privacy === p.id}
+                    onChange={() => setPrivacy(p.id)} className="mt-1 h-4 w-4 accent-violet-600" />
+                  <span>
+                    <span className="flex items-center gap-1.5 text-callout font-semibold"><Icon size={14} aria-hidden="true" />{p.label}</span>
+                    <span className="block text-caption text-fg-muted">{p.blurb}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
       </form>
-    </div>
+    </Dialog>
   );
 }

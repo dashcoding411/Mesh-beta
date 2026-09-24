@@ -4,7 +4,7 @@
 // Design notes:
 // - The slur list is deliberately even-handed: it covers slurs targeting every
 //   group (South Asian, Black, East Asian, Latino, Jewish, Muslim, Roma,
-//   Indigenous, white, LGBTQ+, disabled people) — no group is left out.
+//   Indigenous, white, LGBTQ+, disabled people). No group is left out.
 // - Text is normalized first (lowercase, leetspeak, separators stripped) so
 //   "n!gg3r" or "p a k i" don't slip through.
 // - Word-boundary matching is used for short terms that appear inside innocent
@@ -27,7 +27,7 @@ function collapse(text) {
   return normalize(text).replace(/[^a-z]/g, "");
 }
 
-// Word-boundary slurs (short/ambiguous — must match as whole words)
+// Word-boundary slurs (short/ambiguous, must match as whole words)
 const WORD_SLURS = [
   // anti-South Asian / anti-Indian
   "paki", "pajeet", "currymuncher", "curry_muncher", "streetshitter", "dothead", "cowpisser",
@@ -99,23 +99,32 @@ export function looksLikeSpam(text) {
 
 const COOLDOWN_MS = 15000;
 
+// Storage can be blocked (private modes, strict settings). Every access is
+// guarded so a blocked store degrades to "no cooldown", never a crash.
+function readKey(k) {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
+function writeKey(k, v) {
+  try { localStorage.setItem(k, v); } catch { /* storage blocked */ }
+}
+
 export function postingCooldown(key = "post") {
-  const k = `mesh:last:${key}`;
-  const last = Number(localStorage.getItem(k) || 0);
+  const last = Number(readKey(`mesh:last:${key}`) || 0);
   const wait = COOLDOWN_MS - (Date.now() - last);
   if (wait > 0) return Math.ceil(wait / 1000);
   return 0;
 }
 
-export function markPosted(key = "post") {
-  localStorage.setItem(`mesh:last:${key}`, String(Date.now()));
+/* Called only after a post actually succeeds. Recording the text at check
+   time instead would block a retry after a failed send as a "duplicate". */
+export function markPosted(key = "post", text = "") {
+  writeKey(`mesh:last:${key}`, String(Date.now()));
+  if (text) writeKey(`mesh:lasttext:${key}`, String(text));
 }
 
 export function duplicateOfLast(text, key = "post") {
-  const k = `mesh:lasttext:${key}`;
-  const prev = localStorage.getItem(k);
-  localStorage.setItem(k, String(text || ""));
-  return prev !== null && prev === String(text || "") && text.trim().length > 0;
+  const prev = readKey(`mesh:lasttext:${key}`);
+  return prev !== null && prev === String(text || "") && String(text || "").trim().length > 0;
 }
 
 // ---------- combined check ----------
@@ -128,7 +137,7 @@ export function checkContent(text, { key = "post", skipCooldown = false } = {}) 
   if (spam) return { error: spam };
   if (!skipCooldown) {
     const wait = postingCooldown(key);
-    if (wait > 0) return { error: `Slow down — you can post again in ${wait}s.` };
+    if (wait > 0) return { error: `Slow down. You can post again in ${wait}s.` };
     if (duplicateOfLast(text, key)) return { error: "You just posted exactly that." };
   }
   return { ok: true };

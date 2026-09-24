@@ -2,12 +2,12 @@
 //
 // Two graphs, same as the big platforms build:
 //
-//   Social graph  — people you plausibly already know. Mutual-follow overlap is
+//   Social graph:  people you plausibly already know. Mutual-follow overlap is
 //                   the honest signal available to us; we deliberately do NOT
 //                   touch contacts, IP addresses or location, because harvesting
 //                   those to guess real-world ties is exactly the practice that
 //                   makes these products feel invasive.
-//   Interest graph — collaborative filtering. If the accounts you engage with
+//   Interest graph: collaborative filtering. If the accounts you engage with
 //                   are also followed by someone else, whatever else they follow
 //                   is a decent bet for you.
 //

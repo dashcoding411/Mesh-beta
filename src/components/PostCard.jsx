@@ -1,303 +1,239 @@
-import { useEffect, useState } from "react";
-import { auth } from "../firebase";
+import { useRef, useState } from "react";
 import {
-  timeAgo, toggleLike, deletePost, openUserProfile, toggleSave, sendPostTo,
-  hidePost, reportPost, REPORT_REASONS, listenChats, me,
+  Heart, MessageCircle, Repeat2, Send, Bookmark, Ellipsis, Lock, Play, Clapperboard, WandSparkles,
+} from "lucide-react";
+import {
+  toggleLike, toggleSave, toggleRepost, recordSignal, openUserProfile, openWatch, me,
 } from "../lib/db";
-import { Avatar } from "./Nav";
+import { navigate } from "../lib/router";
+import { shortTime, fullTime, isoTime, formatDuration } from "../lib/format";
 import { mediaAlt } from "../lib/a11y";
+import Avatar from "./ui/Avatar";
+import IconButton from "./ui/IconButton";
+import RichText from "./ui/RichText";
+import InlineVideo from "./ui/InlineVideo";
+import Badge from "./ui/Badge";
+import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
+import { ShareSheet, PostMenu } from "./PostActions";
 
+/* One card for every format, so the For You mix reads as one feed rather
+   than four products stitched together. Avatar column on the left, content
+   on the right, the same shape whether it's a Strand, a Still or a Flick,
+   with only the body changing. */
 export default function PostCard({
-  post, liked, onLikedChange, onDeleted, canModerate = false,
-  saved: savedProp = false, onSavedChange,
+  post, viewer, onViewerChange, onRemoved, canModerate = false, highlight, compact = false,
 }) {
-  const [likeCount, setLikeCount] = useState(post.likeCount || 0);
-  const [commentCount, setCommentCount] = useState(post.commentCount || 0);
-  const [saveCount, setSaveCount] = useState(post.saveCount || 0);
-  const [sendCount, setSendCount] = useState(post.sendCount || 0);
-  const [saved, setSaved] = useState(savedProp);
-  const [showComments, setShowComments] = useState(false);
-  const [showSend, setShowSend] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showReport, setShowReport] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [pulse, setPulse] = useState(false);
-  const mine = post.authorId === auth.currentUser?.uid;
-  const removable = mine || canModerate;
+  const toast = useToast();
+  const [counts, setCounts] = useState({
+    like: post.likeCount || 0, comment: post.commentCount || 0,
+    repost: post.repostCount || 0, save: post.saveCount || 0,
+  });
+  const [sheet, setSheet] = useState(null); // 'comments' | 'share' | 'menu'
+  const [burst, setBurst] = useState(false);
+  const pending = useRef({});
+  const titleId = `post-${post.id}-author`;
 
-  const handleLike = async () => {
-    if (busy) return;
-    setBusy(true);
-    setPulse(true);
-    try {
-      await toggleLike(post, liked);
-      setLikeCount((c) => c + (liked ? -1 : 1));
-      onLikedChange(post.id, !liked);
-    } finally {
-      setBusy(false);
-      setTimeout(() => setPulse(false), 400);
-    }
-  };
+  const liked = viewer?.liked.has(post.id) || false;
+  const saved = viewer?.saved.has(post.id) || false;
+  const reposted = viewer?.reposted.has(post.id) || false;
+  const mine = post.authorId === me();
 
-  const handleSave = async () => {
-    const next = !saved;
-    setSaved(next);
-    setSaveCount((c) => c + (next ? 1 : -1));
+  /* Optimistic: the UI flips first, the write follows, and a failure puts
+     it back with a message, so a tap always feels instant, and never lies. */
+  const optimistic = async (key, field, on, write, failMsg) => {
+    if (pending.current[key]) return;
+    pending.current[key] = true;
+    onViewerChange?.(post.id, field, on);
+    setCounts((c) => ({ ...c, [key]: Math.max(0, c[key] + (on ? 1 : -1)) }));
     try {
-      await toggleSave(post, saved);
-      onSavedChange?.(post.id, next);
+      await write();
+      return true;
     } catch (err) {
       console.error(err);
-      setSaved(!next);
-      setSaveCount((c) => c + (next ? -1 : 1));
+      onViewerChange?.(post.id, field, !on);
+      setCounts((c) => ({ ...c, [key]: Math.max(0, c[key] + (on ? -1 : 1)) }));
+      toast({ tone: "error", title: failMsg, body: "Check your connection and try again." });
+      return false;
+    } finally {
+      pending.current[key] = false;
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm(mine ? "Delete this post? This can't be undone." : "Remove this post from the circle?")) return;
-    await deletePost(post);
-    onDeleted?.(post.id);
+  const like = () => optimistic("like", "liked", !liked, () => toggleLike(post, liked), "Couldn't update your like");
+
+  const likeFromDoubleTap = () => {
+    setBurst(true);
+    setTimeout(() => setBurst(false), 700);
+    if (!liked) like();
   };
 
-  const isVideo = post.mediaType?.startsWith("video/");
+  const save = async () => {
+    const ok = await optimistic("save", "saved", !saved, () => toggleSave(post, saved), "Couldn't update Saved");
+    if (ok && !saved) toast({ title: "Saved", action: { label: "View saved", onClick: () => navigate("/saved") } });
+  };
+
+  const repost = async () => {
+    if (mine) return toast({ tone: "info", title: "You can't repost your own post", body: "Share it instead, or send it to someone." });
+    if (post.visibility === "followers") {
+      return toast({ tone: "info", title: "Followers-only posts can't be reposted", body: "Reposting would show it to people the author didn't choose." });
+    }
+    const on = !reposted;
+    const ok = await optimistic("repost", "reposted", on, () => toggleRepost(post, reposted), "Couldn't update your repost");
+    if (ok && on) {
+      toast({
+        title: "Reposted to your followers",
+        action: { label: "Undo", onClick: () => optimistic("repost", "reposted", false, () => toggleRepost(post, true), "Couldn't undo the repost") },
+      });
+    }
+  };
+
+  const repostDisabled = mine || post.visibility === "followers";
 
   return (
-    <article className="rounded-2xl border border-zinc-800 bg-zinc-900/60 overflow-hidden transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/40">
-      <div className="flex items-center justify-between px-4 py-3">
-        <button className="flex items-center gap-3 text-left min-w-0 flex-1" onClick={() => openUserProfile(post.authorId)}>
-          <Avatar profile={{ username: post.authorName, photoURL: post.authorPhoto }} size={9} />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold hover:text-violet-300 transition truncate">
-              {post.authorDisplayName || post.authorName}
-              <span className="ml-1.5 font-normal text-zinc-400">@{post.authorName}</span>
-            </p>
-            <p className="text-xs text-zinc-400">
-              {timeAgo(post.createdAt)}
-              {post.kind !== "post" && (
-                <span className="ml-2 uppercase text-[10px] tracking-wide text-violet-400">{post.kind}</span>
-              )}
-              {post.visibility === "followers" && (
-                <span className="ml-2 text-[10px] text-zinc-400">followers only</span>
-              )}
-            </p>
-          </div>
+    <article aria-labelledby={titleId}
+      className={`relative border-b border-line px-4 ${compact ? "py-3" : "py-4"} transition-colors`}>
+      {post.repostedBy?.length > 0 && (
+        <p className="mb-2 ml-[52px] flex items-center gap-1.5 text-caption font-medium text-fg-subtle">
+          <Repeat2 size={14} aria-hidden="true" />
+          <span className="truncate">
+            {post.repostedBy[0].username ? `@${post.repostedBy[0].username}` : "Someone you follow"}
+            {post.repostedBy.length > 1 && ` and ${post.repostedBy.length - 1} more`} reposted
+          </span>
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button type="button" onClick={() => openUserProfile(post.authorId)} className="press h-fit shrink-0 rounded-full"
+          aria-label={`${post.authorDisplayName || post.authorName}'s profile`}>
+          <Avatar profile={{ name: post.authorDisplayName, username: post.authorName, photoURL: post.authorPhoto }} size={40} />
         </button>
-        {removable && (
-          <button onClick={handleDelete} className="shrink-0 text-xs text-zinc-400 hover:text-red-400 min-h-[36px] px-1">
-            {mine ? "Delete" : "Remove"}
-          </button>
-        )}
+
+        <div className="min-w-0 flex-1">
+          <header className="flex min-h-6 items-center gap-1">
+            <button type="button" onClick={() => openUserProfile(post.authorId)} id={titleId}
+              className="flex min-w-0 items-baseline gap-1.5 text-left hover:underline decoration-fg-subtle underline-offset-2">
+              <span className="truncate text-callout font-semibold text-fg">{post.authorDisplayName || post.authorName}</span>
+              <span className="truncate text-caption text-fg-subtle">@{post.authorName}</span>
+            </button>
+            <span className="shrink-0 text-caption text-fg-subtle" aria-hidden="true">·</span>
+            <time dateTime={isoTime(post.createdAt)} title={fullTime(post.createdAt)}
+              className="shrink-0 text-caption text-fg-subtle tabular">
+              {shortTime(post.createdAt)}
+            </time>
+            {post.visibility === "followers" && (
+              <span className="shrink-0 text-fg-subtle" title="Followers only">
+                <Lock size={13} aria-hidden="true" />
+                <span className="sr-only">Followers only</span>
+              </span>
+            )}
+            <IconButton icon={Ellipsis} label="More options" size={18} className="-my-2 -mr-2 ml-auto"
+              onClick={() => setSheet("menu")} />
+          </header>
+
+          <Body post={post} highlight={highlight} onDoubleTap={likeFromDoubleTap} burst={burst} />
+          {post.aiGenerated && (
+            <Badge icon={WandSparkles} className="mt-2" >Made with AI</Badge>
+          )}
+
+          <div className="-ml-2.5 mt-1 flex items-center" role="group" aria-label="Post actions">
+            <IconButton icon={Heart} label={liked ? "Unlike" : "Like"} pressed={liked} count={counts.like} countNoun="like"
+              activeClass="text-fuchsia-400" size={19} onClick={like}
+              className={burst ? "anim-heart" : ""} />
+            <IconButton icon={MessageCircle} label="Comments" count={counts.comment} countNoun="comment" size={19}
+              onClick={() => setSheet("comments")} />
+            <IconButton icon={Repeat2} label={reposted ? "Undo repost" : "Repost"} pressed={reposted}
+              count={counts.repost} countNoun="repost" activeClass="text-success-text" size={19}
+              aria-disabled={repostDisabled || undefined}
+              className={repostDisabled ? "opacity-45" : ""} onClick={repost} />
+            <IconButton icon={Send} label="Share" size={19} onClick={() => setSheet("share")} />
+            <IconButton icon={Bookmark} label={saved ? "Remove from saved" : "Save"} pressed={saved}
+              activeClass="text-accent-text" size={19} className="ml-auto" onClick={save} />
+          </div>
+        </div>
       </div>
 
-      {post.title && <h3 className="px-4 pb-2 font-bold">{post.title}</h3>}
-      {post.text && <p className="px-4 pb-3 text-sm text-zinc-200 whitespace-pre-wrap break-words">{post.text}</p>}
-
-      {post.mediaUrl &&
-        (isVideo ? (
-          <video src={post.mediaUrl} controls playsInline preload="metadata" className="w-full max-h-[70vh] bg-black" />
-        ) : (
-          <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="w-full max-h-[70vh] object-contain bg-black" />
-        ))}
-
-      <div className="flex items-center gap-1 px-2 py-2 text-sm text-zinc-400">
-        <Action onClick={handleLike} active={liked} activeClass="text-fuchsia-400"
-          label={`${liked ? "Unlike" : "Like"}${count(likeCount, "like")}`}>
-          <span className={pulse ? "anim-heart inline-block" : "inline-block"}>{liked ? "♥" : "♡"}</span>
-          {likeCount > 0 && <span>{likeCount}</span>}
-        </Action>
-        <Action onClick={() => setShowComments(true)} label={`Comments${count(commentCount, "comment")}`}>
-          <span>◗</span>{commentCount > 0 && <span>{commentCount}</span>}
-        </Action>
-        <Action onClick={handleSave} active={saved} activeClass="text-violet-300"
-          label={`${saved ? "Remove from saved" : "Save"}${count(saveCount, "save")}`}>
-          <span>{saved ? "★" : "☆"}</span>{saveCount > 0 && <span>{saveCount}</span>}
-        </Action>
-        <Action onClick={() => setShowSend(true)} label={`Send to someone${count(sendCount, "send")}`}>
-          <span>↗</span>{sendCount > 0 && <span>{sendCount}</span>}
-        </Action>
-        <div className="flex-1" />
-        <Action onClick={() => setShowMenu(true)} label="More options">⋯</Action>
-      </div>
-
-      {showComments && (
-        <Comments
-          post={post}
-          onClose={() => setShowComments(false)}
-          onCommentAdded={() => setCommentCount((c) => c + 1)}
-        />
+      {sheet === "comments" && (
+        <Comments post={post} onClose={() => setSheet(null)}
+          onCountChange={(d) => setCounts((c) => ({ ...c, comment: Math.max(0, c.comment + d) }))} />
       )}
-      {showSend && <SendSheet post={post} onClose={() => setShowSend(false)} onSent={() => setSendCount((c) => c + 1)} />}
-      {showMenu && (
-        <PostMenu post={post} mine={mine} onClose={() => setShowMenu(false)}
-          onHidden={() => onDeleted?.(post.id)} onReport={() => setShowReport(true)} />
-      )}
-      {showReport && (
-        <ReportSheet post={post} onClose={() => setShowReport(false)} onReported={() => onDeleted?.(post.id)} />
+      {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
+      {sheet === "menu" && (
+        <PostMenu post={post} mine={mine} canModerate={canModerate}
+          onClose={() => setSheet(null)} onRemoved={() => onRemoved?.(post.id)} />
       )}
     </article>
   );
 }
 
-/* aria-label replaces an element's visible text for screen readers, so the
-   counts sitting next to each glyph have to be folded into the label — or a
-   screen reader announces "Like" and never mentions the 42. */
-function count(n, noun) {
-  return n > 0 ? ` — ${n} ${noun}${n === 1 ? "" : "s"}` : "";
-}
+function Body({ post, highlight, onDoubleTap, burst }) {
+  const short = post.kind === "text" && post.text.length <= 90 && !post.text.includes("\n");
 
-function Action({ onClick, active, activeClass = "", label, children }) {
-  return (
-    <button onClick={onClick} aria-label={label} aria-pressed={active}
-      className={`flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-lg transition hover:bg-zinc-800/60 ${
-        active ? activeClass : "hover:text-zinc-100"
-      }`}>
-      {children}
-    </button>
-  );
-}
+  if (post.kind === "text") {
+    return <RichText text={post.text} highlight={highlight}
+      className={`mt-1 text-fg ${short ? "text-title-3 font-normal leading-snug" : "text-body"}`} />;
+  }
 
-/* Sending a post to a specific person is the strongest signal in the ranker,
-   so it gets a real destination picker rather than a copy-link button. */
-function SendSheet({ post, onClose, onSent }) {
-  const [chats, setChats] = useState(null);
-  const [sent, setSent] = useState(new Set());
-  const [busy, setBusy] = useState("");
-
-  useEffect(() => listenChats(setChats), []);
-
-  const send = async (chat) => {
-    setBusy(chat.id);
-    try {
-      await sendPostTo(post, chat.id);
-      setSent((prev) => new Set(prev).add(chat.id));
-      onSent();
-    } catch (err) {
-      console.error(err);
-    } finally { setBusy(""); }
-  };
-
-  return (
-    <Sheet title="Send to" onClose={onClose}>
-      {chats === null && <p className="text-sm text-zinc-400">Loading…</p>}
-      {chats?.length === 0 && (
-        <p className="text-sm text-zinc-400">
-          No conversations yet. Start one from Chats or someone's profile.
-        </p>
-      )}
-      <div className="space-y-1">
-        {chats?.map((c) => {
-          const otherId = c.members.find((m) => m !== me());
-          const title = c.isGroup ? c.name || "Group chat" : `@${c.memberNames?.[otherId] || "unknown"}`;
-          return (
-            <button key={c.id} onClick={() => send(c)} disabled={busy === c.id || sent.has(c.id)}
-              className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 hover:bg-zinc-800 disabled:opacity-60 text-left">
-              <span className="text-sm truncate">{title}</span>
-              <span className={`text-xs shrink-0 ${sent.has(c.id) ? "text-emerald-400" : "text-violet-400"}`}>
-                {sent.has(c.id) ? "Sent" : busy === c.id ? "…" : "Send"}
+  if (post.kind === "post") {
+    return (
+      <>
+        {post.text && <RichText text={post.text} highlight={highlight} className="mt-1 text-body text-fg" />}
+        {post.mediaUrl && (
+          <div className="relative mt-3 overflow-hidden rounded-card border border-line bg-surface"
+            onDoubleClick={onDoubleTap}>
+            <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" decoding="async"
+              className="max-h-[70vh] w-full object-cover" />
+            {burst && (
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                <Heart size={96} className="anim-pop text-white drop-shadow-lg" fill="currentColor" />
               </span>
-            </button>
-          );
-        })}
-      </div>
-    </Sheet>
-  );
-}
-
-function PostMenu({ post, mine, onClose, onHidden, onReport }) {
-  const [busy, setBusy] = useState(false);
-
-  const hide = async () => {
-    setBusy(true);
-    try {
-      await hidePost(post);
-      onClose();
-      onHidden();
-    } catch (err) { console.error(err); setBusy(false); }
-  };
-
-  return (
-    <Sheet title="Options" onClose={onClose}>
-      <div className="space-y-1">
-        {!mine && (
-          <>
-            <MenuItem onClick={hide} disabled={busy}>
-              Not interested
-              <span className="block text-xs text-zinc-400">Show me less like this</span>
-            </MenuItem>
-            <MenuItem onClick={() => { onClose(); onReport(); }} danger>
-              Report post
-            </MenuItem>
-          </>
-        )}
-        {mine && <p className="text-sm text-zinc-400 px-3 py-2">Use Delete on the post to remove it.</p>}
-      </div>
-    </Sheet>
-  );
-}
-
-function ReportSheet({ post, onClose, onReported }) {
-  const [busy, setBusy] = useState("");
-  const [done, setDone] = useState(false);
-
-  const file = async (reason) => {
-    setBusy(reason.id);
-    try {
-      await reportPost(post, reason.id);
-      setDone(true);
-      setTimeout(() => { onClose(); onReported(); }, 1200);
-    } catch (err) {
-      console.error(err);
-      setBusy("");
-    }
-  };
-
-  return (
-    <Sheet title="Report post" onClose={onClose}>
-      {done ? (
-        <p className="text-sm text-emerald-400 px-3 py-4">
-          Thanks — this has been sent for review and hidden from your feed.
-        </p>
-      ) : (
-        <>
-          <p className="text-xs text-zinc-400 px-3 pb-2">What's wrong with this post?</p>
-          <div className="space-y-1">
-            {REPORT_REASONS.map((r) => (
-              <MenuItem key={r.id} onClick={() => file(r)} disabled={!!busy}>
-                {r.label}
-              </MenuItem>
-            ))}
+            )}
           </div>
-        </>
-      )}
-    </Sheet>
-  );
-}
+        )}
+      </>
+    );
+  }
 
-function MenuItem({ onClick, disabled, danger, children }) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={`w-full text-left rounded-xl px-3 py-2.5 text-sm transition disabled:opacity-50 ${
-        danger ? "text-red-400 hover:bg-red-500/10" : "text-zinc-200 hover:bg-zinc-800"
-      }`}>
-      {children}
-    </button>
-  );
-}
-
-function Sheet({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 anim-fade"
-      role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm max-h-[70vh] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-zinc-900 border border-zinc-800 p-4 anim-rise">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm">{title}</h3>
-          <button onClick={onClose} aria-label="Close"
-            className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
+  if (post.kind === "short") {
+    return (
+      <>
+        {post.text && <RichText text={post.text} highlight={highlight} className="mt-1 text-body text-fg" />}
+        <div className="relative mt-3 w-full max-w-[300px]">
+          <InlineVideo src={post.mediaUrl} label={`Flick by @${post.authorName}`}
+            className="aspect-[9/16] border border-line"
+            onOpen={() => navigate(`/flicks/${post.id}`)}
+            onView={() => recordSignal(post, "view").catch(() => {})} />
+          <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur">
+            <Clapperboard size={12} aria-hidden="true" /> Flick
+          </span>
         </div>
-        {children}
+      </>
+    );
+  }
+
+  // Long Flick: the trailer plays inline; the full video opens in the player.
+  return (
+    <>
+      {post.title && <h3 className="mt-1 text-title-3 text-fg">{post.title}</h3>}
+      {post.text && <RichText text={post.text} highlight={highlight} className="mt-1 line-clamp-3 text-callout text-fg-muted" />}
+      <div className="relative mt-3">
+        <InlineVideo src={post.mediaUrl} start={post.trailerStart || 0} length={30}
+          label={`Trailer for ${post.title || "a video"}`} className="aspect-video border border-line"
+          onOpen={() => openWatch(post.id)} />
+        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur">
+          Trailer
+        </span>
+        {post.duration > 0 && (
+          <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-label font-semibold text-white tabular">
+            {formatDuration(post.duration)}
+          </span>
+        )}
       </div>
-    </div>
+      <button type="button" onClick={() => openWatch(post.id)}
+        className="press mt-3 inline-flex min-h-11 items-center gap-2 rounded-control bg-surface-2 px-4 text-callout font-semibold text-fg ring-1 ring-line-strong hover:bg-surface-3">
+        <Play size={16} fill="currentColor" aria-hidden="true" />
+        Watch the full video{post.duration > 0 ? ` · ${formatDuration(post.duration)}` : ""}
+      </button>
+    </>
   );
 }

@@ -1,5 +1,5 @@
 // Client-side validation. Mirrors the limits enforced server-side in
-// firestore.rules / storage.rules — the rules are the real gate, this just
+// firestore.rules / storage.rules. The rules are the real gate; this just
 // gives users fast feedback.
 
 export const LIMITS = {
@@ -93,7 +93,7 @@ export function friendlyAuthError(err) {
     "auth/invalid-credential": "Wrong email or password.",
     "auth/wrong-password": "Wrong email or password.",
     "auth/user-not-found": "Wrong email or password.",
-    "auth/too-many-requests": "Too many attempts — try again in a bit.",
+    "auth/too-many-requests": "Too many attempts. Try again in a bit.",
     "auth/popup-closed-by-user": "Sign-in popup was closed.",
   };
   return map[code] || "Something went wrong. Please try again.";

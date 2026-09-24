@@ -1,0 +1,195 @@
+import { useState } from "react";
+import {
+  Link2, Share2, EyeOff, Flag, Trash2, UserRound, Check, Send, ShieldAlert,
+} from "lucide-react";
+import {
+  sendPostTo, hidePost, reportPost, deletePost, REPORT_REASONS, openUserProfile, kindLabel, me,
+} from "../lib/db";
+import { postUrl } from "../lib/router";
+import { useShell } from "./shell/ShellContext";
+import Dialog, { ConfirmDialog } from "./ui/Dialog";
+import { MenuItem, MenuGroup } from "./ui/Menu";
+import Avatar from "./ui/Avatar";
+import Button from "./ui/Button";
+import { EmptyState } from "./ui/States";
+import { useToast } from "./ui/toast-context";
+
+async function copyLink(post, toast) {
+  try {
+    await navigator.clipboard.writeText(postUrl(post));
+    toast({ title: "Link copied" });
+  } catch {
+    toast({ tone: "error", title: "Couldn't copy the link", body: postUrl(post) });
+  }
+}
+
+/* Share: out of Mesh (the phone's own share sheet, or a copied link), or to
+   someone inside it. Sending to a person is the strongest signal the ranker
+   has, so it gets a real picker, not an afterthought. */
+export function ShareSheet({ post, onClose }) {
+  const { inbox } = useShell();
+  const toast = useToast();
+  const [sent, setSent] = useState(new Set());
+  const [busy, setBusy] = useState("");
+  const chats = inbox.chats;
+  const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
+
+  const nativeShare = async () => {
+    try {
+      await navigator.share({ title: post.title || `${kindLabel(post)} on Mesh`, url: postUrl(post) });
+    } catch { /* dismissed, nothing to report */ }
+  };
+
+  const send = async (chat) => {
+    setBusy(chat.id);
+    try {
+      await sendPostTo(post, chat.id);
+      setSent((prev) => new Set(prev).add(chat.id));
+    } catch (err) {
+      console.error(err);
+      toast({ tone: "error", title: "Couldn't send", body: "Try again in a moment." });
+    } finally { setBusy(""); }
+  };
+
+  const titleOf = (c) => {
+    if (c.isGroup) return c.name || "Group chat";
+    const other = c.members.find((m) => m !== me());
+    return c.nicknames?.[other] || c.memberNames?.[other] || "Unknown";
+  };
+
+  return (
+    <Dialog title={`Share ${kindLabel(post).toLowerCase()}`} onClose={onClose}>
+      <div className="grid grid-cols-2 gap-2">
+        {canNativeShare && (
+          <Button icon={Share2} onClick={nativeShare} className="col-span-1">Share via…</Button>
+        )}
+        <Button icon={Link2} onClick={() => copyLink(post, toast)} className={canNativeShare ? "" : "col-span-2"}>
+          Copy link
+        </Button>
+      </div>
+
+      <p className="mb-2 mt-6 text-label font-semibold uppercase tracking-wider text-fg-subtle">Send in Messages</p>
+      {chats === null && <p className="py-4 text-callout text-fg-muted">Loading conversations…</p>}
+      {post.visibility === "followers" && (
+        <p className="mb-2 flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
+          <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          This is followers-only. People in the chat who don't follow the author will see that it's unavailable.
+        </p>
+      )}
+      {chats?.length === 0 && (
+        <EmptyState compact icon={Send} title="No conversations yet"
+          body="Start one from Messages or someone's profile, then share straight into it." />
+      )}
+      <ul className="space-y-1">
+        {chats?.map((c) => {
+          const done = sent.has(c.id);
+          return (
+            <li key={c.id} className="flex min-h-14 items-center gap-3 rounded-control px-2">
+              <Avatar profile={{ username: titleOf(c) }} size={40} />
+              <span className="min-w-0 flex-1 truncate text-callout font-medium">{titleOf(c)}</span>
+              <Button size="sm" variant={done ? "ghost" : "primary"} loading={busy === c.id}
+                disabled={done} icon={done ? Check : undefined} onClick={() => send(c)}>
+                {done ? "Sent" : "Send"}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </Dialog>
+  );
+}
+
+/* The ⋯ menu. What's offered depends on whose post it is, and deleting
+   always asks first, naming exactly what goes. */
+export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
+  const toast = useToast();
+  const [mode, setMode] = useState("menu"); // menu | report | delete
+  const [busy, setBusy] = useState(false);
+  const label = kindLabel(post);
+
+  const hide = async () => {
+    setBusy(true);
+    try {
+      await hidePost(post);
+      onClose();
+      onRemoved();
+      toast({ title: "Got it. You'll see less like this" });
+    } catch {
+      setBusy(false);
+      toast({ tone: "error", title: "Couldn't hide that post" });
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await deletePost(post);
+      onClose();
+      onRemoved();
+      toast({ title: `${label} deleted` });
+    } catch {
+      setBusy(false);
+      toast({ tone: "error", title: `Couldn't delete the ${label.toLowerCase()}`, body: "Try again in a moment." });
+    }
+  };
+
+  const report = async (reason) => {
+    setBusy(true);
+    try {
+      await reportPost(post, reason.id);
+      onClose();
+      onRemoved();
+      toast({ title: "Thanks, sent for review", body: "We've hidden it from your feed." });
+    } catch {
+      setBusy(false);
+      toast({ tone: "error", title: "Couldn't send the report", body: "Try again in a moment." });
+    }
+  };
+
+  if (mode === "delete") {
+    return (
+      <ConfirmDialog title={`Delete this ${label.toLowerCase()}?`} confirmLabel={`Delete ${label.toLowerCase()}`}
+        body="It'll be removed for everyone, including anywhere it was reposted. This can't be undone."
+        busy={busy} onConfirm={remove} onClose={onClose} />
+    );
+  }
+
+  if (mode === "report") {
+    return (
+      <Dialog title="Report post" onClose={onClose}>
+        <p className="mb-3 text-callout text-fg-muted">
+          What's wrong with it? Reports go to a person for review. The author isn't told who reported them.
+        </p>
+        <MenuGroup>
+          {REPORT_REASONS.map((r) => (
+            <MenuItem key={r.id} onClick={() => report(r)} disabled={busy}>{r.label}</MenuItem>
+          ))}
+        </MenuGroup>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog title="Post options" onClose={onClose} hideTitle>
+      <MenuGroup>
+        <MenuItem icon={Link2} onClick={() => { copyLink(post, toast); onClose(); }}>Copy link</MenuItem>
+        {!mine && (
+          <MenuItem icon={UserRound} onClick={() => { onClose(); openUserProfile(post.authorId); }}>
+            View @{post.authorName}'s profile
+          </MenuItem>
+        )}
+        {!mine && (
+          <MenuItem icon={EyeOff} onClick={hide} disabled={busy} description="Hide it and show fewer posts like it">
+            Not interested
+          </MenuItem>
+        )}
+        {!mine && <MenuItem icon={Flag} danger onClick={() => setMode("report")}>Report post</MenuItem>}
+        {(mine || canModerate) && (
+          <MenuItem icon={Trash2} danger onClick={() => setMode("delete")}>
+            {mine ? `Delete ${label.toLowerCase()}` : "Remove from circle"}
+          </MenuItem>
+        )}
+      </MenuGroup>
+    </Dialog>
+  );
+}

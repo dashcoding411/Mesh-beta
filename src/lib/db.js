@@ -26,6 +26,7 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+import { navigate } from "./router";
 
 export function tsMillis(t) {
   return t?.toMillis ? t.toMillis() : 0;
@@ -72,7 +73,7 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     // Email and phone deliberately are NOT stored here. Every signed-in user
     // can read every user document, so anything written here is effectively
     // public. Firebase Auth already holds both, and only the account owner can
-    // read their own auth record — which is the whole point.
+    // read their own auth record, which is the whole point.
     bio: "",
     pronouns: "",
     town: "",
@@ -144,12 +145,12 @@ export async function uploadAvatar(file, onProgress) {
 // ---------- media upload ----------
 
 // Thrown when the Firebase project has no Storage bucket provisioned, which
-// happens on the free Spark plan — Cloud Storage requires the Blaze plan.
+// happens on the free Spark plan: Cloud Storage requires the Blaze plan.
 export class StorageUnavailableError extends Error {
   constructor() {
     super(
-      "Media uploads aren't enabled yet. Cloud Storage needs the Firebase Blaze plan — " +
-        "text posts work fine in the meantime."
+      "Media uploads aren't enabled yet. Cloud Storage needs the Firebase Blaze plan. " +
+        "Strands work fine in the meantime."
     );
     this.name = "StorageUnavailableError";
   }
@@ -162,7 +163,7 @@ let storageOk = null;
 export async function storageAvailable() {
   if (storageOk !== null) return storageOk;
   // A missing bucket can leave the SDK retrying instead of erroring, so the
-  // probe races a timeout — an unanswered bucket is treated as unavailable.
+  // probe races a timeout; an unanswered bucket is treated as unavailable.
   const probe = (async () => {
     try {
       await getDownloadURL(ref(storage, `uploads/${me()}/.probe`));
@@ -209,11 +210,35 @@ export function uploadMedia(file, onProgress, folder = "uploads") {
 
 // ---------- posts ----------
 
-export async function createPost({ kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility }) {
+/* Four formats, one feed:
+     post:  a Still: a photo with a caption
+     text:  a Strand: words on their own, up to 500 characters
+     short: a Flick: vertical video, three minutes or less
+     video: a long Flick. It appears in the Flicks feed as a trailer cut from
+             the full video (trailerStart, TRAILER_SECONDS long) and opens into
+             the full-length player. */
+export const KINDS = {
+  post: { label: "Still", plural: "Stills" },
+  text: { label: "Strand", plural: "Strands" },
+  short: { label: "Flick", plural: "Flicks" },
+  video: { label: "Flick", plural: "Flicks", long: true },
+};
+export const STRAND_MAX = 500;
+export const LONG_VIDEO_SECONDS = 180;
+export const TRAILER_SECONDS = 30;
+
+export function kindLabel(post) {
+  return KINDS[post?.kind]?.label || "Post";
+}
+
+export async function createPost({
+  kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
+  duration = 0, trailerStart = 0, aiGenerated = false,
+}) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
   const post = {
-    kind, // 'post' | 'short' | 'video'
+    kind, // 'post' | 'text' | 'short' | 'video'
     authorId: user.uid,
     authorName: profile?.username || "unknown",
     authorDisplayName: profile?.name || profile?.username || "unknown",
@@ -226,10 +251,16 @@ export async function createPost({ kind, text, title, alt, mediaUrl, mediaPath, 
     mediaType: mediaType || "",
     groupId: groupId || "",
     visibility: visibility || "public",
+    duration: Math.round(duration) || 0, // seconds, video only
+    trailerStart: Math.max(0, Math.round(trailerStart) || 0),
+    // The author's own label for AI-made or AI-altered media. Shown on the
+    // post. The Terms require it wherever media could pass for real.
+    aiGenerated: !!aiGenerated,
     likeCount: 0,
     commentCount: 0,
     saveCount: 0,
     sendCount: 0,
+    repostCount: 0,
     viewCount: 0,
     completeCount: 0,
     createdAt: serverTimestamp(),
@@ -264,6 +295,15 @@ export async function fetchPostsByKind(kind) {
   return snapToList(await getDocs(q))
     .filter((p) => !p.groupId)
     .sort(byNewest);
+}
+
+/** Short and long Flicks together. Long ones play as their trailer. */
+export async function fetchVideos() {
+  const [shorts, longs] = await Promise.all([
+    fetchPostsByKind("short"),
+    fetchPostsByKind("video").catch(() => []),
+  ]);
+  return [...shorts, ...longs].sort(byNewest);
 }
 
 export async function fetchPostsByAuthor(uid) {
@@ -316,20 +356,21 @@ export async function fetchMyLikes(postIds) {
 }
 
 // Signal weights, blended from what each of the big four actually optimises:
-//   TikTok  — passive watch signals (completion, replay) map interest fast
-//   Instagram — a "send" to a friend is the strongest taste signal there is
-//   Facebook — comments and replies mean meaningful social interaction
-//   YouTube — a click that turns into sustained watch time beats a bare click
+//   TikTok:  passive watch signals (completion, replay) map interest fast
+//   Instagram: a "send" to a friend is the strongest taste signal there is
+//   Facebook: comments and replies mean meaningful social interaction
+//   YouTube: a click that turns into sustained watch time beats a bare click
 export const SIGNAL = {
-  hide: -8,        // explicit "not interested" — the strongest negative
+  hide: -8,        // explicit "not interested", the strongest negative
   skip: -1,        // scrolled away almost immediately
   view: 0.25,      // watched a meaningful chunk
   complete: 1,     // watched to the end
-  replay: 1.5,     // watched again — strong intent
+  replay: 1.5,     // watched again, strong intent
   like: 1,
   comment: 2,      // MSI: conversation beats a tap
   save: 3,
   send: 4,         // the Instagram "sends" economy
+  repost: 3.5,     // a public endorsement: costs reputation, not just a tap
   follow: 5,
 };
 
@@ -438,12 +479,75 @@ export async function sendPostTo(post, chatId, note = "") {
     createdAt: serverTimestamp(),
   });
   await updateDoc(doc(db, "chats", chatId), {
-    lastMessage: `Shared a ${post.kind === "short" ? "flick" : post.kind === "video" ? "feature" : "post"}`,
+    lastMessage: `Shared a ${kindLabel(post).toLowerCase()}`,
     lastSenderId: uid,
     updatedAt: serverTimestamp(),
   });
   await updateDoc(doc(db, "posts", post.id), { sendCount: increment(1) }).catch(() => {});
   bumpAffinity(post.authorId, SIGNAL.send).catch(() => {});
+}
+
+// ---------- reposts ----------
+// A repost puts someone else's public post in front of your followers with
+// your name on it. One doc per (post, person), keyed so it can't be doubled.
+// Followers-only posts can't be reposted: the rules refuse it, since that
+// would leak them past the audience their author chose.
+
+const repostId = (postId, uid) => `${postId}_${uid}`;
+
+export async function fetchMyReposts(postIds) {
+  const uid = me();
+  const out = new Set();
+  await Promise.all(
+    postIds.map(async (id) => {
+      const snap = await getDoc(doc(db, "reposts", repostId(id, uid))).catch(() => null);
+      if (snap?.exists()) out.add(id);
+    })
+  );
+  return out;
+}
+
+export async function toggleRepost(post, currentlyReposted) {
+  const uid = me();
+  const ref_ = doc(db, "reposts", repostId(post.id, uid));
+  const postRef = doc(db, "posts", post.id);
+  if (currentlyReposted) {
+    await deleteDoc(ref_);
+    await updateDoc(postRef, { repostCount: increment(-1) });
+  } else {
+    const profile = await fetchProfile(uid);
+    await setDoc(ref_, {
+      postId: post.id,
+      postAuthorId: post.authorId,
+      uid,
+      username: profile?.username || "",
+      createdAt: serverTimestamp(),
+    });
+    await updateDoc(postRef, { repostCount: increment(1) });
+    bumpAffinity(post.authorId, SIGNAL.repost).catch(() => {});
+  }
+}
+
+/** Recent reposts by a set of people, used to surface what the people you follow passed on. */
+export async function fetchRepostsBy(uids, max = 60) {
+  const list = [...uids];
+  const out = [];
+  for (let i = 0; i < list.length && i < 90; i += 30) {
+    const snap = await getDocs(
+      query(collection(db, "reposts"), where("uid", "in", list.slice(i, i + 30)), limit(max))
+    ).catch(() => null);
+    snap?.docs.forEach((d) => out.push({ id: d.id, ...d.data() }));
+  }
+  return out.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+/** Posts someone has reposted, newest first. Posts that were deleted or made private drop out. */
+export async function fetchRepostedPosts(uid) {
+  const reposts = await fetchRepostsBy([uid], 50);
+  const posts = await Promise.all(reposts.map((r) => fetchPost(r.postId).catch(() => null)));
+  return posts
+    .map((p, i) => (p ? { ...p, repostedAt: reposts[i].createdAt } : null))
+    .filter(Boolean);
 }
 
 // Opening a shared post from a chat.
@@ -453,13 +557,12 @@ export async function fetchPost(postId) {
 }
 
 export function openPost(postId) {
-  window.dispatchEvent(new CustomEvent("mesh:open-post", { detail: postId }));
+  navigate(`/p/${encodeURIComponent(postId)}`, { overlay: true });
 }
 
-export function onOpenPost(handler) {
-  const fn = (e) => handler(e.detail);
-  window.addEventListener("mesh:open-post", fn);
-  return () => window.removeEventListener("mesh:open-post", fn);
+/** A long Flick opens in the full-length player; everything else opens as a post. */
+export function openWatch(postId) {
+  navigate(`/watch/${encodeURIComponent(postId)}`, { overlay: true });
 }
 
 // ---------- negative signals ----------
@@ -517,13 +620,21 @@ export async function addComment(post, text) {
   const comment = {
     authorId: user.uid,
     authorName: profile?.username || "unknown",
+    authorDisplayName: profile?.name || profile?.username || "",
+    authorPhoto: profile?.photoURL || "",
     text,
     createdAt: serverTimestamp(),
   };
-  await addDoc(collection(db, "posts", post.id, "comments"), comment);
+  const ref_ = await addDoc(collection(db, "posts", post.id, "comments"), comment);
   await updateDoc(doc(db, "posts", post.id), { commentCount: increment(1) });
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
-  return comment;
+  return { id: ref_.id, ...comment, createdAt: Timestamp.now() };
+}
+
+/** Your own comment, or any comment on your own post. */
+export async function deleteComment(post, commentId) {
+  await deleteDoc(doc(db, "posts", post.id, "comments", commentId));
+  await updateDoc(doc(db, "posts", post.id), { commentCount: increment(-1) }).catch(() => {});
 }
 
 // ---------- follows ----------
@@ -626,6 +737,8 @@ export async function submitNews({ title, script, sources }) {
     likeCount: 0,
     commentCount: 0,
     createdAt: serverTimestamp(),
+    // Only ever set by ticking the declaration in the submit form.
+    attestedAt: serverTimestamp(),
   };
   const refDoc = await addDoc(collection(db, "news"), item);
   return { id: refDoc.id, ...item, createdAt: Timestamp.now() };
@@ -652,12 +765,15 @@ export async function reviewNews(id, status, reviewNote = "") {
 
 // ---------- messaging ----------
 
+// Every stop keeps white message text at 4.5:1 or better (WCAG AA). The
+// earlier ocean, sunset and forest themes used 500-weight colours that fell
+// to 2.4–3.8:1, so messages in them were hard to read.
 export const CHAT_THEMES = {
-  default: { label: "Default", bubble: "from-violet-600 to-fuchsia-600", accent: "violet" },
-  ocean:   { label: "Ocean",   bubble: "from-sky-600 to-cyan-500",       accent: "sky" },
-  sunset:  { label: "Sunset",  bubble: "from-orange-500 to-rose-500",    accent: "orange" },
-  forest:  { label: "Forest",  bubble: "from-emerald-600 to-teal-500",   accent: "emerald" },
-  mono:    { label: "Mono",    bubble: "from-zinc-600 to-zinc-500",      accent: "zinc" },
+  default: { label: "Default", bubble: "from-violet-600 to-fuchsia-600", swatch: "#7c3aed" }, // 5.7 / 4.7
+  ocean:   { label: "Ocean",   bubble: "from-sky-700 to-cyan-700",       swatch: "#0369a1" }, // 5.9 / 5.4
+  sunset:  { label: "Sunset",  bubble: "from-orange-700 to-rose-600",    swatch: "#c2410c" }, // 5.2 / 4.7
+  forest:  { label: "Forest",  bubble: "from-emerald-700 to-teal-700",   swatch: "#047857" }, // 5.5 / 5.5
+  mono:    { label: "Mono",    bubble: "from-zinc-700 to-zinc-600",      swatch: "#52525b" }, // 10.4 / 7.7
 };
 
 export const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
@@ -991,9 +1107,9 @@ export async function fetchMySpouseRequestStatus() {
 }
 
 // ---------- circles (communities) ----------
-// privacy: 'public'  — anyone can find it and read posts
-//          'private' — anyone can find it, only members read posts
-//          'hidden'  — invite link only, never listed
+// privacy: 'public':  anyone can find it and read posts
+//          'private': anyone can find it, only members read posts
+//          'hidden':  invite link only, never listed
 
 export const CIRCLE_PRIVACY = [
   { id: "public", label: "Public", blurb: "Anyone can find it and read posts." },
@@ -1342,6 +1458,7 @@ export async function exportMyData() {
     fetchFollowList(uid, "following"),
     fetchFollowList(uid, "followers"),
   ]);
+  const reposts = await fetchRepostsBy([uid], 500).catch(() => []);
   const comments = [];
   for (const p of posts) {
     const cs = await fetchComments(p.id).catch(() => []);
@@ -1353,6 +1470,7 @@ export async function exportMyData() {
     profile,
     posts,
     comments,
+    reposts: reposts.map(({ postId, createdAt }) => ({ postId, createdAt })),
     groupsOwned: groups,
     eventsHosted: events,
     following,
@@ -1369,6 +1487,11 @@ export async function deleteMyAccountData() {
   for (const p of posts) {
     await deletePost(p).catch(() => {});
   }
+  const reposts = await fetchRepostsBy([uid], 500).catch(() => []);
+  for (const r of reposts) {
+    await deleteDoc(doc(db, "reposts", r.id)).catch(() => {});
+    await updateDoc(doc(db, "posts", r.postId), { repostCount: increment(-1) }).catch(() => {});
+  }
   if (profile?.username) {
     await deleteDoc(doc(db, "usernames", profile.username)).catch(() => {});
   }
@@ -1377,11 +1500,7 @@ export async function deleteMyAccountData() {
 // ---------- tiny app-wide navigation bus ----------
 
 export function openUserProfile(uid) {
-  window.dispatchEvent(new CustomEvent("mesh:open-user", { detail: uid }));
-}
-
-export function onOpenUserProfile(handler) {
-  const fn = (e) => handler(e.detail);
-  window.addEventListener("mesh:open-user", fn);
-  return () => window.removeEventListener("mesh:open-user", fn);
+  if (!uid) return;
+  if (uid === me()) navigate("/account");
+  else navigate(`/u/${encodeURIComponent(uid)}`, { overlay: true });
 }

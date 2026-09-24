@@ -1,23 +1,28 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { fetchProfile, fetchMyFollowingSet, onOpenUserProfile, onOpenPost } from "./lib/db";
+import { fetchProfile, fetchMyFollowingSet } from "./lib/db";
+import { useLocation, resolve, navigate } from "./lib/router";
+import { useInbox } from "./lib/inbox";
+import { ShellContext } from "./components/shell/ShellContext";
+import Sidebar, { LogoMark } from "./components/shell/Sidebar";
+import BottomNav from "./components/shell/BottomNav";
+import HomeDrawer from "./components/shell/HomeDrawer";
 import AuthPage from "./components/AuthPage";
-import Nav from "./components/Nav";
-import Weave from "./components/Weave";
-import Stills from "./components/Stills";
+import HomeFeed from "./components/HomeFeed";
 import Flicks from "./components/Flicks";
-import Features from "./components/Features";
+import Search from "./components/Search";
+import Saved from "./components/Saved";
+import News from "./components/News";
 import Circles from "./components/Circles";
-import Sourced from "./components/Sourced";
-import Chats from "./components/Chats";
-import Discover from "./components/Discover";
+import Messages from "./components/Messages";
 import Profile from "./components/Profile";
-import AccountPage from "./components/AccountPage";
+import Settings from "./components/Settings";
+import Legal from "./components/Legal";
 import UserProfile from "./components/UserProfile";
 import PostViewer from "./components/PostViewer";
+import Watch from "./components/Watch";
 import Composer from "./components/Composer";
-import Legal from "./components/Legal";
 import StorageNotice from "./components/StorageNotice";
 
 export default function App() {
@@ -25,105 +30,117 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [following, setFollowing] = useState(new Set());
-  const [tab, setTab] = useState("weave");
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [viewUserId, setViewUserId] = useState(null);
-  const [viewPostId, setViewPostId] = useState(null);
+  const [composer, setComposer] = useState(null); // null | { kind?, groupId?, group? }
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [feedKey, setFeedKey] = useState(0);
-  const [legalDoc, setLegalDoc] = useState("privacy");
+  const loc = useLocation();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
         const [p, f] = await Promise.all([
-          fetchProfile(u.uid),
+          fetchProfile(u.uid).catch(() => null),
           fetchMyFollowingSet().catch(() => new Set()),
         ]);
         setProfile(p);
         setFollowing(f);
       } else {
         setProfile(null);
+        setFollowing(new Set());
       }
       setAuthReady(true);
     });
     return unsub;
   }, []);
 
-  useEffect(() => onOpenUserProfile((uid) => {
-    if (uid === auth.currentUser?.uid) setTab("profile");
-    else setViewUserId(uid);
-  }), []);
+  const signedIn = !!(user && profile);
+  const inbox = useInbox(following, signedIn);
+  const openComposer = useCallback((opts = {}) => setComposer(opts), []);
+  const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
-  useEffect(() => onOpenPost(setViewPostId), []);
+  const shell = useMemo(() => ({
+    profile, setProfile, following, setFollowing, inbox, openComposer, openDrawer, feedKey,
+  }), [profile, following, inbox, openComposer, openDrawer, feedKey]);
 
-  useEffect(() => {
-    const fn = (e) => { setViewUserId(null); setViewPostId(null); setTab(e.detail); };
-    window.addEventListener("mesh:goto-tab", fn);
-    return () => window.removeEventListener("mesh:goto-tab", fn);
-  }, []);
+  const { page, overlay, bgQuery } = resolve(loc);
 
   if (!authReady) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-3xl font-black bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent animate-pulse">
-          Mesh
-        </div>
+      <div className="flex h-dvh items-center justify-center" role="status" aria-label="Loading Mesh">
+        <div className="animate-pulse"><LogoMark size={56} /></div>
       </div>
     );
   }
 
-  if (!user || !profile) return <AuthPage />;
+  // Policies have to be readable before anyone has an account.
+  if (!signedIn) {
+    if (page.view === "legal") {
+      return (
+        <div className="h-dvh overflow-y-auto" data-scroll>
+          <Legal key={page.doc} doc={page.doc} standalone />
+        </div>
+      );
+    }
+    return <AuthPage />;
+  }
 
-  const ctx = { profile, following, setFollowing, goTo: setTab };
+  const query = overlay ? bgQuery : loc.query;
+  const immersive = page.tab === "home" && page.section === "flicks" && !overlay;
 
-  const openLegal = (id) => { setLegalDoc(id); setViewUserId(null); setViewPostId(null); setTab("legal"); };
-
-  const pages = {
-    weave: <Weave key={`weave-${feedKey}`} {...ctx} />,
-    stills: <Stills key={`stills-${feedKey}`} {...ctx} />,
-    flicks: <Flicks key={`flicks-${feedKey}`} {...ctx} />,
-    features: <Features key={`features-${feedKey}`} {...ctx} />,
-    circles: <Circles key={`circles-${feedKey}`} {...ctx} />,
-    sourced: <Sourced {...ctx} />,
-    chats: <Chats {...ctx} />,
-    discover: <Discover {...ctx} />,
-    profile: <Profile profile={profile} onProfileChange={setProfile} />,
-    account: <AccountPage profile={profile} onOpenLegal={() => openLegal("privacy")} />,
-    legal: <Legal key={legalDoc} doc={legalDoc} onBack={() => setTab("account")} />,
-  };
+  let content;
+  if (page.tab === "home") {
+    switch (page.section) {
+      case "following": content = <HomeFeed key={`following-${feedKey}`} mode="following" />; break;
+      case "flicks": content = <Flicks key={`flicks-${feedKey}`} startId={page.id} />; break;
+      case "news": content = <News />; break;
+      case "circles": content = <Circles key={`circles-${feedKey}`} circleId={page.id} view={query.get("view")} />; break;
+      case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
+      case "saved": content = <Saved />; break;
+      default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
+    }
+  } else if (page.tab === "messages") {
+    content = <Messages chatId={page.id} />;
+  } else if (page.view === "settings") {
+    content = <Settings />;
+  } else if (page.view === "legal") {
+    content = <Legal key={page.doc} doc={page.doc} />;
+  } else {
+    content = <Profile />;
+  }
 
   return (
-    <div className="h-full flex flex-col md:flex-row">
-      {/* Keyboard users land here first and can jump the whole nav rail. */}
-      <a href="#mesh-main" className="skip-link">Skip to content</a>
+    <ShellContext.Provider value={shell}>
+      <div className="flex h-dvh flex-col md:flex-row">
+        {/* Keyboard users land here first and can jump the navigation. */}
+        <a href="#mesh-main" className="skip-link">Skip to content</a>
 
-      <Nav tab={tab} onTab={(t) => { setViewUserId(null); setTab(t); }}
-        onCreate={() => setComposerOpen(true)} profile={profile} />
+        <Sidebar page={page} profile={profile} unread={inbox.unreadCount} onCreate={() => openComposer()} />
 
-      <main id="mesh-main" tabIndex={-1} className={`flex-1 min-h-0 overflow-hidden anim-fade ${
-        tab === "flicks" ? "-mb-[58px] md:mb-0" : ""
-      }`} key={tab}>
-        {pages[tab]}
-      </main>
+        <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
+          {content}
+        </main>
 
-      <StorageNotice onReadMore={() => openLegal("cookies")} />
+        <BottomNav page={page} profile={profile} unread={inbox.unreadCount} immersive={immersive} />
 
-      {viewUserId && (
-        <UserProfile uid={viewUserId} following={following} setFollowing={setFollowing}
-          onClose={() => setViewUserId(null)} />
-      )}
+        {overlay?.overlay === "user" && <UserProfile key={overlay.id} uid={overlay.id} />}
+        {overlay?.overlay === "post" && <PostViewer key={overlay.id} postId={overlay.id} />}
+        {overlay?.overlay === "watch" && <Watch key={overlay.id} postId={overlay.id} />}
 
-      {viewPostId && <PostViewer postId={viewPostId} onClose={() => setViewPostId(null)} />}
+        {drawerOpen && <HomeDrawer page={page} profile={profile} onClose={() => setDrawerOpen(false)} />}
 
-      {composerOpen && (
-        <Composer profile={profile} onClose={() => setComposerOpen(false)}
-          onPosted={(kind) => {
-            setComposerOpen(false);
-            setFeedKey((k) => k + 1);
-            setTab(kind === "short" ? "flicks" : kind === "video" ? "features" : "weave");
-          }} />
-      )}
-    </div>
+        {composer && (
+          <Composer {...composer} profile={profile} onClose={() => setComposer(null)}
+            onPosted={(post) => {
+              setComposer(null);
+              setFeedKey((k) => k + 1);
+              if (composer.groupId) return;
+              navigate(post.kind === "short" || post.kind === "video" ? `/flicks/${post.id}` : "/");
+            }} />
+        )}
+
+        <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+      </div>
+    </ShellContext.Provider>
   );
 }

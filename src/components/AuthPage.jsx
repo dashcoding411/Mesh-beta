@@ -8,18 +8,22 @@ import {
 import { validateUsername, validBirthYear } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../lib/db";
-import Legal from "./Legal";
+import { Eye, EyeOff, AlertTriangle, Check } from "lucide-react";
+import { navigate } from "../lib/router";
+import { LogoMark } from "./shell/Sidebar";
+import Dialog from "./ui/Dialog";
+import Tabs from "./ui/Tabs";
 
 /* Inputs use text-base (16px) so iOS Safari never zooms on focus, and every
    control clears the 44px touch target minimum. */
 const FIELD =
-  "w-full min-h-[44px] rounded-xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 text-base " +
-  "placeholder-zinc-400 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 transition";
-const FIELD_BAD = "border-red-500/70 focus:border-red-500 focus:ring-red-500/30";
+  "field w-full min-h-12 rounded-control bg-surface-2 border border-field px-4 py-3 text-input text-fg " +
+  "placeholder:text-fg-subtle hover:border-fg-subtle focus:border-accent-text focus:ring-4 focus:ring-accent/25 transition-colors";
+const FIELD_BAD = "!border-danger-text focus:!ring-red-500/20";
 const SOCIAL =
-  "w-full min-h-[44px] rounded-xl py-3 px-4 font-semibold text-[15px] flex items-center justify-center gap-3 " +
-  "focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-zinc-950 " +
-  "disabled:opacity-50 transition";
+  "press w-full min-h-12 rounded-control px-4 font-semibold text-body flex items-center justify-center gap-3 " +
+  "disabled:opacity-50 transition-colors";
+const PRIMARY = "bg-accent text-white hover:bg-accent-hover shadow-raised";
 
 function GoogleMark() {
   return (
@@ -60,7 +64,6 @@ export default function AuthPage() {
   const [showReset, setShowReset] = useState(false);
   const [pendingUser, setPendingUser] = useState(null); // OAuth/phone user with no Mesh profile
   const [consent, setConsent] = useState(false);
-  const [legalDoc, setLegalDoc] = useState(null); // showing a policy over the form
 
   const recaptchaRef = useRef(null);
   const ids = {
@@ -168,34 +171,26 @@ export default function AuthPage() {
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
 
-  const openDoc = (id) => (e) => { e.preventDefault(); setLegalDoc(id); };
+  // Policies have their own URLs and are readable signed-out; Back returns here.
+  const openDoc = (id) => (e) => { e.preventDefault(); navigate(`/legal/${id}`); };
 
   const consentBox = (
-    <label htmlFor={ids.consent} className="flex items-start gap-2.5 cursor-pointer select-none py-1">
+    <div className="flex items-start gap-3 py-1">
       <input id={ids.consent} type="checkbox" checked={consent} required
         onChange={(e) => setConsent(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 accent-violet-600 focus:ring-2 focus:ring-violet-500" />
-      <span className="text-sm text-zinc-300 leading-relaxed">
+        className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
+      <label htmlFor={ids.consent} className="cursor-pointer select-none text-callout text-fg-muted">
         I've read and accept the{" "}
-        <button type="button" onClick={openDoc("terms")} className="text-violet-400 hover:text-violet-300 underline">
+        <a href="/legal/terms" onClick={openDoc("terms")} className="font-medium text-accent-text underline underline-offset-2">
           Terms of Service
-        </button>{" "}
+        </a>{" "}
         and{" "}
-        <button type="button" onClick={openDoc("privacy")} className="text-violet-400 hover:text-violet-300 underline">
+        <a href="/legal/privacy" onClick={openDoc("privacy")} className="font-medium text-accent-text underline underline-offset-2">
           Privacy Policy
-        </button>.
-      </span>
-    </label>
+        </a>.
+      </label>
+    </div>
   );
-
-  /* ---------- a policy, read over the top of the form ---------- */
-  if (legalDoc) {
-    return (
-      <div className="h-full bg-zinc-950">
-        <Legal key={legalDoc} doc={legalDoc} onBack={() => setLegalDoc(null)} />
-      </div>
-    );
-  }
 
   /* ---------- finish-profile step for OAuth / phone users ---------- */
   if (pendingUser) {
@@ -203,8 +198,8 @@ export default function AuthPage() {
       <Shell>
         <form onSubmit={finishProfile} className="space-y-4 anim-rise" noValidate>
           <div>
-            <h2 className="text-xl font-bold">Finish setting up</h2>
-            <p className="text-sm text-zinc-400 mt-1">Choose how you'll appear on Mesh.</p>
+            <h2 className="text-title-1 font-display">Finish setting up</h2>
+            <p className="mt-1 text-callout text-fg-muted">Choose how you'll appear on Mesh.</p>
           </div>
           <Field id={ids.displayName} label="Name" hint="How you'll appear. Names can repeat.">
             <input id={ids.displayName} className={FIELD} value={displayName} autoComplete="name"
@@ -220,7 +215,7 @@ export default function AuthPage() {
           </Field>
           {consentBox}
           <Alert error={error} />
-          <button disabled={busy} className={`${SOCIAL} bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white`}>
+          <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>
             {busy ? "Saving…" : "Enter Mesh"}
           </button>
         </form>
@@ -233,46 +228,38 @@ export default function AuthPage() {
   return (
     <Shell>
       <div className="anim-fade">
-        <h2 className="text-2xl font-bold tracking-tight">
-          {signup ? "Create your account" : "Welcome back to Mesh"}
+        <h2 className="text-title-1 font-display">
+          {signup ? "Create your account" : "Welcome back"}
         </h2>
-        <p className="text-sm text-zinc-400 mt-1 mb-6">
+        <p className="mb-6 mt-1 text-callout text-fg-muted">
           {signup ? "Join the fabric. It takes a minute." : "Log in to pick up where you left off."}
         </p>
 
         {/* ---- social first ---- */}
         <div className="space-y-2.5">
           <button onClick={() => handleProvider(signInGoogle)} disabled={busy}
-            className={`${SOCIAL} bg-white text-zinc-900 hover:bg-zinc-100`}>
+            className={`${SOCIAL} bg-white text-zinc-900 hover:bg-zinc-200`}>
             <GoogleMark /> Continue with Google
           </button>
           <button onClick={() => handleProvider(signInApple)} disabled={busy}
-            className={`${SOCIAL} bg-black text-white border border-zinc-700 hover:bg-zinc-900`}>
+            className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-surface`}>
             <AppleMark /> Continue with Apple
           </button>
         </div>
-        <p className="mt-3 text-xs text-zinc-400 text-center">
+        <p className="mt-3 text-center text-caption text-fg-subtle">
           We only use this to verify who you are. Mesh will never post without your permission.
         </p>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-zinc-400">
-          <div className="h-px flex-1 bg-zinc-800" />
+        <div className="my-6 flex items-center gap-3 text-caption text-fg-subtle">
+          <div className="h-px flex-1 bg-line" />
           <span>or {signup ? "sign up" : "log in"} with</span>
-          <div className="h-px flex-1 bg-zinc-800" />
+          <div className="h-px flex-1 bg-line" />
         </div>
 
         {/* ---- email / phone switch ---- */}
-        <div role="tablist" aria-label="Sign-in method" className="flex rounded-xl bg-zinc-900 p-1 mb-4">
-          {["email", "phone"].map((m) => (
-            <button key={m} role="tab" aria-selected={method === m} type="button"
-              onClick={() => { setMethod(m); setError(""); setConfirmation(null); }}
-              className={`flex-1 min-h-[40px] rounded-lg text-sm font-medium capitalize transition focus:outline-none focus:ring-2 focus:ring-violet-500 ${
-                method === m ? "bg-zinc-800 text-white shadow" : "text-zinc-400 hover:text-zinc-200"
-              }`}>
-              {m}
-            </button>
-          ))}
-        </div>
+        <Tabs label="Sign-in method" value={method} className="mb-5 flex w-full"
+          onChange={(m) => { setMethod(m); setError(""); setConfirmation(null); }}
+          tabs={[{ id: "email", label: "Email" }, { id: "phone", label: "Phone" }]} />
 
         {method === "email" ? (
           <form onSubmit={handleEmail} className="space-y-4" noValidate>
@@ -302,10 +289,10 @@ export default function AuthPage() {
 
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <label htmlFor={ids.password} className="block text-sm font-medium text-zinc-300">Password</label>
+                <label htmlFor={ids.password} className="block text-callout font-medium text-fg">Password</label>
                 {!signup && (
                   <button type="button" onClick={() => { setShowReset(true); setError(""); }}
-                    className="text-xs text-violet-400 hover:text-violet-300 focus:outline-none focus:underline">
+                    className="-my-2 inline-flex min-h-9 items-center text-caption font-semibold text-accent-text hover:underline underline-offset-2">
                     Forgot password?
                   </button>
                 )}
@@ -320,20 +307,22 @@ export default function AuthPage() {
                   aria-invalid={error ? "true" : undefined} />
                 <button type="button" onClick={() => setShowPassword((s) => !s)}
                   aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-11 w-11 flex items-center justify-center text-zinc-400 hover:text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500">
-                  {showPassword ? "🙈" : "👁"}
+                  className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-fg-subtle hover:text-fg">
+                  {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
                 </button>
               </div>
               {capsOn && (
-                <p role="status" className="mt-1.5 text-xs text-amber-400">⇪ Caps Lock is on.</p>
+                <p role="status" className="mt-1.5 flex items-center gap-1.5 text-caption text-warning-text">
+                  <AlertTriangle size={14} aria-hidden="true" /> Caps Lock is on.
+                </p>
               )}
             </div>
 
-            <label htmlFor={ids.remember} className="flex items-center gap-2.5 cursor-pointer select-none py-1">
+            <label htmlFor={ids.remember} className="flex min-h-11 cursor-pointer select-none items-center gap-3">
               <input id={ids.remember} type="checkbox" checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-violet-600 focus:ring-2 focus:ring-violet-500" />
-              <span className="text-sm text-zinc-300">Keep me signed in on this device</span>
+                className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
+              <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
             </label>
 
             {signup && consentBox}
@@ -341,7 +330,7 @@ export default function AuthPage() {
             <Alert error={error} notice={notice} />
 
             <button disabled={busy}
-              className={`${SOCIAL} bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white`}>
+              className={`${SOCIAL} ${PRIMARY}`}>
               {busy ? "One moment…" : signup ? "Create account" : "Log in"}
             </button>
           </form>
@@ -354,11 +343,11 @@ export default function AuthPage() {
             </Field>
             <Alert error={error} />
             <button disabled={busy}
-              className={`${SOCIAL} bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white`}>
+              className={`${SOCIAL} ${PRIMARY}`}>
               {busy ? "Verifying…" : "Verify and continue"}
             </button>
             <button type="button" onClick={() => { setConfirmation(null); setSmsCode(""); }}
-              className="w-full text-sm text-zinc-400 hover:text-zinc-200 min-h-[44px]">
+              className="min-h-11 w-full text-callout font-medium text-fg-muted hover:text-fg">
               Use a different number
             </button>
           </form>
@@ -370,29 +359,29 @@ export default function AuthPage() {
             </Field>
             <Alert error={error} />
             <button disabled={busy}
-              className={`${SOCIAL} bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white`}>
+              className={`${SOCIAL} ${PRIMARY}`}>
               {busy ? "Sending…" : "Send code"}
             </button>
           </form>
         )}
 
-        <p className="mt-5 text-center text-sm text-zinc-400">
+        <p className="mt-6 text-center text-callout text-fg-muted">
           {signup ? "Already have an account? " : "New to Mesh? "}
-          <button onClick={() => { setMode(signup ? "login" : "signup"); setError(""); setNotice(""); }}
-            className="text-violet-400 hover:text-violet-300 font-medium focus:outline-none focus:underline">
+          <button type="button" onClick={() => { setMode(signup ? "login" : "signup"); setError(""); setNotice(""); }}
+            className="inline-flex min-h-11 items-center font-semibold text-accent-text hover:underline underline-offset-2">
             {signup ? "Log in" : "Create an account"}
           </button>
         </p>
 
-        <p className="mt-5 text-[11px] leading-relaxed text-zinc-400 text-center">
-          <button type="button" onClick={openDoc("terms")} className="underline hover:text-zinc-300">Terms</button>
+        <p className="mt-6 text-center text-caption text-fg-subtle">
+          <a href="/legal/terms" onClick={openDoc("terms")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Terms</a>
           {" · "}
-          <button type="button" onClick={openDoc("privacy")} className="underline hover:text-zinc-300">Privacy</button>
+          <a href="/legal/privacy" onClick={openDoc("privacy")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Privacy</a>
           {" · "}
-          <button type="button" onClick={openDoc("cookies")} className="underline hover:text-zinc-300">Cookies</button>
+          <a href="/legal/cookies" onClick={openDoc("cookies")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Cookies</a>
           {" · "}
-          <button type="button" onClick={openDoc("guidelines")} className="underline hover:text-zinc-300">Guidelines</button>
-          <span className="block mt-2">
+          <a href="/legal/guidelines" onClick={openDoc("guidelines")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Guidelines</a>
+          <span className="mt-2 block">
             We filter hate speech against every group. No automated filter catches everything, so
             report what slips through.
           </span>
@@ -412,32 +401,40 @@ export default function AuthPage() {
 
 function Shell({ children }) {
   return (
-    <div className="min-h-full flex bg-zinc-950">
-      <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-violet-950 via-zinc-950 to-fuchsia-950/60 relative overflow-hidden">
-        <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" />
-        <div className="absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-fuchsia-600/20 blur-3xl" />
-        <div className="relative text-center px-12 anim-rise">
-          <h1 className="text-7xl font-black tracking-tight bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-            Mesh
-          </h1>
-          <p className="mt-4 text-xl text-zinc-200 font-medium">Making Every Story Heard</p>
-          <p className="mt-6 text-sm text-zinc-400 max-w-sm mx-auto leading-relaxed">
-            Flicks, Features, Stills, Circles and news that has to show its
-            sources. Built for people, not advertisers.
+    <div className="flex min-h-dvh bg-canvas">
+      <div className="relative hidden flex-1 items-center justify-center overflow-hidden bg-gradient-to-br from-violet-950 via-canvas to-fuchsia-950/60 lg:flex">
+        <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" aria-hidden="true" />
+        <div className="absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-fuchsia-600/20 blur-3xl" aria-hidden="true" />
+        <div className="relative max-w-md px-12 anim-rise">
+          <LogoMark size={64} />
+          <p className="mt-8 font-display text-[3.5rem] font-extrabold leading-[1.05] tracking-tight">
+            Making Every<br />Story Heard.
           </p>
+          <ul className="mt-8 space-y-3 text-body text-fg-muted">
+            {[
+              "Flicks, Stills and Strands in one feed",
+              "News that has to show its sources",
+              "No ads, no data sold, no third-party trackers",
+            ].map((t) => (
+              <li key={t} className="flex items-center gap-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent-soft text-accent-ring"><Check size={14} aria-hidden="true" /></span>
+                {t}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-      <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+      <main className="flex flex-1 items-center justify-center overflow-y-auto p-6">
         <div className="w-full max-w-sm py-8">
-          <div className="text-center mb-8 lg:hidden">
-            <h1 className="text-5xl font-black tracking-tight bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-              Mesh
-            </h1>
-            <p className="mt-2 text-zinc-400 text-sm">Making Every Story Heard</p>
+          <div className="mb-8 flex flex-col items-center text-center lg:hidden">
+            <LogoMark size={52} />
+            <h1 className="mt-3 font-display text-display font-extrabold tracking-tight">Mesh</h1>
+            <p className="mt-1 text-callout text-fg-muted">Making Every Story Heard</p>
           </div>
+          <h1 className="sr-only lg:not-sr-only lg:hidden">Mesh</h1>
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -445,49 +442,52 @@ function Shell({ children }) {
 function Field({ id, label, hint, children }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-zinc-300 mb-1.5">{label}</label>
+      <label htmlFor={id} className="mb-1.5 block text-callout font-medium text-fg">{label}</label>
       {children}
-      {hint && <p className="mt-1.5 text-xs text-zinc-400">{hint}</p>}
+      {hint && <p className="mt-1.5 text-caption text-fg-subtle">{hint}</p>}
     </div>
   );
 }
 
 function Alert({ error, notice }) {
   return (
-    <div aria-live="polite" className="min-h-[1.25rem]">
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {!error && notice && <p className="text-sm text-emerald-400">{notice}</p>}
+    <div aria-live="polite" className="min-h-5">
+      {error && (
+        <p className="flex items-start gap-1.5 text-callout text-danger-text">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}
+        </p>
+      )}
+      {!error && notice && (
+        <p className="flex items-start gap-1.5 text-callout text-success-text">
+          <Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{notice}
+        </p>
+      )}
     </div>
   );
 }
 
 function ResetModal({ email, setEmail, onSubmit, onClose, busy, error, fieldClass }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 anim-fade"
-      role="dialog" aria-modal="true" aria-label="Reset your password" onClick={onClose}>
-      <form onSubmit={onSubmit} onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4 anim-pop">
+    <Dialog title="Reset your password" onClose={onClose} variant="center" size="sm">
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <p className="text-callout text-fg-muted">We'll email you a link to set a new one.</p>
         <div>
-          <h3 className="font-bold text-lg">Reset your password</h3>
-          <p className="text-sm text-zinc-400 mt-1">We'll email you a link to set a new one.</p>
+          <label htmlFor="reset-email" className="mb-1.5 block text-callout font-medium">Email address</label>
+          <input id="reset-email" className={fieldClass} type="email" autoComplete="email"
+            value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
         </div>
-        <input className={fieldClass} type="email" autoComplete="email" autoFocus
-          value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
-          aria-label="Email address" />
-        <div aria-live="polite" className="min-h-[1rem]">
-          {error && <p className="text-sm text-red-400">{error}</p>}
-        </div>
+        <Alert error={error} />
         <div className="flex gap-2">
           <button type="button" onClick={onClose}
-            className="flex-1 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold">
+            className="press min-h-11 flex-1 rounded-control border border-line-strong bg-surface-2 text-callout font-semibold hover:bg-surface-3">
             Cancel
           </button>
-          <button disabled={busy}
-            className="flex-1 min-h-[44px] rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-semibold">
-            {busy ? "Sending…" : "Send link"}
+          <button type="submit" disabled={busy}
+            className="press min-h-11 flex-1 rounded-control bg-accent text-callout font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
+            {busy ? "Sending…" : "Send reset link"}
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

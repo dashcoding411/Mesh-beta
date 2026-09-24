@@ -1,21 +1,24 @@
 import { useEffect, useState } from "react";
 import { Timestamp } from "firebase/firestore";
+import { MapPin, Ticket, ChevronDown, Megaphone, Users, Check, Globe, Lock, ExternalLink } from "lucide-react";
 import {
-  createEvent, setRsvp, RSVP_OPTIONS, fetchGuestList,
-  fetchAnnouncements, postAnnouncement, me, timeAgo, openUserProfile,
+  createEvent, setRsvp, RSVP_OPTIONS, fetchGuestList, fetchAnnouncements, postAnnouncement, me, openUserProfile,
 } from "../lib/db";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkContent, checkName, markPosted } from "../lib/moderation";
+import { shortTime } from "../lib/format";
+import Button from "./ui/Button";
+import Badge from "./ui/Badge";
+import Dialog from "./ui/Dialog";
+import { Field, Input, Textarea, Checkbox } from "./ui/Field";
+import { InlineMessage, Spinner } from "./ui/States";
+import { useToast } from "./ui/toast-context";
 
-const FIELD =
-  "w-full min-h-[44px] rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-base " +
-  "focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30";
-
-/* A gathering shows different RSVP options depending on its privacy:
-   public ones take Going/Interested (Interested behaves like a bookmark that
-   still gets reminders); private ones take Going/Maybe/Can't go so the host
-   gets an exact headcount. */
-export function GatheringCard({ event, myStatus, onStatusChange, compact }) {
+/* A gathering card. Public gatherings take Going / Interested (Interested is
+   a bookmark that still gets reminders); private ones take Going / Maybe /
+   Can't go so the host gets an honest headcount. */
+export function GatheringCard({ event, myStatus, onStatusChange }) {
+  const toast = useToast();
   const [status, setStatus] = useState(myStatus);
   const [going, setGoing] = useState(event.goingCount || 0);
   const [interested, setInterested] = useState(event.interestedCount || 0);
@@ -41,72 +44,69 @@ export function GatheringCard({ event, myStatus, onStatusChange, compact }) {
       if (prev) delta(prev, -1);
       if (result) delta(result, +1);
       onStatusChange?.(event.id, result);
+    } catch {
+      toast({ tone: "error", title: "Couldn't save your reply" });
     } finally { setBusy(false); }
   };
 
   return (
-    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition ${past ? "opacity-60" : ""}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-violet-400">
-            {date
-              ? date.toLocaleString(undefined, {
-                  weekday: "short", day: "numeric", month: "short",
-                  hour: "numeric", minute: "2-digit",
-                })
-              : "Date to be confirmed"}
-            {past && " · past"}
-          </p>
-          <h3 className="font-bold mt-1">{event.title}</h3>
-          {event.location && <p className="text-sm text-zinc-400 mt-0.5">{event.location}</p>}
-          {!compact && event.description && (
-            <p className="text-sm text-zinc-400 mt-2 whitespace-pre-wrap break-words">{event.description}</p>
+    <article aria-labelledby={`ev-${event.id}`}
+      className={`rounded-card border border-line bg-surface p-4 ${past ? "opacity-70" : ""}`}>
+      <div className="flex gap-4">
+        {date && (
+          <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-control bg-surface-2" aria-hidden="true">
+            <span className="text-label font-semibold uppercase text-accent-text">{date.toLocaleDateString(undefined, { month: "short" })}</span>
+            <span className="text-title-2 leading-none tabular">{date.getDate()}</span>
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-caption font-semibold text-accent-text">
+              {date ? date.toLocaleString(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" }) : "Date to be confirmed"}
+            </p>
+            {past && <Badge>Past</Badge>}
+            <Badge tone={event.privacy === "private" ? "warning" : "neutral"} icon={event.privacy === "private" ? Lock : Globe}>
+              {event.privacy === "private" ? "Private" : "Public"}
+            </Badge>
+          </div>
+          <h3 id={`ev-${event.id}`} className="mt-1 text-title-3">{event.title}</h3>
+          {event.location && (
+            <p className="mt-1 flex items-center gap-1.5 text-callout text-fg-muted"><MapPin size={14} aria-hidden="true" />{event.location}</p>
           )}
-          <p className="text-xs text-zinc-400 mt-2">
+          {event.description && <p className="mt-2 whitespace-pre-wrap break-words text-callout text-fg-muted">{event.description}</p>}
+          <p className="mt-2 text-caption text-fg-subtle">
             Hosted by{" "}
-            <button onClick={() => openUserProfile(event.hostId)} className="hover:text-violet-300">
-              @{event.hostName}
-            </button>
+            <button type="button" onClick={() => openUserProfile(event.hostId)} className="font-medium text-fg-muted hover:underline">@{event.hostName}</button>
             {" · "}{going} going{event.privacy !== "private" && interested > 0 && ` · ${interested} interested`}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-          event.privacy === "private" ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"
-        }`}>
-          {event.privacy === "private" ? "Private" : "Public"}
-        </span>
       </div>
 
       {!past && (
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Your reply">
           {options.map((o) => (
-            <button key={o.id} onClick={() => choose(o.id)} disabled={busy}
-              aria-pressed={status === o.id}
-              className={`min-h-[40px] rounded-xl px-4 text-sm font-semibold transition disabled:opacity-50 ${
-                status === o.id
-                  ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white"
-                  : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-              }`}>
-              {status === o.id ? `✓ ${o.label}` : o.label}
-            </button>
+            <Button key={o.id} size="sm" variant={status === o.id ? "primary" : "secondary"} disabled={busy}
+              icon={status === o.id ? Check : undefined} aria-pressed={status === o.id} onClick={() => choose(o.id)}>
+              {o.label}
+            </Button>
           ))}
+          {event.ticketUrl && (
+            <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer nofollow ugc"
+              className="press inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-line-strong px-3 text-callout font-semibold text-accent-text hover:bg-surface-2">
+              <Ticket size={16} aria-hidden="true" /> Tickets <ExternalLink size={12} aria-hidden="true" />
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
+          )}
         </div>
       )}
 
-      {event.ticketUrl && (
-        <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer"
-          className="mt-3 inline-flex min-h-[40px] items-center rounded-xl border border-violet-500/50 px-4 text-sm font-semibold text-violet-300 hover:bg-violet-600/10">
-          Get tickets
-        </a>
-      )}
-
-      <button onClick={() => setOpen((o) => !o)}
-        className="mt-3 block text-xs text-zinc-400 hover:text-zinc-300">
-        {open ? "Hide details" : "Announcements & guests"}
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="mt-3 inline-flex min-h-11 items-center gap-1.5 text-callout font-medium text-fg-muted hover:text-fg">
+        Announcements and guests
+        <ChevronDown size={16} className={`transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
-
       {open && <GatheringDetail event={event} isHost={isHost} />}
-    </div>
+    </article>
   );
 }
 
@@ -115,13 +115,12 @@ function GatheringDetail({ event, isHost }) {
   const [guests, setGuests] = useState(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     fetchAnnouncements(event.id).then(setAnnouncements).catch(() => setAnnouncements([]));
     const visible = event.showGuestList || isHost;
-    (visible ? fetchGuestList(event.id) : Promise.resolve([]))
-      .then(setGuests)
-      .catch(() => setGuests([]));
+    (visible ? fetchGuestList(event.id) : Promise.resolve([])).then(setGuests).catch(() => setGuests([]));
   }, [event.id, event.showGuestList, isHost]);
 
   const send = async (e) => {
@@ -132,83 +131,96 @@ function GatheringDetail({ event, isHost }) {
     const mod = checkContent(v.text, { key: "announce", skipCooldown: true });
     if (mod.error) return setError(mod.error);
     setError("");
+    setBusy(true);
     try {
       const item = await postAnnouncement(event.id, v.text);
       setAnnouncements((prev) => [...(prev || []), item]);
       setText("");
-    } catch { setError("Couldn't post that."); }
+    } catch { setError("Couldn't post that. Your message is still here."); }
+    finally { setBusy(false); }
   };
 
   return (
-    <div className="mt-3 pt-3 border-t border-zinc-800 space-y-3">
-      <div>
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1.5">Announcements</p>
-        {announcements === null && <p className="text-xs text-zinc-400">Loading…</p>}
-        {announcements?.length === 0 && <p className="text-xs text-zinc-400">No announcements yet.</p>}
-        <div className="space-y-1.5">
+    <div className="mt-2 space-y-5 border-t border-line pt-4">
+      <section aria-label="Announcements">
+        <p className="mb-2 flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-fg-subtle">
+          <Megaphone size={13} aria-hidden="true" /> Announcements
+        </p>
+        {announcements === null && <Spinner className="text-fg-subtle" />}
+        {announcements?.length === 0 && <p className="text-callout text-fg-muted">No announcements yet.</p>}
+        <ul className="space-y-2">
           {announcements?.map((a, i) => (
-            <p key={a.id || i} className="text-sm text-zinc-300">
-              <span className="font-semibold">@{a.authorName}</span> {a.text}
-              <span className="ml-2 text-xs text-zinc-400">{timeAgo(a.createdAt)}</span>
-            </p>
+            <li key={a.id || i} className="rounded-control bg-surface-2 p-3 text-callout">
+              <span className="font-semibold">@{a.authorName}</span> <span className="text-fg-muted">{a.text}</span>
+              <span className="ml-2 text-caption text-fg-subtle">{shortTime(a.createdAt)}</span>
+            </li>
           ))}
-        </div>
+        </ul>
         {isHost && (
-          <form onSubmit={send} className="flex gap-2 mt-2">
-            <input className={`${FIELD} text-sm`} value={text} onChange={(e) => setText(e.target.value)}
-              placeholder="Tell your guests something…" aria-label="New announcement" />
-            <button className="min-h-[44px] rounded-xl bg-violet-600 hover:bg-violet-500 px-4 text-sm font-semibold">
-              Post
-            </button>
+          <form onSubmit={send} className="mt-3 flex items-start gap-2">
+            <label htmlFor={`ann-${event.id}`} className="sr-only">New announcement</label>
+            <Input id={`ann-${event.id}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Tell your guests something" />
+            <Button type="submit" variant="primary" loading={busy} disabled={!text.trim()}>Post</Button>
           </form>
         )}
-        <div aria-live="polite">{error && <p className="text-xs text-red-400 mt-1">{error}</p>}</div>
-      </div>
+        <div aria-live="polite" className="mt-1"><InlineMessage>{error}</InlineMessage></div>
+      </section>
 
-      <div>
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1.5">Guests</p>
+      <section aria-label="Guests">
+        <p className="mb-2 flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-fg-subtle">
+          <Users size={13} aria-hidden="true" /> Guests
+        </p>
         {!event.showGuestList && !isHost ? (
-          <p className="text-xs text-zinc-400">The host has hidden the guest list.</p>
-        ) : guests?.length === 0 ? (
-          <p className="text-xs text-zinc-400">Nobody has replied yet.</p>
+          <p className="text-callout text-fg-muted">The host has kept the guest list private.</p>
+        ) : guests === null ? (
+          <Spinner className="text-fg-subtle" />
+        ) : guests.length === 0 ? (
+          <p className="text-callout text-fg-muted">Nobody has replied yet.</p>
         ) : (
-          <p className="text-sm text-zinc-300">
-            {guests?.map((g) => `@${g.username || g.id}`).join(", ")}
-          </p>
+          <ul className="flex flex-wrap gap-2">
+            {guests.map((g) => (
+              <li key={g.id}>
+                <button type="button" onClick={() => openUserProfile(g.id)}
+                  className="press inline-flex min-h-9 items-center rounded-full bg-surface-2 px-3 text-caption font-medium hover:bg-surface-3">
+                  @{g.username || g.id.slice(0, 8)}
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-export function NewGatheringForm({ onClose, onCreated, groupId = "" }) {
+/* Plan a gathering. Date first after the title: it's the one thing
+   everyone needs to know. */
+export function NewGatheringDialog({ onClose, onCreated, groupId = "" }) {
   const [form, setForm] = useState({
     title: "", description: "", location: "", when: "",
     privacy: groupId ? "private" : "public", ticketUrl: "", showGuestList: true,
   });
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();
-    setError("");
+    const errs = {};
     const title = form.title.trim();
     if (title.length < LIMITS.eventTitle.min || title.length > LIMITS.eventTitle.max) {
-      return setError(`Title must be ${LIMITS.eventTitle.min}–${LIMITS.eventTitle.max} characters.`);
-    }
-    const nameCheck = checkName(title);
-    if (nameCheck.error) return setError(nameCheck.error);
+      errs.title = `Give it a name of ${LIMITS.eventTitle.min}–${LIMITS.eventTitle.max} characters.`;
+    } else if (checkName(title).error) errs.title = checkName(title).error;
     const vDesc = validateText(form.description, LIMITS.eventDescription, "Details");
-    if (vDesc.error) return setError(vDesc.error);
+    if (vDesc.error) errs.description = vDesc.error;
     const vLoc = validateText(form.location, LIMITS.eventLocation, "Location");
-    if (vLoc.error) return setError(vLoc.error);
-    if (!form.when) return setError("Pick a date and time.");
+    if (vLoc.error) errs.location = vLoc.error;
     const when = new Date(form.when);
-    if (isNaN(when) || when < new Date()) return setError("Pick a date in the future.");
-    if (form.ticketUrl && !/^https?:\/\/\S+\.\S+/.test(form.ticketUrl.trim())) {
-      return setError("Ticket link must be a full URL.");
-    }
+    if (!form.when) errs.when = "Pick a date and time.";
+    else if (isNaN(when) || when < new Date()) errs.when = "Pick a date and time in the future.";
+    if (form.ticketUrl && !/^https?:\/\/\S+\.\S+/.test(form.ticketUrl.trim())) errs.ticketUrl = "Use a full link, starting https://";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
 
     setBusy(true);
     try {
@@ -217,71 +229,71 @@ export function NewGatheringForm({ onClose, onCreated, groupId = "" }) {
         startsAt: Timestamp.fromDate(when), privacy: form.privacy, groupId,
         ticketUrl: form.ticketUrl.trim(), showGuestList: form.showGuestList,
       });
-      markPosted("gathering");
+      markPosted("gathering", title);
       onCreated(event);
     } catch (err) {
       console.error(err);
-      setError("Couldn't create the gathering. Try again.");
+      setErrors({ submit: "Couldn't create the gathering. Check your connection. Everything you entered is still here." });
       setBusy(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 anim-fade"
-      role="dialog" aria-modal="true" onClick={onClose}>
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-3 anim-pop">
-        <h3 className="font-bold text-lg">New gathering</h3>
-
-        <input className={FIELD} placeholder="What's happening?" value={form.title}
-          onChange={set("title")} maxLength={LIMITS.eventTitle.max} aria-label="Title" autoFocus />
-        <input className={FIELD} type="datetime-local" value={form.when}
-          onChange={set("when")} aria-label="Date and time" />
-        <input className={FIELD} placeholder="Where? (optional)" value={form.location}
-          onChange={set("location")} maxLength={LIMITS.eventLocation} aria-label="Location" />
-        <textarea className={`${FIELD} h-20 resize-none`} placeholder="Details (optional)"
-          value={form.description} onChange={set("description")}
-          maxLength={LIMITS.eventDescription} aria-label="Details" />
-        <input className={FIELD} placeholder="Ticket link (optional)" value={form.ticketUrl}
-          onChange={set("ticketUrl")} aria-label="Ticket link" />
+    <Dialog title="Plan a gathering" onClose={onClose} variant="full" size="lg"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <div aria-live="polite" className="min-w-0"><InlineMessage>{errors.submit}</InlineMessage></div>
+          <div className="flex shrink-0 gap-2">
+            <Button onClick={onClose}>Cancel</Button>
+            <Button type="submit" form="gathering-form" variant="primary" loading={busy}>Create gathering</Button>
+          </div>
+        </div>
+      }>
+      <form id="gathering-form" onSubmit={submit} className="space-y-5" noValidate>
+        <Field label="Name" error={errors.title} count={form.title.length} max={LIMITS.eventTitle.max}>
+          <Input value={form.title} onChange={set("title")} maxLength={LIMITS.eventTitle.max} placeholder="e.g. Sunday park run" />
+        </Field>
+        <Field label="Date and time" error={errors.when}>
+          <Input type="datetime-local" value={form.when} onChange={set("when")} />
+        </Field>
+        <Field label="Where" optional error={errors.location}>
+          <Input value={form.location} onChange={set("location")} maxLength={LIMITS.eventLocation} placeholder="A place, or a link for online" />
+        </Field>
+        <Field label="Details" optional error={errors.description} count={form.description.length} max={LIMITS.eventDescription}>
+          <Textarea autoGrow rows={3} value={form.description} onChange={set("description")} maxLength={LIMITS.eventDescription} />
+        </Field>
+        <Field label="Ticket link" optional error={errors.ticketUrl}>
+          <Input type="url" value={form.ticketUrl} onChange={set("ticketUrl")} placeholder="https://" autoCapitalize="none" />
+        </Field>
 
         {!groupId && (
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-zinc-300 mb-1">Who's invited?</legend>
-            {[
-              { id: "public", label: "Public", blurb: "Anyone can find it. Going or Interested." },
-              { id: "private", label: "Private", blurb: "Invite only. Going, Maybe or Can't go." },
-            ].map((p) => (
-              <label key={p.id}
-                className={`flex gap-3 rounded-xl border p-3 cursor-pointer transition ${
-                  form.privacy === p.id ? "border-violet-500 bg-violet-600/10" : "border-zinc-800 hover:border-zinc-700"
+          <fieldset>
+            <legend className="mb-2 text-callout font-medium">Who can come?</legend>
+            <div className="space-y-2">
+              {[
+                { id: "public", label: "Public", blurb: "Anyone can find it. People reply Going or Interested.", icon: Globe },
+                { id: "private", label: "Private", blurb: "Invite only. People reply Going, Maybe or Can't go.", icon: Lock },
+              ].map((p) => (
+                <label key={p.id} className={`press flex min-h-14 cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${
+                  form.privacy === p.id ? "border-accent-text bg-accent-soft" : "border-line hover:border-line-strong"
                 }`}>
-                <input type="radio" name="eventPrivacy" checked={form.privacy === p.id}
-                  onChange={() => setForm({ ...form, privacy: p.id })} className="mt-0.5 accent-violet-600" />
-                <span>
-                  <span className="block text-sm font-medium">{p.label}</span>
-                  <span className="block text-xs text-zinc-400">{p.blurb}</span>
-                </span>
-              </label>
-            ))}
+                  <input type="radio" name="eventPrivacy" checked={form.privacy === p.id}
+                    onChange={() => setForm({ ...form, privacy: p.id })} className="mt-1 h-4 w-4 accent-violet-600" />
+                  <span>
+                    <span className="flex items-center gap-1.5 text-callout font-semibold"><p.icon size={14} aria-hidden="true" />{p.label}</span>
+                    <span className="block text-caption text-fg-muted">{p.blurb}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </fieldset>
         )}
 
-        <label className="flex items-center gap-2.5 cursor-pointer py-1">
-          <input type="checkbox" checked={form.showGuestList}
-            onChange={(e) => setForm({ ...form, showGuestList: e.target.checked })}
-            className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-violet-600" />
-          <span className="text-sm text-zinc-300">Let guests see who else is coming</span>
-        </label>
-
-        <div aria-live="polite" className="min-h-[1rem]">
-          {error && <p className="text-sm text-red-400">{error}</p>}
-        </div>
-        <button disabled={busy}
-          className="w-full min-h-[44px] rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-50 text-sm font-semibold">
-          {busy ? "Creating…" : "Create gathering"}
-        </button>
+        <Checkbox checked={form.showGuestList} onChange={(v) => setForm({ ...form, showGuestList: v })}
+          description="Turn off to keep the guest list between you and each guest.">
+          Let guests see who else is coming
+        </Checkbox>
       </form>
-    </div>
+    </Dialog>
   );
 }

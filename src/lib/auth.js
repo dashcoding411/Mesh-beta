@@ -35,7 +35,7 @@ export async function signUpEmail(email, password, remember) {
 export async function signInGoogle(remember) {
   await applyPersistence(remember);
   const provider = new GoogleAuthProvider();
-  // Baseline scopes only — no posting or contacts access at sign-in.
+  // Baseline scopes only: no posting or contacts access at sign-in.
   provider.addScope("profile");
   provider.addScope("email");
   provider.setCustomParameters({ prompt: "select_account" });

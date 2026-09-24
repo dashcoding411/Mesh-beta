@@ -3,13 +3,13 @@
 // Each of the big four optimises for one thing, and each is right about
 // something different. Mesh blends all four:
 //
-//   TikTok    — interest graph. What holds attention beats who you know, so a
+//   TikTok:    interest graph. What holds attention beats who you know, so a
 //               brand-new account can still surface.
-//   Instagram — the sends economy. A save, and more so a send to a specific
+//   Instagram: the sends economy. A save, and more so a send to a specific
 //               person, costs the user something a like doesn't.
-//   Facebook  — meaningful social interaction. Conversation between connected
+//   Facebook:  meaningful social interaction. Conversation between connected
 //               people beats drive-by taps.
-//   YouTube   — retention, not impressions. Long-form is judged on whether the
+//   YouTube:   retention, not impressions. Long-form is judged on whether the
 //               people who start it stay.
 //
 // Two deliberate design rulings, both of which cut against the obvious approach:
@@ -18,8 +18,8 @@
 //      compare percentiles. That erases magnitude: finishing a 15-second clip
 //      and finishing a 40-minute talk both land at "100% completion", so the
 //      thing that makes long-form valuable disappears. Instead everything is
-//      scored in one shared unit — expected value per minute of viewer
-//      attention — so formats compete on a real axis.
+//      scored in one shared unit (expected value per minute of viewer
+//      attention), so formats compete on a real axis.
 //
 //   2. Because short-form still wins on raw throughput under almost any
 //      scoring, per-format floors are applied after scoring. Without them the
@@ -40,11 +40,15 @@ function jitter(id) {
 // Rough attention cost of consuming each format, in minutes. Used as the
 // denominator so a 20-minute talk isn't compared to a 12-second clip as if
 // they cost the viewer the same thing.
-const ATTENTION_MINUTES = { post: 0.25, short: 0.3, video: 6 };
+// A long Flick's cost is its real runtime when we know it: a 4-minute video
+// and a 40-minute one shouldn't be priced the same. Strands are read, not
+// watched, so they're priced by word count.
+const ATTENTION_MINUTES = { post: 0.25, text: 0.15, short: 0.3, video: 6 };
 
 function attentionCost(post) {
   const base = ATTENTION_MINUTES[post.kind] ?? 0.5;
-  if (post.kind === "post") {
+  if (post.kind === "video" && post.duration > 0) return Math.max(3, post.duration / 60);
+  if (post.kind === "post" || post.kind === "text") {
     // Longer text genuinely costs more to read.
     const words = (post.text || "").trim().split(/\s+/).filter(Boolean).length;
     return Math.max(base, words / 220); // ~220 wpm
@@ -63,10 +67,13 @@ function interestValue(post, affinity) {
 
 // Facebook: conversation is worth more than taps, and worth more again
 // between people who are actually connected.
+// A repost by someone you follow is a vouch from inside your own graph, so it
+// counts nearly as much as following the author directly.
 function socialValue(post, followingSet) {
   const connected = followingSet.has(post.authorId);
   const msi = Math.log2(1 + (post.commentCount || 0)) * 1.8;
-  return (connected ? 4 : 0) + msi * (connected ? 1.5 : 1);
+  const vouches = post.repostedBy?.length || 0;
+  return (connected ? 4 : 0) + msi * (connected ? 1.5 : 1) + Math.log2(1 + vouches) * 3;
 }
 
 // Instagram: saves and sends outrank likes because they cost the user more.
@@ -74,7 +81,8 @@ function endorsementValue(post) {
   return (
     Math.log2(1 + (post.likeCount || 0)) * 0.9 +
     Math.log2(1 + (post.saveCount || 0)) * 1.8 +
-    Math.log2(1 + (post.sendCount || 0)) * 2.6
+    Math.log2(1 + (post.sendCount || 0)) * 2.6 +
+    Math.log2(1 + (post.repostCount || 0)) * 2.2
   );
 }
 
@@ -83,12 +91,12 @@ function endorsementValue(post) {
 // than finishing a 30-second clip, so this term scales with the format's
 // duration. Because the whole score is later divided by that same duration, a
 // well-retained long video ends up comparable to a well-retained short one
-// instead of being crushed by the division — which is the failure mode of
+// instead of being crushed by the division, which is the failure mode of
 // naive per-minute scoring.
 function deliveredAttention(post) {
   const starts = post.viewCount || 0;
   const finishes = post.completeCount || 0;
-  const minutes = ATTENTION_MINUTES[post.kind] ?? 0.5;
+  const minutes = attentionCost(post);
   // Unproven uploads get a neutral prior rather than a zero.
   const completion = starts < 5 ? 0.5 : Math.min(finishes / starts, 1);
   return completion * minutes * 3;
@@ -111,7 +119,7 @@ function positionBiasFactor(post) {
 
 export function scorePost(post, { followingSet, affinity, myUid }) {
   // Endorsements estimate how much value a post carries in total, so they are
-  // scaled by how long that value takes to deliver before the division —
+  // scaled by how long that value takes to deliver before the division,
   // otherwise a like on a 20-minute video counts for a twentieth of a like on
   // a clip, which is not what a like means.
   const durationWeight = Math.sqrt(attentionCost(post) / 0.3);
@@ -137,7 +145,7 @@ export function scorePost(post, { followingSet, affinity, myUid }) {
 
 // Minimum share of the first N slots each format is guaranteed, provided
 // enough candidates of that format exist.
-export const FORMAT_FLOORS = { post: 0.25, short: 0.2, video: 0.15 };
+export const FORMAT_FLOORS = { post: 0.2, text: 0.15, short: 0.2, video: 0.1 };
 
 const FLOOR_WINDOW = 20;
 const MAX_RUN_PER_KIND = 2;
@@ -166,8 +174,8 @@ export function rankFeed(posts, ctx) {
     const inWindow = placed < FLOOR_WINDOW;
 
     // Formats are paid down on pace across the window rather than all at the
-    // end. Batching them into the last few slots is what produces a "vvv" run
-    // — the exact clumping the diversity pass exists to avoid.
+    // end. Batching them into the last few slots is what produces a "vvv" run,
+    // the exact clumping the diversity pass exists to avoid.
     let behind = [];
     if (inWindow) {
       const elapsed = (placed + 1) / FLOOR_WINDOW;

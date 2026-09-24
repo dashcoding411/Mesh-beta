@@ -1,0 +1,84 @@
+import { AlertTriangle, RotateCw } from "lucide-react";
+import Button from "./Button";
+
+/* The states nobody screenshots. Every surface that loads data has to handle
+   all four: loading, empty, error and loaded. These are the shared versions so
+   they look and behave the same everywhere. */
+
+export function Spinner({ size = 18, className = "" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+      className={`animate-spin ${className}`}>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** A grey block the size of what's coming. */
+export function Skeleton({ className = "" }) {
+  return <div aria-hidden="true" className={`skeleton rounded-control ${className}`} />;
+}
+
+/** Announces loading to assistive tech while the skeletons carry the visual. */
+export function Loading({ label = "Loading", children }) {
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">{label}…</span>
+      {children}
+    </div>
+  );
+}
+
+/* An empty state answers three questions: why is this empty, what should I
+   do, and what happens when I do it. "No data" answers none of them. */
+export function EmptyState({ icon: Icon, title, body, action, compact = false }) {
+  return (
+    <div className={`flex flex-col items-center text-center ${compact ? "py-8" : "py-16"} px-6 anim-fade`}>
+      {Icon && (
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
+          <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
+        </div>
+      )}
+      <p className="text-title-3 text-fg">{title}</p>
+      {body && <p className="mt-2 max-w-xs text-callout text-fg-muted">{body}</p>}
+      {action && <div className="mt-6">{action}</div>}
+    </div>
+  );
+}
+
+/* Specific, understandable, actionable. The retry keeps whatever the user
+   was doing; it never throws them back to a blank page. */
+export function ErrorState({ title = "Something went wrong", body, onRetry, compact = false }) {
+  return (
+    <div role="alert" className={`flex flex-col items-center text-center ${compact ? "py-8" : "py-16"} px-6`}>
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-danger-text">
+        <AlertTriangle size={26} strokeWidth={1.75} aria-hidden="true" />
+      </div>
+      <p className="text-title-3 text-fg">{title}</p>
+      <p className="mt-2 max-w-xs text-callout text-fg-muted">
+        {body || "Check your connection and try again."}
+      </p>
+      {onRetry && (
+        <Button className="mt-6" icon={RotateCw} onClick={onRetry}>Try again</Button>
+      )}
+    </div>
+  );
+}
+
+/** Inline form message. Colour is never the only signal, errors carry an icon and words. */
+export function InlineMessage({ tone = "error", children, id }) {
+  if (!children) return null;
+  const tones = {
+    error: "text-danger-text",
+    success: "text-success-text",
+    warning: "text-warning-text",
+    info: "text-fg-muted",
+  };
+  return (
+    <p id={id} className={`flex items-start gap-1.5 text-caption ${tones[tone]}`}>
+      {tone === "error" && <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+      <span>{children}</span>
+    </p>
+  );
+}

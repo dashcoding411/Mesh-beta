@@ -2,7 +2,7 @@ import { BUSINESS } from "./business";
 
 /* These documents describe what the code in this repository actually does.
    If you change what data is collected, who it is shared with, or how long it
-   is kept, change these too — a policy that does not match the system is worse
+   is kept, change these too. A policy that does not match the system is worse
    than no policy, because it becomes a misleading representation.
 
    They are drafts prepared without legal advice. Have a lawyer admitted in
@@ -28,11 +28,11 @@ export const PRIVACY = {
     {
       h: "What we collect",
       list: [
-        ["Account details", "Your email address, or your phone number if you sign in by SMS. If you use Google or Apple sign-in, we receive the email address and name they release to us — nothing else."],
+        ["Account details", "Your email address, or your phone number if you sign in by SMS. If you use Google or Apple sign-in, we receive the email address and name they release to us, and nothing else."],
         ["Profile", "Your handle, display name, and anything you choose to add: bio, pronouns, town, birth year, profile picture, relationship link."],
         ["Birth year", "Collected to apply legal age protections. See 'Age' below."],
-        ["Content", "Posts, photos, videos, captions, comments, messages, circle membership, gathering RSVPs, and news submissions with their sources."],
-        ["Interaction signals", "Which accounts you follow, like, comment on, save, send, hide or report. These are used to order your feed and suggest accounts."],
+        ["Content", "Posts (Stills, Strands and Flicks), photos, videos, captions, image descriptions, comments, reposts, messages, circle membership, gathering RSVPs, and news submissions with their sources."],
+        ["Interaction signals", "Which accounts you follow, and which posts you like, comment on, repost, save, send, watch, skip, hide or report. These are used to order your feed and suggest accounts."],
         ["Technical", "Your last-active timestamp, so people you message can see whether you are online."],
       ],
       p: [
@@ -59,6 +59,7 @@ export const PRIVACY = {
       h: "Who can see what",
       list: [
         ["Public posts", "Visible to anyone signed in to Mesh."],
+        ["Reposts", "Public. When you repost something, your followers see it with your name on it, and it appears on your profile's Reposts tab."],
         ["Followers-only posts", "Visible to you and the people who follow you. Enforced on our servers, not only in the app."],
         ["Circle posts", "Visible according to that circle's privacy setting."],
         ["Messages", "Visible only to the people in that conversation. We can technically access message records to respond to a lawful request or a safety report; we do not read them otherwise."],
@@ -69,7 +70,7 @@ export const PRIVACY = {
       h: "Who we share it with",
       p: [
         "Mesh runs on Google Firebase (Authentication, Cloud Firestore, Cloud Storage). Google processes this data on our behalf as our service provider.",
-        "Your Firestore data is stored in Google's australia-southeast1 region (Sydney). Uploaded media is currently stored in the United States, which means that data is transferred overseas — Australian Privacy Principle 8 applies to that transfer.",
+        "Your Firestore data is stored in Google's australia-southeast1 region (Sydney). Uploaded media is currently stored in the United States, which means that data is transferred overseas. Australian Privacy Principle 8 applies to that transfer.",
         "If you sign in with Google or Apple, that provider knows you signed in to Mesh. If you use phone sign-in, Google reCAPTCHA runs to verify you are not a bot; that check sends data to Google and is only loaded at the moment you request an SMS code.",
         "We otherwise disclose personal information only where we are legally required to, or where it is necessary to prevent a serious threat to someone's life, health or safety.",
       ],
@@ -153,7 +154,7 @@ export const TERMS = {
       p: [
         "Using AI as a creative tool is welcome. Using it to deceive is not.",
         "You must not present AI-generated or AI-altered material as a real photograph, a real recording, a real event, or a real person's words. You must not use it to fabricate news, impersonate anyone, or manufacture fake endorsements and reviews.",
-        "Where AI-generated media could reasonably be mistaken for a real depiction of real people or events, label it.",
+        "Where AI-generated media could reasonably be mistaken for a real depiction of real people or events, label it. The composer has a \"Made with AI\" option for exactly this, and posts carrying it show the label to everyone.",
         "News submissions must be factual. Fabricated sources, invented quotes and AI-generated 'evidence' are grounds for removal and account termination.",
       ],
     },
@@ -215,7 +216,7 @@ export const COOKIES = {
     {
       h: "The short version",
       p: [
-        "Mesh sets no advertising cookies and no analytics cookies. There is no third-party tracking on this site, and nothing here follows you to other websites.",
+        "Mesh sets no advertising cookies and no analytics cookies. There is no third-party tracking on this site, and nothing here follows you to other websites. Even the fonts are served from Mesh itself rather than a font service, so loading a page doesn't tell anyone else you visited.",
         "What we do store is the minimum needed to keep you signed in and to stop the same message being posted a hundred times a second.",
       ],
     },
@@ -224,13 +225,15 @@ export const COOKIES = {
       list: [
         ["Your sign-in session", "Firebase Authentication stores a session token in your browser so you are not asked to sign in on every page load. Clearing it signs you out. Choosing 'Keep me signed in' stores it until you sign out; leaving it unticked stores it only until you close the tab."],
         ["Anti-spam timers", "A timestamp and your last post's text, stored locally under keys beginning 'mesh:', used to enforce the posting cooldown and catch duplicate posts. These never leave your device."],
+        ["Recent searches", "Your last few searches, stored under 'mesh:recent-searches' so they're one tap away. Kept on this device only, never sent to us, and cleared by the Clear all button in Search."],
+        ["Storage notice", "One key, 'mesh:storage-notice', remembering that you've dismissed the notice about this storage."],
         ["Google reCAPTCHA", "Only if you use phone sign-in. Google sets its own cookies to tell humans from bots. This does not load unless you request an SMS code."],
       ],
     },
     {
       h: "Why there is no consent banner",
       p: [
-        "Consent requirements under EU and UK rules apply to storage that is not strictly necessary — analytics, advertising, profiling. Mesh has none of those, so there is nothing to ask you to opt into.",
+        "Consent requirements under EU and UK rules apply to storage that is not strictly necessary, such as analytics, advertising and profiling. Mesh has none of those, so there is nothing to ask you to opt into.",
         "The items above are either strictly necessary to provide a service you asked for, or are security measures. We tell you about them here rather than interrupting you with a banner that has no meaningful choice behind it.",
         "If we ever add analytics or any non-essential storage, we will ask first, and it will be off until you say yes.",
       ],
@@ -248,12 +251,12 @@ export const COOKIES = {
 export const REFUNDS = {
   id: "refunds",
   title: "Refunds & Billing",
-  summary: "Mesh is free. There is nothing to charge or refund yet — here is what happens if that changes.",
+  summary: "Mesh is free. There is nothing to charge or refund yet. Here is what happens if that changes.",
   sections: [
     {
       h: "Right now",
       p: [
-        "Mesh does not charge for anything. There are no subscriptions, no purchases, no tipping, and we do not store payment details. If a page ever asks you to pay for Mesh today, it is not us — do not enter card details, and tell us.",
+        "Mesh does not charge for anything. There are no subscriptions, no purchases, no tipping, and we do not store payment details. If a page ever asks you to pay for Mesh today, it is not us. Do not enter card details, and tell us.",
       ],
     },
     {
@@ -267,7 +270,7 @@ export const REFUNDS = {
       h: "Your rights under Australian Consumer Law",
       p: [
         "Consumer guarantees apply to paid digital products and services and cannot be contracted out of.",
-        "If a paid feature has a major problem — it is unusable, substantially different from what was described, or unfit for its stated purpose — you are entitled to a refund, and you choose the remedy rather than us.",
+        "If a paid feature has a major problem (it is unusable, substantially different from what was described, or unfit for its stated purpose), you are entitled to a refund, and you choose the remedy rather than us.",
         "For a minor problem we may repair or replace it within a reasonable time. If we cannot, you can still get a refund.",
         "Changing your mind is not by itself a right to a refund, though we may give one anyway.",
       ],
@@ -296,9 +299,9 @@ export const GUIDELINES = {
     {
       h: "The rules",
       list: [
-        ["Do not attack people for who they are", "Hate speech targeting any group is removed. Our filters cover slurs against every group we know of — including ones many platforms overlook — but no filter is complete, so report what gets through."],
+        ["Do not attack people for who they are", "Hate speech targeting any group is removed. Our filters cover slurs against every group we know of, including ones many platforms overlook, but no filter is complete, so report what gets through."],
         ["Do not harass", "No targeted abuse, threats, or coordinated pile-ons."],
-        ["Do not deceive", "No impersonation, no fabricated news, no AI-generated material passed off as real, no fake reviews or endorsements."],
+        ["Do not deceive", "No impersonation, no fabricated news, no AI-generated material passed off as real, no fake reviews or endorsements. Using AI creatively is fine. Tick \"Made with AI\" when someone could mistake it for real."],
         ["Do not post what is not yours", "Only post media you made or have permission to use."],
         ["Do not spam", "No engagement farming, bulk unsolicited messages, or scams."],
         ["Respect the age rules", "Do not help someone under the minimum age create an account."],
@@ -308,7 +311,7 @@ export const GUIDELINES = {
       h: "How enforcement works",
       p: [
         "First, automated filters block the clearest cases before they post. Then reports go to human review.",
-        "Consequences scale: content removal, then feature restriction, then suspension, then permanent removal. Serious harms — child safety, credible threats — skip straight to the end and are reported to authorities.",
+        "Consequences scale: content removal, then feature restriction, then suspension, then permanent removal. Serious harms, such as child safety issues and credible threats, skip straight to the end and are reported to authorities.",
         "Circle admins moderate their own circles and can add stricter rules, but cannot loosen these.",
       ],
     },

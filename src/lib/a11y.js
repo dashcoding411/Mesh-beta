@@ -3,7 +3,7 @@
 
    The rule we follow: an author-written description always wins. Failing that,
    a caption rendered next to the image already conveys the meaning, so the
-   image is marked decorative — announcing the caption twice is worse than not
+   image is marked decorative, announcing the caption twice is worse than not
    announcing it at all. Only when there is neither do we fall back to a bare
    attribution, which at least tells a screen reader user what they've reached.
 

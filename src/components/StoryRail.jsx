@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from "react";
+import { Plus } from "lucide-react";
 import { fetchActiveStories, uploadMedia, createStory, me, StorageUnavailableError } from "../lib/db";
 import { validateMediaFile } from "../lib/validate";
-import { Avatar } from "./Nav";
+import { useShell } from "./shell/ShellContext";
+import Avatar from "./ui/Avatar";
+import { Spinner } from "./ui/States";
+import { useToast } from "./ui/toast-context";
 import StoryViewer from "./StoryViewer";
 
+/* 24-hour stories across the top of For You. Only shows when there's
+   something to show, or you can add one, an empty rail is just clutter. */
 export default function StoryRail() {
-  const [threads, setThreads] = useState([]); // one per author
-  const [viewing, setViewing] = useState(null); // index into threads
+  const { profile } = useShell();
+  const toast = useToast();
+  const [threads, setThreads] = useState([]);
+  const [viewing, setViewing] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -21,71 +28,63 @@ export default function StoryRail() {
     if (!file) return;
     const kind = file.type.startsWith("video/") ? "video" : "image";
     const v = validateMediaFile(file, kind);
-    if (v.error) return setError(v.error);
-    setError("");
+    if (v.error) return toast({ tone: "error", title: v.error });
     setUploading(true);
     try {
       const { url, path } = await uploadMedia(file);
       await createStory({ mediaUrl: url, mediaPath: path, mediaType: file.type });
       setThreads(await fetchActiveStories());
+      toast({ title: "Added to your story", body: "It disappears after 24 hours." });
     } catch (err) {
       console.error(err);
-      setError(err instanceof StorageUnavailableError ? err.message : "Story upload failed.");
+      toast({
+        tone: "error",
+        title: err instanceof StorageUnavailableError ? "Photo and video uploads aren't switched on yet" : "Your story didn't upload",
+        body: err instanceof StorageUnavailableError ? "Strands still work, so try posting words instead." : "Check your connection and try again.",
+      });
     } finally {
       setUploading(false);
     }
   };
 
-  const myThreadIdx = threads.findIndex((t) => t.authorId === me());
+  const mineIdx = threads.findIndex((t) => t.authorId === me());
+  const others = threads.map((t, i) => ({ t, i })).filter(({ t }) => t.authorId !== me());
 
   return (
-    <div>
-      <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
-        {/* your story / add */}
-        <div
-          onClick={() => (myThreadIdx !== -1 ? setViewing(myThreadIdx) : fileRef.current?.click())}
-          className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer"
-        >
-          <div className="relative">
-            <div className={`h-14 w-14 rounded-full p-[2px] ${myThreadIdx !== -1 ? "bg-gradient-to-tr from-violet-500 to-fuchsia-500" : "bg-zinc-800"}`}>
-              <div className="h-full w-full rounded-full bg-zinc-950 flex items-center justify-center text-xl">
-                {uploading ? <span className="animate-pulse text-xs">…</span> : "🙂"}
-              </div>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
-              className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-violet-600 text-xs flex items-center justify-center border-2 border-zinc-950"
-              aria-label="Add story"
-            >
-              +
-            </button>
-          </div>
-          <span className="text-[10px] text-zinc-400">Your story</span>
-        </div>
+    <section aria-label="Stories" className="border-b border-line">
+      <ul className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
+        <li className="relative flex w-[68px] shrink-0 flex-col items-center gap-1.5">
+          <button type="button"
+            onClick={() => (mineIdx !== -1 ? setViewing(mineIdx) : fileRef.current?.click())}
+            aria-label={mineIdx !== -1 ? "View your story" : "Add to your story"}
+            className="press rounded-full">
+            <Avatar profile={profile} size={60} ring={mineIdx !== -1} />
+          </button>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+            aria-label="Add to your story"
+            className="press absolute right-0 top-[40px] flex h-7 w-7 items-center justify-center rounded-full border-2 border-canvas bg-accent text-white">
+            {uploading ? <Spinner size={12} /> : <Plus size={14} strokeWidth={3} aria-hidden="true" />}
+          </button>
+          <span className="w-full truncate text-center text-label text-fg-muted">Your story</span>
+        </li>
 
-        {threads.map((t, i) =>
-          t.authorId === me() ? null : (
-            <button key={t.authorId} onClick={() => setViewing(i)} className="flex flex-col items-center gap-1.5 shrink-0 w-16 anim-pop">
-              <div className="h-14 w-14 rounded-full p-[2px] bg-gradient-to-tr from-violet-500 to-fuchsia-500">
-                <div className="h-full w-full rounded-full bg-zinc-950 p-[2px]">
-                  <Avatar profile={{ username: t.authorName, photoURL: t.authorPhoto }} size={12} className="h-full w-full" />
-                </div>
-              </div>
-              <span className="text-[10px] text-zinc-400 truncate w-full text-center">@{t.authorName}</span>
+        {others.map(({ t, i }) => (
+          <li key={t.authorId} className="flex w-[68px] shrink-0 flex-col items-center gap-1.5">
+            <button type="button" onClick={() => setViewing(i)} aria-label={`View @${t.authorName}'s story`}
+              className="press rounded-full">
+              <Avatar profile={{ username: t.authorName, photoURL: t.authorPhoto }} size={60} ring />
             </button>
-          )
-        )}
-      </div>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
-      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory} />
+            <span className="w-full truncate text-center text-label text-fg-muted">{t.authorName}</span>
+          </li>
+        ))}
+      </ul>
+      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory}
+        aria-hidden="true" tabIndex={-1} />
 
       {viewing !== null && threads[viewing] && (
-        <StoryViewer
-          thread={threads[viewing]}
-          onClose={() => setViewing(null)}
-          onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)}
-        />
+        <StoryViewer thread={threads[viewing]} onClose={() => setViewing(null)}
+          onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)} />
       )}
-    </div>
+    </section>
   );
 }

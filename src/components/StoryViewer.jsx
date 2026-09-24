@@ -1,12 +1,20 @@
-import { useEffect, useState } from "react";
-import { timeAgo } from "../lib/db";
-import { Avatar } from "./Nav";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { storyAlt } from "../lib/a11y";
+import { shortTime } from "../lib/format";
+import Avatar from "./ui/Avatar";
+import IconButton from "./ui/IconButton";
 
 const IMAGE_MS = 5000;
 
+/* Full-screen stories. Auto-advancing content has to be pausable (WCAG
+   2.2.2), so there's a pause button as well as press-and-hold; arrow keys
+   step through; Escape closes and focus returns to the rail. */
 export default function StoryViewer({ thread, onClose, onNextThread }) {
   const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const closeRef = useRef(null);
   const item = thread.items[idx];
   const isVideo = item.mediaType?.startsWith("video/");
 
@@ -17,65 +25,82 @@ export default function StoryViewer({ thread, onClose, onNextThread }) {
   const prev = () => setIdx(Math.max(0, idx - 1));
 
   useEffect(() => {
-    if (isVideo) return;
+    const opener = document.activeElement;
+    closeRef.current?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+      opener?.focus?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isVideo || paused) return;
     const t = setTimeout(next, IMAGE_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, thread]);
+  }, [idx, thread, paused]);
 
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") next();
       if (e.key === "ArrowLeft") prev();
+      if (e.key === " ") { e.preventDefault(); setPaused((p) => !p); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, thread]);
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center anim-fade" onClick={onClose}>
-      <div className="relative h-full max-h-[92vh] w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        {/* progress bars */}
-        <div className="absolute top-3 left-3 right-3 z-10 flex gap-1">
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={`@${thread.authorName}'s story`}
+      className="fixed inset-0 z-sheet flex items-center justify-center bg-black anim-fade">
+      <div className="relative h-full w-full max-w-md md:h-[92dvh] md:overflow-hidden md:rounded-sheet">
+        <div className="absolute inset-x-3 top-3 z-10 flex gap-1 pt-safe" aria-hidden="true">
           {thread.items.map((_, i) => (
-            <div key={i} className="h-0.5 flex-1 rounded bg-white/25 overflow-hidden">
+            <div key={i} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
               {i < idx && <div className="h-full w-full bg-white" />}
               {i === idx && !isVideo && (
-                <div className="h-full bg-white" style={{ animation: `mesh-story-bar ${IMAGE_MS}ms linear both` }} />
+                <div className="h-full bg-white"
+                  style={{ animation: `mesh-story-bar ${IMAGE_MS}ms linear both`, animationPlayState: paused ? "paused" : "running" }} />
               )}
-              {i === idx && isVideo && <div className="h-full w-full bg-white/60" />}
+              {i === idx && isVideo && <div className="h-full w-full bg-white/70" />}
             </div>
           ))}
         </div>
 
-        {/* header */}
-        <div className="absolute top-6 left-3 right-3 z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Avatar profile={{ username: thread.authorName, photoURL: thread.authorPhoto }} size={9} />
-            <div>
-              <p className="text-sm font-semibold drop-shadow">@{thread.authorName}</p>
-              <p className="text-[10px] text-zinc-300 drop-shadow">{timeAgo(item.createdAt)}</p>
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close story"
-            className="min-h-[44px] px-2 text-white/80 hover:text-white text-2xl leading-none drop-shadow">✕</button>
+        <div className="absolute inset-x-2 top-6 z-10 flex items-center gap-2 pt-safe">
+          <Avatar profile={{ username: thread.authorName, photoURL: thread.authorPhoto }} size={32} />
+          <p className="min-w-0 flex-1 text-callout font-semibold text-white drop-shadow">
+            {thread.authorName} <span className="font-normal text-white/75">{shortTime(item.createdAt)}</span>
+          </p>
+          <IconButton icon={paused ? Play : Pause} label={paused ? "Play story" : "Pause story"} tone="overlay"
+            onClick={() => setPaused((p) => !p)} />
+          <IconButton ref={closeRef} icon={X} label="Close story" tone="overlay" onClick={onClose} />
         </div>
 
-        {/* media */}
-        <div className="h-full w-full flex items-center justify-center bg-zinc-950 md:rounded-2xl overflow-hidden">
+        <div className="flex h-full w-full items-center justify-center bg-surface"
+          onPointerDown={() => setPaused(true)} onPointerUp={() => setPaused(false)} onPointerLeave={() => setPaused(false)}>
           {isVideo ? (
-            <video key={item.id} src={item.mediaUrl} className="h-full w-full object-contain" autoPlay playsInline onEnded={next} />
+            <video key={item.id} src={item.mediaUrl} className="h-full w-full object-contain" autoPlay playsInline
+              onEnded={next} aria-label={storyAlt(item, thread.authorName)} />
           ) : (
             <img key={item.id} src={item.mediaUrl} alt={storyAlt(item, thread.authorName)} className="h-full w-full object-contain anim-fade" />
           )}
         </div>
 
-        {/* tap zones */}
-        <button className="absolute inset-y-0 left-0 w-1/3" onClick={prev} aria-label="Previous" />
-        <button className="absolute inset-y-0 right-0 w-1/3" onClick={next} aria-label="Next" />
+        <button type="button" onClick={prev} aria-label="Previous"
+          className="absolute inset-y-20 left-0 flex w-1/3 items-center justify-start pl-2 text-white/0 hover:text-white/80 focus-visible:text-white/80">
+          <ChevronLeft size={32} aria-hidden="true" />
+        </button>
+        <button type="button" onClick={next} aria-label="Next"
+          className="absolute inset-y-20 right-0 flex w-1/3 items-center justify-end pr-2 text-white/0 hover:text-white/80 focus-visible:text-white/80">
+          <ChevronRight size={32} aria-hidden="true" />
+        </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
