@@ -70,7 +70,7 @@ export default function UserProfile({ uid, following, setFollowing, onClose }) {
         <button onClick={onClose} className="text-sm text-zinc-400 hover:text-zinc-200 mb-4">← Back</button>
 
         {!profile ? (
-          <p className="text-zinc-500">Loading…</p>
+          <p className="text-zinc-400">Loading…</p>
         ) : (
           <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 mb-6 anim-rise">
@@ -79,11 +79,11 @@ export default function UserProfile({ uid, following, setFollowing, onClose }) {
                 <div className="flex-1 min-w-0">
                   <h2 className="text-xl font-bold truncate">
                     @{profile.username}
-                    {profile.pronouns && <span className="ml-2 text-sm font-normal text-zinc-500">({profile.pronouns})</span>}
+                    {profile.pronouns && <span className="ml-2 text-sm font-normal text-zinc-400">({profile.pronouns})</span>}
                   </h2>
                   <div className="flex gap-4 mt-1 text-sm">
-                    <span><strong>{profile.followerCount || 0}</strong> <span className="text-zinc-500">followers</span></span>
-                    <span><strong>{profile.followingCount || 0}</strong> <span className="text-zinc-500">following</span></span>
+                    <span><strong>{profile.followerCount || 0}</strong> <span className="text-zinc-400">followers</span></span>
+                    <span><strong>{profile.followingCount || 0}</strong> <span className="text-zinc-400">following</span></span>
                   </div>
                 </div>
               </div>
@@ -91,7 +91,7 @@ export default function UserProfile({ uid, following, setFollowing, onClose }) {
               {(profile.bio || profile.town || profile.spouseUsername) && (
                 <div className="mt-4 space-y-1 text-sm text-zinc-300">
                   {profile.bio && <p className="whitespace-pre-wrap">{profile.bio}</p>}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500 pt-1">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400 pt-1">
                     {profile.town && <span>📍 {profile.town}</span>}
                     {profile.spouseUsername && !profile.spouseUsername.includes("pending") && <span>💍 {profile.spouseUsername}</span>}
                     <span>joined {timeAgo(profile.createdAt)}</span>
@@ -117,8 +117,8 @@ export default function UserProfile({ uid, following, setFollowing, onClose }) {
               )}
             </div>
 
-            {posts === null && <p className="text-zinc-500">Loading posts…</p>}
-            {posts?.length === 0 && <p className="text-zinc-500 text-sm">No posts to show.</p>}
+            {posts === null && <p className="text-zinc-400">Loading posts…</p>}
+            {posts?.length === 0 && <p className="text-zinc-400 text-sm">No posts to show.</p>}
             <div className="space-y-6 stagger">
               {posts?.map((p) => (
                 <PostCard key={p.id} post={p} liked={liked.has(p.id)} onLikedChange={onLikedChange} />

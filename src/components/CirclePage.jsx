@@ -132,7 +132,7 @@ export default function CirclePage({ group: initial, profile, onBack }) {
               className={`shrink-0 min-h-[44px] px-4 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === id
                   ? "border-violet-500 text-violet-300"
-                  : "border-transparent text-zinc-500 hover:text-zinc-300"
+                  : "border-transparent text-zinc-400 hover:text-zinc-300"
               }`}>
               {label}
             </button>
@@ -140,7 +140,7 @@ export default function CirclePage({ group: initial, profile, onBack }) {
         </div>
 
         {!canRead ? (
-          <div className="text-center text-zinc-500 mt-16">
+          <div className="text-center text-zinc-400 mt-16">
             <p className="text-lg font-semibold text-zinc-300">This circle is private</p>
             <p className="text-sm mt-1">Join to see what's being posted.</p>
           </div>
@@ -210,7 +210,7 @@ function SidePanel({ group, memberCount }) {
     <>
       <Panel title="About">
         <p className="text-sm text-zinc-300">{group.description || "No description yet."}</p>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-zinc-400">
           {memberCount} member{memberCount === 1 ? "" : "s"} · created {timeAgo(group.createdAt)}
         </p>
       </Panel>
@@ -230,7 +230,7 @@ function SidePanel({ group, memberCount }) {
               <div key={a.id} className="flex items-center gap-2">
                 <Avatar profile={{ username: a.username || a.id }} size={7} />
                 <span className="text-sm truncate">@{a.username || a.id.slice(0, 8)}</span>
-                <span className="ml-auto text-[10px] text-zinc-500">{ROLES[a.role]}</span>
+                <span className="ml-auto text-[10px] text-zinc-400">{ROLES[a.role]}</span>
               </div>
             ))}
           </div>
@@ -243,7 +243,7 @@ function SidePanel({ group, memberCount }) {
 function Panel({ title, children }) {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">{title}</h3>
       {children}
     </section>
   );
@@ -277,14 +277,14 @@ function Featured({ group, moderator, onCompose, canPost, onSeeAll }) {
         </div>
       )}
 
-      {posts === null && <p className="text-zinc-500 text-sm">Loading…</p>}
+      {posts === null && <p className="text-zinc-400 text-sm">Loading…</p>}
       {posts?.length === 0 && (
-        <p className="text-center text-zinc-500 text-sm py-8">Nothing posted yet. Be first.</p>
+        <p className="text-center text-zinc-400 text-sm py-8">Nothing posted yet. Be first.</p>
       )}
 
       {rest.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Recent</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">Recent</p>
           <div className="space-y-5">
             {rest.map((p) => (
               <PostCard key={p.id} post={p} liked={false} onLikedChange={() => {}} canModerate={moderator} />
@@ -330,8 +330,8 @@ function Discussion({ group, moderator, onPinned }) {
       return next;
     });
 
-  if (posts === null) return <p className="text-zinc-500 text-sm">Loading…</p>;
-  if (!posts.length) return <p className="text-center text-zinc-500 text-sm py-8">No posts yet.</p>;
+  if (posts === null) return <p className="text-zinc-400 text-sm">Loading…</p>;
+  if (!posts.length) return <p className="text-center text-zinc-400 text-sm py-8">No posts yet.</p>;
 
   return (
     <div className="space-y-5">
@@ -345,13 +345,13 @@ function Discussion({ group, moderator, onPinned }) {
               <button onClick={async () => {
                 await setPinnedPost(group.id, group.pinnedPostId === p.id ? "" : p.id);
                 onPinned();
-              }} className="text-[11px] text-zinc-500 hover:text-violet-300">
+              }} className="text-[11px] text-zinc-400 hover:text-violet-300">
                 {group.pinnedPostId === p.id ? "Unpin" : "Pin to Featured"}
               </button>
               <button onClick={async () => {
                 await setPostLocked(p.id, !p.locked);
                 setPosts((prev) => prev.map((x) => (x.id === p.id ? { ...x, locked: !x.locked } : x)));
-              }} className="text-[11px] text-zinc-500 hover:text-amber-300">
+              }} className="text-[11px] text-zinc-400 hover:text-amber-300">
                 {p.locked ? "Unlock comments" : "Pause comments"}
               </button>
               {p.locked && <span className="text-[11px] text-amber-400">Comments paused</span>}
@@ -388,8 +388,8 @@ function CircleGatherings({ group, canPost }) {
           Plan a gathering for this circle…
         </button>
       )}
-      {events === null && <p className="text-zinc-500 text-sm">Loading…</p>}
-      {events?.length === 0 && <p className="text-center text-zinc-500 text-sm py-8">Nothing planned yet.</p>}
+      {events === null && <p className="text-zinc-400 text-sm">Loading…</p>}
+      {events?.length === 0 && <p className="text-center text-zinc-400 text-sm py-8">Nothing planned yet.</p>}
       <div className="space-y-3">
         {events?.map((ev) => (
           <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null}
@@ -434,7 +434,7 @@ function Members({ group, isOwner, moderator, onCountChange }) {
     try { await fn(); } catch (err) { console.error(err); } finally { setBusy(""); }
   };
 
-  if (members === null) return <p className="text-zinc-500 text-sm">Loading members…</p>;
+  if (members === null) return <p className="text-zinc-400 text-sm">Loading members…</p>;
 
   return (
     <div className="space-y-2">
@@ -450,7 +450,7 @@ function Members({ group, isOwner, moderator, onCountChange }) {
                 {badge && <Badge {...badge} />}
                 {muted && <Badge label="Muted" tone="amber" />}
               </div>
-              <p className="text-xs text-zinc-500">{counts.get(m.id) || 0} posts here</p>
+              <p className="text-xs text-zinc-400">{counts.get(m.id) || 0} posts here</p>
             </div>
             {moderator && m.role !== "owner" && m.id !== me() && (
               <div className="flex gap-1.5 shrink-0">
@@ -540,7 +540,7 @@ function JoinFlow({ group, onClose, onRequested, onJoined }) {
       <form onSubmit={submit} className="space-y-4">
         {group.rules && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Rules</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">Rules</p>
             <ol className="space-y-1 text-sm text-zinc-300 list-decimal list-inside max-h-40 overflow-y-auto">
               {group.rules.split("\n").filter(Boolean).map((r, i) => <li key={i}>{r}</li>)}
             </ol>
@@ -582,7 +582,7 @@ function AdminAssist({ group, onClose, onSaved, onCountChange, isOwner }) {
         {SECTIONS.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={section === id} onClick={() => setSection(id)}
             className={`min-h-[40px] px-3 text-sm font-medium border-b-2 -mb-px transition ${
-              section === id ? "border-violet-500 text-violet-300" : "border-transparent text-zinc-500 hover:text-zinc-300"
+              section === id ? "border-violet-500 text-violet-300" : "border-transparent text-zinc-400 hover:text-zinc-300"
             }`}>
             {label}
           </button>
@@ -604,8 +604,8 @@ function JoinRequests({ group, onCountChange }) {
     fetchJoinRequests(group.id).then(setRequests).catch(() => setRequests([]));
   }, [group.id]);
 
-  if (requests === null) return <p className="text-sm text-zinc-500">Loading…</p>;
-  if (!requests.length) return <p className="text-sm text-zinc-500">No pending requests.</p>;
+  if (requests === null) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (!requests.length) return <p className="text-sm text-zinc-400">No pending requests.</p>;
 
   return (
     <div className="space-y-3">
@@ -614,7 +614,7 @@ function JoinRequests({ group, onCountChange }) {
           <p className="text-sm font-semibold">@{r.username || r.uid.slice(0, 8)}</p>
           {(r.answers || []).map((a, i) => (
             <div key={i} className="mt-2">
-              <p className="text-[11px] text-zinc-500">{a.q}</p>
+              <p className="text-[11px] text-zinc-400">{a.q}</p>
               <p className="text-sm text-zinc-300">{a.a}</p>
             </div>
           ))}
@@ -651,7 +651,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
   const [questions, setQuestions] = useState(group.screeningQuestions || []);
   const [msg, setMsg] = useState("");
 
-  if (!isOwner) return <p className="text-sm text-zinc-500">Only the circle admin can edit these.</p>;
+  if (!isOwner) return <p className="text-sm text-zinc-400">Only the circle admin can edit these.</p>;
 
   return (
     <div className="space-y-4">
@@ -674,7 +674,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
               setQuestions(next);
             }} />
         ))}
-        <p className="text-[11px] text-zinc-600">
+        <p className="text-[11px] text-zinc-400">
           Asking anything at all turns on approval — requests land in the Requests tab.
         </p>
       </div>
@@ -697,13 +697,13 @@ function AutomodEditor({ group, onSaved, isOwner }) {
   const [words, setWords] = useState((group.automod?.bannedWords || []).join(", "));
   const [msg, setMsg] = useState("");
 
-  if (!isOwner) return <p className="text-sm text-zinc-500">Only the circle admin can edit these.</p>;
+  if (!isOwner) return <p className="text-sm text-zinc-400">Only the circle admin can edit these.</p>;
 
   const toggle = (key) => setLocal({ ...automod, [key]: !automod[key] });
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-zinc-400">
         Rules run automatically before a post is written. Mesh's platform-wide hate-speech
         and spam filters apply on top of these and can't be switched off.
       </p>
@@ -749,7 +749,7 @@ function Modal({ title, onClose, wide, children }) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">{title}</h3>
           <button onClick={onClose} aria-label="Close"
-            className="min-h-[36px] px-2 text-zinc-500 hover:text-zinc-200">✕</button>
+            className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
         </div>
         {children}
       </div>

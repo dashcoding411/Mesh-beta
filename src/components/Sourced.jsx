@@ -48,14 +48,15 @@ export default function Sourced() {
             Submit a story
           </button>
         </div>
-        <p className="text-xs text-zinc-500 mb-6 leading-relaxed">
-          Everything here is fact-checked before publication. Submissions must include the full script
-          and at least two sources. No sources, no story.
+        <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
+          Nothing publishes here without human review. Submissions must include the full script and
+          at least two sources, and a reviewer checks the story against them before it goes up.
+          Review is not a guarantee of truth — follow the sources and judge for yourself.
         </p>
 
         {admin && pending.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 anim-rise">
-            <h3 className="text-sm font-bold text-amber-400 mb-3">Awaiting fact-check ({pending.length})</h3>
+            <h3 className="text-sm font-bold text-amber-400 mb-3">Awaiting review ({pending.length})</h3>
             <div className="space-y-4">
               {pending.map((n) => (
                 <NewsCard key={n.id} item={n} full
@@ -79,7 +80,7 @@ export default function Sourced() {
 
         {mine.filter((n) => n.status !== "approved").length > 0 && (
           <section className="mb-8">
-            <h3 className="text-sm font-semibold text-zinc-500 mb-3">Your submissions</h3>
+            <h3 className="text-sm font-semibold text-zinc-400 mb-3">Your submissions</h3>
             <div className="space-y-3">
               {mine.filter((n) => n.status !== "approved").map((n) => (
                 <div key={n.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 flex items-center justify-between">
@@ -87,7 +88,7 @@ export default function Sourced() {
                   <span className={`text-xs shrink-0 ml-3 px-2 py-1 rounded-full ${
                     n.status === "pending" ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400"
                   }`}>
-                    {n.status === "pending" ? "in fact-check" : "rejected"}
+                    {n.status === "pending" ? "in review" : "rejected"}
                   </span>
                 </div>
               ))}
@@ -95,9 +96,9 @@ export default function Sourced() {
           </section>
         )}
 
-        {items === null && <p className="text-zinc-500">Loading news…</p>}
+        {items === null && <p className="text-zinc-400">Loading news…</p>}
         {items?.length === 0 && (
-          <div className="text-center text-zinc-500 mt-16">
+          <div className="text-center text-zinc-400 mt-16">
             <p className="text-lg font-semibold text-zinc-300">No verified stories yet</p>
             <p className="text-sm mt-1">Submit one — with sources.</p>
           </div>
@@ -116,10 +117,10 @@ function NewsCard({ item, full = false, actions }) {
   const [expanded, setExpanded] = useState(full);
   return (
     <article className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 transition hover:border-zinc-700">
-      <div className="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+      <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
         {item.status === "approved" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-400 px-2 py-0.5 font-semibold">
-            ✓ fact-checked
+            ✓ reviewed against sources
           </span>
         )}
         <button onClick={() => openUserProfile(item.authorId)} className="hover:text-violet-300">@{item.authorName}</button>
@@ -135,7 +136,7 @@ function NewsCard({ item, full = false, actions }) {
         </button>
       )}
       <div className="mt-3 pt-3 border-t border-zinc-800">
-        <p className="text-[11px] uppercase tracking-wider text-zinc-600 mb-1">Sources</p>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1">Sources</p>
         <ul className="space-y-0.5">
           {(item.sources || []).map((s, i) => (
             <li key={i}>
@@ -195,8 +196,8 @@ function SubmitModal({ onClose, onSubmitted }) {
       <form onSubmit={submit} onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-3 anim-pop">
         <h3 className="font-bold text-lg">Submit a news story</h3>
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          Your story goes to fact-checking before anyone sees it. Provide the complete script and
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          Your story goes to a reviewer before anyone sees it. Provide the complete script and
           the sources backing every claim — at least two, one URL per line.
         </p>
         <input className={input} placeholder="Headline" value={title}
@@ -208,7 +209,7 @@ function SubmitModal({ onClose, onSubmitted }) {
         {error && <p className="text-sm text-red-400">{error}</p>}
         <button disabled={busy}
           className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-50 py-3 font-semibold text-sm">
-          {busy ? "Submitting…" : "Send to fact-check"}
+          {busy ? "Submitting…" : "Send for review"}
         </button>
       </form>
     </div>

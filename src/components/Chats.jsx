@@ -11,6 +11,7 @@ import {
 import { LIMITS } from "../lib/validate";
 import { checkContent, checkName } from "../lib/moderation";
 import { Avatar } from "./Nav";
+import { mediaAlt } from "../lib/a11y";
 
 const FIELD =
   "w-full min-h-[44px] rounded-xl bg-zinc-900 border border-zinc-800 px-3.5 py-2.5 text-base " +
@@ -75,7 +76,7 @@ export default function Chats({ following }) {
           {TABS.map(([id, label]) => (
             <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
               className={`flex-1 min-h-[34px] rounded-lg text-xs font-medium transition ${
-                tab === id ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
+                tab === id ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-300"
               }`}>
               {label}
               {buckets[id].length > 0 && <span className="ml-1 text-[10px] opacity-70">{buckets[id].length}</span>}
@@ -84,9 +85,9 @@ export default function Chats({ following }) {
         </div>
 
         <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-          {chats === null && <p className="text-sm text-zinc-500 p-4">Loading…</p>}
+          {chats === null && <p className="text-sm text-zinc-400 p-4">Loading…</p>}
           {chats && buckets[tab].length === 0 && (
-            <p className="text-sm text-zinc-500 px-4 py-8 text-center">
+            <p className="text-sm text-zinc-400 px-4 py-8 text-center">
               {tab === "requests" ? "No message requests." : "Nothing here yet."}
             </p>
           )}
@@ -106,7 +107,7 @@ export default function Chats({ following }) {
             setActiveId(null);
           }} />
       ) : (
-        <div className="hidden md:flex flex-1 items-center justify-center text-zinc-600 text-sm">
+        <div className="hidden md:flex flex-1 items-center justify-center text-zinc-400 text-sm">
           Pick a conversation
         </div>
       )}
@@ -148,18 +149,18 @@ function ChatRow({ chat, active, unread, pinnedCount, onOpen, onChanged }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className={`text-sm truncate ${unread ? "font-bold text-white" : "font-semibold"}`}>
-            {pinned && <span className="text-zinc-500 mr-1">▲</span>}
+            {pinned && <span className="text-zinc-400 mr-1">▲</span>}
             {chatTitle(chat)}
-            {muted && <span className="ml-1 text-zinc-600 text-xs">muted</span>}
+            {muted && <span className="ml-1 text-zinc-400 text-xs">muted</span>}
           </p>
-          <p className={`text-xs truncate ${unread ? "text-zinc-300" : "text-zinc-500"}`}>
+          <p className={`text-xs truncate ${unread ? "text-zinc-300" : "text-zinc-400"}`}>
             {chat.lastSenderId === me() && chat.lastMessage ? "You: " : ""}{chat.lastMessage || "Say hi"}
           </p>
         </div>
-        <span className="text-[10px] text-zinc-600 shrink-0">{timeAgo(chat.updatedAt)}</span>
+        <span className="text-[10px] text-zinc-400 shrink-0">{timeAgo(chat.updatedAt)}</span>
       </button>
       <button onClick={() => setMenu(true)} aria-label="Chat options"
-        className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg text-zinc-600 md:opacity-0 group-hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-200 transition">
+        className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg text-zinc-400 md:opacity-0 group-hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-200 transition">
         ⋯
       </button>
 
@@ -170,11 +171,11 @@ function ChatRow({ chat, active, unread, pinnedCount, onOpen, onChanged }) {
             catch (e) { setError(e.message); }
           }}>
             {pinned ? "Unpin" : "Pin to top"}
-            {!pinned && <span className="block text-xs text-zinc-500">Up to 3 chats</span>}
+            {!pinned && <span className="block text-xs text-zinc-400">Up to 3 chats</span>}
           </MenuItem>
           <MenuItem onClick={async () => { await toggleMute(chat); onChanged(); setMenu(false); }}>
             {muted ? "Unmute" : "Mute"}
-            <span className="block text-xs text-zinc-500">
+            <span className="block text-xs text-zinc-400">
               {muted ? "Moves back to Primary" : "Moves this chat to General"}
             </span>
           </MenuItem>
@@ -253,7 +254,8 @@ function ChatWindow({ chat, onBack, onMarkUnread }) {
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800/80">
-        <button onClick={onBack} className="md:hidden min-h-[44px] px-1 text-zinc-400">←</button>
+        <button onClick={onBack} aria-label="Back to conversations"
+            className="md:hidden min-h-[44px] px-1 text-zinc-400">←</button>
         <button onClick={() => !chat.isGroup && openUserProfile(others[0])}
           className="flex items-center gap-3 min-w-0 flex-1 text-left">
           <div className={`h-9 w-9 shrink-0 rounded-full bg-gradient-to-br ${theme.bubble} flex items-center justify-center font-bold text-sm`}>
@@ -261,22 +263,22 @@ function ChatWindow({ chat, onBack, onMarkUnread }) {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{chatTitle(chat)}</p>
-            <p className="text-[11px] text-zinc-500 truncate">
+            <p className="text-[11px] text-zinc-400 truncate">
               {typing.length > 0 ? "typing…" : chat.isGroup ? `${chat.members.length} members` : presenceText}
             </p>
           </div>
         </button>
-        <button onClick={onMarkUnread} className="min-h-[36px] px-2 text-xs text-zinc-500 hover:text-zinc-200">
+        <button onClick={onMarkUnread} className="min-h-[36px] px-2 text-xs text-zinc-400 hover:text-zinc-200">
           Unread
         </button>
         <button onClick={() => setSettings(true)} aria-label="Chat settings"
-          className="min-h-[36px] px-2 text-zinc-500 hover:text-zinc-200">⋯</button>
+          className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">⋯</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-        {messages === null && <p className="text-sm text-zinc-500">Loading…</p>}
+        {messages === null && <p className="text-sm text-zinc-400">Loading…</p>}
         {messages?.length === 0 && (
-          <p className="text-sm text-zinc-600 text-center py-8">No messages yet. Say something.</p>
+          <p className="text-sm text-zinc-400 text-center py-8">No messages yet. Say something.</p>
         )}
         {messages?.map((m, i) => (
           <MessageRow key={m.id} msg={m} chat={chat} theme={theme} prev={messages[i - 1]}
@@ -292,7 +294,7 @@ function ChatWindow({ chat, onBack, onMarkUnread }) {
             </div>
           </div>
         )}
-        {seen && <p className="text-[10px] text-zinc-600 text-right pr-1">Seen</p>}
+        {seen && <p className="text-[10px] text-zinc-400 text-right pr-1">Seen</p>}
         <div ref={bottomRef} />
       </div>
 
@@ -302,10 +304,10 @@ function ChatWindow({ chat, onBack, onMarkUnread }) {
             <p className="text-[11px] text-violet-400 font-medium">
               {editing ? "Editing message" : "Replying"}
             </p>
-            <p className="text-xs text-zinc-500 truncate">{(editing || replyTo).text}</p>
+            <p className="text-xs text-zinc-400 truncate">{(editing || replyTo).text}</p>
           </div>
           <button onClick={() => { setReplyTo(null); setEditing(null); setText(""); }}
-            aria-label="Cancel" className="min-h-[36px] px-2 text-zinc-500 hover:text-zinc-200">✕</button>
+            aria-label="Cancel" className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
         </div>
       )}
 
@@ -344,7 +346,7 @@ function MessageRow({ msg, chat, theme, prev, onReply, onEdit }) {
   if (msg.deleted) {
     return (
       <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-        <p className="text-xs text-zinc-600 italic px-3.5 py-2">Message unsent</p>
+        <p className="text-xs text-zinc-400 italic px-3.5 py-2">Message unsent</p>
       </div>
     );
   }
@@ -401,12 +403,12 @@ function MessageRow({ msg, chat, theme, prev, onReply, onEdit }) {
           <MenuItem onClick={() => { onReply(); setMenu(false); }}>Reply</MenuItem>
           {canEdit(msg) && <MenuItem onClick={() => { onEdit(); setMenu(false); }}>
             Edit
-            <span className="block text-xs text-zinc-500">Within 15 minutes of sending</span>
+            <span className="block text-xs text-zinc-400">Within 15 minutes of sending</span>
           </MenuItem>}
           {mine && (
             <MenuItem danger onClick={async () => { await unsendMessage(chat.id, msg); setMenu(false); }}>
               Unsend
-              <span className="block text-xs text-zinc-500">Removes it for everyone</span>
+              <span className="block text-xs text-zinc-400">Removes it for everyone</span>
             </MenuItem>
           )}
         </Sheet>
@@ -434,7 +436,7 @@ function SharedPostCard({ post }) {
               <span className="absolute inset-0 flex items-center justify-center text-2xl text-white/85">▶</span>
             </>
           ) : (
-            <img src={post.mediaUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+            <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover" />
           )}
         </div>
       ) : (
@@ -532,7 +534,7 @@ function ChatSettings({ chat, onClose }) {
     <Sheet title="Chat settings" onClose={onClose}>
       <div className="space-y-5">
         <div>
-          <p className="text-xs text-zinc-500 mb-2">Theme</p>
+          <p className="text-xs text-zinc-400 mb-2">Theme</p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(CHAT_THEMES).map(([id, t]) => (
               <button key={id} onClick={() => setChatTheme(chat.id, id)} aria-label={t.label}
@@ -544,7 +546,7 @@ function ChatSettings({ chat, onClose }) {
         </div>
 
         <div>
-          <p className="text-xs text-zinc-500 mb-2">Nickname</p>
+          <p className="text-xs text-zinc-400 mb-2">Nickname</p>
           {chat.isGroup && (
             <select value={target} onChange={(e) => setTarget(e.target.value)}
               className={`${FIELD} mb-2`} aria-label="Who to nickname">
@@ -567,7 +569,7 @@ function ChatSettings({ chat, onClose }) {
               Save
             </button>
           </div>
-          <p aria-live="polite" className="mt-1 text-[11px] text-zinc-600">
+          <p aria-live="polite" className="mt-1 text-[11px] text-zinc-400">
             {msg || "Only shown inside this chat."}
           </p>
         </div>
@@ -624,7 +626,7 @@ function ThoughtsRail({ chats }) {
               {mine?.text || "Thought"}
             </span>
           </div>
-          <span className="text-[10px] text-zinc-500">You</span>
+          <span className="text-[10px] text-zinc-400">You</span>
         </button>
         {thoughts.map((n) => (
           <div key={n.uid} className="flex flex-col items-center gap-1 shrink-0 w-16">
@@ -634,14 +636,14 @@ function ThoughtsRail({ chats }) {
                 {n.text}
               </span>
             </div>
-            <span className="text-[10px] text-zinc-500 truncate w-full text-center">@{n.username}</span>
+            <span className="text-[10px] text-zinc-400 truncate w-full text-center">@{n.username}</span>
           </div>
         ))}
       </div>
 
       {editing && (
         <Sheet title="Your thought" onClose={() => setEditing(false)}>
-          <p className="text-xs text-zinc-500 mb-2">Up to 60 characters. Disappears after 24 hours.</p>
+          <p className="text-xs text-zinc-400 mb-2">Up to 60 characters. Disappears after 24 hours.</p>
           <input className={FIELD} value={text} onChange={(e) => setText(e.target.value)}
             maxLength={60} autoFocus placeholder="What's on your mind?" aria-label="Thought" />
           <div aria-live="polite">{error && <p className="text-sm text-red-400 mt-2">{error}</p>}</div>
@@ -718,7 +720,7 @@ function NewChatModal({ onClose, onCreated }) {
             className="w-full flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-800 text-left">
             <Avatar profile={u} size={7} />
             <span className="text-sm">
-              {u.name || u.username}<span className="text-zinc-500 ml-1.5">@{u.username}</span>
+              {u.name || u.username}<span className="text-zinc-400 ml-1.5">@{u.username}</span>
             </span>
           </button>
         ))}
@@ -757,7 +759,7 @@ function Sheet({ title, onClose, children }) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm truncate">{title}</h3>
           <button onClick={onClose} aria-label="Close"
-            className="min-h-[36px] px-2 text-zinc-500 hover:text-zinc-200">✕</button>
+            className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
         </div>
         {children}
       </div>

@@ -62,7 +62,7 @@ export function GatheringCard({ event, myStatus, onStatusChange, compact }) {
           {!compact && event.description && (
             <p className="text-sm text-zinc-400 mt-2 whitespace-pre-wrap break-words">{event.description}</p>
           )}
-          <p className="text-xs text-zinc-500 mt-2">
+          <p className="text-xs text-zinc-400 mt-2">
             Hosted by{" "}
             <button onClick={() => openUserProfile(event.hostId)} className="hover:text-violet-300">
               @{event.hostName}
@@ -101,7 +101,7 @@ export function GatheringCard({ event, myStatus, onStatusChange, compact }) {
       )}
 
       <button onClick={() => setOpen((o) => !o)}
-        className="mt-3 block text-xs text-zinc-500 hover:text-zinc-300">
+        className="mt-3 block text-xs text-zinc-400 hover:text-zinc-300">
         {open ? "Hide details" : "Announcements & guests"}
       </button>
 
@@ -142,14 +142,14 @@ function GatheringDetail({ event, isHost }) {
   return (
     <div className="mt-3 pt-3 border-t border-zinc-800 space-y-3">
       <div>
-        <p className="text-[11px] uppercase tracking-wider text-zinc-600 mb-1.5">Announcements</p>
-        {announcements === null && <p className="text-xs text-zinc-500">Loading…</p>}
-        {announcements?.length === 0 && <p className="text-xs text-zinc-600">No announcements yet.</p>}
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1.5">Announcements</p>
+        {announcements === null && <p className="text-xs text-zinc-400">Loading…</p>}
+        {announcements?.length === 0 && <p className="text-xs text-zinc-400">No announcements yet.</p>}
         <div className="space-y-1.5">
           {announcements?.map((a, i) => (
             <p key={a.id || i} className="text-sm text-zinc-300">
               <span className="font-semibold">@{a.authorName}</span> {a.text}
-              <span className="ml-2 text-xs text-zinc-600">{timeAgo(a.createdAt)}</span>
+              <span className="ml-2 text-xs text-zinc-400">{timeAgo(a.createdAt)}</span>
             </p>
           ))}
         </div>
@@ -166,11 +166,11 @@ function GatheringDetail({ event, isHost }) {
       </div>
 
       <div>
-        <p className="text-[11px] uppercase tracking-wider text-zinc-600 mb-1.5">Guests</p>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1.5">Guests</p>
         {!event.showGuestList && !isHost ? (
-          <p className="text-xs text-zinc-600">The host has hidden the guest list.</p>
+          <p className="text-xs text-zinc-400">The host has hidden the guest list.</p>
         ) : guests?.length === 0 ? (
-          <p className="text-xs text-zinc-600">Nobody has replied yet.</p>
+          <p className="text-xs text-zinc-400">Nobody has replied yet.</p>
         ) : (
           <p className="text-sm text-zinc-300">
             {guests?.map((g) => `@${g.username || g.id}`).join(", ")}
@@ -260,7 +260,7 @@ export function NewGatheringForm({ onClose, onCreated, groupId = "" }) {
                   onChange={() => setForm({ ...form, privacy: p.id })} className="mt-0.5 accent-violet-600" />
                 <span>
                   <span className="block text-sm font-medium">{p.label}</span>
-                  <span className="block text-xs text-zinc-500">{p.blurb}</span>
+                  <span className="block text-xs text-zinc-400">{p.blurb}</span>
                 </span>
               </label>
             ))}

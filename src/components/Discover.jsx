@@ -54,7 +54,7 @@ export default function Discover({ goTo, following, setFollowing }) {
     <div className="h-full overflow-y-auto pb-24 md:pb-6">
       <div className="max-w-xl mx-auto px-4 py-6">
         <input
-          className="w-full rounded-2xl bg-zinc-900 border border-zinc-800 px-5 py-3.5 text-base placeholder-zinc-500 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition"
+          className="w-full rounded-2xl bg-zinc-900 border border-zinc-800 px-5 py-3.5 text-base placeholder-zinc-400 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition"
           placeholder="Search Mesh — people, posts, circles, gatherings…"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
@@ -75,7 +75,7 @@ export default function Discover({ goTo, following, setFollowing }) {
         {results === null && !searching && (
           <SuggestedPeople following={following} setFollowing={setFollowing} />
         )}
-        {searching && <p className="text-center text-zinc-500 text-sm mt-8 animate-pulse">Searching…</p>}
+        {searching && <p className="text-center text-zinc-400 text-sm mt-8 animate-pulse">Searching…</p>}
 
         {results && (
           <div className="mt-6 space-y-8 anim-fade">
@@ -87,7 +87,7 @@ export default function Discover({ goTo, following, setFollowing }) {
                     <Avatar profile={u} size={9} />
                     <div>
                       <p className="text-sm font-semibold">@{u.username}</p>
-                      {u.bio && <p className="text-xs text-zinc-500 line-clamp-1">{u.bio}</p>}
+                      {u.bio && <p className="text-xs text-zinc-400 line-clamp-1">{u.bio}</p>}
                     </div>
                   </button>
                 ))}
@@ -100,7 +100,7 @@ export default function Discover({ goTo, following, setFollowing }) {
                   <button key={g.id} onClick={() => goTo("circles")}
                     className="w-full rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-left hover:border-violet-600/50 transition">
                     <p className="text-sm font-semibold">{g.name}</p>
-                    <p className="text-xs text-zinc-500">{g.memberCount || 0} member{g.memberCount === 1 ? "" : "s"}</p>
+                    <p className="text-xs text-zinc-400">{g.memberCount || 0} member{g.memberCount === 1 ? "" : "s"}</p>
                   </button>
                 ))}
               </Section>
@@ -112,7 +112,7 @@ export default function Discover({ goTo, following, setFollowing }) {
                   <button key={ev.id} onClick={() => goTo("circles")}
                     className="w-full rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-left hover:border-violet-600/50 transition">
                     <p className="text-sm font-semibold">{ev.title}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-zinc-400">
                       {ev.startsAt?.toDate ? ev.startsAt.toDate().toLocaleDateString() : ""} {ev.location && `· ${ev.location}`}
                     </p>
                   </button>
@@ -126,7 +126,7 @@ export default function Discover({ goTo, following, setFollowing }) {
                   <button key={n.id} onClick={() => goTo("sourced")}
                     className="w-full rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-left hover:border-violet-600/50 transition">
                     <p className="text-sm font-semibold">✓ {n.title}</p>
-                    <p className="text-xs text-zinc-500">@{n.authorName} · {timeAgo(n.createdAt)}</p>
+                    <p className="text-xs text-zinc-400">@{n.authorName} · {timeAgo(n.createdAt)}</p>
                   </button>
                 ))}
               </Section>
@@ -143,7 +143,7 @@ export default function Discover({ goTo, following, setFollowing }) {
             )}
 
             {Object.values(results).every((r) => r.length === 0) && (
-              <p className="text-center text-zinc-500 text-sm mt-8">Nothing found for “{term}”.</p>
+              <p className="text-center text-zinc-400 text-sm mt-8">Nothing found for “{term}”.</p>
             )}
           </div>
         )}
@@ -177,13 +177,13 @@ function SuggestedPeople({ following, setFollowing }) {
 
   return (
     <section className="mt-8">
-      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">People to follow</h3>
-      <p className="text-xs text-zinc-600 mb-3">
+      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">People to follow</h3>
+      <p className="text-xs text-zinc-400 mb-3">
         Built from who you already follow and what you engage with — never from your contacts or location.
       </p>
-      {people === null && <p className="text-sm text-zinc-500">Finding people…</p>}
+      {people === null && <p className="text-sm text-zinc-400">Finding people…</p>}
       {people?.length === 0 && (
-        <p className="text-sm text-zinc-600">Nobody to suggest yet. Search for someone by handle.</p>
+        <p className="text-sm text-zinc-400">Nobody to suggest yet. Search for someone by handle.</p>
       )}
       <div className="space-y-2 stagger">
         {people?.map((p) => (
@@ -193,7 +193,7 @@ function SuggestedPeople({ following, setFollowing }) {
             </button>
             <button onClick={() => openUserProfile(p.id)} className="min-w-0 flex-1 text-left">
               <p className="text-sm font-semibold truncate">{p.name || p.username}</p>
-              <p className="text-xs text-zinc-500 truncate">@{p.username}</p>
+              <p className="text-xs text-zinc-400 truncate">@{p.username}</p>
               <p className="text-[11px] text-violet-400/80 truncate">{p.reason}</p>
             </button>
             <button onClick={() => follow(p)} disabled={busy === p.id}
@@ -210,7 +210,7 @@ function SuggestedPeople({ following, setFollowing }) {
 function Section({ title, children }) {
   return (
     <section>
-      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">{title}</h3>
+      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">{title}</h3>
       <div className="space-y-2">{children}</div>
     </section>
   );

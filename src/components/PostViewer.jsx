@@ -45,9 +45,9 @@ export default function PostViewer({ postId, onClose }) {
           ← Back
         </button>
 
-        {post === undefined && <p className="text-zinc-500">Loading post…</p>}
+        {post === undefined && <p className="text-zinc-400">Loading post…</p>}
         {post === null && (
-          <div className="text-center text-zinc-500 mt-16">
+          <div className="text-center text-zinc-400 mt-16">
             <p className="text-lg font-semibold text-zinc-300">Post unavailable</p>
             <p className="text-sm mt-1">It may have been deleted, or you may not have access.</p>
           </div>

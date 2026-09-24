@@ -8,12 +8,13 @@ import {
 import { validateUsername, validBirthYear } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../lib/db";
+import Legal from "./Legal";
 
 /* Inputs use text-base (16px) so iOS Safari never zooms on focus, and every
    control clears the 44px touch target minimum. */
 const FIELD =
   "w-full min-h-[44px] rounded-xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 text-base " +
-  "placeholder-zinc-500 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 transition";
+  "placeholder-zinc-400 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 transition";
 const FIELD_BAD = "border-red-500/70 focus:border-red-500 focus:ring-red-500/30";
 const SOCIAL =
   "w-full min-h-[44px] rounded-xl py-3 px-4 font-semibold text-[15px] flex items-center justify-center gap-3 " +
@@ -58,11 +59,13 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [pendingUser, setPendingUser] = useState(null); // OAuth/phone user with no Mesh profile
+  const [consent, setConsent] = useState(false);
+  const [legalDoc, setLegalDoc] = useState(null); // showing a policy over the form
 
   const recaptchaRef = useRef(null);
   const ids = {
     email: useId(), password: useId(), username: useId(), displayName: useId(),
-    birthYear: useId(), phone: useId(), code: useId(), remember: useId(),
+    birthYear: useId(), phone: useId(), code: useId(), remember: useId(), consent: useId(),
   };
 
   useEffect(() => { applyPersistence(remember).catch(() => {}); }, [remember]);
@@ -97,6 +100,7 @@ export default function AuthPage() {
     setError(""); setNotice(""); setBusy(true);
     try {
       if (mode === "signup") {
+        if (!consent) throw new Error("Please accept the Terms and Privacy Policy to create an account.");
         if (password.length < 8) throw new Error("Password must be at least 8 characters.");
         const vYear = validBirthYear(birthYear);
         if (vYear.error) throw new Error(vYear.error);
@@ -145,6 +149,7 @@ export default function AuthPage() {
     e.preventDefault();
     setError(""); setBusy(true);
     try {
+      if (!consent) throw new Error("Please accept the Terms and Privacy Policy to create an account.");
       const vYear = validBirthYear(birthYear);
       if (vYear.error) throw new Error(vYear.error);
       const uname = await validateNewUsername(username);
@@ -162,6 +167,35 @@ export default function AuthPage() {
       setShowReset(false);
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
+
+  const openDoc = (id) => (e) => { e.preventDefault(); setLegalDoc(id); };
+
+  const consentBox = (
+    <label htmlFor={ids.consent} className="flex items-start gap-2.5 cursor-pointer select-none py-1">
+      <input id={ids.consent} type="checkbox" checked={consent} required
+        onChange={(e) => setConsent(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 accent-violet-600 focus:ring-2 focus:ring-violet-500" />
+      <span className="text-sm text-zinc-300 leading-relaxed">
+        I've read and accept the{" "}
+        <button type="button" onClick={openDoc("terms")} className="text-violet-400 hover:text-violet-300 underline">
+          Terms of Service
+        </button>{" "}
+        and{" "}
+        <button type="button" onClick={openDoc("privacy")} className="text-violet-400 hover:text-violet-300 underline">
+          Privacy Policy
+        </button>.
+      </span>
+    </label>
+  );
+
+  /* ---------- a policy, read over the top of the form ---------- */
+  if (legalDoc) {
+    return (
+      <div className="h-full bg-zinc-950">
+        <Legal key={legalDoc} doc={legalDoc} onBack={() => setLegalDoc(null)} />
+      </div>
+    );
+  }
 
   /* ---------- finish-profile step for OAuth / phone users ---------- */
   if (pendingUser) {
@@ -184,6 +218,7 @@ export default function AuthPage() {
             <input id={ids.birthYear} className={FIELD} type="number" inputMode="numeric"
               value={birthYear} onChange={(e) => setBirthYear(e.target.value)} placeholder="2001" />
           </Field>
+          {consentBox}
           <Alert error={error} />
           <button disabled={busy} className={`${SOCIAL} bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white`}>
             {busy ? "Saving…" : "Enter Mesh"}
@@ -216,11 +251,11 @@ export default function AuthPage() {
             <AppleMark /> Continue with Apple
           </button>
         </div>
-        <p className="mt-3 text-xs text-zinc-500 text-center">
+        <p className="mt-3 text-xs text-zinc-400 text-center">
           We only use this to verify who you are. Mesh will never post without your permission.
         </p>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-zinc-500">
+        <div className="my-5 flex items-center gap-3 text-xs text-zinc-400">
           <div className="h-px flex-1 bg-zinc-800" />
           <span>or {signup ? "sign up" : "log in"} with</span>
           <div className="h-px flex-1 bg-zinc-800" />
@@ -301,6 +336,8 @@ export default function AuthPage() {
               <span className="text-sm text-zinc-300">Keep me signed in on this device</span>
             </label>
 
+            {signup && consentBox}
+
             <Alert error={error} notice={notice} />
 
             <button disabled={busy}
@@ -347,11 +384,18 @@ export default function AuthPage() {
           </button>
         </p>
 
-        <p className="mt-5 text-[11px] leading-relaxed text-zinc-500 text-center">
-          By continuing you agree to our{" "}
-          <a href="/terms" className="underline hover:text-zinc-300">Terms of Service</a> and{" "}
-          <a href="/privacy" className="underline hover:text-zinc-300">Privacy Policy</a>. Hate speech
-          toward any group is filtered — no exceptions.
+        <p className="mt-5 text-[11px] leading-relaxed text-zinc-400 text-center">
+          <button type="button" onClick={openDoc("terms")} className="underline hover:text-zinc-300">Terms</button>
+          {" · "}
+          <button type="button" onClick={openDoc("privacy")} className="underline hover:text-zinc-300">Privacy</button>
+          {" · "}
+          <button type="button" onClick={openDoc("cookies")} className="underline hover:text-zinc-300">Cookies</button>
+          {" · "}
+          <button type="button" onClick={openDoc("guidelines")} className="underline hover:text-zinc-300">Guidelines</button>
+          <span className="block mt-2">
+            We filter hate speech against every group. No automated filter catches everything, so
+            report what slips through.
+          </span>
         </p>
       </div>
 
@@ -378,8 +422,8 @@ function Shell({ children }) {
           </h1>
           <p className="mt-4 text-xl text-zinc-200 font-medium">Making Every Story Heard</p>
           <p className="mt-6 text-sm text-zinc-400 max-w-sm mx-auto leading-relaxed">
-            Flicks, Features, Stills, Circles and fact-checked news — your whole
-            social life, woven into one fabric.
+            Flicks, Features, Stills, Circles and news that has to show its
+            sources. Built for people, not advertisers.
           </p>
         </div>
       </div>
@@ -403,7 +447,7 @@ function Field({ id, label, hint, children }) {
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-zinc-300 mb-1.5">{label}</label>
       {children}
-      {hint && <p className="mt-1.5 text-xs text-zinc-500">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-zinc-400">{hint}</p>}
     </div>
   );
 }

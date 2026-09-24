@@ -17,6 +17,8 @@ import AccountPage from "./components/AccountPage";
 import UserProfile from "./components/UserProfile";
 import PostViewer from "./components/PostViewer";
 import Composer from "./components/Composer";
+import Legal from "./components/Legal";
+import StorageNotice from "./components/StorageNotice";
 
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -28,6 +30,7 @@ export default function App() {
   const [viewUserId, setViewUserId] = useState(null);
   const [viewPostId, setViewPostId] = useState(null);
   const [feedKey, setFeedKey] = useState(0);
+  const [legalDoc, setLegalDoc] = useState("privacy");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -74,6 +77,8 @@ export default function App() {
 
   const ctx = { profile, following, setFollowing, goTo: setTab };
 
+  const openLegal = (id) => { setLegalDoc(id); setViewUserId(null); setViewPostId(null); setTab("legal"); };
+
   const pages = {
     weave: <Weave key={`weave-${feedKey}`} {...ctx} />,
     stills: <Stills key={`stills-${feedKey}`} {...ctx} />,
@@ -84,19 +89,25 @@ export default function App() {
     chats: <Chats {...ctx} />,
     discover: <Discover {...ctx} />,
     profile: <Profile profile={profile} onProfileChange={setProfile} />,
-    account: <AccountPage profile={profile} />,
+    account: <AccountPage profile={profile} onOpenLegal={() => openLegal("privacy")} />,
+    legal: <Legal key={legalDoc} doc={legalDoc} onBack={() => setTab("account")} />,
   };
 
   return (
     <div className="h-full flex flex-col md:flex-row">
+      {/* Keyboard users land here first and can jump the whole nav rail. */}
+      <a href="#mesh-main" className="skip-link">Skip to content</a>
+
       <Nav tab={tab} onTab={(t) => { setViewUserId(null); setTab(t); }}
         onCreate={() => setComposerOpen(true)} profile={profile} />
 
-      <main className={`flex-1 min-h-0 overflow-hidden anim-fade ${
+      <main id="mesh-main" tabIndex={-1} className={`flex-1 min-h-0 overflow-hidden anim-fade ${
         tab === "flicks" ? "-mb-[58px] md:mb-0" : ""
       }`} key={tab}>
         {pages[tab]}
       </main>
+
+      <StorageNotice onReadMore={() => openLegal("cookies")} />
 
       {viewUserId && (
         <UserProfile uid={viewUserId} following={following} setFollowing={setFollowing}

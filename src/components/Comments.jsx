@@ -42,19 +42,20 @@ export default function Comments({ post, onClose, onCommentAdded }) {
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <h3 className="font-semibold text-sm">Comments</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200">✕</button>
+          <button onClick={onClose} aria-label="Close comments"
+            className="min-h-[44px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-          {comments === null && <p className="text-sm text-zinc-500">Loading…</p>}
-          {comments?.length === 0 && <p className="text-sm text-zinc-500">No comments yet. Say something!</p>}
+          {comments === null && <p className="text-sm text-zinc-400">Loading…</p>}
+          {comments?.length === 0 && <p className="text-sm text-zinc-400">No comments yet. Say something!</p>}
           {comments?.map((c, i) => (
             <div key={c.id || i} className="text-sm anim-fade">
               <button onClick={() => c.authorId && openUserProfile(c.authorId)} className="font-semibold hover:text-violet-300">
                 @{c.authorName}
               </button>{" "}
               <span className="text-zinc-300 break-words">{c.text}</span>
-              <span className="ml-2 text-xs text-zinc-600">{timeAgo(c.createdAt)}</span>
+              <span className="ml-2 text-xs text-zinc-400">{timeAgo(c.createdAt)}</span>
             </div>
           ))}
         </div>

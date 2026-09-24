@@ -83,13 +83,17 @@ function Short({ post, liked, onLikedChange }) {
         {post.text && <p className="text-zinc-200 mt-1 line-clamp-3">{post.text}</p>}
       </div>
       <div className="absolute right-3 bottom-20 md:bottom-8 flex flex-col items-center gap-5">
-        <button onClick={handleLike} className="flex flex-col items-center text-sm">
+        <button onClick={handleLike} aria-pressed={liked}
+          aria-label={`${liked ? "Unlike" : "Like"} — ${likeCount} like${likeCount === 1 ? "" : "s"}`}
+          className="flex flex-col items-center text-sm">
           <span className={`text-2xl ${liked ? "text-fuchsia-400" : ""} ${pulse ? "anim-heart inline-block" : ""}`}>
             {liked ? "♥" : "♡"}
           </span>
           {likeCount}
         </button>
-        <button onClick={() => setShowComments(true)} className="flex flex-col items-center text-sm">
+        <button onClick={() => setShowComments(true)}
+          aria-label={`Comments — ${commentCount} comment${commentCount === 1 ? "" : "s"}`}
+          className="flex flex-col items-center text-sm">
           <span className="text-2xl">💬</span>
           {commentCount}
         </button>
@@ -130,10 +134,10 @@ export default function Flicks({ following }) {
     });
   };
 
-  if (shorts === null) return <p className="text-center text-zinc-500 mt-16">Loading shorts…</p>;
+  if (shorts === null) return <p className="text-center text-zinc-400 mt-16">Loading shorts…</p>;
   if (shorts.length === 0)
     return (
-      <div className="text-center text-zinc-500 mt-16 anim-rise">
+      <div className="text-center text-zinc-400 mt-16 anim-rise">
         <p className="text-lg font-semibold text-zinc-300">No shorts yet</p>
         <p className="text-sm mt-1">Hit + Create → Short to post the first one.</p>
       </div>

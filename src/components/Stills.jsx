@@ -39,7 +39,7 @@ export default function Stills({ following }) {
         <h2 className="text-xl font-bold mb-5">Posts</h2>
         {posts === null && <FeedSkeleton />}
         {posts?.length === 0 && (
-          <div className="text-center text-zinc-500 mt-16">
+          <div className="text-center text-zinc-400 mt-16">
             <p className="text-lg font-semibold text-zinc-300">No posts yet</p>
             <p className="text-sm mt-1">Hit + Create → Post to share a photo or a thought.</p>
           </div>

@@ -7,9 +7,10 @@ export const SURFACES = {
   features: { label: "Features", icon: "▶", blurb: "Long-form video" },
   stills: { label: "Stills", icon: "▧", blurb: "Photos and thoughts" },
   circles: { label: "Circles", icon: "◎", blurb: "Communities and gatherings" },
-  sourced: { label: "Sourced", icon: "✓", blurb: "Fact-checked news" },
+  sourced: { label: "Sourced", icon: "✓", blurb: "Reviewed news, with sources" },
   chats: { label: "Chats", icon: "◗", blurb: "Messages" },
   discover: { label: "Discover", icon: "⌕", blurb: "Search and find people" },
   profile: { label: "Profile", icon: "◍", blurb: "Your public identity" },
   account: { label: "Account", icon: "⚙", blurb: "Private settings" },
+  legal: { label: "Legal", icon: "§", blurb: "Privacy, terms, cookies" },
 };

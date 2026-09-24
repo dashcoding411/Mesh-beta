@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { timeAgo } from "../lib/db";
 import { Avatar } from "./Nav";
+import { storyAlt } from "../lib/a11y";
 
 const IMAGE_MS = 5000;
 
@@ -58,7 +59,8 @@ export default function StoryViewer({ thread, onClose, onNextThread }) {
               <p className="text-[10px] text-zinc-300 drop-shadow">{timeAgo(item.createdAt)}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl leading-none drop-shadow">✕</button>
+          <button onClick={onClose} aria-label="Close story"
+            className="min-h-[44px] px-2 text-white/80 hover:text-white text-2xl leading-none drop-shadow">✕</button>
         </div>
 
         {/* media */}
@@ -66,7 +68,7 @@ export default function StoryViewer({ thread, onClose, onNextThread }) {
           {isVideo ? (
             <video key={item.id} src={item.mediaUrl} className="h-full w-full object-contain" autoPlay playsInline onEnded={next} />
           ) : (
-            <img key={item.id} src={item.mediaUrl} alt="" className="h-full w-full object-contain anim-fade" />
+            <img key={item.id} src={item.mediaUrl} alt={storyAlt(item, thread.authorName)} className="h-full w-full object-contain anim-fade" />
           )}
         </div>
 

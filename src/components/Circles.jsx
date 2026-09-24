@@ -18,7 +18,7 @@ export default function Circles({ profile }) {
     <div className="h-full overflow-y-auto pb-24 md:pb-6">
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h2 className="text-xl font-bold mb-1">Circles</h2>
-        <p className="text-sm text-zinc-500 mb-5">Communities you're part of, and what they've got planned.</p>
+        <p className="text-sm text-zinc-400 mb-5">Communities you're part of, and what they've got planned.</p>
 
         <div role="tablist" className="flex rounded-xl bg-zinc-900 p-1 mb-5 max-w-xs">
           {[["circles", "Circles"], ["gatherings", "Gatherings"]].map(([id, label]) => (
@@ -54,9 +54,9 @@ function CircleList({ onOpen }) {
         </button>
       </div>
 
-      {groups === null && <p className="text-zinc-500">Loading circles…</p>}
+      {groups === null && <p className="text-zinc-400">Loading circles…</p>}
       {groups?.length === 0 && (
-        <div className="text-center text-zinc-500 mt-16">
+        <div className="text-center text-zinc-400 mt-16">
           <p className="text-lg font-semibold text-zinc-300">No circles yet</p>
           <p className="text-sm mt-1">Start one for your people.</p>
         </div>
@@ -71,7 +71,7 @@ function CircleList({ onOpen }) {
               <PrivacyPill privacy={g.privacy} />
             </div>
             {g.description && <p className="text-sm text-zinc-400 mt-1 line-clamp-2">{g.description}</p>}
-            <p className="text-xs text-zinc-600 mt-2">
+            <p className="text-xs text-zinc-400 mt-2">
               {g.memberCount || 0} member{g.memberCount === 1 ? "" : "s"} · created {timeAgo(g.createdAt)}
             </p>
           </button>
@@ -121,9 +121,9 @@ function GatheringList() {
         </button>
       </div>
 
-      {events === null && <p className="text-zinc-500">Loading gatherings…</p>}
+      {events === null && <p className="text-zinc-400">Loading gatherings…</p>}
       {events?.length === 0 && (
-        <div className="text-center text-zinc-500 mt-16">
+        <div className="text-center text-zinc-400 mt-16">
           <p className="text-lg font-semibold text-zinc-300">Nothing planned</p>
           <p className="text-sm mt-1">Get something on the calendar.</p>
         </div>
@@ -206,7 +206,7 @@ function NewCircleModal({ onClose, onCreated }) {
                 onChange={() => setPrivacy(p.id)} className="mt-0.5 accent-violet-600" />
               <span>
                 <span className="block text-sm font-medium">{p.label}</span>
-                <span className="block text-xs text-zinc-500">{p.blurb}</span>
+                <span className="block text-xs text-zinc-400">{p.blurb}</span>
               </span>
             </label>
           ))}

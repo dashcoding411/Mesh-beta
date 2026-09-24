@@ -18,6 +18,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
   const [title, setTitle] = useState("");
   const [visibility, setVisibility] = useState(minor ? "followers" : "public");
   const [file, setFile] = useState(null);
+  const [alt, setAlt] = useState("");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(null);
   const [mediaReady, setMediaReady] = useState(null); // null = still checking
@@ -68,6 +69,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
         kind,
         text: vText.text,
         title: kind === "video" ? title.trim() : "",
+        alt: alt.trim().slice(0, LIMITS.alt),
         mediaUrl: media.url,
         mediaPath: media.path,
         mediaType: file ? file.type : "",
@@ -99,7 +101,8 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-bold text-lg">{groupId ? "Post to group" : "Create"}</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none">✕</button>
+          <button onClick={onClose} aria-label="Close"
+            className="min-h-[44px] px-2 text-zinc-400 hover:text-zinc-200 text-xl leading-none">✕</button>
         </div>
 
         {!groupId && (
@@ -108,7 +111,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
               <button
                 key={k.id}
                 type="button"
-                onClick={() => { setKind(k.id); setFile(null); setError(""); }}
+                onClick={() => { setKind(k.id); setFile(null); setAlt(""); setError(""); }}
                 className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${
                   kind === k.id
                     ? "border-violet-500 bg-violet-600/20 text-violet-300"
@@ -120,7 +123,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
             ))}
           </div>
         )}
-        <p className="text-xs text-zinc-500 mb-3">{spec.hint}</p>
+        <p className="text-xs text-zinc-400 mb-3">{spec.hint}</p>
 
         {mediaReady === false && (
           <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
@@ -153,11 +156,12 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
           {preview ? (
             <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-black">
               {spec.media === "image" ? (
-                <img src={preview} alt="" className="max-h-64 w-full object-contain" />
+                <img src={preview} alt={alt.trim() || "Preview of the photo you selected"}
+                  className="max-h-64 w-full object-contain" />
               ) : (
                 <video src={preview} controls playsInline className="max-h-64 w-full" />
               )}
-              <button type="button" onClick={() => setFile(null)} aria-label="Remove media"
+              <button type="button" onClick={() => { setFile(null); setAlt(""); }} aria-label="Remove media"
                 className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/70 text-sm hover:bg-black">
                 &#10005;
               </button>
@@ -165,14 +169,14 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
           ) : (
             <label className={`flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-8 text-sm cursor-pointer transition ${
               mediaReady === false
-                ? "border-zinc-800 text-zinc-600 cursor-not-allowed"
+                ? "border-zinc-800 text-zinc-400 cursor-not-allowed"
                 : "border-zinc-700 text-zinc-400 hover:border-violet-500"
             }`}>
               <span className="text-2xl opacity-50">{spec.media === "image" ? "\u25a7" : "\u25b6"}</span>
               <span className="font-medium">
                 {spec.media === "image" ? "Add a photo" : "Add a video"}
               </span>
-              <span className="text-xs text-zinc-600">
+              <span className="text-xs text-zinc-400">
                 {spec.media === "image" ? "Required \u00b7 up to 10 MB" : "Required \u00b7 up to 200 MB"}
               </span>
               <input type="file" accept={spec.accept} className="hidden"
@@ -181,9 +185,31 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
             </label>
           )}
 
+          {/* Optional, and deliberately not nagged about — a blank description
+              falls back to the caption rather than shipping a misleading one. */}
+          {file && spec.media === "image" && (
+            <div>
+              <label htmlFor="mesh-alt" className="block text-sm font-medium text-zinc-300 mb-1.5">
+                Describe this photo <span className="font-normal text-zinc-400">(optional)</span>
+              </label>
+              <textarea
+                id="mesh-alt"
+                className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-sm h-16 resize-none focus:outline-none focus:border-violet-500"
+                placeholder="Two people laughing on a beach at sunset"
+                value={alt}
+                onChange={(e) => setAlt(e.target.value)}
+                maxLength={LIMITS.alt}
+                aria-describedby="mesh-alt-hint"
+              />
+              <p id="mesh-alt-hint" className="mt-1 text-xs text-zinc-400">
+                Read aloud to people using a screen reader. Leave it blank and your caption is used instead.
+              </p>
+            </div>
+          )}
+
           {!groupId && (
             <div className="flex items-center gap-3 text-sm">
-              <span className="text-zinc-500">Who can see this?</span>
+              <span className="text-zinc-400">Who can see this?</span>
               <select
                 value={minor ? "followers" : visibility}
                 disabled={minor}
@@ -193,7 +219,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile })
                 <option value="public">Everyone</option>
                 <option value="followers">Followers only</option>
               </select>
-              {minor && <span className="text-[11px] text-zinc-500">Under-16 accounts post to followers only.</span>}
+              {minor && <span className="text-[11px] text-zinc-400">Under-16 accounts post to followers only.</span>}
             </div>
           )}
 

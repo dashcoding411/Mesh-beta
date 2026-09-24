@@ -60,7 +60,7 @@ export default function StoryRail() {
               +
             </button>
           </div>
-          <span className="text-[10px] text-zinc-500">Your story</span>
+          <span className="text-[10px] text-zinc-400">Your story</span>
         </div>
 
         {threads.map((t, i) =>

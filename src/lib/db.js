@@ -57,6 +57,11 @@ export async function fetchProfile(uid) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
+/* Bump this when the terms or privacy policy change materially. Existing
+   accounts keep the version they accepted, which is what lets you tell who
+   still needs to see a change notice. */
+export const POLICY_VERSION = "2026-09-24";
+
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
   batch.set(doc(db, "usernames", username), { uid: user.uid });
@@ -64,8 +69,10 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     username,
     name: displayName || username,
     usernameChangedAt: null,
-    email: user.email || "",
-    phone: user.phoneNumber || "",
+    // Email and phone deliberately are NOT stored here. Every signed-in user
+    // can read every user document, so anything written here is effectively
+    // public. Firebase Auth already holds both, and only the account owner can
+    // read their own auth record — which is the whole point.
     bio: "",
     pronouns: "",
     town: "",
@@ -75,6 +82,9 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     followerCount: 0,
     followingCount: 0,
     createdAt: serverTimestamp(),
+    // Proof of consent, written server-side so it can't be backdated.
+    termsAcceptedAt: serverTimestamp(),
+    termsVersion: POLICY_VERSION,
   });
   await batch.commit();
 }
@@ -199,7 +209,7 @@ export function uploadMedia(file, onProgress, folder = "uploads") {
 
 // ---------- posts ----------
 
-export async function createPost({ kind, text, title, mediaUrl, mediaPath, mediaType, groupId, visibility }) {
+export async function createPost({ kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility }) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
   const post = {
@@ -210,6 +220,7 @@ export async function createPost({ kind, text, title, mediaUrl, mediaPath, media
     authorPhoto: profile?.photoURL || "",
     text: text || "",
     title: title || "",
+    alt: alt || "", // author-written description of the media, for screen readers
     mediaUrl: mediaUrl || "",
     mediaPath: mediaPath || "",
     mediaType: mediaType || "",
@@ -600,7 +611,7 @@ export async function fetchActiveStories() {
   return [...byAuthor.values()];
 }
 
-// ---------- news (fact-checked) ----------
+// ---------- news (reviewed against sources before publication) ----------
 
 export async function submitNews({ title, script, sources }) {
   const profile = await fetchProfile(me());

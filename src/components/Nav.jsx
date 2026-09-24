@@ -73,15 +73,15 @@ export default function Nav({ tab, onTab, onCreate, profile }) {
             <Avatar profile={profile} size={7} />
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-medium text-zinc-200 truncate">{profile.name || profile.username}</span>
-              <span className="block text-[11px] text-zinc-500 truncate">@{profile.username}</span>
+              <span className="block text-[11px] text-zinc-400 truncate">@{profile.username}</span>
             </span>
-            <span className="text-zinc-600 text-xs">▾</span>
+            <span className="text-zinc-400 text-xs">▾</span>
           </button>
 
           {menuOpen && (
             <div role="menu"
               className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-xl anim-pop">
-              {["profile", "account"].map((id) => (
+              {["profile", "account", "legal"].map((id) => (
                 <button key={id} role="menuitem"
                   onClick={() => { setMenuOpen(false); onTab(id); }}
                   className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 text-left">
@@ -133,7 +133,7 @@ export default function Nav({ tab, onTab, onCreate, profile }) {
           ) : (
             <button key={id} onClick={() => onTab(id)} aria-label={SURFACES[id].label}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 transition ${
-                tab === id ? "text-white" : immersive ? "text-white/60" : "text-zinc-500"
+                tab === id ? "text-white" : immersive ? "text-white/60" : "text-zinc-400"
               }`}>
               <span className="text-lg leading-none">{SURFACES[id].icon}</span>
               <span className="text-[10px] leading-none">{SURFACES[id].label}</span>
@@ -156,6 +156,8 @@ const AVATAR_SIZES = {
 export function Avatar({ profile, size = 9, className = "" }) {
   const s = AVATAR_SIZES[size] || AVATAR_SIZES[9];
   if (profile?.photoURL) {
+    // alt="" on purpose: every avatar sits beside the handle it belongs to,
+    // so describing it again would make screen readers say the name twice.
     return <img src={profile.photoURL} alt="" className={`${s} rounded-full object-cover shrink-0 ${className}`} />;
   }
   const seed = profile?.name || profile?.username || profile?.authorDisplayName || profile?.authorName || "?";

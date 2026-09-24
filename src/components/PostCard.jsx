@@ -5,6 +5,7 @@ import {
   hidePost, reportPost, REPORT_REASONS, listenChats, me,
 } from "../lib/db";
 import { Avatar } from "./Nav";
+import { mediaAlt } from "../lib/a11y";
 import Comments from "./Comments";
 
 export default function PostCard({
@@ -69,21 +70,21 @@ export default function PostCard({
           <div className="min-w-0">
             <p className="text-sm font-semibold hover:text-violet-300 transition truncate">
               {post.authorDisplayName || post.authorName}
-              <span className="ml-1.5 font-normal text-zinc-500">@{post.authorName}</span>
+              <span className="ml-1.5 font-normal text-zinc-400">@{post.authorName}</span>
             </p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               {timeAgo(post.createdAt)}
               {post.kind !== "post" && (
                 <span className="ml-2 uppercase text-[10px] tracking-wide text-violet-400">{post.kind}</span>
               )}
               {post.visibility === "followers" && (
-                <span className="ml-2 text-[10px] text-zinc-600">followers only</span>
+                <span className="ml-2 text-[10px] text-zinc-400">followers only</span>
               )}
             </p>
           </div>
         </button>
         {removable && (
-          <button onClick={handleDelete} className="shrink-0 text-xs text-zinc-500 hover:text-red-400 min-h-[36px] px-1">
+          <button onClick={handleDelete} className="shrink-0 text-xs text-zinc-400 hover:text-red-400 min-h-[36px] px-1">
             {mine ? "Delete" : "Remove"}
           </button>
         )}
@@ -96,21 +97,23 @@ export default function PostCard({
         (isVideo ? (
           <video src={post.mediaUrl} controls playsInline preload="metadata" className="w-full max-h-[70vh] bg-black" />
         ) : (
-          <img src={post.mediaUrl} alt="" loading="lazy" className="w-full max-h-[70vh] object-contain bg-black" />
+          <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="w-full max-h-[70vh] object-contain bg-black" />
         ))}
 
       <div className="flex items-center gap-1 px-2 py-2 text-sm text-zinc-400">
-        <Action onClick={handleLike} active={liked} activeClass="text-fuchsia-400" label="Like">
+        <Action onClick={handleLike} active={liked} activeClass="text-fuchsia-400"
+          label={`${liked ? "Unlike" : "Like"}${count(likeCount, "like")}`}>
           <span className={pulse ? "anim-heart inline-block" : "inline-block"}>{liked ? "♥" : "♡"}</span>
           {likeCount > 0 && <span>{likeCount}</span>}
         </Action>
-        <Action onClick={() => setShowComments(true)} label="Comments">
+        <Action onClick={() => setShowComments(true)} label={`Comments${count(commentCount, "comment")}`}>
           <span>◗</span>{commentCount > 0 && <span>{commentCount}</span>}
         </Action>
-        <Action onClick={handleSave} active={saved} activeClass="text-violet-300" label="Save">
+        <Action onClick={handleSave} active={saved} activeClass="text-violet-300"
+          label={`${saved ? "Remove from saved" : "Save"}${count(saveCount, "save")}`}>
           <span>{saved ? "★" : "☆"}</span>{saveCount > 0 && <span>{saveCount}</span>}
         </Action>
-        <Action onClick={() => setShowSend(true)} label="Send to someone">
+        <Action onClick={() => setShowSend(true)} label={`Send to someone${count(sendCount, "send")}`}>
           <span>↗</span>{sendCount > 0 && <span>{sendCount}</span>}
         </Action>
         <div className="flex-1" />
@@ -134,6 +137,13 @@ export default function PostCard({
       )}
     </article>
   );
+}
+
+/* aria-label replaces an element's visible text for screen readers, so the
+   counts sitting next to each glyph have to be folded into the label — or a
+   screen reader announces "Like" and never mentions the 42. */
+function count(n, noun) {
+  return n > 0 ? ` — ${n} ${noun}${n === 1 ? "" : "s"}` : "";
 }
 
 function Action({ onClick, active, activeClass = "", label, children }) {
@@ -169,9 +179,9 @@ function SendSheet({ post, onClose, onSent }) {
 
   return (
     <Sheet title="Send to" onClose={onClose}>
-      {chats === null && <p className="text-sm text-zinc-500">Loading…</p>}
+      {chats === null && <p className="text-sm text-zinc-400">Loading…</p>}
       {chats?.length === 0 && (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-zinc-400">
           No conversations yet. Start one from Chats or someone's profile.
         </p>
       )}
@@ -213,14 +223,14 @@ function PostMenu({ post, mine, onClose, onHidden, onReport }) {
           <>
             <MenuItem onClick={hide} disabled={busy}>
               Not interested
-              <span className="block text-xs text-zinc-500">Show me less like this</span>
+              <span className="block text-xs text-zinc-400">Show me less like this</span>
             </MenuItem>
             <MenuItem onClick={() => { onClose(); onReport(); }} danger>
               Report post
             </MenuItem>
           </>
         )}
-        {mine && <p className="text-sm text-zinc-500 px-3 py-2">Use Delete on the post to remove it.</p>}
+        {mine && <p className="text-sm text-zinc-400 px-3 py-2">Use Delete on the post to remove it.</p>}
       </div>
     </Sheet>
   );
@@ -250,7 +260,7 @@ function ReportSheet({ post, onClose, onReported }) {
         </p>
       ) : (
         <>
-          <p className="text-xs text-zinc-500 px-3 pb-2">What's wrong with this post?</p>
+          <p className="text-xs text-zinc-400 px-3 pb-2">What's wrong with this post?</p>
           <div className="space-y-1">
             {REPORT_REASONS.map((r) => (
               <MenuItem key={r.id} onClick={() => file(r)} disabled={!!busy}>
@@ -284,7 +294,7 @@ function Sheet({ title, onClose, children }) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm">{title}</h3>
           <button onClick={onClose} aria-label="Close"
-            className="min-h-[36px] px-2 text-zinc-500 hover:text-zinc-200">✕</button>
+            className="min-h-[36px] px-2 text-zinc-400 hover:text-zinc-200">✕</button>
         </div>
         {children}
       </div>

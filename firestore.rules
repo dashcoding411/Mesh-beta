@@ -61,10 +61,19 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if isUser(uid)
         && incomingData().keys().hasOnly([
-          'username', 'name', 'usernameChangedAt', 'email', 'phone', 'bio',
+          // No 'email' or 'phone': this document is readable by every signed-in
+          // user, so contact details must never live in it. Firebase Auth holds
+          // them, readable only by the account owner.
+          'username', 'name', 'usernameChangedAt', 'bio',
           'pronouns', 'town', 'spouseUsername', 'birthYear', 'photoURL',
-          'followerCount', 'followingCount', 'createdAt'
+          'followerCount', 'followingCount', 'createdAt',
+          'termsAcceptedAt', 'termsVersion'
         ])
+        // Consent is recorded by the server clock, so it cannot be backdated
+        // or faked by a client that skipped the checkbox.
+        && incomingData().termsAcceptedAt == request.time
+        && incomingData().termsVersion is string
+        && incomingData().termsVersion.size() > 0
         && incomingData().name is string
         && incomingData().name.size() <= 50
         && incomingData().username is string
@@ -163,7 +172,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
-          'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
+          'alt', 'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
           'likeCount', 'commentCount', 'saveCount', 'sendCount',
           'viewCount', 'completeCount', 'createdAt'
         ])
@@ -178,6 +187,8 @@ service cloud.firestore {
         && incomingData().text.size() <= 5000
         && incomingData().title is string
         && incomingData().title.size() <= 150
+        && incomingData().alt is string
+        && incomingData().alt.size() <= 500
         && incomingData().likeCount == 0
         && incomingData().commentCount == 0
         && incomingData().saveCount == 0
@@ -188,7 +199,7 @@ service cloud.firestore {
             || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
       allow update: if signedIn() && (
         (resource.data.authorId == request.auth.uid
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'visibility'])
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility'])
           && incomingData().text is string
           && incomingData().text.size() <= 5000)
         // a circle admin or moderator may lock a thread

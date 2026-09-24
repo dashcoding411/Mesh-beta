@@ -55,11 +55,11 @@ export default function Weave({ following }) {
       <div className="max-w-xl mx-auto px-4 py-5">
         <StoryRail />
 
-        <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mt-6 mb-4">For You</h2>
+        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mt-6 mb-4">For You</h2>
 
         {posts === null && <FeedSkeleton />}
         {posts?.length === 0 && (
-          <div className="text-center text-zinc-500 mt-16 anim-rise">
+          <div className="text-center text-zinc-400 mt-16 anim-rise">
             <p className="text-lg font-semibold text-zinc-300">Your fabric is empty</p>
             <p className="text-sm mt-1">Hit Create and share the first story, or find people in Discover.</p>
           </div>
@@ -90,12 +90,12 @@ export default function Weave({ following }) {
                   className="min-h-[44px] rounded-xl border border-zinc-700 hover:border-violet-500 px-6 text-sm font-medium text-zinc-300 transition">
                   Show {Math.min(more, PAGE)} more
                 </button>
-                <p className="mt-2 text-xs text-zinc-600">{more} left in this batch</p>
+                <p className="mt-2 text-xs text-zinc-400">{more} left in this batch</p>
               </>
             ) : (
               <div className="py-6">
                 <p className="text-sm font-medium text-zinc-300">You're all caught up</p>
-                <p className="text-xs text-zinc-600 mt-1">That's everything new since your last visit.</p>
+                <p className="text-xs text-zinc-400 mt-1">That's everything new since your last visit.</p>
               </div>
             )}
           </div>

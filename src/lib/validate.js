@@ -7,6 +7,7 @@ export const LIMITS = {
   bio: 300,
   text: 5000,
   title: 150,
+  alt: 500,
   comment: 2000,
   groupName: { min: 3, max: 80 },
   groupDescription: 1000,

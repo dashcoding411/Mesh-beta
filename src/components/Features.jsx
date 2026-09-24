@@ -57,9 +57,9 @@ export default function Features({ following }) {
     <div className="h-full overflow-y-auto pb-20 md:pb-6">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <h2 className="text-xl font-bold mb-4">Watch</h2>
-        {videos === null && <p className="text-zinc-500">Loading videos…</p>}
+        {videos === null && <p className="text-zinc-400">Loading videos…</p>}
         {videos?.length === 0 && (
-          <div className="text-center text-zinc-500 mt-16">
+          <div className="text-center text-zinc-400 mt-16">
             <p className="text-lg font-semibold text-zinc-300">No long-form videos yet</p>
             <p className="text-sm mt-1">Hit + Create → Video to upload the first one.</p>
           </div>
@@ -75,7 +75,7 @@ export default function Features({ following }) {
                 <span className="absolute inset-0 flex items-center justify-center text-3xl text-white/80 pointer-events-none">▶</span>
               </div>
               <p className="mt-2 font-semibold text-sm line-clamp-2">{v.title || "Untitled"}</p>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 @{v.authorName} · {v.likeCount || 0} likes · {timeAgo(v.createdAt)}
               </p>
             </button>

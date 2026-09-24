@@ -2,7 +2,7 @@ import { useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage } from "../lib/auth";
-import { exportMyData, deleteMyAccountData, me } from "../lib/db";
+import { exportMyData, deleteMyAccountData, me, POLICY_VERSION, tsMillis } from "../lib/db";
 
 /* The Account layer is private: credentials, security, data and account
    status. Nothing here is visible to other users — that's the Profile. */
@@ -11,7 +11,7 @@ const FIELD =
   "w-full min-h-[44px] rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-base " +
   "focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 transition";
 
-export default function AccountPage({ profile }) {
+export default function AccountPage({ profile, onOpenLegal }) {
   const user = auth.currentUser;
   const providers = user?.providerData?.map((p) => p.providerId) || [];
   const hasPassword = providers.includes("password");
@@ -21,7 +21,7 @@ export default function AccountPage({ profile }) {
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
         <header>
           <h2 className="text-xl font-bold">Account</h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-400 mt-1">
             Private settings — your credentials, security and data. What other people see lives on your{" "}
             <span className="text-zinc-300">Profile</span>.
           </p>
@@ -29,7 +29,7 @@ export default function AccountPage({ profile }) {
 
         <Card title="Sign-in details" subtitle="How you get into Mesh.">
           <Row label="Email" value={user?.email || "Not set"} />
-          <Row label="Phone" value={user?.phoneNumber || profile.phone || "Not set"} />
+          <Row label="Phone" value={user?.phoneNumber || "Not set"} />
           <Row label="Account ID" value={me()} mono />
           <Row
             label="Sign-in methods"
@@ -49,6 +49,27 @@ export default function AccountPage({ profile }) {
 
         <Card title="Your data" subtitle="Export everything Mesh holds about you.">
           <DataExport />
+        </Card>
+
+        <Card title="Agreements" subtitle="What you accepted, and when.">
+          <Row
+            label="Terms and Privacy Policy"
+            value={
+              profile?.termsAcceptedAt
+                ? `Accepted ${new Date(tsMillis(profile.termsAcceptedAt)).toLocaleDateString()}`
+                : "Accepted before this was recorded"
+            }
+          />
+          <Row label="Version accepted" value={profile?.termsVersion || "—"} />
+          {profile?.termsVersion && profile.termsVersion !== POLICY_VERSION && (
+            <p className="text-sm text-amber-300 pt-1">
+              These have been updated since you accepted them. Worth a read.
+            </p>
+          )}
+          <button onClick={onOpenLegal}
+            className="mt-2 min-h-[44px] w-full rounded-xl border border-zinc-700 hover:border-violet-500 px-4 text-sm font-medium text-zinc-200 transition">
+            Read the policies
+          </button>
         </Card>
 
         <Card title="Danger zone" subtitle="These actions cannot be undone." danger>
@@ -75,7 +96,7 @@ function Card({ title, subtitle, children, danger }) {
       }`}
     >
       <h3 className={`font-semibold ${danger ? "text-red-300" : ""}`}>{title}</h3>
-      {subtitle && <p className="text-xs text-zinc-500 mt-0.5 mb-4">{subtitle}</p>}
+      {subtitle && <p className="text-xs text-zinc-400 mt-0.5 mb-4">{subtitle}</p>}
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -84,7 +105,7 @@ function Card({ title, subtitle, children, danger }) {
 function Row({ label, value, mono }) {
   return (
     <div className="flex items-baseline justify-between gap-4 text-sm border-b border-zinc-800/60 pb-2 last:border-0 last:pb-0">
-      <span className="text-zinc-500 shrink-0">{label}</span>
+      <span className="text-zinc-400 shrink-0">{label}</span>
       <span className={`text-zinc-200 text-right break-all ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
   );
@@ -116,7 +137,7 @@ function PasswordCard() {
       {!open ? (
         <div className="flex items-center justify-between gap-4">
           <div aria-live="polite" className="text-sm">
-            {msg.ok ? <span className="text-emerald-400">{msg.ok}</span> : <span className="text-zinc-500">••••••••</span>}
+            {msg.ok ? <span className="text-emerald-400">{msg.ok}</span> : <span className="text-zinc-400">••••••••</span>}
           </div>
           <button onClick={() => setOpen(true)}
             className="min-h-[44px] rounded-xl border border-zinc-700 hover:border-violet-500 px-4 text-sm font-medium transition">

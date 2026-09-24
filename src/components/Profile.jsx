@@ -109,15 +109,15 @@ export default function Profile({ profile, onProfileChange }) {
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold truncate">
                 {profile.name || profile.username}
-                {profile.pronouns && <span className="ml-2 text-sm font-normal text-zinc-500">({profile.pronouns})</span>}
+                {profile.pronouns && <span className="ml-2 text-sm font-normal text-zinc-400">({profile.pronouns})</span>}
               </h2>
-              <p className="text-sm text-zinc-500 truncate">@{profile.username}</p>
+              <p className="text-sm text-zinc-400 truncate">@{profile.username}</p>
               <div className="flex gap-4 mt-1 text-sm">
                 <button onClick={() => showFollows("followers")} className="hover:text-violet-300">
-                  <strong>{profile.followerCount || 0}</strong> <span className="text-zinc-500">followers</span>
+                  <strong>{profile.followerCount || 0}</strong> <span className="text-zinc-400">followers</span>
                 </button>
                 <button onClick={() => showFollows("following")} className="hover:text-violet-300">
-                  <strong>{profile.followingCount || 0}</strong> <span className="text-zinc-500">following</span>
+                  <strong>{profile.followingCount || 0}</strong> <span className="text-zinc-400">following</span>
                 </button>
               </div>
             </div>
@@ -133,7 +133,7 @@ export default function Profile({ profile, onProfileChange }) {
 
           <div className="mt-4 space-y-1 text-sm text-zinc-300">
             {profile.bio && <p className="whitespace-pre-wrap">{profile.bio}</p>}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500 pt-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400 pt-1">
               {profile.town && <span>📍 {profile.town}</span>}
               {profile.birthYear > 0 && <span>🎂 born {profile.birthYear}</span>}
               {profile.spouseUsername && <span>💍 {profile.spouseUsername}</span>}
@@ -160,8 +160,8 @@ export default function Profile({ profile, onProfileChange }) {
 
         {tab === "posts" ? (
           <>
-            {posts === null && <p className="text-zinc-500">Loading…</p>}
-            {posts?.length === 0 && <p className="text-zinc-500 text-sm">You haven't shared anything yet.</p>}
+            {posts === null && <p className="text-zinc-400">Loading…</p>}
+            {posts?.length === 0 && <p className="text-zinc-400 text-sm">You haven't shared anything yet.</p>}
             <div className="space-y-6 stagger">
               {posts?.map((p) => (
                 <PostCard key={p.id} post={p} liked={liked.has(p.id)} onLikedChange={onLikedChange}
@@ -184,7 +184,7 @@ export default function Profile({ profile, onProfileChange }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 anim-fade" onClick={() => setFollowList(null)}>
           <div className="w-full max-w-sm max-h-[70vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-5 anim-pop" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold mb-3 capitalize">{followList.kind}</h3>
-            {followList.items.length === 0 && <p className="text-sm text-zinc-500">Nobody here yet.</p>}
+            {followList.items.length === 0 && <p className="text-sm text-zinc-400">Nobody here yet.</p>}
             {followList.items.map((f) => (
               <p key={f.id} className="text-sm py-1.5 border-b border-zinc-800/60 last:border-0">@{f.username || f.id}</p>
             ))}
@@ -202,10 +202,10 @@ function SavedPosts({ liked, onLikedChange }) {
     fetchSavedPosts().then(setPosts).catch((e) => { console.error(e); setPosts([]); });
   }, []);
 
-  if (posts === null) return <p className="text-zinc-500">Loading saved…</p>;
+  if (posts === null) return <p className="text-zinc-400">Loading saved…</p>;
   if (posts.length === 0) {
     return (
-      <p className="text-zinc-500 text-sm">
+      <p className="text-zinc-400 text-sm">
         Nothing saved yet. Tap ☆ on any post to keep it here.
       </p>
     );
@@ -290,14 +290,14 @@ function EditProfileModal({ profile, onClose, onSaved }) {
         className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-3 anim-pop">
         <h3 className="font-bold text-lg">Edit profile</h3>
 
-        <label className="block text-xs text-zinc-500">Name
+        <label className="block text-xs text-zinc-400">Name
           <input className={`${input} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
             maxLength={50} placeholder="Alex Nguyen" />
-          <span className="block mt-1 text-[11px] text-zinc-600">Shown everywhere. Names can repeat.</span>
+          <span className="block mt-1 text-[11px] text-zinc-400">Shown everywhere. Names can repeat.</span>
         </label>
 
         <div>
-          <p className="text-xs text-zinc-500 mb-1">Handle</p>
+          <p className="text-xs text-zinc-400 mb-1">Handle</p>
           <div className="flex gap-2">
             <input className={`${input} flex-1`} value={handle} disabled={!cooldown.canChange}
               onChange={(e) => setHandle(e.target.value.toLowerCase())} maxLength={30}
@@ -320,7 +320,7 @@ function EditProfileModal({ profile, onClose, onSaved }) {
               {handleBusy ? "Saving…" : "Change"}
             </button>
           </div>
-          <p aria-live="polite" className="mt-1 text-[11px] text-zinc-600">
+          <p aria-live="polite" className="mt-1 text-[11px] text-zinc-400">
             {handleMsg ? (
               <span className={handleMsg.includes("updated") ? "text-emerald-400" : "text-red-400"}>{handleMsg}</span>
             ) : cooldown.canChange ? (
@@ -331,11 +331,11 @@ function EditProfileModal({ profile, onClose, onSaved }) {
           </p>
         </div>
 
-        <label className="block text-xs text-zinc-500">Bio
+        <label className="block text-xs text-zinc-400">Bio
           <textarea className={`${input} h-20 resize-none mt-1`} value={bio}
             onChange={(e) => setBio(e.target.value)} maxLength={LIMITS.bio} placeholder="Tell people your story…" />
         </label>
-        <label className="block text-xs text-zinc-500">Pronouns
+        <label className="block text-xs text-zinc-400">Pronouns
           <input className={`${input} mt-1`} value={pronouns} onChange={(e) => setPronouns(e.target.value)}
             maxLength={LIMITS.pronouns} placeholder="e.g. she/her, they/them" list="pronoun-options" />
           <datalist id="pronoun-options">
@@ -344,18 +344,18 @@ function EditProfileModal({ profile, onClose, onSaved }) {
           </datalist>
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <label className="block text-xs text-zinc-500">Town
+          <label className="block text-xs text-zinc-400">Town
             <input className={`${input} mt-1`} value={town} onChange={(e) => setTown(e.target.value)}
               maxLength={LIMITS.town} placeholder="e.g. Melbourne" />
           </label>
-          <label className="block text-xs text-zinc-500">Birth year
+          <label className="block text-xs text-zinc-400">Birth year
             <input className={`${input} mt-1`} type="number" value={birthYear}
               onChange={(e) => setBirthYear(e.target.value)} placeholder="e.g. 2001" />
           </label>
         </div>
 
         <div>
-          <p className="text-xs text-zinc-500 mb-1">Spouse {profile.spouseUsername && <span className="text-zinc-400">— currently: {profile.spouseUsername}</span>}</p>
+          <p className="text-xs text-zinc-400 mb-1">Spouse {profile.spouseUsername && <span className="text-zinc-400">— currently: {profile.spouseUsername}</span>}</p>
           <input className={input} value={spouseTerm} onChange={(e) => setSpouseTerm(e.target.value)}
             placeholder="Search a username to invite…" />
           {spouseResults.map((u) => (
