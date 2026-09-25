@@ -14,7 +14,7 @@ import { LogoMark } from "./Sidebar";
 export default function HomeHeader({ section, children, actions, transparent = false }) {
   const { openDrawer, openComposer } = useShell();
   const meta = sectionById(section);
-  const isForYou = section === "foryou" || section === "following";
+  const isFeed = section === "foryou" || section === "following" || section === "news";
 
   return (
     <header className={`top-0 z-nav shrink-0 ${
@@ -26,7 +26,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
       <div className="flex h-14 items-center gap-1 px-2 pt-safe md:hidden">
         <IconButton icon={Menu} label="Open Home sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />
         <div className="min-w-0 flex-1 px-1">
-          {isForYou ? (
+          {isFeed ? (
             <h1 className="flex items-center gap-2">
               <LogoMark size={26} />
               <span className="font-display text-title-2 font-extrabold tracking-tight">Mesh</span>
@@ -46,7 +46,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
       {/* desktop */}
       <div className="hidden md:flex min-h-16 items-center gap-4 px-6">
         <div className="min-w-0 flex-1 py-3">
-          <h1 className="text-title-2">{meta.label}</h1>
+          <h1 className="text-title-2">{isFeed ? "Home" : meta.label}</h1>
           <p className="text-caption text-fg-subtle">{meta.blurb}</p>
         </div>
         {actions}

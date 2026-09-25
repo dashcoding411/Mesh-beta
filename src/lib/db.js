@@ -320,14 +320,33 @@ export async function fetchPostsByAuthor(uid) {
   return snapToList(await getDocs(q)).sort(byNewest);
 }
 
-export async function fetchGroupPosts(groupId) {
-  const q = query(
+/* A circle's posts. Public circles post publicly; private and hidden ones
+   post with visibility "circle", which the rules only let members read.
+   Posts made before a circle went private are still "public", so members
+   of a private circle get both. */
+export async function fetchGroupPosts(group, { member = false } = {}) {
+  const byVis = (vis) => getDocs(query(
     collection(db, "posts"),
-    where("visibility", "==", "public"),
-    where("groupId", "==", groupId),
+    where("visibility", "==", vis),
+    where("groupId", "==", group.id),
     limit(100)
-  );
+  )).then(snapToList);
+  if (group.privacy === "public") return (await byVis("public")).sort(byNewest);
+  if (!member) return [];
+  const [circle, legacy] = await Promise.all([byVis("circle"), byVis("public").catch(() => [])]);
+  return [...circle, ...legacy].sort(byNewest);
+}
+
+/** Posts waiting for approval: all of them for admins, your own for you. */
+export async function fetchPendingPosts(groupId, { mine = false } = {}) {
+  const q = mine
+    ? query(collection(db, "posts"), where("authorId", "==", me()), where("groupId", "==", groupId), where("visibility", "==", "pending"), limit(50))
+    : query(collection(db, "posts"), where("visibility", "==", "pending"), where("groupId", "==", groupId), limit(100));
   return snapToList(await getDocs(q)).sort(byNewest);
+}
+
+export async function approvePost(post, group) {
+  await updateDoc(doc(db, "posts", post.id), { visibility: circleVisibility(group) });
 }
 
 export async function deletePost(post) {
@@ -1143,8 +1162,9 @@ export async function fetchMyGroups() {
   return mineIds.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-export async function createGroup({ name, description, privacy = "public" }) {
+export async function createGroup({ name, description, privacy = "public", ageLimit = 0 }) {
   const uid = me();
+  const profile = await fetchProfile(uid);
   const group = {
     name,
     description,
@@ -1152,6 +1172,7 @@ export async function createGroup({ name, description, privacy = "public" }) {
     ownerId: uid,
     memberCount: 1,
     requireApproval: privacy !== "public",
+    ageLimit,
     rules: "",
     coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
     pinnedPostId: "",
@@ -1162,6 +1183,7 @@ export async function createGroup({ name, description, privacy = "public" }) {
   const refDoc = await addDoc(collection(db, "groups"), group);
   await setDoc(doc(db, "groups", refDoc.id, "members", uid), {
     uid,
+    username: profile?.username || "",
     role: "owner",
     joinedAt: serverTimestamp(),
   });
@@ -1173,12 +1195,44 @@ export async function createGroup({ name, description, privacy = "public" }) {
 // community without these devolves fast, so they ship with the feature rather
 // than after it.
 
+/* Every limit here is enforced twice: in the app, so people get a clear
+   reason before they try, and in firestore.rules, so the limit still holds
+   against anyone who skips the app. Admins and moderators are exempt from
+   the posting limits (not from blocked words). */
 export const AUTOMOD_DEFAULTS = {
+  postingPermission: "members", // "members" | "admins": who can start a post
+  requirePostApproval: false,   // members' posts wait for an admin or moderator
   blockLinks: false,
-  blockNewAccounts: false,   // accounts younger than 7 days
-  requirePostApproval: false,
-  bannedWords: [],
+  blockNewAccounts: false,      // accounts younger than 7 days can read but not post
+  bannedWords: [],              // single words, stored lowercase
 };
+
+export const AGE_LIMITS = [
+  { id: 0, label: "Everyone", blurb: "Anyone with a Mesh account can join." },
+  { id: 16, label: "16 and over", blurb: "Members must be 16 or older." },
+  { id: 18, label: "18 and over", blurb: "Members must be 18 or older." },
+];
+
+export function isCircleMod(membership) {
+  return membership?.role === "owner" || membership?.role === "moderator";
+}
+
+/** Whether a profile meets a circle's (or gathering's) age limit. */
+export function meetsAgeLimit(limitYears, profile) {
+  if (!limitYears) return true;
+  const y = profile?.birthYear || 0;
+  return y > 0 && new Date().getFullYear() - y >= limitYears;
+}
+
+/** Can this person join without asking? Mirrors the members rule. */
+export function canJoinDirectly(group) {
+  return group.privacy === "public" && !group.requireApproval && !(group.screeningQuestions || []).length;
+}
+
+/** Private and hidden circles keep posts to members; public circles don't. */
+export function circleVisibility(group) {
+  return group.privacy === "public" ? "public" : "circle";
+}
 
 export async function updateCircle(groupId, fields) {
   await updateDoc(doc(db, "groups", groupId), fields);
@@ -1193,32 +1247,70 @@ export async function setScreeningQuestions(groupId, questions) {
 }
 
 export async function setAutomod(groupId, automod) {
-  await updateDoc(doc(db, "groups", groupId), { automod });
+  await updateDoc(doc(db, "groups", groupId), { automod: normaliseAutomod(automod) });
 }
 
-// Runs before a post is written. Returns an error string, or null to allow.
-export function screenPost(text, group, profile) {
+function normaliseAutomod(a) {
+  const words = (a.bannedWords || [])
+    .map((w) => String(w).toLowerCase().trim())
+    .filter(Boolean);
+  return {
+    postingPermission: a.postingPermission === "admins" ? "admins" : "members",
+    requirePostApproval: !!a.requirePostApproval,
+    blockLinks: !!a.blockLinks,
+    blockNewAccounts: !!a.blockNewAccounts,
+    bannedWords: [...new Set(words)].slice(0, 40),
+  };
+}
+
+/** Join and membership limits, set together from the Manage dialog. */
+export async function setCircleLimits(groupId, { requireApproval, ageLimit, automod }) {
+  await updateDoc(doc(db, "groups", groupId), {
+    requireApproval: !!requireApproval,
+    ageLimit: [0, 16, 18].includes(ageLimit) ? ageLimit : 0,
+    automod: normaliseAutomod(automod),
+  });
+}
+
+// Runs before a post is written: the app-side mirror of the circle-post
+// rules in firestore.rules. Returns an error string, or null to allow.
+export function screenPost(text, group, profile, membership) {
   const automod = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
   const body = String(text || "").toLowerCase();
+  const mod = isCircleMod(membership);
 
-  if (automod.blockLinks && /https?:\/\/|www\./i.test(body)) {
+  if (!membership) return "Join this circle to post in it.";
+  if (isMuted(membership)) return "You're muted in this circle for now.";
+  if (automod.postingPermission === "admins" && !mod) {
+    return "Only admins and moderators can post in this circle.";
+  }
+  if (!mod && automod.blockLinks && /https?:\/\/|www\./i.test(body)) {
     return "This circle doesn't allow links in posts.";
   }
-  const hit = (automod.bannedWords || []).find((w) => w && body.includes(w.toLowerCase()));
+  const words = new Set(body.split(/[^a-z0-9]+/).filter(Boolean));
+  const hit = (automod.bannedWords || []).find((w) => w && (words.has(w.toLowerCase()) || body.includes(w.toLowerCase())));
   if (hit) return `This circle blocks the word "${hit}".`;
 
-  if (automod.blockNewAccounts) {
+  if (!mod && automod.blockNewAccounts) {
     const age = Date.now() - tsMillis(profile?.createdAt);
-    if (age > 0 && age < 7 * 86400000) {
-      return "This circle only accepts posts from accounts older than 7 days.";
+    if (age >= 0 && age < 7 * 86400000) {
+      return "This circle only takes posts from accounts older than 7 days.";
     }
   }
   return null;
 }
 
+/** Whether a new post goes straight up, or waits for an admin. */
+export function circlePostVisibility(group, membership) {
+  const automod = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
+  return automod.requirePostApproval && !isCircleMod(membership) ? "pending" : circleVisibility(group);
+}
+
 // --- join requests (screening questions + rule agreement) ---
 
 export async function requestToJoin(groupId, answers) {
+  // (Age limits are checked by the rules here too: under-age accounts can't
+  // even ask.)
   const uid = me();
   const profile = await fetchProfile(uid);
   await setDoc(doc(db, "groups", groupId, "joinRequests", uid), {
@@ -1292,14 +1384,12 @@ export function contributorBadge(member, postCount) {
   return null;
 }
 
-export async function countPostsByAuthorInGroup(groupId, uid) {
-  const q = query(
-    collection(db, "posts"),
-    where("visibility", "==", "public"),
-    where("groupId", "==", groupId),
-    limit(100)
-  );
-  return snapToList(await getDocs(q)).filter((p) => p.authorId === uid).length;
+/** Post counts per member, from one read of the circle's posts. */
+export async function countPostsByMember(group, member) {
+  const posts = await fetchGroupPosts(group, { member }).catch(() => []);
+  const counts = new Map();
+  for (const p of posts) counts.set(p.authorId, (counts.get(p.authorId) || 0) + 1);
+  return counts;
 }
 
 export async function fetchMembership(groupId) {
@@ -1314,8 +1404,10 @@ export async function fetchMembers(groupId) {
 
 export async function joinGroup(groupId) {
   const uid = me();
+  const profile = await fetchProfile(uid);
   await setDoc(doc(db, "groups", groupId, "members", uid), {
     uid,
+    username: profile?.username || "",
     role: "member",
     joinedAt: serverTimestamp(),
   });
@@ -1358,14 +1450,50 @@ export const RSVP_OPTIONS = {
   ],
 };
 
-export async function fetchEvents(groupId = "") {
+/* Who can see a gathering (mirrors canViewEvent in firestore.rules):
+   public ones, anyone; private ones, the host, people they've invited, and
+   members of the circle it belongs to. */
+export function canViewEvent(event, membership) {
+  if (!event) return false;
+  return event.privacy === "public" || event.hostId === me()
+    || (event.invitees || []).includes(me()) || (!!event.groupId && !!membership);
+}
+
+/** Who can post in a gathering's discussion: the host, and anyone who replied. */
+export function canPostInEvent(event, myStatus) {
+  if (event.hostId === me()) return true;
+  return event.guestPosting !== "host" && !!myStatus;
+}
+
+export function isEventFull(event) {
+  return (event.capacity || 0) > 0 && (event.goingCount || 0) >= event.capacity;
+}
+
+/** A circle's gatherings: all of them for members, only public ones otherwise. */
+export async function fetchEvents(groupId = "", { member = false } = {}) {
   const q = groupId
-    ? query(collection(db, "events"), where("groupId", "==", groupId), limit(100))
+    ? member
+      ? query(collection(db, "events"), where("groupId", "==", groupId), limit(100))
+      : query(collection(db, "events"), where("groupId", "==", groupId), where("privacy", "==", "public"), limit(100))
     : query(collection(db, "events"), where("privacy", "==", "public"), limit(100));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
 }
 
-export async function createEvent({ title, description, location, startsAt, privacy = "public", groupId = "", ticketUrl = "", showGuestList = true }) {
+/** Private gatherings you've been invited to. */
+export async function fetchInvitedEvents() {
+  const q = query(collection(db, "events"), where("invitees", "array-contains", me()), limit(50));
+  return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
+}
+
+export async function fetchEvent(eventId) {
+  const snap = await getDoc(doc(db, "events", eventId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function createEvent({
+  title, description, location, startsAt, privacy = "public", groupId = "", ticketUrl = "",
+  showGuestList = true, capacity = 0, guestPosting = "guests",
+}) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
   const event = {
@@ -1377,6 +1505,9 @@ export async function createEvent({ title, description, location, startsAt, priv
     groupId,
     ticketUrl,
     showGuestList,
+    capacity: Math.max(0, Math.floor(capacity) || 0), // 0 = no limit
+    guestPosting: guestPosting === "host" ? "host" : "guests",
+    invitees: [],
     hostId: user.uid,
     hostName: profile?.username || "unknown",
     goingCount: 1,
@@ -1392,13 +1523,30 @@ export async function createEvent({ title, description, location, startsAt, priv
   return { id: refDoc.id, ...event, createdAt: Timestamp.now() };
 }
 
+export async function updateEvent(eventId, fields) {
+  await updateDoc(doc(db, "events", eventId), fields);
+}
+
+export async function deleteEvent(eventId) {
+  await deleteDoc(doc(db, "events", eventId));
+}
+
+/** Invite people to a private gathering by adding them to its guest list. */
+export async function inviteToEvent(eventId, users) {
+  await updateDoc(doc(db, "events", eventId), { invitees: arrayUnion(...users.map((u) => u.id)) });
+}
+
+export async function uninviteFromEvent(eventId, uid) {
+  await updateDoc(doc(db, "events", eventId), { invitees: arrayRemove(uid) });
+}
+
 export async function fetchMyRsvps(eventIds) {
   const uid = me();
   const map = new Map();
   await Promise.all(
     eventIds.map(async (id) => {
-      const snap = await getDoc(doc(db, "events", id, "rsvps", uid));
-      if (snap.exists()) map.set(id, snap.data().status);
+      const snap = await getDoc(doc(db, "events", id, "rsvps", uid)).catch(() => null);
+      if (snap?.exists()) map.set(id, snap.data().status);
     })
   );
   return map;
@@ -1409,41 +1557,71 @@ export async function fetchGuestList(eventId) {
   return snapToList(await getDocs(q));
 }
 
-// Counters move by ±1 per write, so switching status is two separate updates.
+/* One atomic write: the reply and the head-count change land together or
+   not at all, so the count can't drift and a full gathering can't be
+   overfilled (the rules check capacity against the count after the write). */
 export async function setRsvp(event, previous, next) {
   const uid = me();
   const profile = await fetchProfile(uid);
   const rsvpRef = doc(db, "events", event.id, "rsvps", uid);
   const eventRef = doc(db, "events", event.id);
-  const counterFor = (s) => (s === "going" ? "goingCount" : s === "interested" ? "interestedCount" : null);
+  const result = previous === next ? null : next;
+  const delta = { goingCount: 0, interestedCount: 0 };
+  const field = (s) => (s === "going" ? "goingCount" : s === "interested" ? "interestedCount" : null);
+  if (field(previous)) delta[field(previous)] -= 1;
+  if (field(result)) delta[field(result)] += 1;
 
-  if (previous === next) {
-    await deleteDoc(rsvpRef);
-    const field = counterFor(previous);
-    if (field) await updateDoc(eventRef, { [field]: increment(-1) });
-    return null;
-  }
-  if (previous) {
-    const field = counterFor(previous);
-    if (field) await updateDoc(eventRef, { [field]: increment(-1) });
-  }
-  await setDoc(rsvpRef, { status: next, username: profile?.username || "", createdAt: serverTimestamp() });
-  const nextField = counterFor(next);
-  if (nextField) await updateDoc(eventRef, { [nextField]: increment(1) });
-  return next;
+  const batch = writeBatch(db);
+  if (result) batch.set(rsvpRef, { status: result, username: profile?.username || "", createdAt: serverTimestamp() });
+  else batch.delete(rsvpRef);
+  const counters = {};
+  if (delta.goingCount) counters.goingCount = increment(delta.goingCount);
+  if (delta.interestedCount) counters.interestedCount = increment(delta.interestedCount);
+  if (Object.keys(counters).length) batch.update(eventRef, counters);
+  await batch.commit();
+  return result;
 }
 
-// Host announcements live in the gathering's own discussion thread.
-export async function fetchAnnouncements(eventId) {
-  const q = query(collection(db, "events", eventId, "announcements"), orderBy("createdAt", "asc"), limit(100));
+// --- a gathering's discussion ---
+// Guests (anyone who's replied) and the host post here; the host can switch
+// it to host-only so it reads as announcements. Stored under the gathering,
+// so a private gathering's discussion is exactly as private as the gathering.
+
+export async function fetchEventPosts(eventId) {
+  const q = query(collection(db, "events", eventId, "posts"), orderBy("createdAt", "desc"), limit(100));
   return snapToList(await getDocs(q));
 }
 
-export async function postAnnouncement(eventId, text) {
+export async function addEventPost(eventId, text) {
   const profile = await fetchProfile(me());
-  const item = { authorId: me(), authorName: profile?.username || "", text, createdAt: serverTimestamp() };
-  await addDoc(collection(db, "events", eventId, "announcements"), item);
-  return item;
+  const post = {
+    authorId: me(),
+    authorName: profile?.username || "",
+    authorDisplayName: profile?.name || profile?.username || "",
+    authorPhoto: profile?.photoURL || "",
+    text,
+    likedBy: [],
+    createdAt: serverTimestamp(),
+  };
+  const ref_ = await addDoc(collection(db, "events", eventId, "posts"), post);
+  return { id: ref_.id, ...post, createdAt: Timestamp.now() };
+}
+
+export async function deleteEventPost(eventId, postId) {
+  await deleteDoc(doc(db, "events", eventId, "posts", postId));
+}
+
+export async function toggleEventPostLike(eventId, post, liked) {
+  await updateDoc(doc(db, "events", eventId, "posts", post.id), {
+    likedBy: liked ? arrayRemove(me()) : arrayUnion(me()),
+  });
+}
+
+// Announcements from before discussions existed. Read-only now; they show
+// in the discussion as posts from the host.
+export async function fetchAnnouncements(eventId) {
+  const q = query(collection(db, "events", eventId, "announcements"), orderBy("createdAt", "asc"), limit(100));
+  return snapToList(await getDocs(q));
 }
 
 // ---------- account: data export & deletion (GDPR/CCPA style) ----------
@@ -1495,6 +1673,22 @@ export async function deleteMyAccountData() {
   if (profile?.username) {
     await deleteDoc(doc(db, "usernames", profile.username)).catch(() => {});
   }
+  // Private lists and signals, then who you follow (and your entry in their
+  // followers), then the profile itself.
+  const sub = async (name) => {
+    const snap = await getDocs(query(collection(db, "users", uid, name), limit(500))).catch(() => null);
+    return snap?.docs || [];
+  };
+  for (const name of ["affinity", "saved", "hidden"]) {
+    for (const d of await sub(name)) await deleteDoc(d.ref).catch(() => {});
+  }
+  for (const d of await sub("following")) {
+    await deleteDoc(doc(db, "users", d.id, "followers", uid)).catch(() => {});
+    await updateDoc(doc(db, "users", d.id), { followerCount: increment(-1) }).catch(() => {});
+    await deleteDoc(d.ref).catch(() => {});
+  }
+  await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
+  await deleteDoc(doc(db, "users", uid)).catch(() => {});
 }
 
 // ---------- tiny app-wide navigation bus ----------

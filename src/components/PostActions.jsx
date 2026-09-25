@@ -32,6 +32,9 @@ export function ShareSheet({ post, onClose }) {
   const [sent, setSent] = useState(new Set());
   const [busy, setBusy] = useState("");
   const chats = inbox.chats;
+  // A chat preview copies the post's text and picture into the conversation,
+  // which would carry a members-only post outside its circle.
+  const membersOnly = post.visibility === "circle" || post.visibility === "pending";
   const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
 
   const nativeShare = async () => {
@@ -69,6 +72,12 @@ export function ShareSheet({ post, onClose }) {
       </div>
 
       <p className="mb-2 mt-6 text-label font-semibold uppercase tracking-wider text-fg-subtle">Send in Messages</p>
+      {membersOnly ? (
+        <p className="flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
+          <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          This is only for members of its circle, so it can't be sent into a conversation. The link works for members.
+        </p>
+      ) : (<>
       {chats === null && <p className="py-4 text-callout text-fg-muted">Loading conversations…</p>}
       {post.visibility === "followers" && (
         <p className="mb-2 flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
@@ -95,6 +104,7 @@ export function ShareSheet({ post, onClose }) {
           );
         })}
       </ul>
+      </>)}
     </Dialog>
   );
 }

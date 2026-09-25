@@ -72,6 +72,7 @@ const PAGES = [
   [/^\/flicks(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "flicks", id: m[1] || null })],
   [/^\/news$/, () => ({ tab: "home", section: "news" })],
   [/^\/circles(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "circles", id: m[1] || null })],
+  [/^\/gatherings\/([^/]+)$/, (m) => ({ tab: "home", section: "circles", gatheringId: m[1] })],
   [/^\/search$/, () => ({ tab: "home", section: "search" })],
   [/^\/saved$/, () => ({ tab: "home", section: "saved" })],
   [/^\/messages(?:\/([^/]+))?$/, (m) => ({ tab: "messages", id: m[1] || null })],

@@ -21,10 +21,12 @@ npm run dev
 Names are deliberately our own. "Shorts" belongs to YouTube, "Groups" to
 Facebook, and "Posts" says nothing at all.
 
-**Navigation has two levels.** On phones there are exactly three tabs, always:
-**Home**, **Messages** and **Account**. Everything else is a section of Home,
-reached from its sidebar (a drawer on phones, a rail on desktop). Every screen
-has a real URL, so Back, refresh and shared links all work.
+**Navigation has three levels.** On phones there are exactly three tabs, always:
+**Home**, **Messages** and **Account**. Home's sidebar (a drawer on phones, a
+rail on desktop) has exactly four sections: **Search**, **For you**, **Flicks**
+and **Circles**. The feed has its own tabs across the top: **For you**,
+**Following** and **News**. Every screen has a real URL, so Back, refresh and
+shared links all work.
 
 | Section | What it is |
 | --- | --- |
@@ -144,27 +146,43 @@ enumerating all chats are each rejected.
 
 ## Circles
 
-Modelled on Facebook Groups, because that model is what makes communities
-self-govern rather than decay.
+Communities with their own admins, rules and limits, and the gatherings they
+plan. Post straight into a circle from the box at the top of its Discussion
+tab; Strands work without Storage, photos and Flicks open the full composer.
 
-**Layout**: hero banner, then tabbed sub-navigation (Featured / Discussion /
-Gatherings / Members) with a sticky side panel carrying About, Rules and the
-admin list. Featured leads with the pinned post.
+**Limits** (Manage → Limits, circle admin only). Every one is enforced in
+`firestore.rules`, not just the app, and was attack-tested against the live
+rules:
 
-**Governance**: three privacy levels, Admin / Moderator / Member roles, rules
-with a tick-to-agree gate, up to three screening questions whose answers land in
-an approval queue, and graduated penalties: a 12-hour mute, then removal.
+| Limit | What it does |
+| --- | --- |
+| Who can join | Anyone, or admins approve. Private and hidden circles always approve. Screening questions always mean approval. |
+| Age limit | Everyone, 16+ or 18+. Under-age accounts can't join or even ask. |
+| Who can post | All members, or admins and moderators only (this also covers planning gatherings). |
+| Approve posts first | Members' posts wait as `pending`, visible only to the author and admins, until approved. |
+| Block links | Posts with `http(s)://` or `www.` are refused. Admins exempt. |
+| Hold back new accounts | Accounts under 7 days old can read but not post. Admins exempt. |
+| Blocked words | Up to 40 words, refused for everyone, admins included. |
 
-**Admin Assist**: an if-this-then-that rule engine that runs before a post is
-written: block links, block accounts under seven days old, and a blocked-word
-list. Mesh's platform-wide hate-speech and spam filters apply on top and can't
-be switched off by a circle admin.
+Also enforced: muted members can't post until the mute ends; paused threads
+take no new comments; private and hidden circles post with visibility
+`circle`, readable only by members, and their comments are just as private;
+members-only posts can't be reposted or sent into chats.
 
-**Moderation**: pin a post to Featured, pause comments on a thread while
-leaving it visible, and remove posts as a moderator.
+## Gatherings
 
-**Badges**: earned from real activity rather than handed out: Admin, Mod, Top
-contributor (20+ posts), Regular (5+), New here.
+Each gathering has its own page (`/gatherings/:id`) with replies, a
+**discussion** and a guest list.
+
+- **Public or private.** Private gatherings are visible only to the host,
+  people they invite (Invite people, on the gathering page), and members of the
+  circle they belong to. Invited people find them under Gatherings → You're
+  invited.
+- **Capacity.** Once it's full, Going closes. A reply of Going is only accepted
+  in the same atomic write that raises the head count, which is what keeps the
+  count honest and the limit real.
+- **Who posts.** Everyone who has replied, or the host only (announcements).
+- **Guest list.** Visible to guests, or to the host only; enforced on reads.
 
 ## What Mesh deliberately doesn't do
 

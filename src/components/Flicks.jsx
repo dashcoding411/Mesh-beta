@@ -239,8 +239,8 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
       repost: ["reposted", reposted, () => toggleRepost(post, reposted), "repost"],
     };
     const [field, current, write, countKey] = map[what];
-    if (what === "repost" && (mine || post.visibility === "followers")) {
-      return toast({ tone: "info", title: mine ? "You can't repost your own Flick" : "Followers-only posts can't be reposted" });
+    if (what === "repost" && (mine || post.visibility !== "public")) {
+      return toast({ tone: "info", title: mine ? "You can't repost your own Flick" : "Only public posts can be reposted" });
     }
     pending.current[what] = true;
     onViewerChange(post.id, field, !current);

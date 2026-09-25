@@ -8,10 +8,11 @@ import {
    trailer and open into the full-length player. Stills are photos, Strands
    are words, Circles are communities.
 
-   Navigation has two levels on purpose:
+   Navigation has three levels on purpose:
      - three tabs that are always there: Home, Messages, Account
-     - everything else is a section of Home, reached from its sidebar
-   so the bottom bar never grows past what a thumb can reach. */
+     - four sections of Home in its sidebar: Search, For you, Flicks, Circles
+     - the feed's own tabs: For you, Following, News
+   so neither the bottom bar nor the sidebar grows past what's easy to scan. */
 
 export const TABS = [
   { id: "home", path: "/", label: "Home", icon: House },
@@ -19,14 +20,23 @@ export const TABS = [
   { id: "account", path: "/account", label: "Account", icon: UserRound },
 ];
 
-export const HOME_SECTIONS = [
-  { id: "foryou", path: "/", label: "For you", icon: Sparkles, blurb: "Flicks, Stills and Strands, ranked for you" },
-  { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
-  { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard, blurb: "Short videos, and trailers for long ones" },
-  { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },
-  { id: "circles", path: "/circles", label: "Circles", icon: Blend, blurb: "Communities and their gatherings" },
-  { id: "search", path: "/search", label: "Search", icon: Search, blurb: "People, posts, news and circles" },
-  { id: "saved", path: "/saved", label: "Saved", icon: Bookmark, blurb: "Posts you've kept. Only you see these" },
-];
+const ALL = {
+  search: { id: "search", path: "/search", label: "Search", icon: Search, blurb: "People, posts, news and circles" },
+  foryou: { id: "foryou", path: "/", label: "For you", icon: Sparkles, blurb: "Flicks, Stills and Strands, ranked for you" },
+  flicks: { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard, blurb: "Short videos, and trailers for long ones" },
+  circles: { id: "circles", path: "/circles", label: "Circles", icon: Blend, blurb: "Communities and the gatherings they plan" },
+  following: { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
+  news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },
+  saved: { id: "saved", path: "/saved", label: "Saved", icon: Bookmark, blurb: "Posts you've kept. Only you see these" },
+};
 
-export const sectionById = (id) => HOME_SECTIONS.find((s) => s.id === id) || HOME_SECTIONS[0];
+/** The Home sidebar, in this order. */
+export const HOME_SECTIONS = [ALL.search, ALL.foryou, ALL.flicks, ALL.circles];
+
+/** Tabs across the top of the feed. News lives here as its own page. */
+export const FEED_TABS = [ALL.foryou, ALL.following, ALL.news];
+
+export const sectionById = (id) => ALL[id] || ALL.foryou;
+
+/** Which sidebar row lights up for a section: the feed's tabs all count as For you. */
+export const sidebarSection = (id) => (["following", "news", "saved"].includes(id) ? "foryou" : id);

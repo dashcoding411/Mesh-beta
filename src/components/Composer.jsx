@@ -4,7 +4,7 @@ import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
   uploadMedia, createPost, isMinor, StorageUnavailableError, storageAvailable, screenPost,
-  STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
+  circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration } from "../lib/format";
 import Dialog from "./ui/Dialog";
@@ -43,7 +43,7 @@ function readDuration(file) {
    seconds play as its trailer in the Flicks feed.
 
    Nothing you've typed or picked is lost when something fails. */
-export default function Composer({ onClose, onPosted, groupId, group, profile, kind: initialKind }) {
+export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind }) {
   const toast = useToast();
   const minor = isMinor(profile);
   const [kind, setKind] = useState(initialKind || lastKind);
@@ -105,7 +105,7 @@ export default function Composer({ onClose, onPosted, groupId, group, profile, k
     const mod = checkContent(`${long ? title : ""}\n${text}`, { key: kind });
     if (!e.text && mod.error) e.text = mod.error;
     if (group && !e.text) {
-      const blocked = screenPost(`${title}\n${text}`, group, profile);
+      const blocked = screenPost(`${title}\n${text}`, group, profile, membership);
       if (blocked) e.text = blocked;
     }
     return { e, text: vText.text || "" };
@@ -139,12 +139,14 @@ export default function Composer({ onClose, onPosted, groupId, group, profile, k
         trailerStart: long ? trailerStart : 0,
         aiGenerated: spec.media ? ai : false,
         groupId,
-        // Circle posts are gated by membership, so they stay 'public' within
-        // the circle. That also keeps circle queries satisfiable by the rules.
-        visibility: groupId ? "public" : minor ? "followers" : visibility,
+        // In a circle the circle decides: members-only for private circles,
+        // and "pending" when the circle wants to approve posts first.
+        visibility: groupId ? circlePostVisibility(group, membership) : minor ? "followers" : visibility,
       });
       markPosted(kind, clean);
-      toast({ title: `${long ? "Long Flick" : spec.label} posted` });
+      toast(post.visibility === "pending"
+        ? { tone: "info", title: "Sent to the circle's admins", body: "It'll appear once someone approves it." }
+        : { title: `${long ? "Long Flick" : spec.label} posted` });
       onPosted(post);
     } catch (err) {
       console.error(err);
@@ -191,10 +193,8 @@ export default function Composer({ onClose, onPosted, groupId, group, profile, k
           )}
         </div>
       }>
-      {!groupId && (
-        <Tabs label="What are you posting?" value={kind} onChange={switchKind} className="mb-5 flex w-full"
-          tabs={KINDS.map((k) => ({ id: k.id, label: k.label }))} />
-      )}
+      <Tabs label="What are you posting?" value={kind} onChange={switchKind} className="mb-5 flex w-full"
+        tabs={KINDS.map((k) => ({ id: k.id, label: k.label }))} />
 
       <form id="composer-form" onSubmit={submit} className="space-y-5" noValidate>
         {mediaBlocked && (

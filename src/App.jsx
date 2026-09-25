@@ -15,6 +15,7 @@ import Search from "./components/Search";
 import Saved from "./components/Saved";
 import News from "./components/News";
 import Circles from "./components/Circles";
+import GatheringPage from "./components/GatheringPage";
 import Messages from "./components/Messages";
 import Profile from "./components/Profile";
 import Settings from "./components/Settings";
@@ -94,7 +95,11 @@ export default function App() {
       case "following": content = <HomeFeed key={`following-${feedKey}`} mode="following" />; break;
       case "flicks": content = <Flicks key={`flicks-${feedKey}`} startId={page.id} />; break;
       case "news": content = <News />; break;
-      case "circles": content = <Circles key={`circles-${feedKey}`} circleId={page.id} view={query.get("view")} />; break;
+      case "circles":
+        content = page.gatheringId
+          ? <GatheringPage key={`g-${page.gatheringId}-${feedKey}`} eventId={page.gatheringId} />
+          : <Circles key={`circles-${feedKey}`} circleId={page.id} view={query.get("view")} />;
+        break;
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
       case "saved": content = <Saved />; break;
       default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;

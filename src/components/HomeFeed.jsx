@@ -8,7 +8,7 @@ import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
-import Tabs from "./ui/Tabs";
+import FeedTabs from "./shell/FeedTabs";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState, Skeleton, Loading } from "./ui/States";
 import PostCard from "./PostCard";
@@ -77,9 +77,7 @@ export default function HomeFeed({ mode }) {
   return (
     <>
       <HomeHeader section={mode}>
-        <Tabs variant="underline" label="Feed" className="px-2 md:px-4" value={mode}
-          onChange={(id) => navigate(id === "following" ? "/following" : "/")}
-          tabs={[{ id: "foryou", label: "For you" }, { id: "following", label: "Following" }]} />
+        <FeedTabs value={mode} />
       </HomeHeader>
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">

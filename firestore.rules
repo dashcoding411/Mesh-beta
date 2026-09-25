@@ -34,6 +34,67 @@ service cloud.firestore {
       return myProfile().birthYear > 0
         && request.time.year() - myProfile().birthYear >= 16;
     }
+    // Age limits on circles: 0 means everyone; otherwise the account needs a
+    // birth year on file that meets it.
+    function oldEnoughFor(limitYears) {
+      return limitYears == 0
+        || (myProfile().get('birthYear', 0) > 0
+            && request.time.year() - myProfile().birthYear >= limitYears);
+    }
+
+    // ---------- circle membership, used by posts, circles and gatherings ----------
+    function circleOf(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)).data;
+    }
+    function isMemberOf(groupId) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+    function membershipIn(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data;
+    }
+    function isModOf(groupId) {
+      return isMemberOf(groupId) && membershipIn(groupId).role in ['owner', 'moderator'];
+    }
+
+    // Who can read a post:
+    //   public    anyone signed in
+    //   followers the author's followers
+    //   circle    members of the (private or hidden) circle it was posted in
+    //   pending   the circle's admins and moderators, until one approves it
+    // and always the author.
+    function canReadPost(p) {
+      return p.authorId == request.auth.uid
+        || p.visibility == 'public'
+        || (p.visibility == 'followers'
+            && exists(/databases/$(database)/documents/users/$(p.authorId)/followers/$(request.auth.uid)))
+        || (p.visibility == 'circle' && isMemberOf(p.groupId))
+        || (p.visibility == 'pending' && isModOf(p.groupId));
+    }
+
+    // A post inside a circle has to clear every limit the circle has set.
+    // The app checks the same things first so people get a clear reason;
+    // this is what makes the limits hold against anyone who skips the app.
+    // Admins and moderators are exempt from the posting limits, not from
+    // blocked words.
+    function circlePostOk(p) {
+      let g = circleOf(p.groupId);
+      let am = g.get('automod', {});
+      let mod = isModOf(p.groupId);
+      let words = (p.text + ' ' + p.title).lower();
+      let needsApproval = am.get('requirePostApproval', false) == true && !mod;
+      return isMemberOf(p.groupId)
+        && (membershipIn(p.groupId).get('mutedUntil', null) == null
+            || membershipIn(p.groupId).mutedUntil < request.time)
+        && (am.get('postingPermission', 'members') != 'admins' || mod)
+        && (am.get('blockLinks', false) != true || mod
+            || !words.matches('(?s).*(https?://|www[.]).*'))
+        && (am.get('blockNewAccounts', false) != true || mod
+            || request.time > myProfile().createdAt + duration.value(7, 'd'))
+        && !words.split('[^a-z0-9]+').hasAny(am.get('bannedWords', []))
+        && ((needsApproval && p.visibility == 'pending')
+            || (!needsApproval && g.privacy == 'public' && p.visibility == 'public')
+            || (!needsApproval && g.privacy != 'public' && p.visibility == 'circle'));
+    }
 
     // ---------- reports ----------
     // Anyone signed in can file one; only admins can read or resolve them, so
@@ -119,7 +180,10 @@ service cloud.firestore {
         || (onlyKey('followerCount') && delta1(resource.data.get('followerCount', 0), incomingData().followerCount))
         || (onlyKey('followingCount') && delta1(resource.data.get('followingCount', 0), incomingData().followingCount))
       );
-      allow delete: if false;
+      // Deleting your account deletes your profile. (This was "if false",
+      // which left profiles behind after deletion, contrary to the Privacy
+      // Policy.)
+      allow delete: if isUser(uid);
 
       // who this user follows, only the user themself writes here
       match /following/{targetUid} {
@@ -159,11 +223,7 @@ service cloud.firestore {
 
     // ---------- posts ----------
     match /posts/{postId} {
-      // Single-document reads enforce follower-gating exactly.
-      allow get: if signedIn()
-        && (resource.data.visibility != 'followers'
-            || resource.data.authorId == request.auth.uid
-            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
+      allow get: if signedIn() && canReadPost(resource.data);
 
       // Queries are evaluated statically: Firestore only permits a list when
       // the query itself proves every match satisfies this rule. That means
@@ -171,9 +231,13 @@ service cloud.firestore {
       // profiles) or authorId == their own uid (own profile). A followers-only
       // post therefore can never be enumerated by someone else; reaching one
       // requires a direct get, which runs the follower check above.
+      // Circle queries constrain groupId, which is what lets the membership
+      // check run here.
       allow list: if signedIn()
         && (resource.data.visibility == 'public'
-            || resource.data.authorId == request.auth.uid);
+            || resource.data.authorId == request.auth.uid
+            || (resource.data.visibility == 'circle' && isMemberOf(resource.data.groupId))
+            || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)));
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
@@ -186,11 +250,12 @@ service cloud.firestore {
         // post = Still (photo), text = Strand, short/video = Flick (video
         // over three minutes plays as a trailer in the feed).
         && incomingData().kind in ['post', 'text', 'short', 'video']
-        && incomingData().visibility in ['public', 'followers']
-        // under-16s may post to groups and to followers, never to the public feed
-        && (incomingData().groupId != ''
-            || incomingData().visibility == 'followers'
-            || isAdult())
+        // Outside circles: public or followers-only, and under-16s never
+        // public. Inside a circle: whatever the circle's limits decide.
+        && ((incomingData().groupId == ''
+              && (incomingData().visibility == 'followers'
+                  || (incomingData().visibility == 'public' && isAdult())))
+            || (incomingData().groupId != '' && circlePostOk(incomingData())))
         && incomingData().text is string
         && incomingData().text.size() <= 5000
         && incomingData().title is string
@@ -216,20 +281,29 @@ service cloud.firestore {
               && incomingData().text.size() >= 1
               && incomingData().text.size() <= 500)
             || (incomingData().kind != 'text'
-              && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')))
-        && (incomingData().groupId == ''
-            || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
+              && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')));
       allow update: if signedIn() && (
+        // Authors edit their own posts outside circles. (Inside a circle an
+        // edit could sneak past its limits, so circle posts aren't editable.)
         (resource.data.authorId == request.auth.uid
+          && resource.data.get('groupId', '') == ''
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated'])
+          && incomingData().visibility in ['public', 'followers']
+          && (incomingData().visibility == 'followers' || isAdult())
           && incomingData().text is string
           && incomingData().text.size() <= 5000
           && (resource.data.kind != 'text' || incomingData().text.size() <= 500))
-        // a circle admin or moderator may lock a thread
+        // a circle admin or moderator may pause comments on a thread
         || (onlyKey('locked')
-          && resource.data.groupId != ''
-          && exists(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid))
-          && get(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator'])
+          && resource.data.get('groupId', '') != ''
+          && isModOf(resource.data.groupId)
+          && incomingData().locked is bool)
+        // ...and approve a post that was waiting, publishing it to the circle
+        || (onlyKey('visibility')
+          && resource.data.visibility == 'pending'
+          && isModOf(resource.data.groupId)
+          && ((circleOf(resource.data.groupId).privacy == 'public' && incomingData().visibility == 'public')
+              || (circleOf(resource.data.groupId).privacy != 'public' && incomingData().visibility == 'circle')))
         || (onlyKey('likeCount') && delta1(resource.data.get('likeCount', 0), incomingData().likeCount))
         || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))
         || (onlyKey('saveCount') && delta1(resource.data.get('saveCount', 0), incomingData().saveCount))
@@ -242,9 +316,7 @@ service cloud.firestore {
       // remove posts made inside that circle.
       allow delete: if signedIn() && (
         resource.data.authorId == request.auth.uid
-        || (resource.data.get('groupId', '') != ''
-          && exists(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid))
-          && get(/databases/$(database)/documents/groups/$(resource.data.groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator'])
+        || (resource.data.get('groupId', '') != '' && isModOf(resource.data.groupId))
       );
 
       match /likes/{uid} {
@@ -259,13 +331,20 @@ service cloud.firestore {
         allow create, update, delete: if isUser(uid);
       }
 
+      // Comments are exactly as private as the post they're on, and a post
+      // whose comments a moderator has paused takes no new ones.
       match /comments/{commentId} {
-        allow read: if signedIn();
+        function parentPost() {
+          return get(/databases/$(database)/documents/posts/$(postId)).data;
+        }
+        allow read: if signedIn() && canReadPost(parentPost());
         allow create: if signedIn()
           && incomingData().authorId == request.auth.uid
           && incomingData().text is string
           && incomingData().text.size() > 0
-          && incomingData().text.size() <= 2000;
+          && incomingData().text.size() <= 2000
+          && canReadPost(parentPost())
+          && parentPost().get('locked', false) != true;
         allow update: if false;
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid
@@ -461,14 +540,22 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if signedIn() && resource.data.privacy in ['public', 'private'];
 
+      function limitsOk(g) {
+        return g.get('ageLimit', 0) in [0, 16, 18]
+          && g.get('automod', {}).get('postingPermission', 'members') in ['members', 'admins']
+          && g.get('automod', {}).get('bannedWords', []).size() <= 40;
+      }
+
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'name', 'description', 'privacy', 'ownerId', 'memberCount',
-          'requireApproval', 'rules', 'coverColor', 'pinnedPostId',
+          'requireApproval', 'ageLimit', 'rules', 'coverColor', 'pinnedPostId',
           'screeningQuestions', 'automod', 'createdAt'
         ])
         && incomingData().ownerId == request.auth.uid
         && incomingData().privacy in ['public', 'private', 'hidden']
+        && limitsOk(incomingData())
+        && oldEnoughFor(incomingData().get('ageLimit', 0))
         && incomingData().name is string
         && incomingData().name.size() >= 3
         && incomingData().name.size() <= 80
@@ -478,10 +565,11 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isCircleOwner()
           && incomingData().diff(resource.data).affectedKeys()
-               .hasOnly(['name', 'description', 'privacy', 'requireApproval',
+               .hasOnly(['name', 'description', 'privacy', 'requireApproval', 'ageLimit',
                          'rules', 'coverColor', 'pinnedPostId',
                          'screeningQuestions', 'automod'])
-          && incomingData().privacy in ['public', 'private', 'hidden'])
+          && incomingData().privacy in ['public', 'private', 'hidden']
+          && limitsOk(incomingData()))
         // moderators may pin a post without touching anything else
         || (signedIn()
           && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
@@ -497,7 +585,9 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
           || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
               && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
-        allow create: if isUser(uid) && incomingData().agreedToRules == true;
+        // Under-age accounts can't even ask to join an age-limited circle.
+        allow create: if isUser(uid) && incomingData().agreedToRules == true
+          && oldEnoughFor(get(/databases/$(database)/documents/groups/$(groupId)).data.get('ageLimit', 0));
         allow delete: if isUser(uid)
           || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
           || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
@@ -507,14 +597,21 @@ service cloud.firestore {
 
       match /members/{uid} {
         allow read: if signedIn();
-        // You add yourself; owners and moderators can't fabricate members.
-        allow create: if (isUser(uid) && incomingData().role == 'member')
+        // Joining yourself only works for an open circle: public, no approval
+        // step, no screening questions, and old enough. Everything else goes
+        // through a join request an admin approves. (Before this, the app
+        // asked for approval but the server let anyone straight in.)
+        allow create: if (isUser(uid) && incomingData().role == 'member'
+              && circleOf(groupId).privacy == 'public'
+              && circleOf(groupId).get('requireApproval', false) != true
+              && circleOf(groupId).get('screeningQuestions', []).size() == 0
+              && oldEnoughFor(circleOf(groupId).get('ageLimit', 0)))
           || (isUser(uid) && incomingData().role == 'owner'
-              && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == uid)
-          // an admin or moderator approving a join request
+              && circleOf(groupId).ownerId == uid)
+          // an admin or moderator approving a real join request
           || (signedIn() && incomingData().role == 'member'
-              && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
-              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+              && isModOf(groupId)
+              && exists(/databases/$(database)/documents/groups/$(groupId)/joinRequests/$(uid)));
         // Only the circle owner changes roles, and never to owner.
         allow update: if signedIn() && (
           (get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
@@ -534,21 +631,42 @@ service cloud.firestore {
     }
 
     // ---------- gatherings (events) ----------
+    // Who can see a gathering: public ones, anyone; private ones, the host,
+    // the people they've invited, and members of the circle it belongs to.
+    function canViewEvent(e) {
+      return e.privacy == 'public'
+        || e.hostId == request.auth.uid
+        || request.auth.uid in e.get('invitees', [])
+        || (e.get('groupId', '') != '' && isMemberOf(e.groupId));
+    }
+    function step1(before, after) {
+      return after is int && after >= before - 1 && after <= before + 1;
+    }
+
     match /events/{eventId} {
       function isHost() {
         return signedIn() && resource.data.hostId == request.auth.uid;
       }
+      function eventLimitsOk(e) {
+        return e.get('capacity', 0) is int
+          && e.get('capacity', 0) >= 0
+          && e.get('capacity', 0) <= 100000
+          && e.get('guestPosting', 'guests') in ['guests', 'host']
+          && e.get('invitees', []).size() <= 300;
+      }
 
-      // Private gatherings are reachable by link or invite, not by listing.
-      allow get: if signedIn();
+      allow get: if signedIn() && canViewEvent(resource.data);
       allow list: if signedIn()
-        && (resource.data.privacy == 'public' || resource.data.groupId != '');
+        && (resource.data.privacy == 'public'
+            || resource.data.hostId == request.auth.uid
+            || request.auth.uid in resource.data.invitees
+            || (resource.data.groupId != '' && isMemberOf(resource.data.groupId)));
 
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'title', 'description', 'location', 'startsAt', 'privacy', 'groupId',
-          'ticketUrl', 'showGuestList', 'hostId', 'hostName',
-          'goingCount', 'interestedCount', 'createdAt'
+          'ticketUrl', 'showGuestList', 'capacity', 'guestPosting', 'invitees',
+          'hostId', 'hostName', 'goingCount', 'interestedCount', 'createdAt'
         ])
         && incomingData().hostId == request.auth.uid
         && incomingData().privacy in ['public', 'private']
@@ -562,36 +680,102 @@ service cloud.firestore {
         && incomingData().startsAt is timestamp
         && incomingData().goingCount == 1
         && incomingData().interestedCount == 0
+        && eventLimitsOk(incomingData())
         && (incomingData().ticketUrl == '' || incomingData().ticketUrl.matches('^https?://.*'))
-        // A gathering attached to a circle requires membership of that circle.
+        // In a circle: members only, and if the circle lets only admins post,
+        // only admins plan its gatherings too.
         && (incomingData().groupId == ''
-            || exists(/databases/$(database)/documents/groups/$(incomingData().groupId)/members/$(request.auth.uid)));
+            || (isMemberOf(incomingData().groupId)
+                && (circleOf(incomingData().groupId).get('automod', {}).get('postingPermission', 'members') != 'admins'
+                    || isModOf(incomingData().groupId))));
       allow update: if signedIn() && (
         (isHost()
           && incomingData().diff(resource.data).affectedKeys()
-               .hasOnly(['title', 'description', 'location', 'startsAt', 'ticketUrl', 'showGuestList']))
-        || (onlyKey('goingCount') && delta1(resource.data.get('goingCount', 0), incomingData().goingCount))
-        || (onlyKey('interestedCount') && delta1(resource.data.get('interestedCount', 0), incomingData().interestedCount))
+               .hasOnly(['title', 'description', 'location', 'startsAt', 'ticketUrl', 'showGuestList',
+                         'privacy', 'capacity', 'guestPosting', 'invitees'])
+          && incomingData().privacy in ['public', 'private']
+          && eventLimitsOk(incomingData()))
+        // Head counts move by at most one each, and "going" can't pass the
+        // capacity (lowering it is always allowed).
+        || (canViewEvent(resource.data)
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['goingCount', 'interestedCount'])
+          && step1(resource.data.get('goingCount', 0), incomingData().get('goingCount', 0))
+          && step1(resource.data.get('interestedCount', 0), incomingData().get('interestedCount', 0))
+          && (resource.data.get('capacity', 0) == 0
+              || incomingData().get('goingCount', 0) <= resource.data.capacity
+              || incomingData().get('goingCount', 0) < resource.data.get('goingCount', 0)))
       );
       allow delete: if isHost();
 
+      // Replies. Going is only accepted in the same write that raises the
+      // head count, which is what makes the capacity limit hold. The host's
+      // own reply is written with the gathering and already counted.
       match /rsvps/{uid} {
-        allow read: if signedIn();
+        function ev() {
+          return get(/databases/$(database)/documents/events/$(eventId)).data;
+        }
+        function evAfter() {
+          return getAfter(/databases/$(database)/documents/events/$(eventId)).data;
+        }
+        // A hidden guest list really is hidden: guests see their own reply,
+        // the host sees everyone.
+        allow read: if signedIn()
+          && (isUser(uid)
+              || ev().hostId == request.auth.uid
+              || (ev().get('showGuestList', true) == true && canViewEvent(ev())));
         allow create, update: if isUser(uid)
-          && incomingData().status in ['going', 'interested', 'maybe', 'cant'];
-        allow delete: if isUser(uid);
+          && canViewEvent(ev())
+          && incomingData().status in ['going', 'interested', 'maybe', 'cant']
+          && (incomingData().status != 'going'
+              || ev().hostId == request.auth.uid
+              || (resource != null && resource.data.status == 'going')
+              || (evAfter().get('goingCount', 0) == ev().get('goingCount', 0) + 1
+                  && (evAfter().get('capacity', 0) == 0
+                      || evAfter().get('goingCount', 0) <= evAfter().get('capacity', 0))));
+        allow delete: if isUser(uid)
+          && (resource.data.status != 'going'
+              || ev().hostId == request.auth.uid
+              || evAfter().get('goingCount', 0) == ev().get('goingCount', 0) - 1);
       }
 
-      // Only the host makes announcements; guests read them.
-      match /announcements/{announcementId} {
-        allow read: if signedIn();
+      // The gathering's discussion: as private as the gathering itself.
+      // The host always posts; guests (anyone who has replied) post unless
+      // the host has made it host-only.
+      match /posts/{postId} {
+        function ev() {
+          return get(/databases/$(database)/documents/events/$(eventId)).data;
+        }
+        allow read: if signedIn() && canViewEvent(ev());
         allow create: if signedIn()
+          && incomingData().keys().hasOnly([
+            'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'likedBy', 'createdAt'
+          ])
           && incomingData().authorId == request.auth.uid
-          && get(/databases/$(database)/documents/events/$(eventId)).data.hostId == request.auth.uid
           && incomingData().text is string
-          && incomingData().text.size() > 0
-          && incomingData().text.size() <= 1000;
-        allow update: if false;
+          && incomingData().text.size() >= 1
+          && incomingData().text.size() <= 1000
+          && incomingData().likedBy == []
+          && incomingData().createdAt == request.time
+          && canViewEvent(ev())
+          && (ev().hostId == request.auth.uid
+              || (ev().get('guestPosting', 'guests') == 'guests'
+                  && exists(/databases/$(database)/documents/events/$(eventId)/rsvps/$(request.auth.uid))));
+        // Liking touches only your own entry in likedBy.
+        allow update: if signedIn()
+          && canViewEvent(ev())
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['likedBy'])
+          && incomingData().likedBy.toSet().difference(resource.data.likedBy.toSet())
+               .union(resource.data.likedBy.toSet().difference(incomingData().likedBy.toSet()))
+               == [request.auth.uid].toSet();
+        allow delete: if signedIn()
+          && (resource.data.authorId == request.auth.uid || ev().hostId == request.auth.uid);
+      }
+
+      // Announcements from before discussions existed: read-only now.
+      match /announcements/{announcementId} {
+        allow read: if signedIn()
+          && canViewEvent(get(/databases/$(database)/documents/events/$(eventId)).data);
+        allow create, update: if false;
         allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
       }
     }

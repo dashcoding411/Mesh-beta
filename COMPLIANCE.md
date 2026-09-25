@@ -218,6 +218,24 @@ rules**, so a future change can't quietly reintroduce them.
 - **Circle moderators** could previously press Remove on a post but the rules
   refused it. The rules now allow it for circle posts only.
 
+### Circle and gathering privacy (September 2026)
+Found while making circle limits real, all now fixed in `firestore.rules` and
+attack-tested against the live rules (54 checks, all passing):
+- **Private circles' posts were readable by anyone signed in**, because circle
+  posts were stored as `public`. They're now `circle`, readable by members only,
+  and their comments inherit the same restriction.
+- **Anyone could join a private circle directly**, skipping approval: the app
+  asked for approval, the server didn't. Self-joining now only works for open
+  public circles.
+- **Hidden guest lists weren't hidden** on the server, and "invite only"
+  gatherings had no way to invite. Both fixed.
+- **Account deletion left the profile document behind** (the rule was
+  `delete: if false`), contrary to the Privacy Policy's "deleting your account
+  removes your profile". Deletion now removes the profile, follow lists,
+  private lists and thought.
+- Posts made in private circles **before** this change are still stored as
+  `public`. Move them or delete them if that matters.
+
 ### Claims and content
 - No testimonials, no review counts, no user-number claims, no awards. Nothing
   fabricated to remove. Swept for all of these.

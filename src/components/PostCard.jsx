@@ -75,8 +75,8 @@ export default function PostCard({
 
   const repost = async () => {
     if (mine) return toast({ tone: "info", title: "You can't repost your own post", body: "Share it instead, or send it to someone." });
-    if (post.visibility === "followers") {
-      return toast({ tone: "info", title: "Followers-only posts can't be reposted", body: "Reposting would show it to people the author didn't choose." });
+    if (post.visibility !== "public") {
+      return toast({ tone: "info", title: "Only public posts can be reposted", body: "Reposting would show it to people the author didn't choose." });
     }
     const on = !reposted;
     const ok = await optimistic("repost", "reposted", on, () => toggleRepost(post, reposted), "Couldn't update your repost");
@@ -88,7 +88,7 @@ export default function PostCard({
     }
   };
 
-  const repostDisabled = mine || post.visibility === "followers";
+  const repostDisabled = mine || post.visibility !== "public";
 
   return (
     <article aria-labelledby={titleId}

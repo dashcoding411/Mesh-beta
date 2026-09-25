@@ -159,10 +159,10 @@ export default function Watch({ postId }) {
                   activeClass="text-fuchsia-400" onClick={() => act("liked", liked, () => toggleLike(post, liked), "like")} />
                 <IconButton icon={MessageCircle} label="Comments" count={counts.comment} countNoun="comment" onClick={() => setSheet("comments")} />
                 <IconButton icon={Repeat2} label={reposted ? "Undo repost" : "Repost"} pressed={reposted} count={counts.repost} countNoun="repost"
-                  activeClass="text-success-text" aria-disabled={mine || post.visibility === "followers" || undefined}
-                  className={mine || post.visibility === "followers" ? "opacity-45" : ""}
-                  onClick={() => mine || post.visibility === "followers"
-                    ? toast({ tone: "info", title: mine ? "You can't repost your own video" : "Followers-only posts can't be reposted" })
+                  activeClass="text-success-text" aria-disabled={mine || post.visibility !== "public" || undefined}
+                  className={mine || post.visibility !== "public" ? "opacity-45" : ""}
+                  onClick={() => mine || post.visibility !== "public"
+                    ? toast({ tone: "info", title: mine ? "You can't repost your own video" : "Only public posts can be reposted" })
                     : act("reposted", reposted, () => toggleRepost(post, reposted), "repost")} />
                 <IconButton icon={Send} label="Share" onClick={() => setSheet("share")} />
                 <IconButton icon={Bookmark} label={saved ? "Remove from saved" : "Save"} pressed={saved} activeClass="text-accent-text"

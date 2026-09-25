@@ -1,16 +1,15 @@
 import { useId } from "react";
-import { MessageCircle, Plus, Search, Settings } from "lucide-react";
-import { HOME_SECTIONS } from "../../lib/surfaces";
+import { MessageCircle, Plus, Settings } from "lucide-react";
+import { HOME_SECTIONS, sidebarSection } from "../../lib/surfaces";
 import { navigate } from "../../lib/router";
 import Avatar from "../ui/Avatar";
 
 /* Desktop navigation. Two widths: an icon rail between 768 and 1280px so
    the content keeps its room, and the full labelled sidebar above that.
-   Search sits at the top because it's the thing people reach for most; the
-   Home sections follow; Messages, Create and your account anchor the bottom. */
+   Home's four sections come first (Search, For you, Flicks, Circles), then
+   Messages; Create and your account anchor the bottom. */
 export default function Sidebar({ page, profile, unread, onCreate }) {
-  const sections = HOME_SECTIONS.filter((s) => s.id !== "search");
-  const isActive = (s) => page.tab === "home" && page.section === s.id;
+  const current = page.tab === "home" ? sidebarSection(page.section) : null;
 
   return (
     <aside aria-label="Main" className="hidden md:flex w-[76px] xl:w-64 shrink-0 flex-col border-r border-line bg-canvas px-3 py-4">
@@ -20,21 +19,9 @@ export default function Sidebar({ page, profile, unread, onCreate }) {
         <span className="hidden xl:inline font-display text-title-2 font-extrabold tracking-tight">Mesh</span>
       </button>
 
-      <button type="button" onClick={() => navigate("/search")}
-        aria-current={page.section === "search" ? "page" : undefined}
-        className={`press mb-4 flex min-h-11 items-center gap-3 rounded-control px-3 text-callout transition-colors ${
-          page.section === "search"
-            ? "bg-surface-2 text-fg ring-1 ring-line-strong"
-            : "bg-surface text-fg-subtle hover:bg-surface-2 hover:text-fg-muted ring-1 ring-line"
-        } justify-center xl:justify-start`}>
-        <Search size={20} strokeWidth={2} aria-hidden="true" />
-        <span className="hidden xl:inline">Search Mesh</span>
-        <span className="sr-only xl:hidden">Search</span>
-      </button>
-
       <nav aria-label="Home sections" className="flex-1 space-y-1 overflow-y-auto no-scrollbar">
-        {sections.map((s) => (
-          <NavRow key={s.id} icon={s.icon} label={s.label} active={isActive(s)} onClick={() => navigate(s.path)} />
+        {HOME_SECTIONS.map((s) => (
+          <NavRow key={s.id} icon={s.icon} label={s.label} active={current === s.id} onClick={() => navigate(s.path)} />
         ))}
 
         <div className="my-3 h-px bg-line" aria-hidden="true" />

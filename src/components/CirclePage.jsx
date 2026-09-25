@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft, Pin, PinOff, Lock, LockOpen, ShieldCheck, Settings2, PenLine, CalendarPlus, Users,
-  LogOut, UserPlus, Clock, Check, X, MessageSquare, CalendarDays, Info,
+  UserPlus, Clock, Check, X, MessageSquare, CalendarDays, Info, Image, Clapperboard, Hourglass,
+  Link2Off, UserCheck, BadgeCheck, Ban, VolumeX,
 } from "lucide-react";
 import {
-  fetchGroupPosts, fetchMembership, fetchMembers, joinGroup, leaveGroup,
-  setMemberRole, removeMember, canModerate, ROLES, fetchEvents, fetchMyRsvps, me, fetchGroupById,
+  fetchGroupPosts, fetchPendingPosts, approvePost, deletePost, fetchMembership, fetchMembers, joinGroup,
+  leaveGroup, setMemberRole, removeMember, ROLES, fetchEvents, fetchMyRsvps, me, fetchGroupById,
   requestToJoin, myJoinRequest, fetchJoinRequests, approveJoinRequest, declineJoinRequest,
-  setCircleRules, setScreeningQuestions, setAutomod, AUTOMOD_DEFAULTS,
-  setPinnedPost, setPostLocked, penaliseMember, isMuted, contributorBadge, countPostsByAuthorInGroup,
+  setCircleRules, setScreeningQuestions, setCircleLimits, AUTOMOD_DEFAULTS, AGE_LIMITS,
+  setPinnedPost, setPostLocked, penaliseMember, isMuted, isCircleMod, contributorBadge, countPostsByMember,
+  createPost, screenPost, circlePostVisibility, canJoinDirectly, meetsAgeLimit, STRAND_MAX,
 } from "../lib/db";
-import { goBack } from "../lib/router";
+import { validateText } from "../lib/validate";
+import { checkContent, markPosted } from "../lib/moderation";
+import { goBack, navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
-import { plural, shortTime } from "../lib/format";
+import { plural, shortTime, clockTime } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
@@ -28,23 +32,47 @@ import { PrivacyBadge } from "./Circles";
 import { GatheringCard, NewGatheringDialog } from "./Events";
 
 const TABS = [
-  { id: "featured", label: "Featured" },
   { id: "discussion", label: "Discussion" },
   { id: "gatherings", label: "Gatherings" },
   { id: "members", label: "Members" },
+  { id: "about", label: "About" },
 ];
 
-/* A circle's home: identity up top, then tabs for what's pinned, the full
-   discussion, what's planned and who's in it. About, rules and admins sit
-   beside the content on wide screens and below it on phones. */
+/* Why you can or can't post here, in words. Mirrors circlePostOk in the rules. */
+function postingStatus(group, membership) {
+  const automod = { ...AUTOMOD_DEFAULTS, ...(group.automod || {}) };
+  if (!membership) return { ok: false, reason: "Join this circle to post in it." };
+  if (isMuted(membership)) {
+    return { ok: false, reason: `An admin has muted you here until ${clockTime(membership.mutedUntil.toMillis())}.` };
+  }
+  if (automod.postingPermission === "admins" && !isCircleMod(membership)) {
+    return { ok: false, reason: "Only admins and moderators post in this circle. You can still comment and react." };
+  }
+  return { ok: true };
+}
+
+/* The limits a circle has switched on, as short chips anyone can read. */
+function activeLimits(group) {
+  const a = { ...AUTOMOD_DEFAULTS, ...(group.automod || {}) };
+  const out = [];
+  if (group.ageLimit) out.push({ icon: BadgeCheck, label: `${group.ageLimit}+ only` });
+  if (!canJoinDirectly(group)) out.push({ icon: UserCheck, label: "Admins approve new members" });
+  if (a.postingPermission === "admins") out.push({ icon: Lock, label: "Only admins post" });
+  if (a.requirePostApproval) out.push({ icon: Hourglass, label: "Posts are approved first" });
+  if (a.blockLinks) out.push({ icon: Link2Off, label: "No links" });
+  if (a.blockNewAccounts) out.push({ icon: Clock, label: "Accounts must be 7+ days old" });
+  if ((a.bannedWords || []).length) out.push({ icon: Ban, label: `${plural(a.bannedWords.length, "blocked word")}` });
+  return out;
+}
+
 export default function CirclePage({ circleId }) {
-  const { openComposer } = useShell();
   const toast = useToast();
   const [group, setGroup] = useState(undefined);
-  const [tab, setTab] = useState("featured");
+  const [tab, setTab] = useState("discussion");
   const [membership, setMembership] = useState(undefined);
   const [memberCount, setMemberCount] = useState(0);
-  const [dialog, setDialog] = useState(null); // admin | join | leave
+  const [dialog, setDialog] = useState(null); // manage | join | leave
+  const [manageSection, setManageSection] = useState("requests");
   const [pendingRequest, setPendingRequest] = useState(null);
   const [joining, setJoining] = useState(false);
 
@@ -59,6 +87,8 @@ export default function CirclePage({ circleId }) {
     fetchMembership(circleId).then(setMembership).catch(() => setMembership(null));
     myJoinRequest(circleId).then(setPendingRequest).catch(() => {});
   }, [circleId, load]);
+
+  const { profile } = useShell();
 
   if (group === undefined) {
     return (
@@ -79,14 +109,17 @@ export default function CirclePage({ circleId }) {
   }
 
   const isOwner = group.ownerId === me();
-  const moderator = canModerate(membership, group);
-  const muted = isMuted(membership);
-  const canPost = !!membership && !muted;
+  const moderator = isCircleMod(membership);
   const canRead = group.privacy === "public" || !!membership;
-  const needsScreening = group.privacy !== "public" || group.requireApproval || (group.screeningQuestions || []).length > 0;
+  const direct = canJoinDirectly(group);
+  const oldEnough = meetsAgeLimit(group.ageLimit, profile);
+  const limits = activeLimits(group);
 
   const join = async () => {
-    if (needsScreening) return setDialog("join");
+    if (!oldEnough) {
+      return toast({ tone: "info", title: `This circle is for people ${group.ageLimit} and over` });
+    }
+    if (!direct) return setDialog("join");
     setJoining(true);
     try {
       await joinGroup(group.id);
@@ -110,6 +143,8 @@ export default function CirclePage({ circleId }) {
     }
   };
 
+  const openManage = (section = "requests") => { setManageSection(section); setDialog("manage"); };
+
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
       <div className={`relative h-36 bg-gradient-to-br sm:h-48 ${group.coverColor || "from-violet-600 via-fuchsia-600 to-rose-500"}`}>
@@ -118,90 +153,98 @@ export default function CirclePage({ circleId }) {
           onClick={() => goBack("/circles")} />
       </div>
 
-      <div className="relative mx-auto -mt-12 max-w-5xl px-4 pb-16 md:px-6">
+      <div className="relative mx-auto -mt-12 max-w-3xl px-4 pb-16 md:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-title-1 font-display">{group.name}</h1>
+              <h1 className="truncate font-display text-title-1">{group.name}</h1>
               <PrivacyBadge privacy={group.privacy} />
             </div>
             <p className="mt-1 text-callout text-fg-muted">
               {plural(memberCount, "member")}
               {membership && <> · you're {(ROLES[membership.role] || "Member").toLowerCase()}</>}
-              {muted && <span className="text-warning-text"> · you're muted for now</span>}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {moderator && <Button icon={Settings2} onClick={() => setDialog("admin")}>Manage</Button>}
+            {moderator && <Button icon={Settings2} onClick={() => openManage()}>Manage</Button>}
             {membership !== undefined && !isOwner && (
               membership ? (
                 <Button icon={Check} onClick={() => setDialog("leave")} aria-label={`Joined. Leave ${group.name}`}>Joined</Button>
               ) : pendingRequest ? (
-                <Badge tone="warning" icon={Clock} className="min-h-11 px-4 text-callout">Request pending</Badge>
+                <Badge tone="warning" icon={Clock} className="min-h-11 px-4 text-callout">Request sent</Badge>
               ) : (
                 <Button variant="primary" icon={UserPlus} loading={joining} onClick={join}>
-                  {needsScreening ? "Ask to join" : "Join"}
+                  {direct ? "Join" : "Ask to join"}
                 </Button>
               )
-            )}
-            {canPost && (
-              <Button variant="brand" icon={PenLine} onClick={() => openComposer({ groupId: group.id, group })}>Post</Button>
             )}
           </div>
         </div>
 
+        {limits.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Limits in this circle">
+            {limits.map((l) => <li key={l.label}><Badge icon={l.icon}>{l.label}</Badge></li>)}
+          </ul>
+        )}
+
         <Tabs variant="underline" label="Circle sections" value={tab} onChange={setTab} className="mt-5" tabs={TABS} />
 
-        {!canRead ? (
-          <EmptyState icon={Lock} title="This circle is private"
-            body={pendingRequest ? "Your request is waiting for an admin." : "Ask to join to see what's being shared."} />
-        ) : (
-          <div className="mt-5 grid items-start gap-8 lg:grid-cols-[1fr_280px]">
-            <div role="tabpanel" className="min-w-0">
-              {tab === "featured" && (
-                <Featured group={group} moderator={moderator} canPost={canPost}
-                  onCompose={() => openComposer({ groupId: group.id, group })} onSeeAll={() => setTab("discussion")} />
-              )}
-              {tab === "discussion" && <Discussion group={group} moderator={moderator} onChanged={load} />}
-              {tab === "gatherings" && <CircleGatherings group={group} canPost={canPost} />}
-              {tab === "members" && <Members group={group} isOwner={isOwner} moderator={moderator} onCountChange={setMemberCount} />}
-            </div>
-            <aside className="space-y-4 lg:sticky lg:top-4" aria-label="About this circle">
-              <SidePanel group={group} memberCount={memberCount} />
-            </aside>
-          </div>
-        )}
+        <div role="tabpanel" className="pt-5">
+          {tab === "about" ? (
+            <About group={group} memberCount={memberCount} limits={limits} />
+          ) : !canRead ? (
+            <EmptyState icon={Lock} title="This circle is private"
+              body={pendingRequest ? "Your request is waiting for an admin." : oldEnough ? "Ask to join to see what's being shared." : `It's for people ${group.ageLimit} and over.`} />
+          ) : tab === "discussion" ? (
+            <Discussion group={group} membership={membership} onChanged={load} onReview={() => openManage("posts")} />
+          ) : tab === "gatherings" ? (
+            <CircleGatherings group={group} membership={membership} />
+          ) : (
+            <Members group={group} isOwner={isOwner} moderator={moderator} onCountChange={setMemberCount} />
+          )}
+        </div>
       </div>
 
-      {dialog === "admin" && (
-        <AdminDialog group={group} isOwner={isOwner} onClose={() => setDialog(null)} onSaved={load} onCountChange={setMemberCount} />
+      {dialog === "manage" && (
+        <ManageDialog group={group} isOwner={isOwner} section={manageSection} onSection={setManageSection}
+          onClose={() => setDialog(null)} onSaved={load} onCountChange={setMemberCount} />
       )}
       {dialog === "join" && (
         <JoinDialog group={group} onClose={() => setDialog(null)}
-          onRequested={(r) => { setPendingRequest(r); setDialog(null); toast({ title: "Request sent", body: "An admin will review it." }); }}
-          onJoined={() => { setMembership({ role: "member" }); setMemberCount((c) => c + 1); setDialog(null); toast({ title: `You joined ${group.name}` }); }} />
+          onRequested={(r) => { setPendingRequest(r); setDialog(null); toast({ title: "Request sent", body: "An admin will review it." }); }} />
       )}
       {dialog === "leave" && (
         <ConfirmDialog title={`Leave ${group.name}?`} confirmLabel="Leave circle"
-          body={group.privacy === "public" ? "You can rejoin any time." : "You'll need to ask to join again."}
+          body={direct ? "You can rejoin any time." : "You'll need to ask to join again."}
           onConfirm={leave} onClose={() => setDialog(null)} />
       )}
     </div>
   );
 }
 
-function SidePanel({ group, memberCount }) {
+function About({ group, memberCount, limits }) {
   const [admins, setAdmins] = useState([]);
   useEffect(() => {
     fetchMembers(group.id).then((ms) => setAdmins(ms.filter((m) => m.role === "owner" || m.role === "moderator"))).catch(() => {});
   }, [group.id]);
 
   return (
-    <>
+    <div className="space-y-4">
       <Panel title="About" icon={Info}>
         <p className="text-callout text-fg">{group.description || "No description yet."}</p>
         <p className="mt-2 text-caption text-fg-subtle">{plural(memberCount, "member")} · started {shortTime(group.createdAt)}</p>
+      </Panel>
+      <Panel title="Limits" icon={ShieldCheck}>
+        {limits.length === 0 ? (
+          <p className="text-callout text-fg-muted">Open to everyone. Mesh's own hate-speech and spam filters always apply.</p>
+        ) : (
+          <ul className="space-y-2">
+            {limits.map((l) => (
+              <li key={l.label} className="flex items-center gap-2 text-callout"><l.icon size={16} className="text-fg-muted" aria-hidden="true" />{l.label}</li>
+            ))}
+          </ul>
+        )}
       </Panel>
       {group.rules && (
         <Panel title="Rules" icon={ShieldCheck}>
@@ -211,19 +254,19 @@ function SidePanel({ group, memberCount }) {
         </Panel>
       )}
       {admins.length > 0 && (
-        <Panel title="Admins & moderators" icon={Users}>
+        <Panel title="Admins and moderators" icon={Users}>
           <ul className="space-y-2">
             {admins.map((a) => (
               <li key={a.id} className="flex items-center gap-2">
-                <Avatar profile={{ username: a.username || a.id }} size={28} />
-                <span className="truncate text-callout">@{a.username || a.id.slice(0, 8)}</span>
+                <Avatar profile={{ username: a.username || "?" }} size={28} />
+                <span className="truncate text-callout">@{a.username || "member"}</span>
                 <span className="ml-auto text-label text-fg-subtle">{ROLES[a.role]}</span>
               </li>
             ))}
           </ul>
         </Panel>
       )}
-    </>
+    </div>
   );
 }
 
@@ -238,74 +281,97 @@ function Panel({ title, icon: Icon, children }) {
   );
 }
 
-function useCirclePosts(groupId) {
-  const [posts, setPosts] = useState(null);
-  const [error, setError] = useState(false);
-  const load = useCallback(async () => {
-    try { setPosts(await fetchGroupPosts(groupId)); setError(false); }
-    catch { setError(true); }
-  }, [groupId]);
-  useEffect(() => { (async () => { await load(); })(); }, [load]);
-  const retry = () => { setError(false); setPosts(null); load(); };
-  return { posts, setPosts, error, load: retry };
-}
+/* Post a Strand straight into the circle. Photo and Flick open the full
+   composer. Everything the circle limits is checked before sending, with
+   the reason in words; the server checks it all again. */
+function CircleQuickPost({ group, membership, onPosted }) {
+  const { profile, openComposer } = useShell();
+  const toast = useToast();
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-function Featured({ group, moderator, canPost, onCompose, onSeeAll }) {
-  const { posts, setPosts, error, load } = useCirclePosts(group.id);
-  const pinned = posts?.find((p) => p.id === group.pinnedPostId);
-  const rest = (posts || []).filter((p) => p.id !== group.pinnedPostId).slice(0, 3);
-  const [viewer, setViewer] = usePostStates(posts ? [pinned, ...rest].filter(Boolean) : null);
-  const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
+  const submit = async (e) => {
+    e.preventDefault();
+    const v = validateText(text, STRAND_MAX, "Post");
+    if (v.error) return setError(v.error);
+    if (!v.text) return;
+    const mod = checkContent(v.text, { key: "strand" });
+    if (mod.error) return setError(mod.error);
+    const blocked = screenPost(v.text, group, profile, membership);
+    if (blocked) return setError(blocked);
+    setBusy(true);
+    setError("");
+    try {
+      const post = await createPost({ kind: "text", text: v.text, groupId: group.id, visibility: circlePostVisibility(group, membership) });
+      markPosted("strand", v.text);
+      setText("");
+      onPosted(post);
+      toast(post.visibility === "pending"
+        ? { tone: "info", title: "Sent to the admins", body: "It'll appear once someone approves it." }
+        : { title: "Posted to the circle" });
+    } catch (err) {
+      console.error(err);
+      setError(err?.code === "permission-denied"
+        ? "The circle's limits turned that down. Check the circle's About tab."
+        : "Couldn't post. Check your connection. Your words are still here.");
+    } finally { setBusy(false); }
+  };
+
+  const composerOpts = (kind) => ({ kind, groupId: group.id, group, membership });
 
   return (
-    <div className="space-y-6">
-      {canPost && (
-        <button type="button" onClick={onCompose}
-          className="press flex min-h-14 w-full items-center gap-3 rounded-card border border-dashed border-field px-4 text-left text-callout text-fg-subtle hover:border-accent-text hover:text-fg">
-          <PenLine size={18} aria-hidden="true" /> Share something with the circle…
-        </button>
-      )}
-      {error && <ErrorState compact title="Couldn't load posts" onRetry={load} />}
-      {!error && posts === null && <Skeleton className="h-48 !rounded-card" />}
-      {pinned && (
-        <section aria-label="Pinned">
-          <p className="mb-2 flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-accent-text">
-            <Pin size={13} aria-hidden="true" /> Pinned
-          </p>
-          <div className="overflow-hidden rounded-card border border-line">
-            <PostCard post={pinned} viewer={viewer} onViewerChange={setViewer} canModerate={moderator} onRemoved={remove} />
+    <form onSubmit={submit} className="group rounded-card border border-line bg-surface p-4" aria-label={`Post in ${group.name}`}>
+      <div className="flex gap-3">
+        <Avatar profile={profile} size={40} />
+        <div className="min-w-0 flex-1">
+          <label htmlFor="circle-post" className="sr-only">Write a post</label>
+          <Textarea id="circle-post" autoGrow rows={1} maxRows={8} value={text}
+            onChange={(e) => { setText(e.target.value); if (error) setError(""); }}
+            placeholder={`Share something with ${group.name}…`} maxLength={STRAND_MAX}
+            aria-invalid={error ? "true" : undefined} aria-describedby="circle-post-error"
+            className="!border-transparent !bg-transparent !px-0 !py-1.5 hover:!border-transparent focus:!ring-0" />
+          <div aria-live="polite" className="mt-1"><InlineMessage id="circle-post-error">{error}</InlineMessage></div>
+          <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
+            <IconButton icon={Image} label="Post a photo" size={20} className="-ml-2.5 text-accent-text" onClick={() => openComposer(composerOpts("post"))} />
+            <IconButton icon={Clapperboard} label="Post a Flick" size={20} className="text-accent-text" onClick={() => openComposer(composerOpts("video"))} />
+            <span className="flex-1" />
+            <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!text.trim()}>Post</Button>
           </div>
-        </section>
-      )}
-      {posts?.length === 0 && (
-        <EmptyState compact icon={MessageSquare} title="Nothing posted yet" body={canPost ? "Start things off." : "Check back soon."} />
-      )}
-      {rest.length > 0 && (
-        <section aria-label="Recent">
-          <p className="mb-2 text-label font-semibold uppercase tracking-wider text-fg-subtle">Recent</p>
-          <div className="overflow-hidden rounded-card border border-line">
-            {rest.map((p) => (
-              <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator} onRemoved={remove} />
-            ))}
-          </div>
-          <Button full className="mt-4" onClick={onSeeAll}>See all discussion</Button>
-        </section>
-      )}
-    </div>
+        </div>
+      </div>
+    </form>
   );
 }
 
-function Discussion({ group, moderator, onChanged }) {
+function Discussion({ group, membership, onChanged, onReview }) {
   const toast = useToast();
-  const { posts, setPosts, error, load } = useCirclePosts(group.id);
+  const member = !!membership;
+  const moderator = isCircleMod(membership);
+  const status = postingStatus(group, membership);
+  const [posts, setPosts] = useState(null);
+  const [mine, setMine] = useState([]);
+  const [queue, setQueue] = useState(0);
+  const [error, setError] = useState(false);
   const [viewer, setViewer] = usePostStates(posts);
+
+  const load = useCallback(async () => {
+    try {
+      setPosts(await fetchGroupPosts(group, { member }));
+      setError(false);
+    } catch { setError(true); }
+    if (member) fetchPendingPosts(group.id, { mine: true }).then(setMine).catch(() => {});
+    if (moderator) fetchPendingPosts(group.id).then((l) => setQueue(l.length)).catch(() => {});
+  }, [group, member, moderator]);
+
+  useEffect(() => { (async () => { await load(); })(); }, [load]);
 
   const pin = async (p) => {
     const on = group.pinnedPostId !== p.id;
     try {
       await setPinnedPost(group.id, on ? p.id : "");
       onChanged();
-      toast({ title: on ? "Pinned to Featured" : "Unpinned" });
+      toast({ title: on ? "Pinned to the top" : "Unpinned" });
     } catch { toast({ tone: "error", title: "Couldn't change the pin" }); }
   };
 
@@ -317,73 +383,117 @@ function Discussion({ group, moderator, onChanged }) {
     } catch { toast({ tone: "error", title: "Couldn't change comments" }); }
   };
 
-  if (error) return <ErrorState compact title="Couldn't load the discussion" onRetry={load} />;
-  if (posts === null) return <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>;
-  if (!posts.length) return <EmptyState compact icon={MessageSquare} title="No posts yet" />;
+  const pinned = posts?.find((p) => p.id === group.pinnedPostId);
+  const ordered = posts ? [...(pinned ? [pinned] : []), ...posts.filter((p) => p.id !== group.pinnedPostId)] : null;
 
   return (
-    <div className="overflow-hidden rounded-card border border-line">
-      {posts.map((p) => (
-        <div key={p.id} className="border-b border-line last:border-0">
-          <PostCard post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator}
-            onRemoved={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))} />
-          {moderator && (
-            <div className="-mt-2 flex flex-wrap items-center gap-1 px-4 pb-3 pl-[60px]">
-              <Button size="sm" variant="ghost" icon={group.pinnedPostId === p.id ? PinOff : Pin} onClick={() => pin(p)}>
-                {group.pinnedPostId === p.id ? "Unpin" : "Pin to Featured"}
-              </Button>
-              <Button size="sm" variant="ghost" icon={p.locked ? LockOpen : Lock} onClick={() => lock(p)}>
-                {p.locked ? "Reopen comments" : "Pause comments"}
-              </Button>
-              {p.locked && <Badge tone="warning">Comments paused</Badge>}
+    <div className="space-y-4">
+      {status.ok ? (
+        <CircleQuickPost group={group} membership={membership}
+          onPosted={(p) => (p.visibility === "pending" ? setMine((m) => [p, ...m]) : setPosts((prev) => [p, ...(prev || [])]))} />
+      ) : (
+        <p className="flex items-start gap-2 rounded-card border border-line bg-surface p-4 text-callout text-fg-muted">
+          {isMuted(membership) ? <VolumeX size={18} className="mt-0.5 shrink-0" aria-hidden="true" /> : <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />}
+          {status.reason}
+        </p>
+      )}
+
+      {moderator && queue > 0 && (
+        <button type="button" onClick={onReview}
+          className="press flex w-full items-center gap-3 rounded-card border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+          <Hourglass size={18} className="shrink-0 text-warning-text" aria-hidden="true" />
+          <span className="flex-1 text-callout font-semibold text-warning-text">{plural(queue, "post")} waiting for approval</span>
+          <span className="text-caption font-semibold text-fg">Review</span>
+        </button>
+      )}
+
+      {mine.length > 0 && (
+        <section aria-label="Your posts waiting for approval" className="rounded-card border border-line bg-surface p-4">
+          <p className="flex items-center gap-2 text-callout font-semibold"><Hourglass size={16} aria-hidden="true" /> Waiting for approval</p>
+          <ul className="mt-2 space-y-2">
+            {mine.map((p) => (
+              <li key={p.id} className="line-clamp-2 rounded-control bg-surface-2 px-3 py-2 text-callout text-fg-muted">{p.text || p.title || "Your post"}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-caption text-fg-subtle">Only you and the circle's admins can see these until one is approved.</p>
+        </section>
+      )}
+
+      {error && <ErrorState compact title="Couldn't load the discussion" onRetry={() => { setError(false); setPosts(null); load(); }} />}
+      {!error && ordered === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
+      {ordered?.length === 0 && (
+        <EmptyState compact icon={MessageSquare} title="Nothing posted yet" body={status.ok ? "Start things off." : "Check back soon."} />
+      )}
+      {ordered?.length > 0 && (
+        <div className="overflow-hidden rounded-card border border-line">
+          {ordered.map((p) => (
+            <div key={p.id} className="border-b border-line last:border-0">
+              {p.id === group.pinnedPostId && (
+                <p className="flex items-center gap-1.5 px-4 pt-3 text-label font-semibold uppercase tracking-wider text-accent-text">
+                  <Pin size={12} aria-hidden="true" /> Pinned
+                </p>
+              )}
+              <PostCard post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator}
+                onRemoved={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))} />
+              {moderator && (
+                <div className="-mt-2 flex flex-wrap items-center gap-1 px-4 pb-3 pl-[60px]">
+                  <Button size="sm" variant="ghost" icon={group.pinnedPostId === p.id ? PinOff : Pin} onClick={() => pin(p)}>
+                    {group.pinnedPostId === p.id ? "Unpin" : "Pin to top"}
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={p.locked ? LockOpen : Lock} onClick={() => lock(p)}>
+                    {p.locked ? "Reopen comments" : "Pause comments"}
+                  </Button>
+                  {p.locked && <Badge tone="warning">Comments paused</Badge>}
+                </div>
+              )}
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
 
-function CircleGatherings({ group, canPost }) {
+function CircleGatherings({ group, membership }) {
   const [events, setEvents] = useState(null);
   const [rsvps, setRsvps] = useState(new Map());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(false);
+  const status = postingStatus(group, membership);
 
   const load = useCallback(async () => {
-    setError(false);
     try {
-      const list = await fetchEvents(group.id);
+      const list = await fetchEvents(group.id, { member: !!membership });
       setEvents(list);
+      setError(false);
       setRsvps(await fetchMyRsvps(list.map((e) => e.id)).catch(() => new Map()));
     } catch { setError(true); }
-  }, [group.id]);
+  }, [group.id, membership]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
   return (
     <>
-      {canPost && (
+      {status.ok ? (
         <button type="button" onClick={() => setCreating(true)}
           className="press mb-5 flex min-h-14 w-full items-center gap-3 rounded-card border border-dashed border-field px-4 text-left text-callout text-fg-subtle hover:border-accent-text hover:text-fg">
           <CalendarPlus size={18} aria-hidden="true" /> Plan a gathering for this circle…
         </button>
+      ) : membership && (
+        <p className="mb-5 text-callout text-fg-muted">{status.reason}</p>
       )}
-      {error && <ErrorState compact title="Couldn't load gatherings" onRetry={load} />}
+      {error && <ErrorState compact title="Couldn't load gatherings" onRetry={() => { setError(false); setEvents(null); load(); }} />}
       {!error && events === null && <Skeleton className="h-36 !rounded-card" />}
-      {events?.length === 0 && <EmptyState compact icon={CalendarDays} title="Nothing planned yet" />}
+      {events?.length === 0 && (
+        <EmptyState compact icon={CalendarDays} title="Nothing planned yet"
+          body={membership ? "Gatherings made here are visible to members by default." : "Public gatherings from this circle show here."} />
+      )}
       <div className="space-y-3">
-        {events?.map((ev) => (
-          <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null}
-            onStatusChange={(id, status) => setRsvps((prev) => {
-              const next = new Map(prev);
-              if (status) next.set(id, status); else next.delete(id);
-              return next;
-            })} />
-        ))}
+        {events?.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} />)}
       </div>
       {creating && (
-        <NewGatheringDialog groupId={group.id} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />
+        <NewGatheringDialog groupId={group.id} onClose={() => setCreating(false)}
+          onCreated={(ev) => { setCreating(false); navigate(`/gatherings/${ev.id}`); }} />
       )}
     </>
   );
@@ -402,13 +512,11 @@ function Members({ group, isOwner, moderator, onCountChange }) {
       const ms = await fetchMembers(group.id).catch(() => []);
       if (cancelled) return;
       setMembers(ms);
-      const entries = await Promise.all(
-        ms.slice(0, 30).map(async (m) => [m.id, await countPostsByAuthorInGroup(group.id, m.id).catch(() => 0)])
-      );
-      if (!cancelled) setCounts(new Map(entries));
+      const c = await countPostsByMember(group, true).catch(() => new Map());
+      if (!cancelled) setCounts(c);
     })();
     return () => { cancelled = true; };
-  }, [group.id]);
+  }, [group]);
 
   const act = async (uid, fn, done) => {
     setBusy(uid);
@@ -429,12 +537,12 @@ function Members({ group, isOwner, moderator, onCountChange }) {
           const muted = isMuted(m);
           return (
             <li key={m.id} className="flex flex-wrap items-center gap-3 p-3">
-              <Avatar profile={{ username: m.username || m.id }} size={40} />
+              <Avatar profile={{ username: m.username || "?" }} size={40} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <p className="truncate text-callout font-medium">@{m.username || m.id.slice(0, 8)}</p>
+                  <p className="truncate text-callout font-medium">{m.id === me() ? "You" : `@${m.username || "member"}`}</p>
                   {badge && <Badge tone={badgeTone[badge.tone] || "neutral"}>{badge.label}</Badge>}
-                  {muted && <Badge tone="warning">Muted</Badge>}
+                  {muted && <Badge tone="warning" icon={VolumeX}>Muted</Badge>}
                 </div>
                 <p className="text-caption text-fg-subtle">{plural(counts.get(m.id) || 0, "post")} here</p>
               </div>
@@ -482,38 +590,35 @@ function Members({ group, isOwner, moderator, onCountChange }) {
   );
 }
 
-function JoinDialog({ group, onClose, onRequested, onJoined }) {
+function JoinDialog({ group, onClose, onRequested }) {
   const questions = group.screeningQuestions || [];
   const [answers, setAnswers] = useState(questions.map(() => ""));
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const screened = group.requireApproval || questions.length > 0 || group.privacy !== "public";
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (group.rules && !agreed) return setError("Agree to the rules to join.");
+    if (group.rules && !agreed) return setError("Agree to the rules to ask to join.");
     if (questions.some((_, i) => !answers[i].trim())) return setError("Answer every question. Admins use them to decide.");
     setBusy(true);
     try {
-      if (screened) {
-        await requestToJoin(group.id, questions.map((q, i) => ({ q, a: answers[i].trim() })));
-        onRequested({ uid: me(), answers });
-      } else {
-        await joinGroup(group.id);
-        onJoined();
-      }
+      await requestToJoin(group.id, questions.map((q, i) => ({ q, a: answers[i].trim() })));
+      onRequested({ uid: me(), answers });
     } catch (err) {
       console.error(err);
-      setError("Couldn't send your request. Check your connection and try again.");
+      setError(err?.code === "permission-denied"
+        ? "This circle's limits don't let this account join."
+        : "Couldn't send your request. Check your connection and try again.");
       setBusy(false);
     }
   };
 
   return (
-    <Dialog title={`Join ${group.name}`} onClose={onClose}>
+    <Dialog title={`Ask to join ${group.name}`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-5" noValidate>
+        <p className="text-callout text-fg-muted">An admin reviews every request here.</p>
         {group.rules && (
           <div>
             <p className="mb-2 text-label font-semibold uppercase tracking-wider text-fg-subtle">Rules</p>
@@ -530,21 +635,26 @@ function JoinDialog({ group, onClose, onRequested, onJoined }) {
           </Field>
         ))}
         <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
-        <Button type="submit" variant="primary" full loading={busy}>{screened ? "Send request" : "Join circle"}</Button>
+        <Button type="submit" variant="primary" full loading={busy}>Send request</Button>
       </form>
     </Dialog>
   );
 }
 
-function AdminDialog({ group, isOwner, onClose, onSaved, onCountChange }) {
-  const [section, setSection] = useState("requests");
+function ManageDialog({ group, isOwner, section, onSection, onClose, onSaved, onCountChange }) {
   return (
     <Dialog title="Manage circle" onClose={onClose} size="lg">
-      <Tabs variant="underline" label="Admin sections" value={section} onChange={setSection} className="-mx-1 mb-5"
-        tabs={[{ id: "requests", label: "Requests" }, { id: "rules", label: "Rules" }, { id: "automod", label: "Auto-moderation" }]} />
+      <Tabs variant="underline" label="Manage" value={section} onChange={onSection} className="-mx-1 mb-5"
+        tabs={[
+          { id: "requests", label: "Requests" },
+          { id: "posts", label: "Posts" },
+          { id: "limits", label: "Limits" },
+          { id: "rules", label: "Rules" },
+        ]} />
       {section === "requests" && <JoinRequests group={group} onCountChange={onCountChange} />}
+      {section === "posts" && <PostQueue group={group} />}
+      {section === "limits" && <LimitsEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
       {section === "rules" && <RulesEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
-      {section === "automod" && <AutomodEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
     </Dialog>
   );
 }
@@ -571,13 +681,13 @@ function JoinRequests({ group, onCountChange }) {
   };
 
   if (requests === null) return <Skeleton className="h-24 !rounded-card" />;
-  if (!requests.length) return <EmptyState compact icon={Users} title="No pending requests" />;
+  if (!requests.length) return <EmptyState compact icon={Users} title="No one's waiting to join" />;
 
   return (
     <ul className="space-y-3">
       {requests.map((r) => (
         <li key={r.id} className="rounded-card border border-line bg-surface-2 p-4">
-          <p className="text-callout font-semibold">@{r.username || r.uid.slice(0, 8)}</p>
+          <p className="text-callout font-semibold">@{r.username || "someone"}</p>
           <dl className="mt-2 space-y-2">
             {(r.answers || []).map((a, i) => (
               <div key={i}>
@@ -594,6 +704,155 @@ function JoinRequests({ group, onCountChange }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/* Posts held for approval. Approving publishes it to the circle; declining
+   deletes it. */
+function PostQueue({ group }) {
+  const toast = useToast();
+  const [posts, setPosts] = useState(null);
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    fetchPendingPosts(group.id).then(setPosts).catch(() => setPosts([]));
+  }, [group.id]);
+
+  const decide = async (p, approve) => {
+    setBusy(p.id);
+    try {
+      if (approve) await approvePost(p, group); else await deletePost(p);
+      setPosts((prev) => prev.filter((x) => x.id !== p.id));
+      toast({ title: approve ? "Approved and published" : "Declined and removed" });
+    } catch {
+      toast({ tone: "error", title: "Couldn't save that decision" });
+    } finally { setBusy(""); }
+  };
+
+  const approval = { ...AUTOMOD_DEFAULTS, ...(group.automod || {}) }.requirePostApproval;
+
+  if (posts === null) return <Skeleton className="h-24 !rounded-card" />;
+  if (!posts.length) {
+    return (
+      <EmptyState compact icon={Hourglass} title="Nothing waiting"
+        body={approval ? "New posts from members land here before anyone else sees them." : "Turn on post approval in Limits to review members' posts first."} />
+    );
+  }
+  return (
+    <ul className="space-y-3">
+      {posts.map((p) => (
+        <li key={p.id} className="rounded-card border border-line bg-surface-2 p-4">
+          <p className="text-caption text-fg-subtle">@{p.authorName} · {shortTime(p.createdAt)}</p>
+          {p.title && <p className="mt-1 text-callout font-semibold">{p.title}</p>}
+          <p className="mt-1 whitespace-pre-wrap break-words text-callout">{p.text || "(photo or video, no caption)"}</p>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" variant="primary" icon={Check} loading={busy === p.id} onClick={() => decide(p, true)}>Approve</Button>
+            <Button size="sm" variant="danger-ghost" icon={X} disabled={busy === p.id} onClick={() => decide(p, false)}>Decline</Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* Every switch here is enforced by the server, not just the app. */
+function LimitsEditor({ group, onSaved, isOwner }) {
+  const toast = useToast();
+  const [a, setA] = useState({ ...AUTOMOD_DEFAULTS, ...(group.automod || {}) });
+  const [words, setWords] = useState((group.automod?.bannedWords || []).join(", "));
+  const [requireApproval, setRequireApproval] = useState(!!group.requireApproval || group.privacy !== "public");
+  const [ageLimit, setAgeLimit] = useState(group.ageLimit || 0);
+  const [busy, setBusy] = useState(false);
+  const locked = !isOwner;
+  const set = (k) => (v) => setA((prev) => ({ ...prev, [k]: v }));
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setCircleLimits(group.id, {
+        requireApproval: group.privacy !== "public" ? true : requireApproval,
+        ageLimit,
+        automod: { ...a, bannedWords: words.split(",").map((w) => w.trim()).filter(Boolean) },
+      });
+      onSaved();
+      toast({ title: "Limits saved", body: "They apply to everything posted from now on." });
+    } catch {
+      toast({ tone: "error", title: "Couldn't save the limits" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-6">
+      {locked && <p className="rounded-control bg-surface-2 p-3 text-callout text-fg-muted">Only the circle's admin can change limits.</p>}
+
+      <section className="space-y-2">
+        <h3 className="text-callout font-semibold">Who can join</h3>
+        {group.privacy !== "public" ? (
+          <p className="text-caption text-fg-muted">Private and hidden circles always need an admin to approve new members.</p>
+        ) : (
+          <Choice locked={locked} name="Who can join" value={requireApproval ? "ask" : "open"} onChange={(v) => setRequireApproval(v === "ask")}
+            options={[
+              { id: "open", label: "Anyone can join", blurb: "Unless you've set screening questions, which always need approval." },
+              { id: "ask", label: "Admins approve new members", blurb: "Requests land in the Requests tab." },
+            ]} />
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-callout font-semibold">Age limit</h3>
+        <Choice locked={locked} name="Age limit" value={ageLimit} onChange={setAgeLimit} options={AGE_LIMITS} />
+        <p className="text-caption text-fg-subtle">Applies to new members. Accounts without a birth year can't join age-limited circles.</p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-callout font-semibold">Who can post</h3>
+        <Choice locked={locked} name="Who can post" value={a.postingPermission} onChange={set("postingPermission")}
+          options={[
+            { id: "members", label: "All members", blurb: "Anyone in the circle can post and plan gatherings." },
+            { id: "admins", label: "Only admins and moderators", blurb: "Members can still comment, react and reply to gatherings." },
+          ]} />
+      </section>
+
+      <section>
+        <h3 className="mb-1 text-callout font-semibold">What gets through</h3>
+        <div className={`rounded-card border border-line bg-surface-2 px-3 ${locked ? "pointer-events-none opacity-60" : ""}`}>
+          <Checkbox checked={!!a.requirePostApproval} onChange={set("requirePostApproval")}
+            description="Members' posts wait in Manage → Posts until an admin or moderator approves them.">
+            Approve posts before they appear
+          </Checkbox>
+          <Checkbox checked={!!a.blockLinks} onChange={set("blockLinks")} description="Stops link spam. Admins and moderators can still post links.">
+            Block posts with links
+          </Checkbox>
+          <Checkbox checked={!!a.blockNewAccounts} onChange={set("blockNewAccounts")} description="Accounts under 7 days old can read but not post.">
+            Hold back brand-new accounts
+          </Checkbox>
+        </div>
+      </section>
+
+      <Field label="Blocked words" hint="Comma separated, up to 40. Posts containing any of them are turned down, for everyone." count={words.length} max={600}>
+        <Input value={words} onChange={(e) => setWords(e.target.value)} placeholder="crypto, referral, giveaway" maxLength={600} disabled={locked} />
+      </Field>
+
+      {!locked && <Button variant="primary" full loading={busy} onClick={save}>Save limits</Button>}
+    </div>
+  );
+}
+
+function Choice({ name, value, onChange, options, locked }) {
+  return (
+    <div role="radiogroup" aria-label={name} className="space-y-2">
+      {options.map((o) => (
+        <label key={o.id} className={`press flex min-h-12 cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${
+          value === o.id ? "border-accent-text bg-accent-soft" : "border-line hover:border-line-strong"
+        } ${locked ? "pointer-events-none opacity-60" : ""}`}>
+          <input type="radio" name={name} checked={value === o.id} disabled={locked} onChange={() => onChange(o.id)} className="mt-1 h-4 w-4 accent-violet-600" />
+          <span>
+            <span className="block text-callout font-semibold">{o.label}</span>
+            {o.blurb && <span className="block text-caption text-fg-muted">{o.blurb}</span>}
+          </span>
+        </label>
+      ))}
+    </div>
   );
 }
 
@@ -618,7 +877,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
 
   return (
     <div className="space-y-5">
-      <Field label="Rules" hint="One per line. New members have to agree to them before joining." count={rules.length} max={2000}>
+      <Field label="Rules" hint="One per line. People agree to them when they ask to join." count={rules.length} max={2000}>
         <Textarea autoGrow rows={4} value={rules} maxLength={2000} onChange={(e) => setRules(e.target.value)}
           placeholder={"Be kind\nNo self-promotion\nStay on topic"} />
       </Field>
@@ -629,50 +888,10 @@ function RulesEditor({ group, onSaved, isOwner }) {
             aria-label={`Screening question ${i + 1}`}
             onChange={(e) => { const next = [...questions]; next[i] = e.target.value; setQuestions(next); }} />
         ))}
-        <p className="text-caption text-fg-subtle">Asking anything turns on approval, and requests land in the Requests tab.</p>
+        <p className="text-caption text-fg-subtle">Asking anything means every new member needs approval.</p>
       </fieldset>
       <Button variant="primary" full loading={busy} onClick={save}>Save rules</Button>
     </div>
   );
 }
 
-function AutomodEditor({ group, onSaved, isOwner }) {
-  const toast = useToast();
-  const [automod, setLocal] = useState({ ...AUTOMOD_DEFAULTS, ...(group.automod || {}) });
-  const [words, setWords] = useState((group.automod?.bannedWords || []).join(", "));
-  const [busy, setBusy] = useState(false);
-
-  if (!isOwner) return <p className="text-callout text-fg-muted">Only the circle's admin can change auto-moderation.</p>;
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await setAutomod(group.id, { ...automod, bannedWords: words.split(",").map((w) => w.trim()).filter(Boolean).slice(0, 40) });
-      onSaved();
-      toast({ title: "Auto-moderation saved" });
-    } catch { toast({ tone: "error", title: "Couldn't save auto-moderation" }); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="space-y-4">
-      <p className="text-callout text-fg-muted">
-        These run before a post is published. Mesh's own hate-speech and spam filters apply on top and can't be switched off.
-      </p>
-      <div className="rounded-card border border-line bg-surface-2 px-3">
-        <Checkbox checked={!!automod.blockLinks} onChange={(v) => setLocal({ ...automod, blockLinks: v })}
-          description="Stops link spam; members can still share links in Messages.">
-          Block posts with links
-        </Checkbox>
-        <Checkbox checked={!!automod.blockNewAccounts} onChange={(v) => setLocal({ ...automod, blockNewAccounts: v })}
-          description="Accounts under 7 days old can read but not post.">
-          Hold back brand-new accounts
-        </Checkbox>
-      </div>
-      <Field label="Blocked words" hint="Comma separated. Posts containing any of them are held back." count={words.length} max={500}>
-        <Input value={words} onChange={(e) => setWords(e.target.value)} placeholder="crypto, referral, dm me" maxLength={500} />
-      </Field>
-      <Button variant="primary" full loading={busy} onClick={save}>Save auto-moderation</Button>
-    </div>
-  );
-}
