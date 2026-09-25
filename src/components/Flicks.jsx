@@ -28,7 +28,7 @@ let soundOn = false;
    so long-form gets discovered where people are already watching, and you
    decide whether it's worth your next twenty minutes. */
 export default function Flicks({ startId }) {
-  const { following } = useShell();
+  const { following, blocked } = useShell();
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
   const [viewer, setViewer] = usePostStates(videos);
@@ -39,7 +39,7 @@ export default function Flicks({ startId }) {
     setError(false);
     try {
       const [list, affinity] = await Promise.all([fetchVideos(), fetchAffinity().catch(() => new Map())]);
-      let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me() });
+      let ordered = rankFeed(list.filter((p) => !blocked.has(p.authorId)), { followingSet: following, affinity, myUid: me() });
       if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
         if (start && (start.kind === "short" || start.kind === "video")) {
@@ -53,7 +53,7 @@ export default function Flicks({ startId }) {
     }
     // startId only matters on arrival; re-ranking when it changes would reshuffle under the viewer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following]);
+  }, [following, blocked]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 

@@ -670,9 +670,11 @@ export async function isFollowing(targetUid) {
   return snap.exists();
 }
 
+/* Follow or unfollow. A private (locked) account can't be followed
+   directly: you send a request and they approve it. Returns what happened:
+   "following", "requested" or "unfollowed". */
 export async function toggleFollow(target, currentlyFollowing) {
   const uid = me();
-  const myProfile = await fetchProfile(uid);
   const followingRef = doc(db, "users", uid, "following", target.id);
   const followerRef = doc(db, "users", target.id, "followers", uid);
   if (currentlyFollowing) {
@@ -680,13 +682,109 @@ export async function toggleFollow(target, currentlyFollowing) {
     await deleteDoc(followerRef);
     await updateDoc(doc(db, "users", uid), { followingCount: increment(-1) });
     await updateDoc(doc(db, "users", target.id), { followerCount: increment(-1) });
-  } else {
-    await setDoc(followingRef, { username: target.username || "", createdAt: serverTimestamp() });
-    await setDoc(followerRef, { username: myProfile?.username || "", createdAt: serverTimestamp() });
-    await updateDoc(doc(db, "users", uid), { followingCount: increment(1) });
-    await updateDoc(doc(db, "users", target.id), { followerCount: increment(1) });
-    bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
+    return "unfollowed";
   }
+  const full = target.isPrivate === undefined ? await fetchProfile(target.id) : target;
+  if (full?.isPrivate) {
+    await requestFollow(target);
+    return "requested";
+  }
+  const myProfile = await fetchProfile(uid);
+  await setDoc(followingRef, { username: target.username || full?.username || "", createdAt: serverTimestamp() });
+  await setDoc(followerRef, { username: myProfile?.username || "", createdAt: serverTimestamp() });
+  await updateDoc(doc(db, "users", uid), { followingCount: increment(1) });
+  await updateDoc(doc(db, "users", target.id), { followerCount: increment(1) });
+  bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
+  return "following";
+}
+
+// --- follow requests (private accounts) ---
+
+export async function requestFollow(target) {
+  const profile = await fetchProfile(me());
+  await setDoc(doc(db, "users", target.id, "followRequests", me()), {
+    username: profile?.username || "",
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function cancelFollowRequest(targetId) {
+  await deleteDoc(doc(db, "users", targetId, "followRequests", me()));
+}
+
+export async function hasRequestedFollow(targetId) {
+  const snap = await getDoc(doc(db, "users", targetId, "followRequests", me())).catch(() => null);
+  return !!snap?.exists();
+}
+
+export async function fetchFollowRequests() {
+  const q = query(collection(db, "users", me(), "followRequests"), limit(200));
+  return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+/* Approving writes both halves of the follow (the rules allow the approver
+   to, while the request exists), then removes the request. */
+export async function approveFollowRequest(request) {
+  const uid = me();
+  const profile = await fetchProfile(uid);
+  await setDoc(doc(db, "users", uid, "followers", request.id), { username: request.username || "", createdAt: serverTimestamp() });
+  await setDoc(doc(db, "users", request.id, "following", uid), { username: profile?.username || "", createdAt: serverTimestamp() });
+  await updateDoc(doc(db, "users", uid), { followerCount: increment(1) }).catch(() => {});
+  await updateDoc(doc(db, "users", request.id), { followingCount: increment(1) }).catch(() => {});
+  await deleteDoc(doc(db, "users", uid, "followRequests", request.id));
+}
+
+export async function declineFollowRequest(request) {
+  await deleteDoc(doc(db, "users", me(), "followRequests", request.id));
+}
+
+// --- blocking ---
+// Blocking someone ends any follow in either direction and stops them
+// following, requesting, messaging you or commenting on your posts (all
+// enforced in the rules). Their posts disappear from what you see.
+
+export async function blockUser(target) {
+  const uid = me();
+  await setDoc(doc(db, "users", uid, "blocked", target.id), { username: target.username || "", createdAt: serverTimestamp() });
+  const [iFollow, theyFollow] = await Promise.all([
+    getDoc(doc(db, "users", uid, "following", target.id)).then((d) => d.exists()).catch(() => false),
+    getDoc(doc(db, "users", uid, "followers", target.id)).then((d) => d.exists()).catch(() => false),
+  ]);
+  if (iFollow) await toggleFollow(target, true).catch(() => {});
+  if (theyFollow) {
+    await deleteDoc(doc(db, "users", uid, "followers", target.id)).catch(() => {});
+    await deleteDoc(doc(db, "users", target.id, "following", uid)).catch(() => {});
+    await updateDoc(doc(db, "users", uid), { followerCount: increment(-1) }).catch(() => {});
+    await updateDoc(doc(db, "users", target.id), { followingCount: increment(-1) }).catch(() => {});
+  }
+  await deleteDoc(doc(db, "users", uid, "followRequests", target.id)).catch(() => {});
+}
+
+export async function unblockUser(targetId) {
+  await deleteDoc(doc(db, "users", me(), "blocked", targetId));
+}
+
+export async function fetchBlocked() {
+  const q = query(collection(db, "users", me(), "blocked"), limit(500));
+  return snapToList(await getDocs(q));
+}
+
+// --- privacy settings ---
+
+export async function setPrivacySettings(fields) {
+  await updateDoc(doc(db, "users", me()), fields);
+}
+
+/* Going private: every public post you've made outside circles becomes
+   followers-only. Going public again can reverse it, if you choose. */
+export async function setPostsVisibility(to) {
+  const from = to === "followers" ? "public" : "followers";
+  const posts = (await fetchPostsByAuthor(me())).filter((p) => !p.groupId && p.visibility === from);
+  let done = 0;
+  for (const p of posts) {
+    await updateDoc(doc(db, "posts", p.id), { visibility: to }).then(() => { done += 1; }).catch(() => {});
+  }
+  return { done, total: posts.length };
 }
 
 export async function fetchFollowList(uid, kind /* 'followers' | 'following' */) {
@@ -713,6 +811,11 @@ export async function searchUsers(term) {
 
 // ---------- stories (24h) ----------
 
+const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+/* A private account's stories are for its followers only. Each story
+   carries its day so the last 24 hours can be fetched without a composite
+   index. */
 export async function createStory({ mediaUrl, mediaPath, mediaType }) {
   const profile = await fetchProfile(me());
   const story = {
@@ -723,16 +826,28 @@ export async function createStory({ mediaUrl, mediaPath, mediaType }) {
     mediaUrl,
     mediaPath,
     mediaType,
+    audience: profile?.isPrivate ? "followers" : "public",
+    day: dayKey(Date.now()),
     createdAt: serverTimestamp(),
   };
   await addDoc(collection(db, "stories"), story);
 }
 
-export async function fetchActiveStories() {
-  const cutoff = Timestamp.fromMillis(Date.now() - 24 * 3600 * 1000);
-  const q = query(collection(db, "stories"), where("createdAt", ">", cutoff), limit(200));
-  const list = snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt));
-  // group by author
+export async function fetchActiveStories(followingSet = new Set()) {
+  const days = [dayKey(Date.now()), dayKey(Date.now() - 86400000)];
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const run = (q) => getDocs(q).then(snapToList).catch(() => []);
+  const followed = [...followingSet].slice(0, 30);
+  const lists = await Promise.all([
+    run(query(collection(db, "stories"), where("audience", "==", "public"), where("day", "in", days), limit(200))),
+    run(query(collection(db, "stories"), where("authorId", "==", me()), where("day", "in", days), limit(50))),
+    ...followed.map((uid) => run(query(collection(db, "stories"),
+      where("authorId", "==", uid), where("audience", "==", "followers"), where("day", "in", days), limit(20)))),
+  ]);
+  const seen = new Set();
+  const list = lists.flat()
+    .filter((s) => !seen.has(s.id) && seen.add(s.id) && tsMillis(s.createdAt) > cutoff)
+    .sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt));
   const byAuthor = new Map();
   for (const s of list) {
     if (!byAuthor.has(s.authorId)) byAuthor.set(s.authorId, { authorId: s.authorId, authorName: s.authorName, authorPhoto: s.authorPhoto, items: [] });
@@ -802,13 +917,16 @@ function chatDoc(chatId) {
   return doc(db, "chats", chatId);
 }
 
+/* Throws an Error with a readable message when the other person can't be
+   messaged (they've blocked you, or only take messages from people they follow). */
 export async function openDirectChat(target) {
   const uid = me();
   const chatId = [uid, target.id].sort().join("_");
   const ref = chatDoc(chatId);
   const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    const myProfile = await fetchProfile(uid);
+  if (snap.exists()) return chatId;
+  const myProfile = await fetchProfile(uid);
+  try {
     await setDoc(ref, {
       members: [uid, target.id].sort(),
       memberNames: { [uid]: myProfile?.username || "?", [target.id]: target.username || "?" },
@@ -823,18 +941,26 @@ export async function openDirectChat(target) {
       createdBy: uid,
       updatedAt: serverTimestamp(),
     });
+  } catch (err) {
+    if (err?.code === "permission-denied") {
+      throw new Error(`You can't message @${target.username || "this person"}. They only take messages from people they follow.`);
+    }
+    throw err;
   }
   return chatId;
 }
 
+/* A group starts with just you as its admin; each person is then added
+   one at a time, because the rules check every add (blocked? only takes
+   messages from people they follow?). Returns the chat id and anyone who
+   couldn't be added. */
 export async function createGroupChat(name, targets) {
   const uid = me();
   const myProfile = await fetchProfile(uid);
-  const memberNames = { [uid]: myProfile?.username || "?" };
-  targets.forEach((t) => (memberNames[t.id] = t.username || "?"));
   const refDoc = await addDoc(collection(db, "chats"), {
-    members: [uid, ...targets.map((t) => t.id)],
-    memberNames,
+    members: [uid],
+    admins: [uid],
+    memberNames: { [uid]: myProfile?.username || "?" },
     isGroup: true,
     name,
     nicknames: {},
@@ -846,7 +972,53 @@ export async function createGroupChat(name, targets) {
     createdBy: uid,
     updatedAt: serverTimestamp(),
   });
-  return refDoc.id;
+  const skipped = await addToGroup(refDoc.id, targets);
+  return { id: refDoc.id, skipped };
+}
+
+export async function addToGroup(chatId, users) {
+  const skipped = [];
+  for (const u of users) {
+    try {
+      await updateDoc(chatDoc(chatId), { members: arrayUnion(u.id), [`memberNames.${u.id}`]: u.username || "?" });
+    } catch {
+      skipped.push(u);
+    }
+  }
+  return skipped;
+}
+
+export function groupAdmins(chat) {
+  return chat.admins || [chat.createdBy];
+}
+
+export async function removeFromGroup(chat, uid) {
+  await updateDoc(chatDoc(chat.id), {
+    members: arrayRemove(uid),
+    admins: groupAdmins(chat).filter((a) => a !== uid),
+    [`memberNames.${uid}`]: deleteField(),
+  });
+}
+
+export async function setGroupAdmin(chat, uid, on) {
+  const admins = new Set(groupAdmins(chat));
+  if (on) admins.add(uid); else admins.delete(uid);
+  await updateDoc(chatDoc(chat.id), { admins: [...admins] });
+}
+
+/* Leaving: if you're the only admin, the next person in the group becomes one. */
+export async function leaveGroupChat(chat) {
+  const uid = me();
+  const rest = chat.members.filter((m) => m !== uid);
+  let admins = groupAdmins(chat).filter((a) => a !== uid && rest.includes(a));
+  if (!admins.length && rest.length && groupAdmins(chat).includes(uid)) admins = [rest[0]];
+  const fields = { members: arrayRemove(uid), [`memberNames.${uid}`]: deleteField() };
+  if (groupAdmins(chat).includes(uid)) fields.admins = admins;
+  await updateDoc(chatDoc(chat.id), fields);
+}
+
+export async function renameGroupChat(chatId, name) {
+  await updateDoc(chatDoc(chatId), { name });
 }
 
 export function listenChats(callback) {
@@ -1679,7 +1851,7 @@ export async function deleteMyAccountData() {
     const snap = await getDocs(query(collection(db, "users", uid, name), limit(500))).catch(() => null);
     return snap?.docs || [];
   };
-  for (const name of ["affinity", "saved", "hidden"]) {
+  for (const name of ["affinity", "saved", "hidden", "blocked", "followRequests"]) {
     for (const d of await sub(name)) await deleteDoc(d.ref).catch(() => {});
   }
   for (const d of await sub("following")) {

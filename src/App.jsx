@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { fetchProfile, fetchMyFollowingSet } from "./lib/db";
+import { fetchProfile, fetchMyFollowingSet, fetchBlocked } from "./lib/db";
 import { useLocation, resolve, navigate } from "./lib/router";
 import { useInbox } from "./lib/inbox";
 import { ShellContext } from "./components/shell/ShellContext";
@@ -31,6 +31,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [following, setFollowing] = useState(new Set());
+  const [blocked, setBlocked] = useState(new Set());
   const [composer, setComposer] = useState(null); // null | { kind?, groupId?, group? }
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [feedKey, setFeedKey] = useState(0);
@@ -40,15 +41,18 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        const [p, f] = await Promise.all([
+        const [p, f, b] = await Promise.all([
           fetchProfile(u.uid).catch(() => null),
           fetchMyFollowingSet().catch(() => new Set()),
+          fetchBlocked().then((l) => new Set(l.map((x) => x.id))).catch(() => new Set()),
         ]);
         setProfile(p);
         setFollowing(f);
+        setBlocked(b);
       } else {
         setProfile(null);
         setFollowing(new Set());
+        setBlocked(new Set());
       }
       setAuthReady(true);
     });
@@ -61,8 +65,8 @@ export default function App() {
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const shell = useMemo(() => ({
-    profile, setProfile, following, setFollowing, inbox, openComposer, openDrawer, feedKey,
-  }), [profile, following, inbox, openComposer, openDrawer, feedKey]);
+    profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey]);
 
   const { page, overlay, bgQuery } = resolve(loc);
 

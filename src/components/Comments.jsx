@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, SendHorizontal, Trash2, Lock } from "lucide-react";
-import { fetchComments, addComment, deleteComment, openUserProfile, me } from "../lib/db";
+import { fetchComments, addComment, deleteComment, openUserProfile, fetchProfile, me } from "../lib/db";
+import { useShell } from "./shell/ShellContext";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkContent } from "../lib/moderation";
 import { shortTime, fullTime, isoTime } from "../lib/format";
@@ -16,6 +17,8 @@ import { useToast } from "./ui/toast-context";
    where a thumb already is. What you typed survives a failed send. */
 export default function Comments({ post, onClose, onCountChange }) {
   const toast = useToast();
+  const { blocked } = useShell();
+  const [closedReason, setClosedReason] = useState("");
   const [comments, setComments] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [text, setText] = useState("");
@@ -34,6 +37,16 @@ export default function Comments({ post, onClose, onCountChange }) {
     fetchComments(post.id).then(setComments).catch(() => setLoadError(true));
   }, [post.id]);
 
+  // The author decides who can comment (enforced by the rules as well).
+  useEffect(() => {
+    if (post.authorId === me()) return;
+    fetchProfile(post.authorId).then((author) => {
+      // "Only people they follow" is decided by the server when you post;
+      // a refusal comes back with that reason.
+      if ((author?.commentPolicy || "everyone") === "off") setClosedReason(`@${post.authorName} has turned comments off.`);
+    }).catch(() => {});
+  }, [post.authorId, post.authorName]);
+
   const submit = async (e) => {
     e?.preventDefault();
     const v = validateText(text, LIMITS.comment, "Comment");
@@ -49,8 +62,10 @@ export default function Comments({ post, onClose, onCountChange }) {
       setText("");
       onCountChange?.(1);
       requestAnimationFrame(() => listEnd.current?.scrollIntoView({ behavior: "smooth" }));
-    } catch {
-      setError("Couldn't post your comment. It's still here, so try again.");
+    } catch (err) {
+      setError(err?.code === "permission-denied"
+        ? `@${post.authorName} only takes comments from people they follow.`
+        : "Couldn't post your comment. It's still here, so try again.");
     } finally {
       setBusy(false);
     }
@@ -83,9 +98,9 @@ export default function Comments({ post, onClose, onCountChange }) {
   return (
     <Dialog title={count ? `Comments (${count})` : "Comments"} onClose={onClose} size="lg" initialFocusRef={inputRef}
       bodyClassName="!px-0"
-      footer={post.locked ? (
-        <p className="flex items-center justify-center gap-2 text-callout text-warning-text">
-          <Lock size={16} aria-hidden="true" /> A moderator has paused comments on this post.
+      footer={post.locked || closedReason ? (
+        <p className="flex items-center justify-center gap-2 text-callout text-fg-muted">
+          <Lock size={16} aria-hidden="true" /> {post.locked ? "A moderator has paused comments on this post." : closedReason}
         </p>
       ) : (
         <form onSubmit={submit} className="space-y-2">
@@ -119,7 +134,7 @@ export default function Comments({ post, onClose, onCountChange }) {
       )}
       {comments?.length > 0 && (
         <ul className="divide-y divide-line">
-          {comments.map((c) => (
+          {comments.filter((c) => !blocked.has(c.authorId)).map((c) => (
             <li key={c.id} className="group flex gap-3 px-5 py-3">
               <button type="button" onClick={() => c.authorId && openUserProfile(c.authorId)} className="h-fit shrink-0"
                 aria-label={`@${c.authorName}'s profile`}>

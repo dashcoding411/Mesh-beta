@@ -24,7 +24,7 @@ const PAGE = 12;
    Following: only people you follow, newest first, no ranking at all. The
                honest alternative for anyone who doesn't want an algorithm. */
 export default function HomeFeed({ mode }) {
-  const { following } = useShell();
+  const { following, blocked } = useShell();
   const [posts, setPosts] = useState(null);
   const [error, setError] = useState(false);
   const [shown, setShown] = useState(PAGE);
@@ -52,7 +52,7 @@ export default function HomeFeed({ mode }) {
         p.repostedBy = [...(p.repostedBy || []), { uid: r.uid, username: r.username, at: tsMillis(r.createdAt) }];
       }
 
-      const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId);
+      const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !blocked.has(p.authorId));
 
       if (mode === "following") {
         const mine = visible.filter((p) => following.has(p.authorId) || p.repostedBy?.length);
@@ -66,7 +66,7 @@ export default function HomeFeed({ mode }) {
       console.error(err);
       setError(true);
     }
-  }, [mode, following]);
+  }, [mode, following, blocked]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 

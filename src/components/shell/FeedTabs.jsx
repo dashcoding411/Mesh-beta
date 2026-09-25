@@ -2,7 +2,7 @@ import Tabs from "../ui/Tabs";
 import { FEED_TABS } from "../../lib/surfaces";
 import { navigate } from "../../lib/router";
 
-/* For you · Following · News, across the top of the feed. Switching is a
+/* For you · Following, across the top of the feed. Switching is a
    navigation (each has its own URL), so Back steps between them. */
 export default function FeedTabs({ value }) {
   return (

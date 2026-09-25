@@ -6,7 +6,7 @@ import Avatar from "../ui/Avatar";
 
 /* Desktop navigation. Two widths: an icon rail between 768 and 1280px so
    the content keeps its room, and the full labelled sidebar above that.
-   Home's four sections come first (Search, For you, Flicks, Circles), then
+   Home's five sections come first (Search, For you, Flicks, Circles, News), then
    Messages; Create and your account anchor the bottom. */
 export default function Sidebar({ page, profile, unread, onCreate }) {
   const current = page.tab === "home" ? sidebarSection(page.section) : null;

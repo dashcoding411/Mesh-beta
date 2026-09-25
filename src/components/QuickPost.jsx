@@ -21,7 +21,8 @@ export default function QuickPost({ onPosted }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(false);
-  const minor = isMinor(profile);
+  // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
+  const minor = isMinor(profile) || !!profile?.isPrivate;
   const remaining = STRAND_MAX - text.length;
 
   const submit = async (e) => {
@@ -66,7 +67,7 @@ export default function QuickPost({ onPosted }) {
           <InlineMessage>{error}</InlineMessage>
           {minor && focused && (
             <p className="flex items-center gap-1.5 text-caption text-fg-subtle">
-              <Lock size={12} aria-hidden="true" /> Under-16 accounts post to followers only.
+              <Lock size={12} aria-hidden="true" /> {profile?.isPrivate ? "Your account is private, so this goes to your followers." : "Under-16 accounts post to followers only."}
             </p>
           )}
         </div>

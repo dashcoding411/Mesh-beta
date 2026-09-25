@@ -59,12 +59,14 @@ export const PRIVACY = {
       h: "Who can see what",
       list: [
         ["Public posts", "Visible to anyone signed in to Mesh."],
+        ["Private accounts", "If you make your account private, new followers need your approval, and your posts and stories are visible only to the followers you've approved."],
         ["Reposts", "Public. When you repost something, your followers see it with your name on it, and it appears on your profile's Reposts tab."],
         ["Followers-only posts", "Visible to you and the people who follow you. Enforced on our servers, not only in the app."],
         ["Circle posts", "In a public circle, visible to anyone signed in. In a private or hidden circle, visible only to its members. Posts waiting for a circle admin's approval are visible only to you and that circle's admins and moderators."],
         ["Gatherings", "Public gatherings are visible to anyone signed in. Private ones are visible only to the host, the people they invite, and members of the circle they belong to. If the host hides the guest list, only the host sees who replied."],
         ["Messages", "Visible only to the people in that conversation. We can technically access message records to respond to a lawful request or a safety report; we do not read them otherwise."],
         ["Your saved posts, hidden posts, and interaction signals", "Visible only to you."],
+        ["Who you've blocked", "Visible only to you. The person isn't told. Blocking stops them following you, messaging you, adding you to groups and commenting on your posts."],
       ],
     },
     {

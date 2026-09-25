@@ -42,6 +42,26 @@ service cloud.firestore {
             && request.time.year() - myProfile().birthYear >= limitYears);
     }
 
+    // ---------- privacy and blocking ----------
+    function profileOf(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+    // Has `uid` blocked the person making this request?
+    function blockedBy(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)/blocked/$(request.auth.uid));
+    }
+    function follows(uid, target) {
+      return exists(/databases/$(database)/documents/users/$(uid)/following/$(target));
+    }
+    // Can the requester start a conversation with `uid`, or add them to a
+    // group? Not if they're blocked, and not if `uid` only takes messages
+    // from people they follow and doesn't follow the requester.
+    function reachable(uid) {
+      return !blockedBy(uid)
+        && (profileOf(uid).get('messagePolicy', 'everyone') == 'everyone'
+            || follows(uid, request.auth.uid));
+    }
+
     // ---------- circle membership, used by posts, circles and gatherings ----------
     function circleOf(groupId) {
       return get(/databases/$(database)/documents/groups/$(groupId)).data;
@@ -176,6 +196,13 @@ service cloud.firestore {
           && (!('usernameChangedAt' in resource.data)
               || resource.data.usernameChangedAt == null
               || request.time > resource.data.usernameChangedAt + duration.value(30, 'd')))
+        // Privacy settings: a private (locked) account, who can message you,
+        // who can comment on your posts.
+        || (isUser(uid)
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['isPrivate', 'messagePolicy', 'commentPolicy'])
+          && incomingData().get('isPrivate', false) is bool
+          && incomingData().get('messagePolicy', 'everyone') in ['everyone', 'following']
+          && incomingData().get('commentPolicy', 'everyone') in ['everyone', 'following', 'off'])
         // follow/unfollow counter updates by other users
         || (onlyKey('followerCount') && delta1(resource.data.get('followerCount', 0), incomingData().followerCount))
         || (onlyKey('followingCount') && delta1(resource.data.get('followingCount', 0), incomingData().followingCount))
@@ -185,17 +212,43 @@ service cloud.firestore {
       // Policy.)
       allow delete: if isUser(uid);
 
-      // who this user follows, only the user themself writes here
+      // Who this user follows. You follow someone yourself if their account
+      // isn't private and they haven't blocked you; a private account's owner
+      // writes the entry when they approve your request. Either side can end it.
       match /following/{targetUid} {
         allow read: if signedIn();
-        allow create, delete: if isUser(uid);
+        allow create: if (isUser(uid)
+              && !blockedBy(targetUid)
+              && profileOf(targetUid).get('isPrivate', false) != true)
+          || (isUser(targetUid)
+              && exists(/databases/$(database)/documents/users/$(targetUid)/followRequests/$(uid)));
+        allow delete: if isUser(uid) || isUser(targetUid);
         allow update: if false;
       }
-      // who follows this user, only the *follower* writes their own entry
+      // Who follows this user: the same two routes in, and the owner can
+      // remove a follower.
       match /followers/{followerUid} {
         allow read: if signedIn();
-        allow create, delete: if isUser(followerUid);
+        allow create: if (isUser(followerUid)
+              && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(followerUid))
+              && profileOf(uid).get('isPrivate', false) != true)
+          || (isUser(uid)
+              && exists(/databases/$(database)/documents/users/$(uid)/followRequests/$(followerUid)));
+        allow delete: if isUser(followerUid) || isUser(uid);
         allow update: if false;
+      }
+      // Requests to follow a private account. Seen only by the two people involved.
+      match /followRequests/{requesterUid} {
+        allow read: if isUser(uid) || isUser(requesterUid);
+        allow create: if isUser(requesterUid)
+          && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(requesterUid))
+          && incomingData().keys().hasOnly(['username', 'createdAt']);
+        allow delete: if isUser(uid) || isUser(requesterUid);
+        allow update: if false;
+      }
+      // Who you've blocked. Private to you; the rules elsewhere check it.
+      match /blocked/{otherUid} {
+        allow read, write: if isUser(uid);
       }
       // personalization signals: private to the user
       match /affinity/{authorId} {
@@ -254,7 +307,8 @@ service cloud.firestore {
         // public. Inside a circle: whatever the circle's limits decide.
         && ((incomingData().groupId == ''
               && (incomingData().visibility == 'followers'
-                  || (incomingData().visibility == 'public' && isAdult())))
+                  || (incomingData().visibility == 'public' && isAdult()
+                      && myProfile().get('isPrivate', false) != true)))
             || (incomingData().groupId != '' && circlePostOk(incomingData())))
         && incomingData().text is string
         && incomingData().text.size() <= 5000
@@ -289,7 +343,8 @@ service cloud.firestore {
           && resource.data.get('groupId', '') == ''
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated'])
           && incomingData().visibility in ['public', 'followers']
-          && (incomingData().visibility == 'followers' || isAdult())
+          && (incomingData().visibility == 'followers'
+              || (isAdult() && myProfile().get('isPrivate', false) != true))
           && incomingData().text is string
           && incomingData().text.size() <= 5000
           && (resource.data.kind != 'text' || incomingData().text.size() <= 500))
@@ -344,7 +399,14 @@ service cloud.firestore {
           && incomingData().text.size() > 0
           && incomingData().text.size() <= 2000
           && canReadPost(parentPost())
-          && parentPost().get('locked', false) != true;
+          && parentPost().get('locked', false) != true
+          // The author decides who comments: everyone, people they follow,
+          // or nobody. And nobody they've blocked.
+          && (parentPost().authorId == request.auth.uid
+              || (!blockedBy(parentPost().authorId)
+                  && (profileOf(parentPost().authorId).get('commentPolicy', 'everyone') == 'everyone'
+                      || (profileOf(parentPost().authorId).get('commentPolicy', 'everyone') == 'following'
+                          && follows(parentPost().authorId, request.auth.uid)))));
         allow update: if false;
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid
@@ -372,13 +434,28 @@ service cloud.firestore {
     }
 
     // ---------- stories (client filters to last 24h) ----------
+    // A private account's stories are for its followers. (The create rule
+    // also used to reject authorDisplayName, which the app sends, so no
+    // story could ever be posted.)
     match /stories/{storyId} {
-      allow read: if signedIn();
+      allow get: if signedIn()
+        && (resource.data.get('audience', 'public') == 'public'
+            || resource.data.authorId == request.auth.uid
+            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
+      allow list: if signedIn()
+        && (resource.data.audience == 'public'
+            || resource.data.authorId == request.auth.uid
+            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
-          'authorId', 'authorName', 'authorPhoto', 'mediaUrl', 'mediaPath', 'mediaType', 'createdAt'
+          'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'mediaUrl', 'mediaPath', 'mediaType',
+          'audience', 'day', 'createdAt'
         ])
+        && incomingData().day is string
+        && incomingData().day.size() == 10
         && incomingData().authorId == request.auth.uid
+        && incomingData().audience in ['public', 'followers']
+        && (incomingData().audience == 'followers' || myProfile().get('isPrivate', false) != true)
         && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*');
       allow update: if false;
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
@@ -433,35 +510,83 @@ service cloud.firestore {
           .hasOnly([request.auth.uid]);
       }
 
+      function groupAdmins() {
+        return resource.data.get('admins', [resource.data.createdBy]);
+      }
+      function changed() {
+        return incomingData().diff(resource.data).affectedKeys();
+      }
+      // In a one-to-one chat, has the other person blocked me?
+      function blockedInDm() {
+        let m = chatData().members;
+        return chatData().get('isGroup', false) != true
+          && ((m[0] == request.auth.uid && blockedBy(m[1]))
+              || (m[1] == request.auth.uid && blockedBy(m[0])));
+      }
+
       // A get on a chat that doesn't exist yet must not blow up on
       // resource.data; the client checks existence before opening a DM.
       allow get: if signedIn()
         && (resource == null || request.auth.uid in resource.data.members);
       allow list: if signedIn() && request.auth.uid in resource.data.members;
+
+      // A one-to-one chat has a fixed id (both uids, sorted) and needs the
+      // other person to be reachable. A group starts with just its creator,
+      // who is its first admin; people are then added one at a time, and
+      // each add is checked the same way a new chat is.
       allow create: if signedIn()
         && request.auth.uid in incomingData().members
-        && incomingData().members.size() >= 2
-        && incomingData().members.size() <= 250
         && incomingData().name is string
-        && incomingData().name.size() <= 60;
+        && incomingData().name.size() <= 60
+        && ((incomingData().isGroup == false
+              && incomingData().members.size() == 2
+              && chatId == incomingData().members[0] + '_' + incomingData().members[1]
+              && ((incomingData().members[0] == request.auth.uid && reachable(incomingData().members[1]))
+                  || (incomingData().members[1] == request.auth.uid && reachable(incomingData().members[0]))))
+            || (incomingData().isGroup == true
+              && incomingData().members == [request.auth.uid]
+              && incomingData().get('admins', []) == [request.auth.uid]));
       allow update: if signedIn()
         && request.auth.uid in resource.data.members
-        && request.auth.uid in incomingData().members
         && (
-          // metadata any member may change
-          incomingData().diff(resource.data).affectedKeys().hasOnly([
-            'lastMessage', 'lastSenderId', 'updatedAt', 'theme',
-            'nicknames', 'members', 'memberNames', 'name'
-          ])
+          // what any member may change
+          (request.auth.uid in incomingData().members
+            && changed().hasOnly(['lastMessage', 'lastSenderId', 'updatedAt', 'theme', 'nicknames', 'name'])
+            && incomingData().name is string
+            && incomingData().name.size() <= 60)
           // pin and mute are per-user: you may only add or remove yourself
-          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedBy'])
+          || (changed().hasOnly(['pinnedBy'])
               && incomingData().pinnedBy.toSet().difference(resource.data.get('pinnedBy', []).toSet())
                    .union(resource.data.get('pinnedBy', []).toSet().difference(incomingData().pinnedBy.toSet()))
                    .hasOnly([request.auth.uid]))
-          || (incomingData().diff(resource.data).affectedKeys().hasOnly(['mutedBy'])
+          || (changed().hasOnly(['mutedBy'])
               && incomingData().mutedBy.toSet().difference(resource.data.get('mutedBy', []).toSet())
                    .union(resource.data.get('mutedBy', []).toSet().difference(incomingData().mutedBy.toSet()))
                    .hasOnly([request.auth.uid]))
+          // any member adds one person to a group, if that person is reachable
+          || (resource.data.get('isGroup', false) == true
+              && changed().hasOnly(['members', 'memberNames'])
+              && incomingData().members.size() == resource.data.members.size() + 1
+              && incomingData().members.size() <= 250
+              && incomingData().members.toSet().hasAll(resource.data.members)
+              && reachable(incomingData().members[incomingData().members.size() - 1]))
+          // leave a group: remove exactly yourself. An admin who leaves may
+          // hand the admin role to people still in the group.
+          || (resource.data.get('isGroup', false) == true
+              && changed().hasOnly(['members', 'memberNames', 'admins'])
+              && resource.data.members.toSet().difference(incomingData().members.toSet()) == [request.auth.uid].toSet()
+              && incomingData().members.toSet().difference(resource.data.members.toSet()).size() == 0
+              && ((request.auth.uid in groupAdmins()
+                    && incomingData().get('admins', []).toSet().difference(incomingData().members.toSet()).size() == 0)
+                  || (!(request.auth.uid in groupAdmins())
+                    && incomingData().get('admins', []) == resource.data.get('admins', []))))
+          // admins remove people and choose admins, never adding anyone this way
+          || (resource.data.get('isGroup', false) == true
+              && request.auth.uid in groupAdmins()
+              && request.auth.uid in incomingData().members
+              && changed().hasOnly(['members', 'memberNames', 'admins'])
+              && incomingData().members.toSet().difference(resource.data.members.toSet()).size() == 0
+              && incomingData().get('admins', []).toSet().difference(incomingData().members.toSet()).size() == 0)
         );
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
 
@@ -470,7 +595,8 @@ service cloud.firestore {
         allow create: if inChat()
           && incomingData().senderId == request.auth.uid
           && incomingData().text is string
-          && incomingData().text.size() <= 2000;
+          && incomingData().text.size() <= 2000
+          && !blockedInDm();
         allow update: if inChat() && (
           // sender may edit their own text inside the 15-minute window
           (resource.data.senderId == request.auth.uid

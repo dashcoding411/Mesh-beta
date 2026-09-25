@@ -23,9 +23,9 @@ Facebook, and "Posts" says nothing at all.
 
 **Navigation has three levels.** On phones there are exactly three tabs, always:
 **Home**, **Messages** and **Account**. Home's sidebar (a drawer on phones, a
-rail on desktop) has exactly four sections: **Search**, **For you**, **Flicks**
-and **Circles**. The feed has its own tabs across the top: **For you**,
-**Following** and **News**. Every screen has a real URL, so Back, refresh and
+rail on desktop) has five sections: **Search**, **For you**, **Flicks**,
+**Circles** and **News**. The feed has its own tabs across the top: **For you**
+and **Following**. Every screen has a real URL, so Back, refresh and
 shared links all work.
 
 | Section | What it is |
@@ -183,6 +183,29 @@ Each gathering has its own page (`/gatherings/:id`) with replies, a
   count honest and the limit real.
 - **Who posts.** Everyone who has replied, or the host only (announcements).
 - **Guest list.** Visible to guests, or to the host only; enforced on reads.
+
+## Privacy controls
+
+In Settings → Privacy and safety, all enforced in `firestore.rules`:
+
+- **Private account.** New followers send a request you approve; locking
+  switches your public posts to followers-only and the rules then refuse
+  public posts and public stories from the account.
+- **Who can message you.** Everyone (strangers land in Requests) or only
+  people you follow. This also covers being added to group chats.
+- **Who can comment.** Everyone, people you follow, or no one.
+- **Blocked accounts.** A block ends follows both ways and stops the person
+  following, requesting, messaging, adding you to groups or commenting.
+  Their posts disappear from your feeds, search and stories.
+
+## Group chats
+
+Messages has two boxes: **General** and **Requests** (people you don't follow).
+A group starts with its creator as admin; people are added one at a time so
+the rules can check each add against that person's message setting and
+blocks. Anyone in a group can add people and rename it; only admins remove
+people or appoint admins; anyone can leave (a sole admin leaving hands the
+role on).
 
 ## What Mesh deliberately doesn't do
 

@@ -45,7 +45,8 @@ function readDuration(file) {
    Nothing you've typed or picked is lost when something fails. */
 export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind }) {
   const toast = useToast();
-  const minor = isMinor(profile);
+  // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
+  const minor = isMinor(profile) || !!profile?.isPrivate;
   const [kind, setKind] = useState(initialKind || lastKind);
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
@@ -189,7 +190,9 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             </Button>
           </div>
           {minor && !groupId && (
-            <p className="text-caption text-fg-subtle">Under-16 accounts post to followers only.</p>
+            <p className="text-caption text-fg-subtle">
+              {profile?.isPrivate ? "Your account is private, so posts go to your followers only." : "Under-16 accounts post to followers only."}
+            </p>
           )}
         </div>
       }>

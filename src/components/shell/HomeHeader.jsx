@@ -14,7 +14,7 @@ import { LogoMark } from "./Sidebar";
 export default function HomeHeader({ section, children, actions, transparent = false }) {
   const { openDrawer, openComposer } = useShell();
   const meta = sectionById(section);
-  const isFeed = section === "foryou" || section === "following" || section === "news";
+  const isFeed = section === "foryou" || section === "following";
 
   return (
     <header className={`top-0 z-nav shrink-0 ${

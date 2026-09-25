@@ -6,7 +6,6 @@ import { checkContent, markPosted } from "../lib/moderation";
 import { useLocation } from "../lib/router";
 import { shortTime, fullTime, isoTime } from "../lib/format";
 import HomeHeader from "./shell/HomeHeader";
-import FeedTabs from "./shell/FeedTabs";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import Dialog from "./ui/Dialog";
@@ -64,9 +63,7 @@ export default function News() {
   return (
     <>
       <HomeHeader section="news"
-        actions={<Button size="sm" variant="primary" icon={PenLine} className="hidden md:inline-flex" onClick={() => setSubmitting(true)}>Submit a story</Button>}>
-        <FeedTabs value="news" />
-      </HomeHeader>
+        actions={<Button size="sm" variant="primary" icon={PenLine} className="hidden md:inline-flex" onClick={() => setSubmitting(true)}>Submit a story</Button>} />
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[720px] px-4 pb-16 pt-5 md:px-6">

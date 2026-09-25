@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Info, SendHorizontal, ChartBar, X, Reply, Copy, Pencil, Undo2, ArrowDown, Play, Plus, Check, Mail, Palette, Users,
+  UserPlus, LogOut, ShieldCheck, UserMinus, Ban,
 } from "lucide-react";
 import {
   listenMessages, sendMessage, searchUsers, openDirectChat, createGroupChat, me, tsMillis,
   listenTyping, setTyping, clearTyping, listenReads, listenPresence, presenceLabel,
   reactToMessage, groupReactions, QUICK_REACTIONS, canEdit, editMessage, unsendMessage,
   setChatTheme, setNickname, CHAT_THEMES, sendPoll, votePoll, openUserProfile, openPost, openWatch, kindLabel,
+  addToGroup, removeFromGroup, setGroupAdmin, leaveGroupChat, renameGroupChat, groupAdmins, blockUser, unblockUser,
 } from "../lib/db";
 import { LIMITS } from "../lib/validate";
 import { checkContent, checkName } from "../lib/moderation";
@@ -22,6 +24,7 @@ import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { MenuItem, MenuGroup } from "./ui/Menu";
 import { Field, Input, Textarea, Select } from "./ui/Field";
 import { Skeleton, InlineMessage, EmptyState } from "./ui/States";
+import Badge from "./ui/Badge";
 import { useToast } from "./ui/toast-context";
 
 const GROUP_GAP = 5 * 60_000; // messages closer than this cluster together
@@ -55,7 +58,7 @@ function buildRows(messages) {
    sends on a keyboard and adds a line on a phone, Escape backs out of a
    reply, and a failed send keeps your words and offers to retry. */
 export default function ChatView({ chat }) {
-  const { inbox } = useShell();
+  const { inbox, blocked } = useShell();
   const toast = useToast();
   const [messages, setMessages] = useState(null);
   const [text, setText] = useState("");
@@ -76,6 +79,7 @@ export default function ChatView({ chat }) {
   const theme = CHAT_THEMES[chat.theme] || CHAT_THEMES.default;
   const others = useMemo(() => chat.members.filter((m) => m !== me()), [chat.members]);
   const title = chatTitle(chat);
+  const blockedOther = !chat.isGroup && others[0] && blocked.has(others[0]);
 
   useEffect(() => listenMessages(chat.id, setMessages), [chat.id]);
   useEffect(() => listenTyping(chat.id, setTypingUsers), [chat.id]);
@@ -140,7 +144,9 @@ export default function ChatView({ chat }) {
       setText(t);
       setReplyTo(wasReply);
       setEditing(wasEditing);
-      toast({ tone: "error", title: "Message not sent", body: "Check your connection.", action: { label: "Retry", onClick: () => send(t) } });
+      toast(err?.code === "permission-denied"
+        ? { tone: "error", title: "Message not sent", body: "This person isn't accepting your messages." }
+        : { tone: "error", title: "Message not sent", body: "Check your connection.", action: { label: "Retry", onClick: () => send(t) } });
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -244,6 +250,12 @@ export default function ChatView({ chat }) {
         )}
       </div>
 
+      {blockedOther ? (
+        <div className="shrink-0 border-t border-line bg-canvas px-4 py-4 text-center md:px-6">
+          <p className="text-callout text-fg-muted">You've blocked {title}. Unblock them in this conversation's details to message them.</p>
+          <Button size="sm" className="mt-2" icon={Info} onClick={() => setDialog("info")}>Conversation details</Button>
+        </div>
+      ) : (
       <div className="shrink-0 border-t border-line bg-canvas px-3 pb-3 pt-2 md:px-6">
         {(replyTo || editing) && (
           <div className="mb-2 flex items-center gap-2 rounded-control bg-surface-2 py-1 pl-3 pr-1">
@@ -275,6 +287,7 @@ export default function ChatView({ chat }) {
           <p className="mt-1 text-right text-caption text-warning-text tabular">{LIMITS.message - text.length} characters left</p>
         )}
       </div>
+      )}
 
       {dialog === "info" && <ChatDetails chat={chat} onClose={() => setDialog(null)} />}
       {dialog === "poll" && <PollDialog chatId={chat.id} onClose={() => setDialog(null)} />}
@@ -546,18 +559,30 @@ function PollDialog({ chatId, onClose }) {
   );
 }
 
+/* Conversation details. For a group: its name, who's in it, who runs it,
+   adding people, and leaving. For one-to-one: nicknames and blocking. Theme
+   for both. Every membership change is checked by the rules, not just here. */
 function ChatDetails({ chat, onClose }) {
   const toast = useToast();
-  const { inbox } = useShell();
+  const { inbox, blocked, setBlocked } = useShell();
   const others = chat.members.filter((m) => m !== me());
+  const admins = groupAdmins(chat);
+  const amAdmin = admins.includes(me());
   const [target, setTarget] = useState(others[0] || "");
   const [nick, setNick] = useState("");
+  const [name, setName] = useState(chat.name || "");
   const [error, setError] = useState("");
+  const [dialog, setDialog] = useState(null); // add | leave | block
+  const nameOf = (uid) => (uid === me() ? "You" : `@${chat.memberNames?.[uid] || "member"}`);
+  const other = !chat.isGroup ? others[0] : null;
+  const otherBlocked = other && blocked.has(other);
 
-  const theme = async (id) => {
-    try { await setChatTheme(chat.id, id); toast({ title: `Theme: ${CHAT_THEMES[id].label}` }); }
-    catch { toast({ tone: "error", title: "Couldn't change the theme" }); }
+  const run = async (fn, done, fail = "That didn't work") => {
+    try { await fn(); if (done) toast({ title: done }); }
+    catch (e) { toast({ tone: "error", title: e?.code === "permission-denied" ? "Only group admins can do that" : fail }); }
   };
+
+  const theme = (id) => run(() => setChatTheme(chat.id, id), `Theme: ${CHAT_THEMES[id].label}`, "Couldn't change the theme");
 
   const saveNick = async (e) => {
     e.preventDefault();
@@ -571,23 +596,78 @@ function ChatDetails({ chat, onClose }) {
     } catch { setError("Couldn't save the nickname."); }
   };
 
+  const rename = async (e) => {
+    e.preventDefault();
+    const t = name.trim();
+    if (t.length < LIMITS.chatName.min) return setError(`Group names need at least ${LIMITS.chatName.min} characters.`);
+    const check = checkName(t);
+    if (check.error) return setError(check.error);
+    setError("");
+    run(() => renameGroupChat(chat.id, t.slice(0, LIMITS.chatName.max)), "Group renamed", "Couldn't rename the group");
+  };
+
+  const toggleBlock = async () => {
+    const who = { id: other, username: chat.memberNames?.[other] };
+    try {
+      if (otherBlocked) {
+        await unblockUser(other);
+        setBlocked((prev) => { const n = new Set(prev); n.delete(other); return n; });
+        toast({ title: `Unblocked ${nameOf(other)}` });
+      } else {
+        await blockUser(who);
+        setBlocked((prev) => new Set(prev).add(other));
+        toast({ title: `Blocked ${nameOf(other)}`, body: "They can't message you, follow you or comment on your posts." });
+      }
+      setDialog(null);
+    } catch { toast({ tone: "error", title: "Couldn't update the block" }); }
+  };
+
   return (
-    <Dialog title={chat.isGroup ? chatTitle(chat) : "Conversation details"} onClose={onClose}>
-      <div className="space-y-6">
+    <Dialog title={chat.isGroup ? chatTitle(chat) : "Conversation details"} onClose={onClose} size="lg">
+      <div className="space-y-7">
+        {chat.isGroup && (
+          <form onSubmit={rename} className="flex items-end gap-2">
+            <Field label="Group name" className="flex-1" error={error && dialog === null ? error : ""}>
+              <Input value={name} onChange={(e) => { setName(e.target.value); setError(""); }} maxLength={LIMITS.chatName.max} />
+            </Field>
+            <Button type="submit" disabled={name.trim() === (chat.name || "")}>Rename</Button>
+          </form>
+        )}
+
         {chat.isGroup && (
           <section>
-            <h3 className="mb-2 flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-fg-subtle"><Users size={13} aria-hidden="true" /> {plural(chat.members.length, "member")}</h3>
-            <ul className="space-y-1">
-              {chat.members.map((uid) => (
-                <li key={uid}>
-                  <button type="button" onClick={() => { onClose(); openUserProfile(uid); }}
-                    className="press flex min-h-12 w-full items-center gap-3 rounded-control px-2 text-left hover:bg-surface-2">
-                    <Avatar profile={{ username: chat.memberNames?.[uid] || "?" }} size={32} />
-                    <span className="truncate text-callout">{uid === me() ? "You" : `@${chat.memberNames?.[uid] || "unknown"}`}</span>
-                  </button>
-                </li>
-              ))}
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-fg-subtle">
+                <Users size={13} aria-hidden="true" /> {plural(chat.members.length, "member")}
+              </h3>
+              <Button size="sm" icon={UserPlus} onClick={() => setDialog("add")}>Add people</Button>
+            </div>
+            <ul className="divide-y divide-line overflow-hidden rounded-card border border-line">
+              {chat.members.map((uid) => {
+                const isAdmin = admins.includes(uid);
+                return (
+                  <li key={uid} className="flex min-h-14 flex-wrap items-center gap-3 px-3 py-2">
+                    <button type="button" onClick={() => { if (uid !== me()) { onClose(); openUserProfile(uid); } }}
+                      className="press flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <Avatar profile={{ username: chat.memberNames?.[uid] || "?" }} size={36} />
+                      <span className="truncate text-callout">{nameOf(uid)}</span>
+                      {isAdmin && <Badge tone="accent" icon={ShieldCheck}>Admin</Badge>}
+                    </button>
+                    {amAdmin && uid !== me() && (
+                      <span className="flex gap-1">
+                        <Button size="sm" variant="ghost"
+                          onClick={() => run(() => setGroupAdmin(chat, uid, !isAdmin), isAdmin ? "No longer an admin" : "Made an admin")}>
+                          {isAdmin ? "Remove admin" : "Make admin"}
+                        </Button>
+                        <IconButton icon={UserMinus} label={`Remove ${nameOf(uid)} from the group`} size={18}
+                          onClick={() => run(() => removeFromGroup(chat, uid), `Removed ${nameOf(uid)}`)} />
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+            {!amAdmin && <p className="mt-2 text-caption text-fg-subtle">Only admins can remove people. Anyone in the group can add people.</p>}
           </section>
         )}
 
@@ -619,7 +699,7 @@ function ChatDetails({ chat, onClose }) {
                 </Select>
               </Field>
             )}
-            <Field label="Nickname" hint="Only shown inside this conversation. Leave blank to clear it." error={error}>
+            <Field label="Nickname" hint="Only shown inside this conversation. Leave blank to clear it." error={!chat.isGroup ? error : ""}>
               <Input value={nick} onChange={(e) => { setNick(e.target.value); setError(""); }} maxLength={30}
                 placeholder={chat.nicknames?.[target] || "Set a nickname"} />
             </Field>
@@ -631,13 +711,92 @@ function ChatDetails({ chat, onClose }) {
           <MenuItem icon={Mail} onClick={async () => { await inbox.markChatUnread(chat.id); onClose(); navigate("/messages"); }}>
             Mark as unread
           </MenuItem>
+          {chat.isGroup ? (
+            <MenuItem icon={LogOut} danger onClick={() => setDialog("leave")}
+              description={amAdmin && admins.length === 1 && others.length ? "Someone else will become the admin" : undefined}>
+              Leave group
+            </MenuItem>
+          ) : (
+            <MenuItem icon={Ban} danger={!otherBlocked} onClick={() => setDialog("block")}
+              description={otherBlocked ? undefined : "They won't be able to message you, follow you or comment on your posts"}>
+              {otherBlocked ? `Unblock ${nameOf(other)}` : `Block ${nameOf(other)}`}
+            </MenuItem>
+          )}
         </MenuGroup>
       </div>
+
+      {dialog === "add" && <AddPeopleDialog chat={chat} onClose={() => setDialog(null)} />}
+      {dialog === "leave" && (
+        <ConfirmDialog title={`Leave ${chatTitle(chat)}?`} confirmLabel="Leave group"
+          body="You'll stop getting its messages. Someone in the group would need to add you back."
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            try { await leaveGroupChat(chat); onClose(); navigate("/messages", { replace: true }); toast({ title: "You left the group" }); }
+            catch { toast({ tone: "error", title: "Couldn't leave the group" }); }
+          }} />
+      )}
+      {dialog === "block" && (
+        <ConfirmDialog title={otherBlocked ? `Unblock ${nameOf(other)}?` : `Block ${nameOf(other)}?`}
+          confirmLabel={otherBlocked ? "Unblock" : "Block"} tone={otherBlocked ? "accent" : "danger"}
+          body={otherBlocked
+            ? "They'll be able to follow you and message you again. They won't be told."
+            : "They won't be told. They can't message you, follow you or comment on your posts, and you'll stop seeing their posts."}
+          onClose={() => setDialog(null)} onConfirm={toggleBlock} />
+      )}
     </Dialog>
   );
 }
 
-export function NewChatDialog({ onClose, onCreated }) {
+function AddPeopleDialog({ chat, onClose }) {
+  const toast = useToast();
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (term.trim().length >= 1) {
+        const users = await searchUsers(term).catch(() => []);
+        setResults(users.filter((u) => !chat.members.includes(u.id)));
+      } else setResults(null);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [term, chat.members]);
+
+  const add = async (u) => {
+    setBusy(u.id);
+    const skipped = await addToGroup(chat.id, [u]);
+    setBusy("");
+    if (skipped.length) toast({ tone: "error", title: `Couldn't add @${u.username}`, body: "They only accept messages and group adds from people they follow." });
+    else {
+      toast({ title: `Added @${u.username}` });
+      setResults((r) => r?.filter((x) => x.id !== u.id) || null);
+    }
+  };
+
+  return (
+    <Dialog title="Add people" onClose={onClose}>
+      <label htmlFor="add-people" className="sr-only">Search by handle</label>
+      <Input id="add-people" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search by handle" autoCapitalize="none" />
+      <ul className="mt-3 space-y-1">
+        {results?.map((u) => (
+          <li key={u.id} className="flex min-h-14 items-center gap-3 rounded-control px-2">
+            <Avatar profile={u} size={36} />
+            <span className="min-w-0 flex-1 truncate text-callout">@{u.username}</span>
+            <Button size="sm" variant="primary" icon={UserPlus} loading={busy === u.id} onClick={() => add(u)}>Add</Button>
+          </li>
+        ))}
+      </ul>
+      {results?.length === 0 && <EmptyState compact title={`No one to add called “${term.trim()}”`} body="Handles are exact, so check the spelling." />}
+    </Dialog>
+  );
+}
+
+/* New message or new group. A message goes to one person; a group needs at
+   least two others and takes an optional name. People who only accept
+   messages from accounts they follow are skipped, with a note saying who. */
+export function NewChatDialog({ onClose, onCreated, group = false }) {
+  const toast = useToast();
   const [term, setTerm] = useState("");
   const [results, setResults] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -645,6 +804,7 @@ export function NewChatDialog({ onClose, onCreated }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
+  const needed = group ? 2 : 1;
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -656,35 +816,52 @@ export function NewChatDialog({ onClose, onCreated }) {
     return () => clearTimeout(t);
   }, [term, selected]);
 
+  const pick = (u) => {
+    setSelected(group ? [...selected, u] : [u]);
+    setTerm("");
+    inputRef.current?.focus();
+  };
+
   const start = async () => {
     setError("");
-    if (!selected.length) return setError("Pick at least one person.");
+    if (selected.length < needed) return setError(group ? "Pick at least two people for a group." : "Pick someone to message.");
     setBusy(true);
     try {
-      if (selected.length === 1) onCreated(await openDirectChat(selected[0]));
-      else {
-        const name = groupName.trim() || selected.map((s) => s.username).slice(0, 3).join(", ");
-        const check = checkName(name);
-        if (check.error) { setBusy(false); return setError(check.error); }
-        onCreated(await createGroupChat(name.slice(0, LIMITS.chatName.max), selected));
+      if (!group) {
+        onCreated(await openDirectChat(selected[0]));
+        return;
       }
+      const name = groupName.trim() || selected.map((s) => s.username).slice(0, 3).join(", ");
+      const check = checkName(name);
+      if (check.error) { setBusy(false); return setError(check.error); }
+      const { id, skipped } = await createGroupChat(name.slice(0, LIMITS.chatName.max), selected);
+      if (skipped.length) {
+        toast({ tone: "info", title: `Group made without ${skipped.map((u) => `@${u.username}`).join(", ")}`, body: "They only accept group adds from people they follow." });
+      }
+      onCreated(id);
     } catch (err) {
       console.error(err);
-      setError("Couldn't start the conversation. Try again.");
+      setError(err?.message?.startsWith("You can't message") ? err.message : "Couldn't start the conversation. Try again.");
       setBusy(false);
     }
   };
 
   return (
-    <Dialog title="New message" onClose={onClose} initialFocusRef={inputRef}
+    <Dialog title={group ? "New group" : "New message"} onClose={onClose} initialFocusRef={inputRef}
       footer={
         <div className="space-y-2">
           <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
-          <Button variant="primary" full loading={busy} disabled={!selected.length} onClick={start}>
-            {selected.length > 1 ? `Start group with ${selected.length} people` : "Start conversation"}
+          <Button variant="primary" full loading={busy} disabled={selected.length < needed} onClick={start}>
+            {group ? (selected.length >= 2 ? `Create group with ${selected.length} people` : "Pick at least two people") : "Start conversation"}
           </Button>
         </div>
       }>
+      {group && (
+        <Field label="Group name" optional className="mb-4">
+          <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} maxLength={LIMITS.chatName.max}
+            placeholder={selected.length ? selected.map((s) => s.username).slice(0, 3).join(", ") : "e.g. Weekend plans"} />
+        </Field>
+      )}
       {selected.length > 0 && (
         <ul className="mb-3 flex flex-wrap gap-2" aria-label="Selected people">
           {selected.map((u) => (
@@ -699,18 +876,12 @@ export function NewChatDialog({ onClose, onCreated }) {
         </ul>
       )}
       <label htmlFor="new-chat-search" className="sr-only">Search by handle</label>
-      <Input id="new-chat-search" ref={inputRef} placeholder="Search by handle" value={term} autoCapitalize="none"
+      <Input id="new-chat-search" ref={inputRef} placeholder={group ? "Add people by handle" : "Search by handle"} value={term} autoCapitalize="none"
         onChange={(e) => setTerm(e.target.value)} />
-      {selected.length > 1 && (
-        <Field label="Group name" optional className="mt-4">
-          <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} maxLength={LIMITS.chatName.max}
-            placeholder={selected.map((s) => s.username).slice(0, 3).join(", ")} />
-        </Field>
-      )}
       <ul className="mt-3 space-y-1">
         {results?.map((u) => (
           <li key={u.id}>
-            <button type="button" onClick={() => { setSelected([...selected, u]); setTerm(""); inputRef.current?.focus(); }}
+            <button type="button" onClick={() => pick(u)}
               className="press flex min-h-14 w-full items-center gap-3 rounded-control px-2 text-left hover:bg-surface-2">
               <Avatar profile={u} size={40} />
               <span className="min-w-0">
@@ -725,4 +896,3 @@ export function NewChatDialog({ onClose, onCreated }) {
     </Dialog>
   );
 }
-

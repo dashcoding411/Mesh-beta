@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2 } from "lucide-react";
+import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban } from "lucide-react";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
+  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser,
 } from "../lib/db";
+import Dialog, { ConfirmDialog } from "./ui/Dialog";
+import { MenuItem, MenuGroup } from "./ui/Menu";
 import { goBack, navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
 import Tabs from "./ui/Tabs";
@@ -15,7 +18,7 @@ import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 /* Someone else's profile, opened over whatever you were doing. It has its
    own URL, so Back closes it and the page underneath is exactly as you left it. */
 export default function UserProfile({ uid }) {
-  const { following, setFollowing } = useShell();
+  const { following, setFollowing, blocked, setBlocked } = useShell();
   const toast = useToast();
   const [profile, setProfile] = useState(undefined);
   const [posts, setPosts] = useState(null);
@@ -24,11 +27,16 @@ export default function UserProfile({ uid }) {
   const [busy, setBusy] = useState(false);
   const [messaging, setMessaging] = useState(false);
   const [follows, setFollows] = useState(null);
+  const [requested, setRequested] = useState(false);
+  const [dialog, setDialog] = useState(null); // menu | block
   const followed = following.has(uid);
+  const isBlocked = blocked.has(uid);
+  const locked = !!profile?.isPrivate && !following.has(uid);
 
   useEffect(() => {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
+    hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
     fetchPostsByAuthor(uid)
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
@@ -48,22 +56,52 @@ export default function UserProfile({ uid }) {
     return () => { window.removeEventListener("keydown", onKey); opener?.focus?.(); };
   }, []);
 
+  /* Follow, request (private accounts), cancel a request, or unfollow. */
   const follow = async () => {
     if (busy || !profile) return;
     setBusy(true);
     try {
-      await toggleFollow(profile, followed);
+      if (requested) {
+        await cancelFollowRequest(uid);
+        setRequested(false);
+        toast({ title: "Request cancelled" });
+        return;
+      }
+      const result = await toggleFollow(profile, followed);
+      if (result === "requested") {
+        setRequested(true);
+        toast({ title: "Request sent", body: `@${profile.username} will decide whether to approve it.` });
+        return;
+      }
       setFollowing((prev) => {
         const next = new Set(prev);
         if (followed) next.delete(uid); else next.add(uid);
         return next;
       });
       setProfile((p) => ({ ...p, followerCount: Math.max(0, (p.followerCount || 0) + (followed ? -1 : 1)) }));
-    } catch {
-      toast({ tone: "error", title: "Couldn't update follow", body: "Try again in a moment." });
+    } catch (err) {
+      toast({ tone: "error", title: err?.code === "permission-denied" ? "You can't follow this account" : "Couldn't update follow",
+        body: err?.code === "permission-denied" ? undefined : "Try again in a moment." });
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleBlock = async () => {
+    try {
+      if (isBlocked) {
+        await unblockUser(uid);
+        setBlocked((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+        toast({ title: `Unblocked @${profile.username}` });
+      } else {
+        await blockUser(profile);
+        setBlocked((prev) => new Set(prev).add(uid));
+        setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+        setRequested(false);
+        toast({ title: `Blocked @${profile.username}`, body: "They can't follow you, message you or comment on your posts." });
+      }
+    } catch { toast({ tone: "error", title: "Couldn't update the block" }); }
+    setDialog(null);
   };
 
   const message = async () => {
@@ -71,9 +109,9 @@ export default function UserProfile({ uid }) {
     try {
       const chatId = await openDirectChat(profile);
       navigate(`/messages/${chatId}`);
-    } catch {
+    } catch (err) {
       setMessaging(false);
-      toast({ tone: "error", title: "Couldn't open the conversation" });
+      toast({ tone: "error", title: err?.message?.startsWith("You can't") ? err.message : "Couldn't open the conversation" });
     }
   };
 
@@ -92,6 +130,7 @@ export default function UserProfile({ uid }) {
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>
         {profile && <IconButton icon={Link2} label="Share profile" onClick={share} />}
+        {profile && <IconButton icon={Ellipsis} label="More options" onClick={() => setDialog("menu")} />}
       </header>
 
       <div className="mx-auto max-w-[760px] pb-16">
@@ -110,39 +149,65 @@ export default function UserProfile({ uid }) {
 
         {profile && (
           <>
-            <ProfileHeader profile={profile} postCount={posts?.length ?? null} onShowFollows={setFollows}
-              actions={
+            <ProfileHeader profile={profile} postCount={locked ? null : posts?.length ?? null}
+              onShowFollows={locked ? undefined : setFollows}
+              actions={isBlocked ? (
+                <Button className="flex-1" icon={Ban} onClick={() => setDialog("block")}>Unblock</Button>
+              ) : (
                 <>
-                  <Button className="flex-1" variant={followed ? "secondary" : "primary"} icon={followed ? UserCheck : UserPlus}
-                    loading={busy} onClick={follow} aria-label={followed ? `Unfollow @${profile.username}` : `Follow @${profile.username}`}>
-                    {followed ? "Following" : "Follow"}
+                  <Button className="flex-1" variant={followed || requested ? "secondary" : "primary"}
+                    icon={followed ? UserCheck : requested ? Clock : UserPlus} loading={busy} onClick={follow}
+                    aria-label={followed ? `Unfollow @${profile.username}` : requested ? `Cancel follow request to @${profile.username}` : `Follow @${profile.username}`}>
+                    {followed ? "Following" : requested ? "Requested" : profile.isPrivate ? "Request to follow" : "Follow"}
                   </Button>
                   <Button className="flex-1" icon={MessageCircle} loading={messaging} onClick={message}>Message</Button>
                 </>
-              } />
+              )} />
 
-            <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
-              tabs={[{ id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
-
-            <div role="tabpanel" className="pt-0.5">
-              {tab === "posts" ? (
-                <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
-                  emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
-              ) : (
-                <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet" />
-              )}
-            </div>
-
-            {!followed && posts?.length === 0 && (
-              <p className="flex items-center justify-center gap-1.5 px-4 text-caption text-fg-subtle">
-                <Lock size={13} aria-hidden="true" /> Some posts may be for followers only.
-              </p>
+            {isBlocked ? (
+              <EmptyState icon={Ban} title={`You've blocked @${profile.username}`}
+                body="You won't see their posts, and they can't follow you, message you or comment on your posts." />
+            ) : locked ? (
+              <EmptyState icon={Lock} title="This account is private"
+                body={requested ? "Your request is waiting for their approval." : `Follow @${profile.username} to see their posts. They'll need to approve you.`} />
+            ) : (
+              <>
+                <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
+                  tabs={[{ id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
+                <div role="tabpanel" className="pt-0.5">
+                  {tab === "posts" ? (
+                    <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
+                      emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
+                  ) : (
+                    <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet" />
+                  )}
+                </div>
+              </>
             )}
           </>
         )}
       </div>
 
       {follows && <FollowListDialog uid={uid} kind={follows} onClose={() => setFollows(null)} />}
+      {dialog === "menu" && profile && (
+        <Dialog title={`@${profile.username}`} onClose={() => setDialog(null)}>
+          <MenuGroup>
+            <MenuItem icon={Link2} onClick={() => { setDialog(null); share(); }}>Share profile</MenuItem>
+            <MenuItem icon={Ban} danger={!isBlocked} onClick={() => setDialog("block")}
+              description={isBlocked ? undefined : "They won't be told"}>
+              {isBlocked ? `Unblock @${profile.username}` : `Block @${profile.username}`}
+            </MenuItem>
+          </MenuGroup>
+        </Dialog>
+      )}
+      {dialog === "block" && profile && (
+        <ConfirmDialog title={isBlocked ? `Unblock @${profile.username}?` : `Block @${profile.username}?`}
+          confirmLabel={isBlocked ? "Unblock" : "Block"} tone={isBlocked ? "accent" : "danger"}
+          body={isBlocked
+            ? "They'll be able to follow and message you again. They won't be told."
+            : "They won't be told. They can't follow you, message you or comment on your posts, and you'll stop seeing theirs. Any follows between you end."}
+          onClose={() => setDialog(null)} onConfirm={toggleBlock} />
+      )}
     </div>
   );
 }

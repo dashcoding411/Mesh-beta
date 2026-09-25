@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  SquarePen, Search as SearchIcon, Pin, BellOff, Ellipsis, MessageCircle, Inbox as InboxIcon, Mail,
+  SquarePen, Search as SearchIcon, Pin, BellOff, Ellipsis, MessageCircle, Inbox as InboxIcon, Mail, Users,
 } from "lucide-react";
 import {
   isRequest, togglePin, toggleMute, touchPresence, me, fetchThoughts, setThought, clearThought,
@@ -27,19 +27,20 @@ import { chatTitle, chatAvatar } from "../lib/chat";
    its own URL, so Back returns to the inbox. */
 export default function Messages({ chatId }) {
   const { inbox, following } = useShell();
-  const [tab, setTab] = useState("primary");
+  const [tab, setTab] = useState("general");
   const [filter, setFilter] = useState("");
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(null); // null | "message" | "group"
 
   useEffect(() => { touchPresence().catch(() => {}); }, []);
 
   const chats = inbox.chats;
+  // Two boxes: General is everyone you talk to; Requests is messages from
+  // people you don't follow, held until you reply.
   const buckets = useMemo(() => {
-    const out = { primary: [], general: [], requests: [] };
+    const out = { general: [], requests: [] };
     for (const c of chats || []) {
       if (isRequest(c, following)) out.requests.push(c);
-      else if ((c.mutedBy || []).includes(me())) out.general.push(c);
-      else out.primary.push(c);
+      else out.general.push(c);
     }
     return out;
   }, [chats, following]);
@@ -60,7 +61,12 @@ export default function Messages({ chatId }) {
       <section aria-label="Conversations"
         className={`${chatId ? "hidden md:flex" : "flex"} min-h-0 w-full flex-col border-r border-line md:w-[360px] md:shrink-0`}>
         <TopBar desktop title="Messages"
-          right={<IconButton icon={SquarePen} label="New message" onClick={() => setComposing(true)} />} />
+          right={
+            <>
+              <IconButton icon={Users} label="New group" onClick={() => setComposing("group")} />
+              <IconButton icon={SquarePen} label="New message" onClick={() => setComposing("message")} />
+            </>
+          } />
 
         <div className="px-4 pb-2 pt-1">
           <label htmlFor="inbox-filter" className="sr-only">Search conversations</label>
@@ -75,7 +81,6 @@ export default function Messages({ chatId }) {
 
         <Tabs variant="underline" label="Inbox" value={tab} onChange={setTab} className="px-2"
           tabs={[
-            { id: "primary", label: "Primary", count: unreadIn("primary") },
             { id: "general", label: "General", count: unreadIn("general") },
             { id: "requests", label: "Requests", count: buckets.requests.length },
           ]} />
@@ -96,14 +101,16 @@ export default function Messages({ chatId }) {
               <EmptyState compact icon={SearchIcon} title={`No conversations match “${filter.trim()}”`} />
             ) : tab === "requests" ? (
               <EmptyState compact icon={Mail} title="No message requests"
-                body="Messages from people you don't follow wait here until you reply, so strangers can't land in your main inbox." />
-            ) : tab === "general" ? (
-              <EmptyState compact icon={BellOff} title="Nothing in General"
-                body="Mute a conversation and it moves here, out of the way." />
+                body="Messages from people you don't follow wait here until you reply, so strangers can't land in General." />
             ) : (
               <EmptyState compact icon={MessageCircle} title="No messages yet"
-                body="Start a conversation with someone you follow."
-                action={<Button variant="primary" icon={SquarePen} onClick={() => setComposing(true)}>New message</Button>} />
+                body="Message someone, or start a group."
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button variant="primary" icon={SquarePen} onClick={() => setComposing("message")}>New message</Button>
+                    <Button icon={Users} onClick={() => setComposing("group")}>New group</Button>
+                  </div>
+                } />
             )
           )}
           <ul>
@@ -128,14 +135,19 @@ export default function Messages({ chatId }) {
           <div className="flex flex-1 items-center justify-center">
             <EmptyState icon={MessageCircle} title="Your messages"
               body="Pick a conversation, or start a new one."
-              action={<Button variant="primary" icon={SquarePen} onClick={() => setComposing(true)}>New message</Button>} />
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="primary" icon={SquarePen} onClick={() => setComposing("message")}>New message</Button>
+                  <Button icon={Users} onClick={() => setComposing("group")}>New group</Button>
+                </div>
+              } />
           </div>
         )}
       </section>
 
       {composing && (
-        <NewChatDialog onClose={() => setComposing(false)}
-          onCreated={(id) => { setComposing(false); navigate(`/messages/${id}`); }} />
+        <NewChatDialog group={composing === "group"} onClose={() => setComposing(null)}
+          onCreated={(id) => { setComposing(null); navigate(`/messages/${id}`); }} />
       )}
     </div>
   );
@@ -192,7 +204,7 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
               onClick={() => run(() => togglePin(chat, pinnedCount), pinned ? "Unpinned" : "Pinned")}>
               {pinned ? "Unpin" : "Pin to top"}
             </MenuItem>
-            <MenuItem icon={BellOff} description={muted ? "Moves back to Primary" : "Moves it to General, without notifications"}
+            <MenuItem icon={BellOff} description={muted ? "Its messages count as unread again" : "It stays here, but stops counting towards your unread badge"}
               onClick={() => run(() => toggleMute(chat), muted ? "Unmuted" : "Muted")}>
               {muted ? "Unmute" : "Mute"}
             </MenuItem>

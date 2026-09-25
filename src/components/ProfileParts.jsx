@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapPin, Heart, CalendarDays, Users, Grid3x3, Repeat2 } from "lucide-react";
+import { MapPin, Heart, CalendarDays, Users, Grid3x3, Repeat2, Lock } from "lucide-react";
 import {
   fetchFollowList, updateProfileFields, changeUsername, usernameCooldown, USERNAME_COOLDOWN_DAYS,
   searchUsers, sendSpouseRequest, openUserProfile, me, tsMillis,
@@ -28,15 +28,22 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows }) {
       <div className="flex items-start gap-4 md:gap-6">
         <Avatar profile={profile} size={88} />
         <div className="min-w-0 flex-1 pt-1">
-          <h1 className="truncate text-title-1">{profile.name || profile.username}</h1>
+          <h1 className="flex min-w-0 items-center gap-2 text-title-1">
+            <span className="truncate">{profile.name || profile.username}</span>
+            {profile.isPrivate && (
+              <span title="Private account" className="shrink-0 text-fg-muted">
+                <Lock size={18} aria-hidden="true" /><span className="sr-only">Private account</span>
+              </span>
+            )}
+          </h1>
           <p className="truncate text-callout text-fg-subtle">
             @{profile.username}
             {profile.pronouns && <span> · {profile.pronouns}</span>}
           </p>
           <dl className="mt-3 flex gap-5">
             <Stat label="Posts" value={postCount} />
-            <Stat label="Followers" value={profile.followerCount || 0} onClick={() => onShowFollows("followers")} />
-            <Stat label="Following" value={profile.followingCount || 0} onClick={() => onShowFollows("following")} />
+            <Stat label="Followers" value={profile.followerCount || 0} onClick={onShowFollows ? () => onShowFollows("followers") : undefined} />
+            <Stat label="Following" value={profile.followingCount || 0} onClick={onShowFollows ? () => onShowFollows("following") : undefined} />
           </dl>
         </div>
       </div>

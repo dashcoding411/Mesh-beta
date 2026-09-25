@@ -157,7 +157,7 @@ const sectionFor = (post) =>
  * Sections are ordered by their strongest result, so a query that names a
  * person leads with People and a query about an event leads with Gatherings.
  */
-export async function search(rawQuery, { following = new Set(), me = "" } = {}) {
+export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set() } = {}) {
   const q = normalise(rawQuery).replace(/^@/, "");
   const qTokens = tokens(q);
   if (!qTokens.length) return { top: null, sections: [], total: 0 };
@@ -172,6 +172,8 @@ export async function search(rawQuery, { following = new Set(), me = "" } = {}) 
 
   const push = (section, item, rel, prior) => {
     if (rel <= 0) return;
+    // Blocked people don't turn up in your search, as people or as authors.
+    if (blocked.has(item.authorId) || (section === "people" && blocked.has(item.id))) return;
     results.push({ section, item, score: rel * (1 + prior) });
   };
 

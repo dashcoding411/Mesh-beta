@@ -4,7 +4,7 @@ import Avatar from "../ui/Avatar";
 import { HOME_SECTIONS, sidebarSection } from "../../lib/surfaces";
 import { navigate } from "../../lib/router";
 
-/* Home's sidebar on phones: Search, For you, Flicks and Circles, each with a
+/* Home's sidebar on phones: Search, For you, Flicks, Circles and News, each with a
    line saying what it is, so nobody has to guess what "Circles" means.
    Settings and policies live behind Account. */
 export default function HomeDrawer({ page, profile, onClose }) {

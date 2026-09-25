@@ -10,8 +10,8 @@ import {
 
    Navigation has three levels on purpose:
      - three tabs that are always there: Home, Messages, Account
-     - four sections of Home in its sidebar: Search, For you, Flicks, Circles
-     - the feed's own tabs: For you, Following, News
+     - five sections of Home in its sidebar: Search, For you, Flicks, Circles, News
+     - the feed's own tabs: For you, Following
    so neither the bottom bar nor the sidebar grows past what's easy to scan. */
 
 export const TABS = [
@@ -31,12 +31,12 @@ const ALL = {
 };
 
 /** The Home sidebar, in this order. */
-export const HOME_SECTIONS = [ALL.search, ALL.foryou, ALL.flicks, ALL.circles];
+export const HOME_SECTIONS = [ALL.search, ALL.foryou, ALL.flicks, ALL.circles, ALL.news];
 
-/** Tabs across the top of the feed. News lives here as its own page. */
-export const FEED_TABS = [ALL.foryou, ALL.following, ALL.news];
+/** Tabs across the top of the feed. */
+export const FEED_TABS = [ALL.foryou, ALL.following];
 
 export const sectionById = (id) => ALL[id] || ALL.foryou;
 
-/** Which sidebar row lights up for a section: the feed's tabs all count as For you. */
-export const sidebarSection = (id) => (["following", "news", "saved"].includes(id) ? "foryou" : id);
+/** Which sidebar row lights up for a section: the feed's tabs count as For you. */
+export const sidebarSection = (id) => (["following", "saved"].includes(id) ? "foryou" : id);

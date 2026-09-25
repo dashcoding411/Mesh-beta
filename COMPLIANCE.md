@@ -235,6 +235,13 @@ attack-tested against the live rules (54 checks, all passing):
   private lists and thought.
 - Posts made in private circles **before** this change are still stored as
   `public`. Move them or delete them if that matters.
+- **Any member of a group chat could rewrite its member list**, adding or
+  removing anyone. Now: add one reachable person at a time, remove only
+  yourself unless you're an admin. (Attack-tested, with private accounts,
+  follow requests, blocking and message and comment settings: 50 more checks,
+  all passing.)
+- **Stories could never be posted**: the rules rejected a field the app sent.
+  Fixed, and private accounts' stories are followers-only.
 
 ### Claims and content
 - No testimonials, no review counts, no user-number claims, no awards. Nothing
