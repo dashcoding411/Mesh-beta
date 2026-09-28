@@ -4,8 +4,19 @@
     {
       "name": "mesh-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "mesh-prod-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/preview-prod.mjs"
+      ],
+      "port": 4174
     }
   ]
 }

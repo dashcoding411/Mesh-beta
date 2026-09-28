@@ -424,7 +424,9 @@ export function looksLikeSpam(text) {
   return null;
 }
 
-const COOLDOWN_MS = 15000;
+// The server enforces its own minimum gaps (10s between posts, 3s between
+// comments); these are a little longer so people see a clear message first.
+const COOLDOWN_MS = { comment: 4000, default: 15000 };
 
 // Storage can be blocked (private modes, strict settings). Every access is
 // guarded so a blocked store degrades to "no cooldown", never a crash.
@@ -437,7 +439,7 @@ function writeKey(k, v) {
 
 export function postingCooldown(key = "post") {
   const last = Number(readKey(`mesh:last:${key}`) || 0);
-  const wait = COOLDOWN_MS - (Date.now() - last);
+  const wait = (COOLDOWN_MS[key] ?? COOLDOWN_MS.default) - (Date.now() - last);
   if (wait > 0) return Math.ceil(wait / 1000);
   return 0;
 }

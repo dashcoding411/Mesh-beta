@@ -37,6 +37,18 @@
           {
             "key": "Cache-Control",
             "value": "no-cache"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.giphy.com https://firebasestorage.googleapis.com https://*.googleusercontent.com; media-src 'self' data: blob: https://*.giphy.com https://firebasestorage.googleapis.com; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://api.giphy.com https://www.google.com https://mesh-a293c.firebaseapp.com; frame-src https://mesh-a293c.firebaseapp.com https://www.google.com https://recaptcha.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"
+          },
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
           }
         ]
       },

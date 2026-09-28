@@ -23,6 +23,7 @@ npm run dev
 | `VITE_GIPHY_API_KEY` | GIFs in posts, comments and messages. Get a free key at developers.giphy.com. Without it the GIF buttons are hidden. |
 | `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls between some mobile and office networks fail to connect. |
 | `VITE_APPLE_SIGNIN=on` | Shows "Continue with Apple". Only set it once Apple sign-in is configured in Firebase. |
+| `VITE_APPCHECK_DEBUG_TOKEN` | Lets local development pass Firebase App Check (the reCAPTCHA Enterprise key only works on the real domains). Generate one in the Firebase console under App Check > Apps > Manage debug tokens, and keep it in `.env.local` only: anyone with it can pass App Check. The site key itself is public and set in `src/firebase.js` (override with `VITE_APPCHECK_SITE_KEY` / `VITE_APPCHECK_PROVIDER`). |
 | `VITE_STORAGE=on` | Uses Cloud Storage for uploads (and turns on video). Set it after enabling the Blaze plan and deploying `storage.rules`. Until then photos and voice messages are stored in Firestore. |
 
 ## Surfaces
@@ -401,41 +402,63 @@ console. Your uid is in Settings.
 
 ## Security
 
-Server-side rules are the real gate; the client mirrors them for fast feedback.
+Server-side rules (`firestore.rules`) are the real gate; the app mirrors them
+for fast feedback. Everything below was attacked on the live database with
+throwaway accounts (September 2026: 109 attacks plus flood-limit bypasses, all
+refused; every legitimate flow re-tested through the app's own code).
 
-- **Ownership**: you can only create content as yourself, and only edit or
-  delete your own.
-- **Counters**: likes, comments, members and follows may move by exactly ±1 per
-  write. Writing `likeCount: 1000000` is rejected.
-- **Queries**: Firestore evaluates list rules statically, so feed queries must
-  constrain `visibility == 'public'` or `authorId == your uid`. Followers-only
-  posts cannot be enumerated by anyone else; reaching one needs a direct read
-  that runs the follower check.
-- **Age gate**: under-16 accounts can post to groups and to followers, never to
-  the public feed. Enforced in rules via `birthYear`.
-- **Media**: post `mediaUrl`s must point at Firebase Storage; uploads are
-  restricted to your own `uploads/{uid}/` folder, image/video only, 200 MB cap
-  (8 MB for avatars).
-- **Chats**: readable and writable only by members. A `get` on a chat that
-  doesn't exist yet is allowed (so opening a new DM works) but reveals nothing.
-- **Saves and hides**: private to the user, under `users/{uid}/`.
-- **Reports**: anyone can file one; only admins can read them, so reporters
-  can't see each other's reports.
-- **Circles**: three privacy levels. Public is listed and readable; private is
-  listed but members-only; hidden is never returned by a list query at all, only
-  reachable by direct link. Only the owner assigns moderator, and nobody can
-  promote themselves to owner.
-- **Gatherings**: public ones are listable, private ones only via link or their
-  circle. Only the host posts announcements.
+- **Identity can't be faked.** Anything that shows who wrote it (posts,
+  comments, likes, reposts, stories, news, gatherings, replies, calls, follow
+  records, chat member names, marriage requests) must carry the author's own
+  handle, display name and photo, as their profile has them. A handle must be
+  claimed in the registry in the same write, can't be squatted, and can't be
+  released while in use, so two profiles never share one.
+- **Dates can't be faked.** Account age, post and comment times, messages,
+  presence, typing and read markers use the server's clock, so nobody can
+  backdate an account to look established or pin a post to the top with a
+  future date.
+- **Counts can't be pushed around.** Likes, saves, sends, reposts, comments,
+  followers, following, circle members and gathering head counts move only in
+  the same batch as the record they count (a like, a follow, a reply), by
+  exactly one, with the final stored value checked, so neither a lone +1 nor a
+  batch of them works. A double tap can't count twice.
+- **Flood limits.** One post every 10 seconds, one comment every 3 and one
+  photo every 5, per account, enforced by the rules with a timestamp that can
+  only be set to "now" and can't be deleted.
+- **Messages can't put words in anyone's mouth.** A quoted reply must match
+  what was really said, a shared-post preview must match the post, a voice note
+  must be the sender's own recording, and a new chat can't arrive pre-muted or
+  with a made-up preview. Adding someone to a group re-checks that they're
+  reachable (not blocked, accepting messages) even if they're slipped in out
+  of order.
+- **Circles.** Moderators can't remove, mute or demote the owner, or other
+  moderators. The cover is one of the app's own gradients (it's used as page
+  styling, so free text isn't accepted).
+- **Profile photos** are our own uploads or Google account photos only, so
+  nobody can set an image that logs the IP address of everyone who views it.
+  "Married to @x" shows only when @x's profile says the same back.
+- **Queries**: list rules are evaluated statically, so feed queries constrain
+  `visibility == 'public'` or `authorId == your uid`. Followers-only posts
+  can't be enumerated; reaching one runs the follower check.
+- **Age**: 13 or over to sign up; under-16 accounts post to followers, never
+  the public feed. Birth year can be set once.
+- **Private data**: saves, hides, interests, hidden words, blocks, reports,
+  suspension reasons and votes are readable only by their owner (or
+  moderators, for reports).
+- **Browser**: a Content-Security-Policy (scripts only from this site and
+  Google sign-in), `frame-ancestors 'none'` and X-Frame-Options against
+  clickjacking, nosniff, a strict referrer policy, and a Permissions-Policy
+  that allows the camera and microphone only for this site. `npm run build &&
+  node scripts/preview-prod.mjs` serves the build on localhost:4174 with exactly
+  the production headers, to test a policy change before deploying.
 - **Auth**: 8-character password minimum, "keep me signed in" chooses local vs
-  session persistence, invisible reCAPTCHA on phone sign-in, and error copy that
-  never reveals whether an account exists.
+  session persistence, invisible reCAPTCHA on phone sign-in, and error copy
+  that never reveals whether an account exists.
 
-These were verified by probing the live rules with real attacks: impersonation,
-counter inflation, self-approving news, posting to circles you're not in, reading
-other people's chats, self-granting admin, enumerating hidden circles, promoting
-yourself to circle owner, and bypassing the handle cooldown by writing to
-Firestore directly. All are rejected server-side.
+**Still open:** Firebase App Check isn't on, so a script with a real account
+can still use the API directly (within all the limits above), and automated
+sign-ups are only slowed by Firebase Auth's own abuse protection. Turning App
+Check on (free, reCAPTCHA v3) is a console step; see COMPLIANCE.md R8.
 
 ## Storage requires the Blaze plan
 

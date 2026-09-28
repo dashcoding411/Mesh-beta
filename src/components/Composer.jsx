@@ -127,7 +127,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     // Everything someone else will read goes through the same check.
     const pollText = kind === "text" && poll ? poll.options.join("\n") : "";
     const altText = spec.media === "image" ? alt : "";
-    const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}`, { key: kind, allowQuoted: true });
+    const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}`, { key: "post", allowQuoted: true });
     if (!e.text && mod.error) e.text = mod.error;
     if (group && !e.text) {
       const blocked = screenPost(`${title}\n${text}`, group, profile, membership);
@@ -174,7 +174,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         // and "pending" when the circle wants to approve posts first.
         visibility: groupId ? circlePostVisibility(group, membership) : minor ? "followers" : visibility,
       });
-      markPosted(kind, clean);
+      markPosted("post", clean);
       toast(post.visibility === "pending"
         ? { tone: "info", title: "Sent to the circle's admins", body: "It'll appear once someone approves it." }
         : { title: `${long ? "Long Flick" : spec.label} posted` });
@@ -183,7 +183,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       console.error(err);
       setProgress(null);
       setErrors({
-        submit: err instanceof StorageUnavailableError
+        submit: err instanceof StorageUnavailableError || /very quickly/.test(err?.message || "")
           ? err.message
           : err?.code === "permission-denied"
             ? "The server turned this down. If it keeps happening, the posting rules may need redeploying."

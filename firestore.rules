@@ -41,6 +41,55 @@ service cloud.firestore {
     function myProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
+    // Names and photos copied onto content (posts, comments, likes...) must be
+    // the author's own, as their profile has them. Otherwise anyone could post
+    // as "@mesh_demo" with that account's photo.
+    function isMyName(n) {
+      return n == myProfile().username;
+    }
+    function isMyDisplayName(n) {
+      return n == myProfile().username || n == myProfile().get('name', '');
+    }
+    function isMyPhoto(u) {
+      return u == myProfile().get('photoURL', '');
+    }
+    function authorIsMe(d) {
+      return d.authorId == request.auth.uid
+        && isMyName(d.authorName)
+        && isMyDisplayName(d.get('authorDisplayName', myProfile().username))
+        && isMyPhoto(d.get('authorPhoto', ''));
+    }
+    // A profile photo is our own upload (or a Google account photo), never an
+    // arbitrary URL: an outside image would log the IP address of everyone
+    // who looks at the profile.
+    function photoOk(u) {
+      return u is string && u.size() <= 2000
+        && (u == ''
+            || ownInlineImage(u)
+            || u.matches('^https://(firebasestorage[.]googleapis[.]com|lh[0-9][.]googleusercontent[.]com)/.*$'));
+    }
+    // A counter moves by exactly one, in the same write that creates (+1) or
+    // removes (-1) the record it counts, and the stored result is checked too,
+    // so one batch can't bump it twice.
+    function tiedCount(self, field, rel) {
+      let before = resource.data.get(field, 0);
+      let after = incomingData().get(field, 0);
+      return after is int
+        && getAfter(self).data.get(field, 0) == after
+        && ((after == before + 1 && existsAfter(rel) && !exists(rel))
+            || (after == before - 1 && !existsAfter(rel) && exists(rel)));
+    }
+    // Flood protection: each kind of write carries a stamp in rateLimits/{uid},
+    // set to "now" in the same batch, and is refused if the previous stamp is
+    // too recent. The stamp can only ever be set to the current time.
+    function rateOk(kind, seconds) {
+      let path = /databases/$(database)/documents/rateLimits/$(request.auth.uid);
+      return getAfter(path).data.get(kind, null) == request.time
+        && (!exists(path) || get(path).data.get(kind, timestamp.value(0)) < request.time - duration.value(seconds, 's'));
+    }
+    function validBirthYear(y) {
+      return y is int && (y == 0 || (y >= request.time.year() - 120 && y <= request.time.year() - 13));
+    }
     // Users must be 16+ to post publicly. birthYear == 0 means "not set" and
     // is treated as adult only for pre-existing accounts; new signups require it.
     function isAdult() {
@@ -213,6 +262,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /rateLimits/{uid} {
+      allow read: if isUser(uid);
+      allow create: if isUser(uid)
+        && incomingData().keys().hasOnly(['post', 'comment', 'media'])
+        && incomingData().get('post', request.time) == request.time
+        && incomingData().get('comment', request.time) == request.time
+        && incomingData().get('media', request.time) == request.time;
+      allow update: if isUser(uid)
+        && incomingData().keys().hasOnly(['post', 'comment', 'media'])
+        && (incomingData().get('post', null) == resource.data.get('post', null) || incomingData().post == request.time)
+        && (incomingData().get('comment', null) == resource.data.get('comment', null) || incomingData().comment == request.time)
+        && (incomingData().get('media', null) == resource.data.get('media', null) || incomingData().media == request.time);
+      // Only as part of deleting the account (deleting it otherwise would
+      // reset the limit).
+      allow delete: if isUser(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid));
+    }
+
     // ---------- admins (managed manually in console) ----------
     match /admins/{uid} {
       allow read: if isUser(uid);
@@ -232,6 +298,17 @@ service cloud.firestore {
           'followerCount', 'followingCount', 'createdAt',
           'termsAcceptedAt', 'termsVersion'
         ])
+        // The account's age is the server's clock, so it can't be faked to
+        // pass "accounts over a day old" or a circle's new-account limit.
+        && incomingData().createdAt == request.time
+        // The handle must be claimed in the registry in this same write.
+        && getAfter(/databases/$(database)/documents/usernames/$(incomingData().username)).data.uid == request.auth.uid
+        && incomingData().get('usernameChangedAt', null) == null
+        && incomingData().get('pronouns', '') is string && incomingData().get('pronouns', '').size() <= 40
+        && incomingData().get('town', '') is string && incomingData().get('town', '').size() <= 80
+        && incomingData().get('spouseUsername', '') == ''
+        && photoOk(incomingData().get('photoURL', ''))
+        && incomingData().termsVersion.size() <= 20
         // Consent is recorded by the server clock, so it cannot be backdated
         // or faked by a client that skipped the checkbox.
         && incomingData().termsAcceptedAt == request.time
@@ -248,7 +325,7 @@ service cloud.firestore {
         && incomingData().username.matches('^[a-z0-9_]+$')
         && incomingData().bio is string
         && incomingData().bio.size() <= 300
-        && incomingData().birthYear is int
+        && validBirthYear(incomingData().birthYear)
         && incomingData().followerCount == 0
         && incomingData().followingCount == 0;
       allow update: if signedIn() && (
@@ -260,7 +337,11 @@ service cloud.firestore {
           // fixed: otherwise an under-16 could edit their way past the age
           // protections with one form field.
           && (!incomingData().diff(resource.data).affectedKeys().hasAny(['birthYear'])
-              || (resource.data.get('birthYear', 0) == 0 && incomingData().birthYear is int))
+              || (resource.data.get('birthYear', 0) == 0 && validBirthYear(incomingData().birthYear)))
+          && (!incomingData().diff(resource.data).affectedKeys().hasAny(['photoURL'])
+              || photoOk(incomingData().photoURL))
+          && incomingData().get('spouseUsername', '') is string
+          && incomingData().get('spouseUsername', '').size() <= 50
           && incomingData().name is string
           && incomingData().name.size() >= 1
           && incomingData().name.size() <= 50
@@ -281,6 +362,7 @@ service cloud.firestore {
           && incomingData().username is string
           && incomingData().username.matches('^[a-z0-9_]{3,30}$')
           && hateFree(incomingData().username)
+          && getAfter(/databases/$(database)/documents/usernames/$(incomingData().username)).data.uid == request.auth.uid
           && incomingData().usernameChangedAt == request.time
           // Accounts created before this field existed have no cooldown yet.
           && (!('usernameChangedAt' in resource.data)
@@ -293,9 +375,17 @@ service cloud.firestore {
           && incomingData().get('isPrivate', false) is bool
           && incomingData().get('messagePolicy', 'everyone') in ['everyone', 'following']
           && incomingData().get('commentPolicy', 'everyone') in ['everyone', 'following', 'off'])
-        // follow/unfollow counter updates by other users
-        || (onlyKey('followerCount') && delta1(resource.data.get('followerCount', 0), incomingData().followerCount))
-        || (onlyKey('followingCount') && delta1(resource.data.get('followingCount', 0), incomingData().followingCount))
+        // Follower and following counts move only with the follow itself:
+        // lastFollower / lastFollowing name whose follow changed, and that
+        // follow record has to appear or disappear in the same write.
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['followerCount', 'lastFollower'])
+          && incomingData().lastFollower is string
+          && tiedCount(/databases/$(database)/documents/users/$(uid), 'followerCount',
+                       /databases/$(database)/documents/users/$(uid)/followers/$(incomingData().lastFollower)))
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['followingCount', 'lastFollowing'])
+          && incomingData().lastFollowing is string
+          && tiedCount(/databases/$(database)/documents/users/$(uid), 'followingCount',
+                       /databases/$(database)/documents/users/$(uid)/following/$(incomingData().lastFollowing)))
       );
       // Deleting your account deletes your profile. (This was "if false",
       // which left profiles behind after deletion, contrary to the Privacy
@@ -307,11 +397,14 @@ service cloud.firestore {
       // writes the entry when they approve your request. Either side can end it.
       match /following/{targetUid} {
         allow read: if signedIn();
-        allow create: if (isUser(uid)
+        allow create: if incomingData().keys().hasOnly(['username', 'createdAt'])
+          && incomingData().username == profileOf(targetUid).username
+          && uid != targetUid
+          && ((isUser(uid)
               && !blockedBy(targetUid)
               && profileOf(targetUid).get('isPrivate', false) != true)
-          || (isUser(targetUid)
-              && exists(/databases/$(database)/documents/users/$(targetUid)/followRequests/$(uid)));
+            || (isUser(targetUid)
+              && exists(/databases/$(database)/documents/users/$(targetUid)/followRequests/$(uid))));
         allow delete: if isUser(uid) || isUser(targetUid);
         allow update: if false;
       }
@@ -319,11 +412,14 @@ service cloud.firestore {
       // remove a follower.
       match /followers/{followerUid} {
         allow read: if signedIn();
-        allow create: if (isUser(followerUid)
+        allow create: if incomingData().keys().hasOnly(['username', 'createdAt'])
+          && incomingData().username == profileOf(followerUid).username
+          && uid != followerUid
+          && ((isUser(followerUid)
               && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(followerUid))
               && profileOf(uid).get('isPrivate', false) != true)
-          || (isUser(uid)
-              && exists(/databases/$(database)/documents/users/$(uid)/followRequests/$(followerUid)));
+            || (isUser(uid)
+              && exists(/databases/$(database)/documents/users/$(uid)/followRequests/$(followerUid))));
         allow delete: if isUser(followerUid) || isUser(uid);
         allow update: if false;
       }
@@ -332,7 +428,9 @@ service cloud.firestore {
         allow read: if isUser(uid) || isUser(requesterUid);
         allow create: if isUser(requesterUid)
           && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(requesterUid))
-          && incomingData().keys().hasOnly(['username', 'createdAt']);
+          && incomingData().keys().hasOnly(['username', 'createdAt'])
+          && isMyName(incomingData().username)
+          && uid != requesterUid;
         allow delete: if isUser(uid) || isUser(requesterUid);
         allow update: if false;
       }
@@ -366,12 +464,19 @@ service cloud.firestore {
     // ---------- usernames (uniqueness registry) ----------
     match /usernames/{name} {
       allow read: if true;
+      // Claimed only in the same write that puts the handle on your profile,
+      // so nobody can squat a list of handles they never use.
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['uid'])
         && incomingData().uid == request.auth.uid
-        && name.matches('^[a-z0-9_]{3,30}$');
+        && name.matches('^[a-z0-9_]{3,30}$')
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == name;
       allow update: if false;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      // Released only when your profile stops using it (a handle change, or
+      // deleting the account), so two profiles can never share a handle.
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid
+        && (!existsAfter(/databases/$(database)/documents/users/$(request.auth.uid))
+            || getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username != name);
     }
 
     // ---------- posts ----------
@@ -411,6 +516,13 @@ service cloud.firestore {
         ])
         && validTopics(incomingData().get('topics', []))
         && notSuspended()
+        && authorIsMe(incomingData())
+        && incomingData().createdAt == request.time
+        && rateOk('post', 10)
+        && incomingData().get('viewCount', 0) == 0
+        && incomingData().get('completeCount', 0) == 0
+        && incomingData().get('mediaType', '') is string && incomingData().get('mediaType', '').size() <= 100
+        && incomingData().get('mediaPath', '') is string && incomingData().get('mediaPath', '').size() <= 500
         // A slur only goes out labelled: the app sets `sensitive` when it's
         // quoted to report or call out abuse, and every viewer's app then shows
         // it behind a warning. Unlabelled, it's refused.
@@ -486,6 +598,10 @@ service cloud.firestore {
               || (isAdult() && myProfile().get('isPrivate', false) != true))
           && incomingData().text is string
           && incomingData().text.size() <= 5000
+          && incomingData().title is string && incomingData().title.size() <= 150
+          && incomingData().alt is string && incomingData().alt.size() <= 500
+          && incomingData().get('aiGenerated', false) is bool
+          && incomingData().get('sensitive', false) is bool
           && (incomingData().get('sensitive', false) == true
               || hateFree(incomingData().text + ' ' + incomingData().title + ' ' + incomingData().alt))
           && (resource.data.kind != 'text' || incomingData().text.size() <= 500))
@@ -494,6 +610,7 @@ service cloud.firestore {
         // wave of fresh accounts can't pile reports onto a post.
         || (onlyKey('reportCount')
           && incomingData().reportCount == resource.data.get('reportCount', 0) + 1
+          && getAfter(/databases/$(database)/documents/posts/$(postId)).data.reportCount == incomingData().reportCount
           && resource.data.authorId != request.auth.uid
           && !exists(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
           && existsAfter(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
@@ -511,18 +628,25 @@ service cloud.firestore {
           && isModOf(resource.data.groupId)
           && ((circleOf(resource.data.groupId).privacy == 'public' && incomingData().visibility == 'public')
               || (circleOf(resource.data.groupId).privacy != 'public' && incomingData().visibility == 'circle')))
-        || (onlyKey('likeCount') && delta1(resource.data.get('likeCount', 0), incomingData().likeCount))
-        || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))
-        || (onlyKey('saveCount') && delta1(resource.data.get('saveCount', 0), incomingData().saveCount))
-        || (onlyKey('sendCount') && delta1(resource.data.get('sendCount', 0), incomingData().sendCount))
-        || (onlyKey('repostCount') && delta1(resource.data.get('repostCount', 0), incomingData().repostCount))
+        // Each count moves only with the like, save, send, repost or comment it
+        // counts (see tiedCount).
+        || (onlyKey('likeCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'likeCount',
+              /databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid)))
+        || (onlyKey('saveCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'saveCount',
+              /databases/$(database)/documents/posts/$(postId)/saves/$(request.auth.uid)))
+        || (onlyKey('sendCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'sendCount',
+              /databases/$(database)/documents/posts/$(postId)/sends/$(request.auth.uid)))
+        || (onlyKey('repostCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'repostCount',
+              /databases/$(database)/documents/reposts/$(postId + '_' + request.auth.uid)))
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['commentCount', 'lastCommentId'])
+          && incomingData().lastCommentId is string
+          && tiedCount(/databases/$(database)/documents/posts/$(postId), 'commentCount',
+              /databases/$(database)/documents/posts/$(postId)/comments/$(incomingData().lastCommentId)))
         // A poll total rises by one only in the same write as your first vote.
         || (onlyKey('pollVotes0') && incomingData().pollVotes0 == resource.data.get('pollVotes0', 0) + 1 && votedNow(0))
         || (onlyKey('pollVotes1') && incomingData().pollVotes1 == resource.data.get('pollVotes1', 0) + 1 && votedNow(1))
         || (onlyKey('pollVotes2') && incomingData().pollVotes2 == resource.data.get('pollVotes2', 0) + 1 && votedNow(2))
         || (onlyKey('pollVotes3') && incomingData().pollVotes3 == resource.data.get('pollVotes3', 0) + 1 && votedNow(3))
-        || (onlyKey('viewCount') && delta1(resource.data.get('viewCount', 0), incomingData().viewCount))
-        || (onlyKey('completeCount') && delta1(resource.data.get('completeCount', 0), incomingData().completeCount))
       );
       // Authors delete their own posts; a circle's admins and moderators can
       // remove posts made inside that circle.
@@ -554,14 +678,32 @@ service cloud.firestore {
       match /likes/{uid} {
         // Who liked a post is only visible to people who can see the post.
         allow read: if signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
-        allow create, update, delete: if isUser(uid);
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['username', 'createdAt'])
+          && isMyName(incomingData().username)
+          && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
+        allow update: if false;
+        allow delete: if isUser(uid);
+      }
+      // One per person who sent the post to someone: the send count is how
+      // many different people passed it on.
+      match /sends/{uid} {
+        allow read: if isUser(uid);
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['createdAt'])
+          && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
+        allow update, delete: if false;
       }
 
       // A save is private to the person who made it. Re-writing your own
       // save doc is idempotent, so update is allowed alongside create.
       match /saves/{uid} {
         allow read: if isUser(uid);
-        allow create, update, delete: if isUser(uid);
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['createdAt'])
+          && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
+        allow update: if false;
+        allow delete: if isUser(uid);
       }
 
       // Comments are exactly as private as the post they're on, and a post
@@ -572,7 +714,11 @@ service cloud.firestore {
         }
         allow read: if signedIn() && canReadPost(parentPost());
         allow create: if signedIn()
-          && incomingData().authorId == request.auth.uid
+          && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive', 'createdAt'])
+          && authorIsMe(incomingData())
+          && incomingData().createdAt == request.time
+          && rateOk('comment', 3)
+          && incomingData().get('sensitive', false) is bool
           && incomingData().text is string
           && incomingData().text.size() <= 2000
           && (incomingData().text.size() > 0 || 'gif' in incomingData())
@@ -613,6 +759,8 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['callerId', 'callerName', 'callerPhoto', 'calleeId', 'chatId', 'video', 'status', 'offer', 'createdAt'])
         && incomingData().callerId == request.auth.uid
+        && isMyName(incomingData().callerName)
+        && isMyPhoto(incomingData().callerPhoto)
         && incomingData().calleeId != request.auth.uid
         && incomingData().status == 'ringing'
         && incomingData().video is bool
@@ -656,6 +804,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['ownerId', 'kind', 'data', 'width', 'height', 'createdAt'])
         && incomingData().ownerId == request.auth.uid
+        && rateOk('media', 5)
         && incomingData().kind == 'image'
         && incomingData().data is string
         && incomingData().data.size() <= 900000
@@ -674,6 +823,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt'])
         && incomingData().uid == request.auth.uid
+        && isMyName(incomingData().username)
         && repostId == incomingData().postId + '_' + request.auth.uid
         && incomingData().createdAt == request.time
         && get(/databases/$(database)/documents/posts/$(incomingData().postId)).data.visibility == 'public'
@@ -702,8 +852,11 @@ service cloud.firestore {
           'audience', 'day', 'createdAt'
         ])
         && incomingData().day is string
-        && incomingData().day.size() == 10
-        && incomingData().authorId == request.auth.uid
+        && incomingData().day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && authorIsMe(incomingData())
+        && incomingData().createdAt == request.time
+        && incomingData().get('mediaType', '') is string && incomingData().get('mediaType', '').size() <= 100
+        && incomingData().get('mediaPath', '') is string && incomingData().get('mediaPath', '').size() <= 500
         && incomingData().audience in ['public', 'followers']
         && notSuspended()
         && (incomingData().audience == 'followers' || myProfile().get('isPrivate', false) != true)
@@ -738,6 +891,11 @@ service cloud.firestore {
             || incomingData().coverUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
             || ownInlineImage(incomingData().coverUrl))
         && incomingData().authorId == request.auth.uid
+        && isMyName(incomingData().authorName)
+        && incomingData().createdAt == request.time
+        && incomingData().get('likeCount', 0) == 0
+        && incomingData().get('commentCount', 0) == 0
+        && incomingData().reviewNote == ''
         // The author's declaration that the story is accurate and contains no
         // AI-fabricated evidence, stamped by the server clock.
         && incomingData().attestedAt == request.time
@@ -764,9 +922,7 @@ service cloud.firestore {
         || (isAdmin()
           && resource.data.status == 'approved'
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['corrections'])
-          && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1)
-        || (signedIn() && ((onlyKey('likeCount') && delta1(resource.data.get('likeCount', 0), incomingData().likeCount))
-            || (onlyKey('commentCount') && delta1(resource.data.get('commentCount', 0), incomingData().commentCount))));
+          && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1);
       allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
 
       // Readers flag possible errors; only reviewers read the flags.
@@ -776,6 +932,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt'])
           && incomingData().authorId == request.auth.uid
+          && isMyName(incomingData().authorName)
+          && incomingData().createdAt == request.time
           && incomingData().text is string
           && incomingData().text.size() >= 10
           && incomingData().text.size() <= 1000
@@ -827,9 +985,23 @@ service cloud.firestore {
         && incomingData().name is string
         && incomingData().name.size() <= 60
         && notSuspended()
+        // A new chat starts clean: nobody else's pin or mute set for them,
+        // no made-up preview, and each member's name as their profile has it.
+        && incomingData().get('pinnedBy', []) == []
+        && incomingData().get('mutedBy', []) == []
+        && incomingData().get('nicknames', {}) == {}
+        && incomingData().get('lastMessage', '') == ''
+        && incomingData().get('lastSenderId', '') == ''
+        && incomingData().get('createdBy', request.auth.uid) == request.auth.uid
+        && incomingData().get('theme', 'default') in ['default', 'ocean', 'sunset', 'forest', 'mono']
+        && incomingData().memberNames.keys().hasOnly(incomingData().members)
+        && incomingData().memberNames[request.auth.uid] == myProfile().username
         && ((incomingData().isGroup == false
               && incomingData().members.size() == 2
               && chatId == incomingData().members[0] + '_' + incomingData().members[1]
+              && incomingData().members[0] != incomingData().members[1]
+              && incomingData().memberNames[incomingData().members[0]] == profileOf(incomingData().members[0]).username
+              && incomingData().memberNames[incomingData().members[1]] == profileOf(incomingData().members[1]).username
               && ((incomingData().members[0] == request.auth.uid && reachable(incomingData().members[1]))
                   || (incomingData().members[1] == request.auth.uid && reachable(incomingData().members[0]))))
             || (incomingData().isGroup == true
@@ -842,7 +1014,14 @@ service cloud.firestore {
           (request.auth.uid in incomingData().members
             && changed().hasOnly(['lastMessage', 'lastSenderId', 'updatedAt', 'theme', 'nicknames', 'name'])
             && incomingData().name is string
-            && incomingData().name.size() <= 60)
+            && incomingData().name.size() <= 60
+            && incomingData().get('lastMessage', '') is string
+            && incomingData().get('lastMessage', '').size() <= 200
+            // The preview is yours and timestamped now: no "they said..." in
+            // someone else's name, no chat pinned to the top with a future date.
+            && (!changed().hasAny(['lastSenderId']) || incomingData().lastSenderId == request.auth.uid)
+            && (!changed().hasAny(['updatedAt']) || incomingData().updatedAt == request.time)
+            && incomingData().get('theme', 'default') in ['default', 'ocean', 'sunset', 'forest', 'mono'])
           // pin and mute are per-user: you may only add or remove yourself
           || (changed().hasOnly(['pinnedBy'])
               && incomingData().pinnedBy.toSet().difference(resource.data.get('pinnedBy', []).toSet())
@@ -853,18 +1032,27 @@ service cloud.firestore {
                    .union(resource.data.get('mutedBy', []).toSet().difference(incomingData().mutedBy.toSet()))
                    .hasOnly([request.auth.uid]))
           // any member adds one person to a group, if that person is reachable
+          // The new person goes on the end, so the reachability check is about
+          // them (not someone already in the group), and gets their real name.
           || (resource.data.get('isGroup', false) == true
               && changed().hasOnly(['members', 'memberNames'])
               && incomingData().members.size() == resource.data.members.size() + 1
               && incomingData().members.size() <= 250
-              && incomingData().members.toSet().hasAll(resource.data.members)
-              && reachable(incomingData().members[incomingData().members.size() - 1]))
+              && incomingData().members[0:resource.data.members.size()] == resource.data.members
+              && !(incomingData().members[incomingData().members.size() - 1] in resource.data.members)
+              && reachable(incomingData().members[incomingData().members.size() - 1])
+              && incomingData().memberNames.diff(resource.data.get('memberNames', {})).affectedKeys()
+                   .hasOnly([incomingData().members[incomingData().members.size() - 1]])
+              && incomingData().memberNames[incomingData().members[incomingData().members.size() - 1]]
+                   == profileOf(incomingData().members[incomingData().members.size() - 1]).username)
           // leave a group: remove exactly yourself. An admin who leaves may
           // hand the admin role to people still in the group.
           || (resource.data.get('isGroup', false) == true
               && changed().hasOnly(['members', 'memberNames', 'admins'])
               && resource.data.members.toSet().difference(incomingData().members.toSet()) == [request.auth.uid].toSet()
               && incomingData().members.toSet().difference(resource.data.members.toSet()).size() == 0
+              && incomingData().get('memberNames', {}).diff(resource.data.get('memberNames', {})).affectedKeys()
+                   .difference([request.auth.uid].toSet()).size() == 0
               && ((request.auth.uid in groupAdmins()
                     && incomingData().get('admins', []).toSet().difference(incomingData().members.toSet()).size() == 0)
                   || (!(request.auth.uid in groupAdmins())
@@ -875,16 +1063,47 @@ service cloud.firestore {
               && request.auth.uid in incomingData().members
               && changed().hasOnly(['members', 'memberNames', 'admins'])
               && incomingData().members.toSet().difference(resource.data.members.toSet()).size() == 0
-              && incomingData().get('admins', []).toSet().difference(incomingData().members.toSet()).size() == 0)
+              && incomingData().get('admins', []).toSet().difference(incomingData().members.toSet()).size() == 0
+              && incomingData().get('memberNames', {}).diff(resource.data.get('memberNames', {})).affectedKeys()
+                   .difference(resource.data.members.toSet().difference(incomingData().members.toSet())).size() == 0)
         );
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
 
       match /messages/{messageId} {
         allow read: if inChat();
         allow create: if inChat()
+          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'poll', 'call'])
           && incomingData().senderId == request.auth.uid
+          && incomingData().createdAt == request.time
+          && incomingData().reactions == {}
           && incomingData().text is string
           && incomingData().text.size() <= 2000
+          // Nothing in a message can put words in anyone's mouth: a quoted
+          // reply, a shared post's preview and a voice note must all be real.
+          && (!('replyTo' in incomingData())
+              || (get(/databases/$(database)/documents/chats/$(chatId)/messages/$(incomingData().replyTo.id)).data.senderId == incomingData().replyTo.senderId
+                  && incomingData().replyTo.text is string
+                  && incomingData().replyTo.text.size() <= 90
+                  && get(/databases/$(database)/documents/chats/$(chatId)/messages/$(incomingData().replyTo.id)).data.text[0:incomingData().replyTo.text.size()] == incomingData().replyTo.text))
+          && (!('sharedPost' in incomingData())
+              || (get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.authorName == incomingData().sharedPost.authorName
+                  && get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.get('title', '') == incomingData().sharedPost.title
+                  && get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.get('mediaUrl', '') == incomingData().sharedPost.mediaUrl
+                  && get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.kind == incomingData().sharedPost.kind
+                  && incomingData().sharedPost.text is string
+                  && incomingData().sharedPost.text.size() <= 140
+                  && get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.text[0:incomingData().sharedPost.text.size()] == incomingData().sharedPost.text))
+          && (!('voice' in incomingData())
+              || get(/databases/$(database)/documents/chats/$(chatId)/media/$(incomingData().voice.mediaId)).data.ownerId == request.auth.uid)
+          && (!('poll' in incomingData())
+              || (incomingData().poll.votes == {}
+                  && incomingData().poll.question is string && incomingData().poll.question.size() <= 200
+                  && incomingData().poll.options is list && incomingData().poll.options.size() >= 2 && incomingData().poll.options.size() <= 6))
+          && (!('call' in incomingData())
+              || (incomingData().call.keys().hasOnly(['video', 'seconds', 'summary'])
+                  && incomingData().call.video is bool
+                  && incomingData().call.seconds is int && incomingData().call.seconds >= 0 && incomingData().call.seconds <= 86400
+                  && incomingData().call.summary is string && incomingData().call.summary.size() <= 60))
           && (!('gif' in incomingData()) || gifOk(incomingData().gif))
           // Private conversations aren't filtered for hate speech (people can
           // block and report); a suspended account can't send, though.
@@ -903,11 +1122,19 @@ service cloud.firestore {
             && incomingData().deleted == true)
           // any member may set or clear their own reaction
           || (incomingData().diff(resource.data).affectedKeys().hasOnly(['reactions'])
-            && onlyMyKeyIn('reactions'))
+            && onlyMyKeyIn('reactions')
+            && (!(request.auth.uid in incomingData().reactions)
+                || (incomingData().reactions[request.auth.uid] is string
+                    && incomingData().reactions[request.auth.uid].size() <= 16)))
           // any member may cast their own poll vote
           || (incomingData().diff(resource.data).affectedKeys().hasOnly(['poll'])
+            && incomingData().poll.diff(resource.data.poll).affectedKeys().hasOnly(['votes'])
             && incomingData().poll.votes.diff(resource.data.poll.votes).affectedKeys()
-                 .hasOnly([request.auth.uid]))
+                 .hasOnly([request.auth.uid])
+            && (!(request.auth.uid in incomingData().poll.votes)
+                || (incomingData().poll.votes[request.auth.uid] is int
+                    && incomingData().poll.votes[request.auth.uid] >= 0
+                    && incomingData().poll.votes[request.auth.uid] < resource.data.poll.options.size())))
         );
         // Moderators can remove a reported message without reading the chat.
         allow delete: if signedIn() && (resource.data.senderId == request.auth.uid || isAdmin());
@@ -932,24 +1159,38 @@ service cloud.firestore {
       // Typing indicators and read markers: your own doc only.
       match /typing/{uid} {
         allow read: if inChat();
-        allow write: if isUser(uid) && inChat();
+        allow create, update: if isUser(uid) && inChat()
+          && incomingData().keys().hasOnly(['at']) && incomingData().at == request.time;
+        allow delete: if isUser(uid);
       }
+      // A read marker says when you last read: now, or the epoch for "mark unread".
       match /reads/{uid} {
         allow read: if inChat();
-        allow write: if isUser(uid) && inChat();
+        allow create, update: if isUser(uid) && inChat()
+          && incomingData().keys().hasOnly(['at'])
+          && (incomingData().at == request.time || incomingData().at == timestamp.value(0));
+        allow delete: if isUser(uid);
       }
     }
 
     // ---------- presence & thoughts ----------
+    // "Active now" can't be faked forward: the time is the server's.
     match /presence/{uid} {
       allow read: if signedIn();
-      allow write: if isUser(uid);
+      allow create, update: if isUser(uid)
+        && incomingData().keys().hasOnly(['at']) && incomingData().at == request.time;
+      allow delete: if isUser(uid);
     }
     match /thoughts/{uid} {
       allow read: if signedIn();
-      allow write: if isUser(uid)
-        && (request.method == 'delete'
-            || (incomingData().text is string && incomingData().text.size() <= 60));
+      allow create, update: if isUser(uid)
+        && incomingData().keys().hasOnly(['text', 'username', 'createdAt'])
+        && incomingData().text is string && incomingData().text.size() <= 60
+        && isMyName(incomingData().username)
+        && incomingData().createdAt == request.time
+        && hateFree(incomingData().text)
+        && notSuspended();
+      allow delete: if isUser(uid);
     }
 
     // ---------- spouse requests ----------
@@ -957,7 +1198,13 @@ service cloud.firestore {
       allow read: if signedIn()
         && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
       allow create: if signedIn()
+        && incomingData().keys().hasOnly(['fromUid', 'fromUsername', 'toUid', 'toUsername', 'status', 'createdAt'])
         && incomingData().fromUid == request.auth.uid
+        && incomingData().toUid != request.auth.uid
+        && isMyName(incomingData().fromUsername)
+        && incomingData().toUsername == profileOf(incomingData().toUid).username
+        && !blockedBy(incomingData().toUid)
+        && incomingData().createdAt == request.time
         && incomingData().status == 'pending';
       allow update: if signedIn()
         && resource.data.toUid == request.auth.uid
@@ -978,6 +1225,16 @@ service cloud.firestore {
 
       function limitsOk(g) {
         return g.get('ageLimit', 0) in [0, 16, 18]
+          // The cover is one of the app's own gradients, never free text: it's
+          // used as page styling, so free text could restyle the whole page.
+          && g.get('coverColor', 'from-violet-600 via-fuchsia-600 to-rose-500') in [
+               'from-violet-600 via-fuchsia-600 to-rose-500', 'from-sky-600 via-cyan-500 to-emerald-500',
+               'from-amber-500 via-orange-500 to-rose-500', 'from-emerald-600 via-teal-500 to-sky-500',
+               'from-indigo-600 via-purple-600 to-pink-500']
+          && g.get('rules', '') is string && g.get('rules', '').size() <= 2000
+          && g.get('requireApproval', false) is bool
+          && g.get('screeningQuestions', []) is list && g.get('screeningQuestions', []).size() <= 3
+          && g.get('pinnedPostId', '') is string && g.get('pinnedPostId', '').size() <= 40
           && validTopics(g.get('interests', []))
           && g.get('automod', {}).get('postingPermission', 'members') in ['members', 'admins']
           && g.get('automod', {}).get('bannedWords', []).size() <= 40;
@@ -1000,6 +1257,8 @@ service cloud.firestore {
         && incomingData().description.size() <= 1000
         && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', ''))
         && notSuspended()
+        && incomingData().createdAt == request.time
+        && incomingData().get('pinnedPostId', '') == ''
         && incomingData().memberCount == 1;
       allow update: if signedIn() && (
         (isCircleOwner()
@@ -1015,7 +1274,11 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
           && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedPostId']))
-        || (onlyKey('memberCount') && delta1(resource.data.get('memberCount', 0), incomingData().memberCount))
+        // The member count moves only with a membership, named by lastMember.
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['memberCount', 'lastMember'])
+          && incomingData().lastMember is string
+          && tiedCount(/databases/$(database)/documents/groups/$(groupId), 'memberCount',
+                       /databases/$(database)/documents/groups/$(groupId)/members/$(incomingData().lastMember)))
       );
       allow delete: if isCircleOwner() || isAdmin();
 
@@ -1027,6 +1290,11 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
         // Under-age accounts can't even ask to join an age-limited circle.
         allow create: if isUser(uid) && incomingData().agreedToRules == true
+          && incomingData().keys().hasOnly(['uid', 'username', 'answers', 'agreedToRules', 'createdAt'])
+          && incomingData().uid == uid
+          && isMyName(incomingData().username)
+          && incomingData().createdAt == request.time
+          && incomingData().answers is list && incomingData().answers.size() <= 3
           && oldEnoughFor(get(/databases/$(database)/documents/groups/$(groupId)).data.get('ageLimit', 0));
         allow delete: if isUser(uid)
           || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
@@ -1041,7 +1309,11 @@ service cloud.firestore {
         // step, no screening questions, and old enough. Everything else goes
         // through a join request an admin approves. (Before this, the app
         // asked for approval but the server let anyone straight in.)
-        allow create: if (isUser(uid) && incomingData().role == 'member'
+        allow create: if incomingData().keys().hasOnly(['uid', 'username', 'role', 'joinedAt'])
+          && incomingData().uid == uid
+          && incomingData().username == profileOf(uid).username
+          && incomingData().joinedAt == request.time
+          && ((isUser(uid) && incomingData().role == 'member'
               && circleOf(groupId).privacy == 'public'
               && circleOf(groupId).get('requireApproval', false) != true
               && circleOf(groupId).get('screeningQuestions', []).size() == 0
@@ -1051,22 +1323,32 @@ service cloud.firestore {
           // an admin or moderator approving a real join request
           || (signedIn() && incomingData().role == 'member'
               && isModOf(groupId)
-              && exists(/databases/$(database)/documents/groups/$(groupId)/joinRequests/$(uid)));
+              && exists(/databases/$(database)/documents/groups/$(groupId)/joinRequests/$(uid))));
         // Only the circle owner changes roles, and never to owner.
         allow update: if signedIn() && (
           (get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
             && incomingData().diff(resource.data).affectedKeys().hasOnly(['role'])
+            && resource.data.role != 'owner'
             && incomingData().role in ['member', 'moderator'])
           // Admins and moderators apply graduated penalties.
           || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
             && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
-            && incomingData().diff(resource.data).affectedKeys().hasOnly(['penalty', 'mutedUntil']))
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['penalty', 'mutedUntil'])
+            // The owner can penalise anyone but themselves; moderators only
+            // ordinary members.
+            && resource.data.role != 'owner'
+            && (resource.data.role == 'member'
+                || get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner')
+            && (incomingData().get('mutedUntil', null) == null || incomingData().mutedUntil is timestamp))
         );
-        // Leave yourself, or be removed by an admin/moderator.
+        // Leave yourself, or be removed: by the owner (anyone but themselves),
+        // or by a moderator (ordinary members only). Nobody removes the owner.
         allow delete: if isUser(uid)
-          || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
-          || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
-              && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']);
+          || (resource.data.role != 'owner'
+              && (get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid
+                  || (resource.data.role == 'member'
+                      && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+                      && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'moderator')));
       }
     }
 
@@ -1086,6 +1368,18 @@ service cloud.firestore {
     match /events/{eventId} {
       function isHost() {
         return signedIn() && resource.data.hostId == request.auth.uid;
+      }
+      function rsvpTie(status, field) {
+        let rp = /databases/$(database)/documents/events/$(eventId)/rsvps/$(request.auth.uid);
+        let was = exists(rp) && get(rp).data.status == status;
+        let now = existsAfter(rp) && getAfter(rp).data.status == status;
+        let before = resource.data.get(field, 0);
+        let after = incomingData().get(field, 0);
+        return after is int
+          && getAfter(/databases/$(database)/documents/events/$(eventId)).data.get(field, 0) == after
+          && ((after == before + 1 && now && !was)
+              || (after == before - 1 && was && !now)
+              || (after == before && was == now));
       }
       function eventLimitsOk(e) {
         return e.get('capacity', 0) is int
@@ -1109,6 +1403,9 @@ service cloud.firestore {
           'hostId', 'hostName', 'goingCount', 'interestedCount', 'createdAt'
         ])
         && incomingData().hostId == request.auth.uid
+        && isMyName(incomingData().hostName)
+        && incomingData().createdAt == request.time
+        && incomingData().get('showGuestList', true) is bool
         && incomingData().privacy in ['public', 'private']
         && incomingData().title is string
         && incomingData().title.size() >= 3
@@ -1120,6 +1417,8 @@ service cloud.firestore {
         && hateFree(incomingData().title + ' ' + incomingData().description + ' ' + incomingData().location)
         && notSuspended()
         && incomingData().startsAt is timestamp
+        && incomingData().startsAt > request.time - duration.value(1, 'd')
+        && incomingData().startsAt < request.time + duration.value(1100, 'd')
         && incomingData().goingCount == 1
         && incomingData().interestedCount == 0
         && eventLimitsOk(incomingData())
@@ -1139,10 +1438,11 @@ service cloud.firestore {
           && eventLimitsOk(incomingData()))
         // Head counts move by at most one each, and "going" can't pass the
         // capacity (lowering it is always allowed).
+        // ...and only with your own reply, in the same write.
         || (canViewEvent(resource.data)
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['goingCount', 'interestedCount'])
-          && step1(resource.data.get('goingCount', 0), incomingData().get('goingCount', 0))
-          && step1(resource.data.get('interestedCount', 0), incomingData().get('interestedCount', 0))
+          && rsvpTie('going', 'goingCount')
+          && rsvpTie('interested', 'interestedCount')
           && (resource.data.get('capacity', 0) == 0
               || incomingData().get('goingCount', 0) <= resource.data.capacity
               || incomingData().get('goingCount', 0) < resource.data.get('goingCount', 0)))
@@ -1167,6 +1467,8 @@ service cloud.firestore {
               || (ev().get('showGuestList', true) == true && canViewEvent(ev())));
         allow create, update: if isUser(uid)
           && canViewEvent(ev())
+          && incomingData().keys().hasOnly(['status', 'username', 'createdAt'])
+          && isMyName(incomingData().username)
           && incomingData().status in ['going', 'interested', 'maybe', 'cant']
           && (incomingData().status != 'going'
               || ev().hostId == request.auth.uid
@@ -1192,7 +1494,7 @@ service cloud.firestore {
           && incomingData().keys().hasOnly([
             'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'likedBy', 'createdAt'
           ])
-          && incomingData().authorId == request.auth.uid
+          && authorIsMe(incomingData())
           && incomingData().text is string
           && incomingData().text.size() >= 1
           && incomingData().text.size() <= 1000

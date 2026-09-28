@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft, Pin, PinOff, Lock, LockOpen, ShieldCheck, Settings2, PenLine, CalendarPlus, Users,
   UserPlus, Clock, Check, X, MessageSquare, CalendarDays, Info, Image, Clapperboard, Hourglass,
-  Link2Off, UserCheck, BadgeCheck, Ban, VolumeX, ChartBar, Sticker,
+  Link2Off, UserCheck, BadgeCheck, Ban, VolumeX, ChartBar, Sticker, Trash2,
 } from "lucide-react";
 import { gifsEnabled } from "../lib/gifs";
 import {
@@ -11,7 +11,7 @@ import {
   requestToJoin, myJoinRequest, fetchJoinRequests, approveJoinRequest, declineJoinRequest,
   setCircleRules, setCircleInterests, setScreeningQuestions, setCircleLimits, AUTOMOD_DEFAULTS, AGE_LIMITS,
   setPinnedPost, setPostLocked, penaliseMember, isMuted, isCircleMod, contributorBadge, countPostsByMember,
-  createPost, screenPost, circlePostVisibility, canJoinDirectly, meetsAgeLimit, STRAND_MAX,
+  createPost, screenPost, circlePostVisibility, canJoinDirectly, meetsAgeLimit, STRAND_MAX, deleteGroup,
 } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
@@ -312,7 +312,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
     const v = validateText(text, STRAND_MAX, "Post");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "strand", allowQuoted: true });
+    const mod = checkContent(v.text, { key: "post", allowQuoted: true });
     if (mod.error) return setError(mod.error);
     const blocked = screenPost(v.text, group, profile, membership);
     if (blocked) return setError(blocked);
@@ -321,7 +321,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
     setError("");
     try {
       const post = await createPost({ kind: "text", text: v.text, groupId: group.id, visibility: circlePostVisibility(group, membership), sensitive: mod.sensitive });
-      markPosted("strand", v.text);
+      markPosted("post", v.text);
       setText("");
       onPosted(post);
       toast(post.visibility === "pending"
@@ -886,6 +886,8 @@ function RulesEditor({ group, onSaved, isOwner }) {
   const [questions, setQuestions] = useState(group.screeningQuestions || []);
   const [topics, setTopics] = useState(group.interests || []);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!isOwner) return <p className="text-callout text-fg-muted">Only the circle's admin can edit rules and questions.</p>;
 
@@ -921,6 +923,28 @@ function RulesEditor({ group, onSaved, isOwner }) {
         <p className="text-caption text-fg-subtle">Asking anything means every new member needs approval.</p>
       </fieldset>
       <Button variant="primary" full loading={busy} onClick={save}>Save rules and interests</Button>
+
+      <section aria-labelledby="danger-h" className="rounded-card border border-danger/40 p-4">
+        <h3 id="danger-h" className="text-callout font-semibold text-danger-text">Delete this circle</h3>
+        <p className="mt-1 text-caption text-fg-muted">Removes the circle, every post in it and every membership. This can't be undone.</p>
+        <Button variant="danger" size="sm" icon={Trash2} className="mt-3" onClick={() => setConfirmDelete(true)}>Delete circle</Button>
+      </section>
+      {confirmDelete && (
+        <ConfirmDialog title={`Delete ${group.name}?`} confirmLabel="Delete circle" busy={deleting}
+          body="Every post, member and join request goes with it, for everyone. This can't be undone."
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={async () => {
+            setDeleting(true);
+            try {
+              await deleteGroup(group);
+              toast({ title: "Circle deleted" });
+              navigate("/circles", { replace: true });
+            } catch {
+              toast({ tone: "error", title: "Couldn't delete the circle" });
+              setDeleting(false);
+            }
+          }} />
+      )}
     </div>
   );
 }

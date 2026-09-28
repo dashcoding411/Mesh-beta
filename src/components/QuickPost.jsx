@@ -32,14 +32,14 @@ export default function QuickPost({ onPosted }) {
     const v = validateText(text, STRAND_MAX, "Strand");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "strand", allowQuoted: true });
+    const mod = checkContent(v.text, { key: "post", allowQuoted: true });
     if (mod.error) return setError(mod.error);
     if (mod.note && !warned) return setWarned(mod.note);
     setBusy(true);
     setError("");
     try {
       const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive });
-      markPosted("strand", v.text);
+      markPosted("post", v.text);
       setText("");
       setWarned("");
       setFocused(false);

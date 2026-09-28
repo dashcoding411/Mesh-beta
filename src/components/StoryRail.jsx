@@ -83,7 +83,10 @@ export default function StoryRail() {
 
       {viewing !== null && threads[viewing] && (
         <StoryViewer thread={threads[viewing]} onClose={() => setViewing(null)}
-          onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)} />
+          onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)}
+          onDeleted={(id) => setThreads((list) => list
+            .map((t) => ({ ...t, items: t.items.filter((i) => i.id !== id) }))
+            .filter((t) => t.items.length))} />
       )}
     </section>
   );

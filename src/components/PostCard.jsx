@@ -11,7 +11,7 @@ import { shortTime, fullTime, isoTime, formatDuration, compact as compactNum, pl
 import { mediaAlt } from "../lib/a11y";
 import { interestById } from "../lib/interests";
 import { LIMITS, validateText } from "../lib/validate";
-import { checkContent, isBorderline, hitsHiddenWords, assessText } from "../lib/moderation";
+import { checkContent, isBorderline, hitsHiddenWords, assessText, markPosted } from "../lib/moderation";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import IconButton from "./ui/IconButton";
@@ -431,12 +431,13 @@ function QuickComment({ post, onAdded }) {
     const v = validateText(text, LIMITS.comment, "Comment");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "comment", skipCooldown: true, allowQuoted: true });
+    const mod = checkContent(v.text, { key: "comment", allowQuoted: true });
     if (mod.error) return setError(mod.error);
     setBusy(true);
     setError("");
     try {
       const c = await addComment(post, v.text, null, mod.sensitive);
+      markPosted("comment", v.text);
       setText("");
       onAdded(c);
       if (mod.sensitive) toast({ tone: "info", title: "Posted", body: mod.quoted ? "Others will see a warning and tap to read it, as it quotes offensive language." : "It may be folded away for others, as it could come across as mocking a group." });

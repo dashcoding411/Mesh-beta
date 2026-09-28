@@ -47,9 +47,12 @@ export function validateSources(raw) {
 export function validBirthYear(raw) {
   const y = Number(raw);
   const now = new Date().getFullYear();
-  if (!Number.isInteger(y) || y < now - 120 || y > now - 5) {
+  if (!Number.isInteger(y) || y < now - 120 || y > now) {
     return { error: "Enter a real birth year." };
   }
+  // Mesh isn't for children under 13 (see the Privacy Policy); the rules
+  // refuse younger birth years too.
+  if (y > now - 13) return { error: "You need to be at least 13 to use Mesh." };
   return { year: y };
 }
 

@@ -6,7 +6,7 @@ import GifPicker, { GifView } from "./GifPicker";
 import { fetchComments, addComment, deleteComment, openUserProfile, fetchProfile, me } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
 import { LIMITS, validateText } from "../lib/validate";
-import { checkContent, assessText, hitsHiddenWords } from "../lib/moderation";
+import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
 import { shortTime, fullTime, isoTime } from "../lib/format";
 import Dialog from "./ui/Dialog";
 import Avatar from "./ui/Avatar";
@@ -61,7 +61,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     if (!v.text && !gif) return;
     let flagged = null;
     if (v.text) {
-      const mod = checkContent(v.text, { key: "comment", skipCooldown: true, allowQuoted: true });
+      const mod = checkContent(v.text, { key: "comment", allowQuoted: true });
       if (mod.error) return setError(mod.error);
       if (mod.sensitive) flagged = mod;
     }
@@ -69,6 +69,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     setError("");
     try {
       const c = await addComment(post, v.text, gif && { url: gif.url, width: gif.width, height: gif.height, title: gif.title }, !!flagged);
+      markPosted("comment", v.text);
       setComments((prev) => [...(prev || []), c]);
       setText("");
       setGif(null);

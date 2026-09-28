@@ -91,6 +91,12 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
   await batch.commit();
 }
 
+export async function fetchProfileByUsername(username) {
+  const reg = await getDoc(doc(db, "usernames", username)).catch(() => null);
+  const uid = reg?.exists() ? reg.data().uid : null;
+  return uid ? fetchProfile(uid) : null;
+}
+
 export async function usernameTaken(username) {
   const snap = await getDoc(doc(db, "usernames", username));
   return snap.exists();
@@ -306,7 +312,13 @@ export async function createPost({
     completeCount: 0,
     createdAt: serverTimestamp(),
   };
-  const refDoc = await addDoc(collection(db, "posts"), post);
+  // The post and a rate-limit stamp go together: the rules allow one post
+  // every ten seconds per account, so a script can't flood the feed.
+  const refDoc = doc(collection(db, "posts"));
+  const batch = writeBatch(db);
+  batch.set(refDoc, post);
+  batch.set(doc(db, "rateLimits", user.uid), { post: serverTimestamp() }, { merge: true });
+  await batch.commit();
   return { id: refDoc.id, ...post, createdAt: Timestamp.now() };
 }
 
@@ -476,17 +488,23 @@ async function bumpAffinity(authorId, amount) {
   );
 }
 
+// Counters move only in the same batch as the record they count (a like,
+// a save, a follow...). The rules check both together, so a count can't be
+// pushed around on its own, and a double tap can't count twice.
 export async function toggleLike(post, currentlyLiked) {
   const uid = me();
   const likeRef = doc(db, "posts", post.id, "likes", uid);
   const postRef = doc(db, "posts", post.id);
+  const batch = writeBatch(db);
   if (currentlyLiked) {
-    await deleteDoc(likeRef);
-    await updateDoc(postRef, { likeCount: increment(-1) });
+    batch.delete(likeRef);
+    batch.update(postRef, { likeCount: increment(-1) });
+    await batch.commit();
   } else {
     const profile = await fetchProfile(uid);
-    await setDoc(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
-    await updateDoc(postRef, { likeCount: increment(1) });
+    batch.set(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
+    batch.update(postRef, { likeCount: increment(1) });
+    await batch.commit();
     bumpAffinity(post.authorId, SIGNAL.like).catch(() => {});
   }
 }
@@ -529,14 +547,17 @@ export async function toggleSave(post, currentlySaved) {
   const uid = me();
   const saveRef = doc(db, "posts", post.id, "saves", uid);
   const postRef = doc(db, "posts", post.id);
+  const batch = writeBatch(db);
   if (currentlySaved) {
-    await deleteDoc(saveRef);
-    await deleteDoc(doc(db, "users", uid, "saved", post.id)).catch(() => {});
-    await updateDoc(postRef, { saveCount: increment(-1) });
+    batch.delete(saveRef);
+    batch.delete(doc(db, "users", uid, "saved", post.id));
+    batch.update(postRef, { saveCount: increment(-1) });
+    await batch.commit();
   } else {
-    await setDoc(saveRef, { createdAt: serverTimestamp() });
-    await setDoc(doc(db, "users", uid, "saved", post.id), { createdAt: serverTimestamp() });
-    await updateDoc(postRef, { saveCount: increment(1) });
+    batch.set(saveRef, { createdAt: serverTimestamp() });
+    batch.set(doc(db, "users", uid, "saved", post.id), { createdAt: serverTimestamp() });
+    batch.update(postRef, { saveCount: increment(1) });
+    await batch.commit();
     bumpAffinity(post.authorId, SIGNAL.save).catch(() => {});
   }
 }
@@ -560,7 +581,8 @@ export async function fetchSavedPosts() {
 // a second read, and still resolves to the live post when tapped.
 export async function sendPostTo(post, chatId, note = "") {
   const uid = me();
-  await addDoc(collection(db, "chats", chatId, "messages"), {
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, "chats", chatId, "messages")), {
     senderId: uid,
     text: note,
     sharedPost: {
@@ -576,12 +598,22 @@ export async function sendPostTo(post, chatId, note = "") {
     reactions: {},
     createdAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, "chats", chatId), {
+  batch.update(doc(db, "chats", chatId), {
     lastMessage: `Shared a ${kindLabel(post).toLowerCase()}`,
     lastSenderId: uid,
     updatedAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, "posts", post.id), { sendCount: increment(1) }).catch(() => {});
+  await batch.commit();
+  // The send count is the number of different people who passed it on, so
+  // it's recorded once per person, with its marker, in its own batch.
+  const sendRef = doc(db, "posts", post.id, "sends", uid);
+  const already = await getDoc(sendRef).catch(() => null);
+  if (!already?.exists()) {
+    const b2 = writeBatch(db);
+    b2.set(sendRef, { createdAt: serverTimestamp() });
+    b2.update(doc(db, "posts", post.id), { sendCount: increment(1) });
+    await b2.commit().catch(() => {});
+  }
   bumpAffinity(post.authorId, SIGNAL.send).catch(() => {});
 }
 
@@ -609,19 +641,22 @@ export async function toggleRepost(post, currentlyReposted) {
   const uid = me();
   const ref_ = doc(db, "reposts", repostId(post.id, uid));
   const postRef = doc(db, "posts", post.id);
+  const batch = writeBatch(db);
   if (currentlyReposted) {
-    await deleteDoc(ref_);
-    await updateDoc(postRef, { repostCount: increment(-1) });
+    batch.delete(ref_);
+    batch.update(postRef, { repostCount: increment(-1) });
+    await batch.commit();
   } else {
     const profile = await fetchProfile(uid);
-    await setDoc(ref_, {
+    batch.set(ref_, {
       postId: post.id,
       postAuthorId: post.authorId,
       uid,
       username: profile?.username || "",
       createdAt: serverTimestamp(),
     });
-    await updateDoc(postRef, { repostCount: increment(1) });
+    batch.update(postRef, { repostCount: increment(1) });
+    await batch.commit();
     bumpAffinity(post.authorId, SIGNAL.repost).catch(() => {});
   }
 }
@@ -783,8 +818,7 @@ export async function clearPost(postId) {
 }
 
 export async function removeComment(postId, commentId) {
-  await deleteDoc(doc(db, "posts", postId, "comments", commentId));
-  await updateDoc(doc(db, "posts", postId), { commentCount: increment(-1) }).catch(() => {});
+  await deleteCommentAndCount(postId, commentId);
 }
 
 export async function removeMessage(chatId, messageId) {
@@ -855,16 +889,33 @@ export async function addComment(post, text, gif = null, sensitive = false) {
     ...(sensitive ? { sensitive: true } : {}),
     createdAt: serverTimestamp(),
   };
-  const ref_ = await addDoc(collection(db, "posts", post.id, "comments"), comment);
-  await updateDoc(doc(db, "posts", post.id), { commentCount: increment(1) });
+  // The comment and the post's count go in one batch; `lastCommentId` names
+  // the comment so the rules can check the count moved because of it.
+  const ref_ = doc(collection(db, "posts", post.id, "comments"));
+  const batch = writeBatch(db);
+  batch.set(ref_, comment);
+  batch.set(doc(db, "rateLimits", user.uid), { comment: serverTimestamp() }, { merge: true });
+  batch.update(doc(db, "posts", post.id), { commentCount: increment(1), lastCommentId: ref_.id });
+  await batch.commit();
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
   return { id: ref_.id, ...comment, createdAt: Timestamp.now() };
 }
 
+async function deleteCommentAndCount(postId, commentId) {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "posts", postId, "comments", commentId));
+  batch.update(doc(db, "posts", postId), { commentCount: increment(-1), lastCommentId: commentId });
+  try { await batch.commit(); }
+  catch (err) {
+    // The post may be gone, or its count already settled: still remove the comment.
+    if (err?.code !== "permission-denied" && err?.code !== "not-found") throw err;
+    await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+  }
+}
+
 /** Your own comment, or any comment on your own post. */
 export async function deleteComment(post, commentId) {
-  await deleteDoc(doc(db, "posts", post.id, "comments", commentId));
-  await updateDoc(doc(db, "posts", post.id), { commentCount: increment(-1) }).catch(() => {});
+  await deleteCommentAndCount(post.id, commentId);
 }
 
 // ---------- your interests (private) ----------
@@ -918,10 +969,14 @@ export async function toggleFollow(target, currentlyFollowing) {
   const followingRef = doc(db, "users", uid, "following", target.id);
   const followerRef = doc(db, "users", target.id, "followers", uid);
   if (currentlyFollowing) {
-    await deleteDoc(followingRef);
-    await deleteDoc(followerRef);
-    await updateDoc(doc(db, "users", uid), { followingCount: increment(-1) });
-    await updateDoc(doc(db, "users", target.id), { followerCount: increment(-1) });
+    const batch = writeBatch(db);
+    batch.delete(followingRef);
+    batch.delete(followerRef);
+    // lastFollowing / lastFollower name the relationship each count moved
+    // for, so the rules can check it really changed in this same write.
+    batch.update(doc(db, "users", uid), { followingCount: increment(-1), lastFollowing: target.id });
+    batch.update(doc(db, "users", target.id), { followerCount: increment(-1), lastFollower: uid });
+    await batch.commit();
     return "unfollowed";
   }
   const full = target.isPrivate === undefined ? await fetchProfile(target.id) : target;
@@ -930,10 +985,12 @@ export async function toggleFollow(target, currentlyFollowing) {
     return "requested";
   }
   const myProfile = await fetchProfile(uid);
-  await setDoc(followingRef, { username: target.username || full?.username || "", createdAt: serverTimestamp() });
-  await setDoc(followerRef, { username: myProfile?.username || "", createdAt: serverTimestamp() });
-  await updateDoc(doc(db, "users", uid), { followingCount: increment(1) });
-  await updateDoc(doc(db, "users", target.id), { followerCount: increment(1) });
+  const batch = writeBatch(db);
+  batch.set(followingRef, { username: full?.username || target.username || "", createdAt: serverTimestamp() });
+  batch.set(followerRef, { username: myProfile?.username || "", createdAt: serverTimestamp() });
+  batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
+  batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
+  await batch.commit();
   bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
   return "following";
 }
@@ -966,12 +1023,14 @@ export async function fetchFollowRequests() {
    to, while the request exists), then removes the request. */
 export async function approveFollowRequest(request) {
   const uid = me();
-  const profile = await fetchProfile(uid);
-  await setDoc(doc(db, "users", uid, "followers", request.id), { username: request.username || "", createdAt: serverTimestamp() });
-  await setDoc(doc(db, "users", request.id, "following", uid), { username: profile?.username || "", createdAt: serverTimestamp() });
-  await updateDoc(doc(db, "users", uid), { followerCount: increment(1) }).catch(() => {});
-  await updateDoc(doc(db, "users", request.id), { followingCount: increment(1) }).catch(() => {});
-  await deleteDoc(doc(db, "users", uid, "followRequests", request.id));
+  const [profile, requester] = await Promise.all([fetchProfile(uid), fetchProfile(request.id)]);
+  const batch = writeBatch(db);
+  batch.set(doc(db, "users", uid, "followers", request.id), { username: requester?.username || "", createdAt: serverTimestamp() });
+  batch.set(doc(db, "users", request.id, "following", uid), { username: profile?.username || "", createdAt: serverTimestamp() });
+  batch.update(doc(db, "users", uid), { followerCount: increment(1), lastFollower: request.id });
+  batch.update(doc(db, "users", request.id), { followingCount: increment(1), lastFollowing: uid });
+  batch.delete(doc(db, "users", uid, "followRequests", request.id));
+  await batch.commit();
 }
 
 export async function declineFollowRequest(request) {
@@ -992,10 +1051,12 @@ export async function blockUser(target) {
   ]);
   if (iFollow) await toggleFollow(target, true).catch(() => {});
   if (theyFollow) {
-    await deleteDoc(doc(db, "users", uid, "followers", target.id)).catch(() => {});
-    await deleteDoc(doc(db, "users", target.id, "following", uid)).catch(() => {});
-    await updateDoc(doc(db, "users", uid), { followerCount: increment(-1) }).catch(() => {});
-    await updateDoc(doc(db, "users", target.id), { followingCount: increment(-1) }).catch(() => {});
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "users", uid, "followers", target.id));
+    batch.delete(doc(db, "users", target.id, "following", uid));
+    batch.update(doc(db, "users", uid), { followerCount: increment(-1), lastFollower: target.id });
+    batch.update(doc(db, "users", target.id), { followingCount: increment(-1), lastFollowing: uid });
+    await batch.commit().catch(() => {});
   }
   await deleteDoc(doc(db, "users", uid, "followRequests", target.id)).catch(() => {});
 }
@@ -1071,6 +1132,12 @@ export async function createStory({ mediaUrl, mediaPath, mediaType }) {
     createdAt: serverTimestamp(),
   };
   await addDoc(collection(db, "stories"), story);
+}
+
+/** Take down one of your own stories (and the photo it used). */
+export async function deleteStory(story) {
+  await deleteDoc(doc(db, "stories", story.id));
+  await deleteInline(story.mediaUrl);
 }
 
 export async function fetchActiveStories(followingSet = new Set()) {
@@ -1211,11 +1278,11 @@ export async function openDirectChat(target) {
   const ref = chatDoc(chatId);
   const snap = await getDoc(ref);
   if (snap.exists()) return chatId;
-  const myProfile = await fetchProfile(uid);
+  const [myProfile, theirProfile] = await Promise.all([fetchProfile(uid), fetchProfile(target.id)]);
   try {
     await setDoc(ref, {
       members: [uid, target.id].sort(),
-      memberNames: { [uid]: myProfile?.username || "?", [target.id]: target.username || "?" },
+      memberNames: { [uid]: myProfile?.username || "?", [target.id]: theirProfile?.username || target.username || "?" },
       isGroup: false,
       name: "",
       nicknames: {},
@@ -1807,15 +1874,20 @@ export async function fetchJoinRequests(groupId) {
   return snapToList(await getDocs(q));
 }
 
+// Membership and the member count change together; `lastMember` names who
+// joined or left so the rules can check the count moved because of them.
 export async function approveJoinRequest(groupId, request) {
-  await setDoc(doc(db, "groups", groupId, "members", request.uid), {
+  const who = await fetchProfile(request.uid).catch(() => null);
+  const batch = writeBatch(db);
+  batch.set(doc(db, "groups", groupId, "members", request.uid), {
     uid: request.uid,
-    username: request.username || "",
+    username: who?.username || request.username || "",
     role: "member",
     joinedAt: serverTimestamp(),
   });
-  await deleteDoc(doc(db, "groups", groupId, "joinRequests", request.uid));
-  await updateDoc(doc(db, "groups", groupId), { memberCount: increment(1) });
+  batch.delete(doc(db, "groups", groupId, "joinRequests", request.uid));
+  batch.update(doc(db, "groups", groupId), { memberCount: increment(1), lastMember: request.uid });
+  await batch.commit();
 }
 
 export async function declineJoinRequest(groupId, uid) {
@@ -1885,18 +1957,22 @@ export async function fetchMembers(groupId) {
 export async function joinGroup(groupId) {
   const uid = me();
   const profile = await fetchProfile(uid);
-  await setDoc(doc(db, "groups", groupId, "members", uid), {
+  const batch = writeBatch(db);
+  batch.set(doc(db, "groups", groupId, "members", uid), {
     uid,
     username: profile?.username || "",
     role: "member",
     joinedAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, "groups", groupId), { memberCount: increment(1) });
+  batch.update(doc(db, "groups", groupId), { memberCount: increment(1), lastMember: uid });
+  await batch.commit();
 }
 
 export async function leaveGroup(groupId) {
-  await deleteDoc(doc(db, "groups", groupId, "members", me()));
-  await updateDoc(doc(db, "groups", groupId), { memberCount: increment(-1) });
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "groups", groupId, "members", me()));
+  batch.update(doc(db, "groups", groupId), { memberCount: increment(-1), lastMember: me() });
+  await batch.commit();
 }
 
 // Admins promote and demote; only the owner can hand out moderator status.
@@ -1905,8 +1981,28 @@ export async function setMemberRole(groupId, uid, role) {
 }
 
 export async function removeMember(groupId, uid) {
-  await deleteDoc(doc(db, "groups", groupId, "members", uid));
-  await updateDoc(doc(db, "groups", groupId), { memberCount: increment(-1) });
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "groups", groupId, "members", uid));
+  batch.update(doc(db, "groups", groupId), { memberCount: increment(-1), lastMember: uid });
+  await batch.commit();
+}
+
+/* Delete a circle you own: its posts, its join requests and memberships,
+   then the circle. In that order, because removing other members is checked
+   against the circle's owner, so the circle has to still exist. */
+export async function deleteGroup(group) {
+  const uid = me();
+  const [posts, pending, requests, members] = await Promise.all([
+    fetchGroupPosts(group, { member: true }).catch(() => []),
+    fetchPendingPosts(group.id).catch(() => []),
+    fetchJoinRequests(group.id).catch(() => []),
+    fetchMembers(group.id).catch(() => []),
+  ]);
+  for (const p of [...posts, ...pending]) await deletePost(p).catch(() => {});
+  for (const r of requests) await deleteDoc(doc(db, "groups", group.id, "joinRequests", r.id)).catch(() => {});
+  for (const m of members) if (m.id !== uid) await deleteDoc(doc(db, "groups", group.id, "members", m.id)).catch(() => {});
+  await deleteDoc(doc(db, "groups", group.id));
+  await deleteDoc(doc(db, "groups", group.id, "members", uid)).catch(() => {});
 }
 
 export function canModerate(membership, group) {
@@ -2152,9 +2248,6 @@ export async function deleteMyAccountData() {
     await deleteDoc(doc(db, "reposts", r.id)).catch(() => {});
     await updateDoc(doc(db, "posts", r.postId), { repostCount: increment(-1) }).catch(() => {});
   }
-  if (profile?.username) {
-    await deleteDoc(doc(db, "usernames", profile.username)).catch(() => {});
-  }
   // Private lists and signals, then who you follow (and your entry in their
   // followers), then the profile itself.
   const sub = async (name) => {
@@ -2165,9 +2258,11 @@ export async function deleteMyAccountData() {
     for (const d of await sub(name)) await deleteDoc(d.ref).catch(() => {});
   }
   for (const d of await sub("following")) {
-    await deleteDoc(doc(db, "users", d.id, "followers", uid)).catch(() => {});
-    await updateDoc(doc(db, "users", d.id), { followerCount: increment(-1) }).catch(() => {});
-    await deleteDoc(d.ref).catch(() => {});
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "users", d.id, "followers", uid));
+    batch.delete(d.ref);
+    batch.update(doc(db, "users", d.id), { followerCount: increment(-1), lastFollower: uid });
+    await batch.commit().catch(() => deleteDoc(d.ref).catch(() => {}));
   }
   await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
   await deleteDoc(doc(db, "users", uid, "private", "prefs")).catch(() => {});
@@ -2178,7 +2273,13 @@ export async function deleteMyAccountData() {
   };
   for (const d of await mine("stories", "authorId")) await deleteDoc(d.ref).catch(() => {});
   for (const d of await mine("media", "ownerId")) await deleteDoc(d.ref).catch(() => {});
-  await deleteDoc(doc(db, "users", uid)).catch(() => {});
+  // The profile and its handle go together, so the handle is released only
+  // as the profile stops using it.
+  const last = writeBatch(db);
+  last.delete(doc(db, "users", uid));
+  if (profile?.username) last.delete(doc(db, "usernames", profile.username));
+  await last.commit().catch(() => deleteDoc(doc(db, "users", uid)).catch(() => {}));
+  await deleteDoc(doc(db, "rateLimits", uid)).catch(() => {});
 }
 
 // ---------- tiny app-wide navigation bus ----------

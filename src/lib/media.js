@@ -11,7 +11,7 @@
 // document can hold. When Storage is on, photos go there too, automatically.
 
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 export const INLINE_PREFIX = "mesh-media:";
@@ -60,7 +60,10 @@ export async function compressImage(file, { maxSide = 1440, budget = MAX_DATA_CH
 /** Store a photo; returns a `mesh-media:` URL to put on the post, avatar or story. */
 export async function storeInlineImage(file, { maxSide } = {}) {
   const { data, width, height } = await compressImage(file, maxSide ? { maxSide } : undefined);
-  const ref_ = await addDoc(collection(db, "media"), {
+  // With its rate-limit stamp: the rules allow one photo every few seconds.
+  const ref_ = doc(collection(db, "media"));
+  const batch = writeBatch(db);
+  batch.set(ref_, {
     ownerId: auth.currentUser.uid,
     kind: "image",
     data,
@@ -68,6 +71,12 @@ export async function storeInlineImage(file, { maxSide } = {}) {
     height,
     createdAt: serverTimestamp(),
   });
+  batch.set(doc(db, "rateLimits", auth.currentUser.uid), { media: serverTimestamp() }, { merge: true });
+  try { await batch.commit(); }
+  catch (err) {
+    if (err?.code === "permission-denied") throw new Error("You're uploading photos very quickly. Wait a few seconds and try again.");
+    throw err;
+  }
   return { url: INLINE_PREFIX + ref_.id, path: "", width, height };
 }
 

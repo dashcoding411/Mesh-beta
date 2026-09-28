@@ -139,8 +139,12 @@ once there's volume.
 
 The Firebase config is client-side, which is normal and not a secret. But
 without Firebase App Check, anyone can call your Firestore and Auth endpoints
-directly with that config. The security rules hold (they were probed) but
-quota abuse and automated signup are open. **Enable App Check before launch.**
+directly with that config. The security rules hold (they were attacked on the
+live database, 109 ways) and now cap how fast one account can post, comment
+and upload, but automated sign-ups and quota abuse spread across many accounts
+are still open. **Enable App Check before launch** (Firebase console > App
+Check > register the web app with reCAPTCHA v3, then enforce for Firestore and
+Auth; the app needs `initializeAppCheck` added in `src/firebase.js`).
 
 ---
 

@@ -3,6 +3,7 @@ import { MapPin, Heart, CalendarDays, Users, Grid3x3, Repeat2, Lock } from "luci
 import {
   fetchFollowList, updateProfileFields, changeUsername, usernameCooldown, USERNAME_COOLDOWN_DAYS,
   searchUsers, sendSpouseRequest, openUserProfile, me, tsMillis,
+  fetchProfileByUsername,
 } from "../lib/db";
 import { LIMITS, validateText, validateUsername } from "../lib/validate";
 import { compact } from "../lib/format";
@@ -16,12 +17,28 @@ import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { Tile } from "./Search";
 
+/* "Married to @x" shows only when @x's profile says the same back. Anyone
+   can type a name into their own profile, so one side alone proves nothing. */
+function useVerifiedSpouse(profile) {
+  const claimed = profile.spouseUsername && !profile.spouseUsername.includes("pending") ? profile.spouseUsername : "";
+  const [verified, setVerified] = useState({ for: "", ok: false });
+  useEffect(() => {
+    if (!claimed) return;
+    let alive = true;
+    fetchProfileByUsername(claimed)
+      .then((other) => { if (alive) setVerified({ for: claimed, ok: other?.spouseUsername === profile.username }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [claimed, profile.username]);
+  return claimed && verified.for === claimed && verified.ok ? claimed : "";
+}
+
 /* The public face of an account, the same layout whether it's yours or
    someone else's, so what you see of yourself is what others see of you.
    Only the buttons differ. */
 export function ProfileHeader({ profile, postCount, actions, onShowFollows }) {
   const joined = tsMillis(profile.createdAt);
-  const spouse = profile.spouseUsername && !profile.spouseUsername.includes("pending") ? profile.spouseUsername : "";
+  const spouse = useVerifiedSpouse(profile);
 
   return (
     <section aria-label="Profile" className="px-4 pb-4 pt-5 md:px-6">
