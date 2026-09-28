@@ -34,12 +34,6 @@ export const BUSINESS = {
   lastUpdated: "28 September 2026",
 };
 
-export function isConfigured() {
-  return !Object.values(BUSINESS).some(
-    (v) => typeof v === "string" && v.startsWith("TODO")
-  );
-}
-
 /** Fields still unfilled, for the launch checklist. */
 export function missingFields() {
   return Object.entries(BUSINESS)

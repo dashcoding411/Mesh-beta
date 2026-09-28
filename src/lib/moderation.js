@@ -366,10 +366,6 @@ export function assessText(text) {
   return worst;
 }
 
-export function containsHateSpeech(text) {
-  return assessText(text).level === "block";
-}
-
 /** Anything folded away for others in comments: borderline, quoted, or worse. */
 export function isBorderline(text) {
   return assessText(text).level !== "ok";

@@ -145,11 +145,6 @@ export async function followsMe(uid) {
   return !!snap?.exists();
 }
 
-export async function isFollowing(targetUid) {
-  const snap = await getDoc(doc(db, "users", me(), "following", targetUid));
-  return snap.exists();
-}
-
 /* Follow or unfollow. A private (locked) account can't be followed
    directly: you send a request and they approve it. Returns what happened:
    "following", "requested" or "unfollowed". */

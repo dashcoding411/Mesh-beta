@@ -87,17 +87,3 @@ export function validateMediaFile(file, kind) {
   return { ok: true };
 }
 
-export function friendlyAuthError(err) {
-  const code = err?.code || "";
-  const map = {
-    "auth/invalid-email": "That email address doesn't look right.",
-    "auth/email-already-in-use": "An account with that email already exists.",
-    "auth/weak-password": "Password must be at least 8 characters.",
-    "auth/invalid-credential": "Wrong email or password.",
-    "auth/wrong-password": "Wrong email or password.",
-    "auth/user-not-found": "Wrong email or password.",
-    "auth/too-many-requests": "Too many attempts. Try again in a bit.",
-    "auth/popup-closed-by-user": "Sign-in popup was closed.",
-  };
-  return map[code] || "Something went wrong. Please try again.";
-}

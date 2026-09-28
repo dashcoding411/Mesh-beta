@@ -40,11 +40,6 @@ export async function fetchGroupById(groupId) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-export async function fetchMyGroups() {
-  const mineIds = snapToList(await getDocs(query(collection(db, "groups"), where("ownerId", "==", me()), limit(50))));
-  return mineIds.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
-}
-
 export async function createGroup({ name, description, privacy = "public", ageLimit = 0, interests = [] }) {
   const uid = me();
   const profile = await fetchProfile(uid);
@@ -118,10 +113,6 @@ export function circleVisibility(group) {
   return group.privacy === "public" ? "public" : "circle";
 }
 
-export async function updateCircle(groupId, fields) {
-  await updateDoc(doc(db, "groups", groupId), fields);
-}
-
 export async function setCircleInterests(groupId, interests) {
   await updateDoc(doc(db, "groups", groupId), { interests: interests.slice(0, 3) });
 }
@@ -132,10 +123,6 @@ export async function setCircleRules(groupId, rules) {
 
 export async function setScreeningQuestions(groupId, questions) {
   await updateDoc(doc(db, "groups", groupId), { screeningQuestions: questions.slice(0, 3) });
-}
-
-export async function setAutomod(groupId, automod) {
-  await updateDoc(doc(db, "groups", groupId), { automod: normaliseAutomod(automod) });
 }
 
 function normaliseAutomod(a) {

@@ -2,19 +2,65 @@
 
 **Making Every Story Heard.**
 
-One app for the whole social stack: short and long video, photos, text posts,
-communities, gatherings, sourced news and messaging, woven into a single
-fabric. Built for people, not advertisers.
+A social network for posts, short and long video, communities, gatherings,
+news that has to cite its sources, and messaging. No ads, no data sold, no
+third-party trackers.
 
 Built with React 19 + Vite + Tailwind on Firebase (Auth, Firestore, Storage).
 Firebase project: `mesh-a293c`, Firestore in `australia-southeast1` (Sydney).
 
-## Run it
+## Development
+
+Needs Node 20.19 or later.
 
 ```bash
 npm install
 npm run dev
 ```
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | The app on http://localhost:5173 with hot reload. |
+| `npm test` | The test suite (Vitest). `npm run test:watch` re-runs on save. |
+| `npm run lint` | ESLint over everything, including scripts and tests. |
+| `npm run build` | A production build in `dist/`, then `scripts/prerender.mjs` writes the policy pages as static HTML and generates `sitemap.xml`. |
+| `npm run check` | Lint, tests and build together. Run it before every deploy. |
+| `node scripts/preview-prod.mjs` | Serves `dist/` on http://localhost:4174 with the exact headers Firebase Hosting sends (including the Content-Security-Policy). |
+| `node scripts/rules-slur-regex.mjs` | Regenerates the server-side slur patterns for `firestore.rules`. |
+
+CI (`.github/workflows/ci.yml`) runs lint, tests and the build on every push
+and pull request once the repository is on GitHub.
+
+### Layout
+
+```
+src/
+  App.jsx              routes, the shell, and what loads when (screens load on demand)
+  firebase.js          the Firebase app, App Check, Auth, Firestore
+  components/          one file per screen; big screens have a folder of parts
+    chat/ circle/ news/
+    shell/             sidebar, bottom tabs, headers
+    ui/                the design-system pieces (Button, Dialog, Field...)
+  lib/
+    db.js              the data layer's single entry point, re-exporting...
+    data/              ...one module per area: users, posts, chats, circles,
+                       events, news, reports, stories, uploads, account, core
+    moderation.js      the content filter
+    algorithm.js       the feed ranker
+    __tests__/         the test suite
+  legal/               the policies, as data (rendered in the app and prerendered)
+scripts/               build-time and maintenance scripts
+firestore.rules        the security rules: the real enforcement
+```
+
+### Tests
+
+`src/lib/__tests__/` covers the content filter (every outcome, and innocent
+text that must pass), validation, routing, formatting, the ranker's spacing
+and recommendation rules, and contract tests that check `firestore.rules` and
+the app agree on the lists they share (interest topics, news topics, circle
+covers, the slur patterns). The security rules themselves were tested by
+attacking the live database; see Security.
 
 ### Optional settings (`.env.local`)
 
@@ -489,9 +535,13 @@ Note the free-tier Storage locations are US-only (`us-east1`, `us-central1`,
 ## Deploying
 
 ```bash
-npx firebase-tools deploy --only firestore:rules --project mesh-a293c
-npm run build && npx firebase-tools deploy --only hosting --project mesh-a293c
+npm run check
+npx firebase-tools deploy --only firestore:rules,hosting --project mesh-a293c
 ```
+
+Deploy rules and hosting together when both changed: the rules check what
+the app writes, so an old app against new rules (or the reverse) can refuse
+normal actions until the other catches up.
 
 Always pass `--project mesh-a293c`. The Firebase CLI's active project for this
 folder can point somewhere else (it was `motopov-6f53d` in September 2026),
@@ -499,15 +549,21 @@ and a bare `firebase deploy` would overwrite that project instead.
 
 ## Data model
 
-- `users/{uid}`: profile, with `following/`, `followers/` and private `affinity/`
+- `users/{uid}`: profile, with `following/`, `followers/`, `followRequests/`,
+  and private `affinity/`, `saved/`, `hidden/`, `blocked/` and `private/prefs`
+  (interests, hidden words)
 - `usernames/{name}`: uniqueness registry
+- `rateLimits/{uid}`: the last post, comment and photo times, for flood limits
+- `media/{id}`: photos stored in Firestore while Cloud Storage is off
+- `calls/{id}`: call setup, deleted when a call ends
+- `suspensions/{uid}`: why an account was suspended (moderators and the owner)
 - `posts/{id}`: all content; `kind` is `post` (Still) | `text` (Strand) |
   `short` (Flick) | `video` (long Flick, with `duration` and `trailerStart`),
-  with `likes/`, `saves/` and `comments/`, plus `saveCount` / `sendCount` /
-  `repostCount` / `viewCount` / `completeCount` and an `aiGenerated` label.
+  with `likes/`, `saves/`, `sends/`, `votes/` and `comments/`; each count
+  moves only with the record it counts.
 - `reposts/{postId}_{uid}`: one per person per post; public posts by others only
 - `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
-- `reports/{id}`: admin-only queue
+- `reports/{type}_{id}_{uid}`: one per person per thing; moderators only
 - `stories/{id}`: 24-hour media, filtered client-side
 - `news/{id}`: script + sources + review status
 - `chats/{id}`: with `messages/`

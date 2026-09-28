@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Settings, Link2, Camera, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake } from "lucide-react";
 import {
   fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, uploadAvatar, fetchIncomingSpouseRequests,
-  respondSpouseRequest, isMinor, me, StorageUnavailableError,
+  respondSpouseRequest, isMinor, me, StorageUnavailableError, fetchMySpouseRequestStatus, updateProfileFields,
 } from "../lib/db";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
@@ -32,6 +32,22 @@ export default function Profile() {
     fetchPostsByAuthor(me()).then((l) => setPosts(l.filter((p) => !p.groupId))).catch(() => setPosts([]));
     fetchIncomingSpouseRequests().then(setSpouseRequests).catch(() => {});
   }, []);
+
+  // An invite you sent shows as "(pending)" on your profile until the other
+  // person answers. Once they have, settle it here: linked if they accepted,
+  // cleared if they declined.
+  const pending = profile?.spouseUsername?.endsWith(" (pending)") ? profile.spouseUsername : "";
+  useEffect(() => {
+    if (!pending) return;
+    let alive = true;
+    fetchMySpouseRequestStatus().then(async (req) => {
+      if (!alive || !req || `${req.toUsername} (pending)` !== pending || req.status === "pending") return;
+      const next = req.status === "accepted" ? req.toUsername : "";
+      await updateProfileFields(me(), { spouseUsername: next });
+      if (alive) setProfile((p) => ({ ...p, spouseUsername: next }));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [pending, setProfile]);
 
   useEffect(() => {
     if (tab === "reposts" && reposts === null) fetchRepostedPosts(me()).then(setReposts).catch(() => setReposts([]));

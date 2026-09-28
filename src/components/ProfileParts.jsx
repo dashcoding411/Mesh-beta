@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapPin, Heart, CalendarDays, Users, Grid3x3, Repeat2, Lock } from "lucide-react";
+import { MapPin, Heart, CalendarDays, Users, Grid3x3, Lock } from "lucide-react";
 import {
   fetchFollowList, updateProfileFields, changeUsername, usernameCooldown, USERNAME_COOLDOWN_DAYS,
   searchUsers, sendSpouseRequest, openUserProfile, me, tsMillis,
@@ -144,8 +144,6 @@ export function PostGrid({ posts, emptyTitle, emptyBody, emptyIcon = Grid3x3, em
     </ul>
   );
 }
-
-export const RepostIcon = Repeat2;
 
 export function EditProfileDialog({ profile, onClose, onSaved }) {
   const toast = useToast();
