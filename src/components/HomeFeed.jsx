@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
-  fetchFeed, fetchAffinity, fetchHiddenPostIds, fetchRepostsBy, fetchPost, me, tsMillis,
+  fetchFeed, fetchAffinity, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
-import { rankFeed } from "../lib/algorithm";
+import { interestById } from "../lib/interests";
+import { InterestChips } from "./Interests";
+import { rankFeed, screenForViewer } from "../lib/algorithm";
 import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
 import { useShell } from "./shell/ShellContext";
@@ -24,7 +26,9 @@ const PAGE = 12;
    Following: only people you follow, newest first, no ranking at all. The
                honest alternative for anyone who doesn't want an algorithm. */
 export default function HomeFeed({ mode }) {
-  const { following, blocked } = useShell();
+  const { following, blocked, interests, openInterests, hiddenWords } = useShell();
+  const [topic, setTopic] = useState("all");
+  const feedScroll = useRef(null);
   const [posts, setPosts] = useState(null);
   const [error, setError] = useState(false);
   const [shown, setShown] = useState(PAGE);
@@ -34,7 +38,8 @@ export default function HomeFeed({ mode }) {
     setError(false);
     try {
       const [list, affinity, hidden, reposts] = await Promise.all([
-        fetchFeed(),
+        // A topic chip narrows the pool to posts tagged with it.
+        topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
@@ -55,18 +60,19 @@ export default function HomeFeed({ mode }) {
       const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !blocked.has(p.authorId));
 
       if (mode === "following") {
-        const mine = visible.filter((p) => following.has(p.authorId) || p.repostedBy?.length);
+        const mine = screenForViewer(visible, { myUid: me(), hiddenWords })
+          .filter((p) => following.has(p.authorId) || p.repostedBy?.length);
         // Newest activity first: a repost moves a post up to when it was reposted.
         const when = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
         setPosts(mine.sort((a, b) => when(b) - when(a)));
       } else {
-        setPosts(rankFeed(visible, { followingSet: following, affinity, myUid: me() }));
+        setPosts(rankFeed(visible, { followingSet: following, affinity, myUid: me(), interests, hiddenWords }));
       }
     } catch (err) {
       console.error(err);
       setError(true);
     }
-  }, [mode, following, blocked]);
+  }, [mode, following, blocked, topic, interests, hiddenWords]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
@@ -78,11 +84,15 @@ export default function HomeFeed({ mode }) {
     <>
       <HomeHeader section={mode}>
         <FeedTabs value={mode} />
+        {mode === "foryou" && (
+          <InterestChips interests={interests} value={topic} onEdit={openInterests}
+            onChange={(t) => { setTopic(t); setPosts(null); setShown(PAGE); feedScroll.current?.scrollTo({ top: 0 }); }} />
+        )}
       </HomeHeader>
 
-      <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={feedScroll} data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[640px] md:border-x md:border-line md:min-h-full">
-          {mode === "foryou" && (
+          {mode === "foryou" && topic === "all" && (
             <>
               <StoryRail />
               <QuickPost onPosted={(p) => setPosts((prev) => [p, ...(prev || [])])} />
@@ -93,7 +103,13 @@ export default function HomeFeed({ mode }) {
 
           {!error && page === null && <FeedSkeleton />}
 
-          {!error && page?.length === 0 && (mode === "following" ? (
+          {!error && page?.length === 0 && topic !== "all" && mode === "foryou" && (
+            <EmptyState icon={Sparkles} title={`Nothing about ${interestById(topic)?.label || "this"} yet`}
+              body="Posts show here when people tag them with this interest. Tag yours when you post."
+              action={<Button onClick={() => setTopic("all")}>Show everything</Button>} />
+          )}
+
+          {!error && page?.length === 0 && topic === "all" && (mode === "following" ? (
             <EmptyState icon={Users}
               title={following.size ? "Nothing new from people you follow" : "You're not following anyone yet"}
               body={following.size

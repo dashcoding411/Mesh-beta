@@ -1,23 +1,31 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Info, SendHorizontal, ChartBar, X, Reply, Copy, Pencil, Undo2, ArrowDown, Play, Plus, Check, Mail, Palette, Users,
-  UserPlus, LogOut, ShieldCheck, UserMinus, Ban,
+  UserPlus, LogOut, ShieldCheck, UserMinus, Ban, Mic, Phone, Video, Sticker, Trash2, Ellipsis, PhoneMissed, Flag,
 } from "lucide-react";
+import ReportDialog from "./ReportDialog";
+import { useVoiceRecorder, voiceSupported, MAX_VOICE_SECONDS } from "../lib/voice";
+import { gifsEnabled } from "../lib/gifs";
+import { callsSupported } from "../lib/calls";
+import { LiveBars, VoiceNote } from "./Voice";
+import GifPicker, { GifView } from "./GifPicker";
 import {
   listenMessages, sendMessage, searchUsers, openDirectChat, createGroupChat, me, tsMillis,
   listenTyping, setTyping, clearTyping, listenReads, listenPresence, presenceLabel,
   reactToMessage, groupReactions, QUICK_REACTIONS, canEdit, editMessage, unsendMessage,
   setChatTheme, setNickname, CHAT_THEMES, sendPoll, votePoll, openUserProfile, openPost, openWatch, kindLabel,
   addToGroup, removeFromGroup, setGroupAdmin, leaveGroupChat, renameGroupChat, groupAdmins, blockUser, unblockUser,
+  sendVoiceMessage,
 } from "../lib/db";
 import { LIMITS } from "../lib/validate";
-import { checkContent, checkName } from "../lib/moderation";
+import { checkContent } from "../lib/moderation";
 import { navigate } from "../lib/router";
 import { dayLabel, clockTime, fullTime, plural } from "../lib/format";
 import { mediaAlt } from "../lib/a11y";
 import { chatTitle, chatAvatar } from "../lib/chat";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
+import MediaImg from "./ui/MediaImg";
 import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
@@ -58,7 +66,10 @@ function buildRows(messages) {
    sends on a keyboard and adds a line on a phone, Escape backs out of a
    reply, and a failed send keeps your words and offers to retry. */
 export default function ChatView({ chat }) {
-  const { inbox, blocked } = useShell();
+  const { inbox, blocked, startCall, inCall } = useShell();
+  const recorder = useVoiceRecorder();
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const stopping = useRef(false);
   const toast = useToast();
   const [messages, setMessages] = useState(null);
   const [text, setText] = useState("");
@@ -67,7 +78,7 @@ export default function ChatView({ chat }) {
   const [presence, setPresence] = useState(new Map());
   const [replyTo, setReplyTo] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [dialog, setDialog] = useState(null); // info | poll
+  const [dialog, setDialog] = useState(null); // info | poll | gif
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [sending, setSending] = useState(false);
@@ -124,7 +135,9 @@ export default function ChatView({ chat }) {
     const t = value.trim();
     if (!t || sending) return;
     if (t.length > LIMITS.message) return toast({ tone: "error", title: `Messages can be up to ${LIMITS.message} characters` });
-    const mod = checkContent(t, { key: "msg", skipCooldown: true });
+    // Private conversations aren't filtered for hate speech: people can block
+    // and report instead. Spam checks still apply.
+    const mod = checkContent(t, { key: "msg", skipCooldown: true, hate: false });
     if (mod.error) return toast({ tone: "error", title: mod.error });
 
     const wasEditing = editing;
@@ -152,6 +165,47 @@ export default function ChatView({ chat }) {
       inputRef.current?.focus();
     }
   };
+
+  /* Voice notes: tap the mic, talk, tap send. It stops by itself at a minute
+     and sends what it has. Nothing leaves the phone until you send. */
+  const finishVoice = async () => {
+    if (stopping.current) return;
+    stopping.current = true;
+    try {
+      const res = await recorder.stop();
+      if (!res) return;
+      if (res.duration < 1) return toast({ tone: "info", title: "Hold on a little longer", body: "Voice messages need at least a second." });
+      setVoiceBusy(true);
+      await sendVoiceMessage(chat.id, res.blob, res.duration, res.peaks);
+    } catch (err) {
+      console.error(err);
+      toast(err?.code === "permission-denied"
+        ? { tone: "error", title: "Voice message not sent", body: "This person isn't accepting your messages." }
+        : { tone: "error", title: "Voice message not sent", body: err?.message?.includes("too") ? err.message : "Check your connection and try again." });
+    } finally {
+      stopping.current = false;
+      setVoiceBusy(false);
+    }
+  };
+  const startVoice = async () => {
+    try {
+      await recorder.start();
+      recorder.setAutoStop(finishVoice);
+    } catch (err) {
+      console.error(err);
+      toast({ tone: "error", title: "Couldn't use the microphone",
+        body: err?.name === "NotAllowedError" ? "Allow microphone access for this site in your browser settings." : "Check that a microphone is connected." });
+    }
+  };
+  const sendGif = async (g) => {
+    setDialog(null);
+    try {
+      await sendMessage(chat.id, "", { gif: { url: g.url, width: g.width, height: g.height, title: g.title } });
+    } catch {
+      toast({ tone: "error", title: "GIF not sent", body: "Check your connection and try again." });
+    }
+  };
+  const canCall = !chat.isGroup && !blockedOther && callsSupported();
 
   const onKeyDown = (e) => {
     if (e.key === "Escape" && (replyTo || editing)) {
@@ -192,6 +246,12 @@ export default function ChatView({ chat }) {
             <span className={`block truncate text-caption ${typing.length ? "text-accent-text" : "text-fg-subtle"}`} aria-live="polite">{status}</span>
           </span>
         </button>
+        {canCall && (
+          <>
+            <IconButton icon={Phone} label={`Voice call ${title}`} disabled={inCall} onClick={() => startCall(chat, false)} />
+            <IconButton icon={Video} label={`Video call ${title}`} disabled={inCall} onClick={() => startCall(chat, true)} />
+          </>
+        )}
         <IconButton icon={Info} label="Conversation details" onClick={() => setDialog("info")} />
       </header>
 
@@ -218,7 +278,7 @@ export default function ChatView({ chat }) {
           {messages?.length > 0 && (
             <ol aria-label={`Messages with ${title}`} className="flex flex-col">
               {rows.map((row) => row.type === "msg" ? (
-                <MessageRow key={row.key} row={row} chat={chat} theme={theme}
+                <MessageRow key={row.key} row={row} chat={chat} theme={theme} latest={row.m?.id === last?.id}
                   onReply={(m) => { setReplyTo(m); setEditing(null); inputRef.current?.focus(); }}
                   onEdit={(m) => { setEditing(m); setReplyTo(null); setText(m.text); inputRef.current?.focus(); }} />
               ) : (
@@ -270,9 +330,29 @@ export default function ChatView({ chat }) {
               onClick={() => { setReplyTo(null); if (editing) { setEditing(null); setText(""); } }} />
           </div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2">
+        {recorder.state === "recording" || voiceBusy ? (
+          <div className="flex items-center gap-2" role="group" aria-label="Recording a voice message">
+            <IconButton icon={Trash2} label="Discard voice message" onClick={recorder.cancel} disabled={voiceBusy} />
+            <span className="flex min-h-11 flex-1 items-center gap-3 rounded-[22px] bg-surface-2 px-4">
+              <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-danger-text" aria-hidden="true" />
+              <span className="shrink-0 tabular text-callout font-semibold" aria-live="off">
+                {Math.floor(recorder.seconds / 60)}:{String(Math.floor(recorder.seconds % 60)).padStart(2, "0")}
+              </span>
+              <LiveBars levels={recorder.levels} />
+              {recorder.seconds > MAX_VOICE_SECONDS - 10 && (
+                <span className="shrink-0 text-caption text-warning-text">{Math.max(0, Math.ceil(MAX_VOICE_SECONDS - recorder.seconds))}s left</span>
+              )}
+            </span>
+            <IconButton icon={SendHorizontal} label={voiceBusy ? "Sending voice message" : "Send voice message"} tone="primary"
+              disabled={voiceBusy} onClick={finishVoice} />
+          </div>
+        ) : (
+        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-1.5">
           {chat.isGroup && !editing && (
             <IconButton icon={ChartBar} label="Create a poll" tone="solid" onClick={() => setDialog("poll")} />
+          )}
+          {gifsEnabled && !editing && (
+            <IconButton icon={Sticker} label="Send a GIF" tone="solid" onClick={() => setDialog("gif")} />
           )}
           <label htmlFor={`msg-${chat.id}`} className="sr-only">Message {title}</label>
           <Textarea id={`msg-${chat.id}`} ref={inputRef} autoGrow rows={1} maxRows={6} value={text}
@@ -280,9 +360,14 @@ export default function ChatView({ chat }) {
             onKeyDown={onKeyDown} maxLength={LIMITS.message} enterKeyHint="send"
             placeholder={editing ? "Edit your message" : "Message…"}
             className="!min-h-11 !rounded-[22px] !py-2.5" />
-          <IconButton type="submit" icon={editing ? Check : SendHorizontal} label={editing ? "Save edit" : "Send message"}
-            tone="primary" disabled={!text.trim() || sending} />
+          {!text.trim() && !editing && voiceSupported() ? (
+            <IconButton icon={Mic} label="Record a voice message" tone="primary" onClick={startVoice} />
+          ) : (
+            <IconButton type="submit" icon={editing ? Check : SendHorizontal} label={editing ? "Save edit" : "Send message"}
+              tone="primary" disabled={!text.trim() || sending} />
+          )}
         </form>
+        )}
         {text.length > LIMITS.message * 0.9 && (
           <p className="mt-1 text-right text-caption text-warning-text tabular">{LIMITS.message - text.length} characters left</p>
         )}
@@ -291,15 +376,17 @@ export default function ChatView({ chat }) {
 
       {dialog === "info" && <ChatDetails chat={chat} onClose={() => setDialog(null)} />}
       {dialog === "poll" && <PollDialog chatId={chat.id} onClose={() => setDialog(null)} />}
+      {dialog === "gif" && <GifPicker onClose={() => setDialog(null)} onPick={sendGif} />}
     </div>
   );
 }
 
-function MessageRow({ row, chat, theme, onReply, onEdit }) {
+function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const { m, first, last } = row;
   const toast = useToast();
   const [menu, setMenu] = useState(false);
   const [confirmUnsend, setConfirmUnsend] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const mine = m.senderId === me();
   const name = chat.nicknames?.[m.senderId] || chat.memberNames?.[m.senderId] || "Someone";
   const reactions = groupReactions(m.reactions);
@@ -324,7 +411,7 @@ function MessageRow({ row, chat, theme, onReply, onEdit }) {
   };
 
   const unsend = async () => {
-    try { await unsendMessage(chat.id, m); setConfirmUnsend(false); toast({ title: "Message unsent" }); }
+    try { await unsendMessage(chat.id, m, { latest }); setConfirmUnsend(false); toast({ title: "Message unsent" }); }
     catch { toast({ tone: "error", title: "Couldn't unsend that" }); }
   };
 
@@ -359,18 +446,29 @@ function MessageRow({ row, chat, theme, onReply, onEdit }) {
           </span>
         )}
 
-        <div className="flex items-center gap-1">
+        <div className={`flex items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+          {m.voice ? (
+            // The player has its own buttons, so this bubble can't itself be one.
+            <div onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}
+              className={`${shape} px-3 py-2 ${mine ? `bg-gradient-to-br text-white ${theme.bubble}` : "bg-surface-3 text-fg"}`}>
+              <VoiceNote chatId={chat.id} voice={m.voice} mine={mine} />
+            </div>
+          ) : (
           <button type="button" onClick={() => setMenu(true)} onDoubleClick={() => react("❤️")}
             title={sent ? fullTime(sent) : "Sending…"}
-            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : ""}: ${m.poll?.question || m.text || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
-            className={`min-w-0 text-left text-body ${shape} ${m.sharedPost && !m.text ? "p-1" : "px-4 py-2"} ${
-              mine ? `bg-gradient-to-br text-white ${theme.bubble}` : "bg-surface-3 text-fg"
+            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : m.gif ? " sent a GIF" : ""}: ${m.call?.summary || m.poll?.question || m.text || m.gif?.title || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
+            className={`min-w-0 text-left text-body ${shape} ${(m.sharedPost || m.gif) && !m.text ? "p-1" : "px-4 py-2"} ${
+              m.gif && !m.text ? "bg-transparent" : mine ? `bg-gradient-to-br text-white ${theme.bubble}` : "bg-surface-3 text-fg"
             }`}>
+            {m.call && <CallLog call={m.call} />}
+            {m.gif && <GifView gif={m.gif} className="max-w-[260px]" />}
             {m.poll && <PollView chatId={chat.id} msg={m} mine={mine} />}
             {m.sharedPost && <SharedPostCard post={m.sharedPost} />}
             {!m.poll && m.text && <span className={`block whitespace-pre-wrap break-words ${m.sharedPost ? "px-3 pb-1 pt-2" : ""}`}>{m.text}</span>}
             {m.editedAt && <span className="block text-right text-label opacity-75">Edited</span>}
           </button>
+          )}
+          {m.voice && <IconButton icon={Ellipsis} label="Message actions" size={16} className="shrink-0" onClick={() => setMenu(true)} />}
           {/* Quick actions appear beside the bubble on hover or keyboard focus. */}
           <span className="hidden shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:inline-flex">
             <IconButton icon={Reply} label="Reply" size={16} onClick={() => onReply(m)} />
@@ -420,15 +518,38 @@ function MessageRow({ row, chat, theme, onReply, onEdit }) {
                 Unsend
               </MenuItem>
             )}
+            {!mine && m.senderId && (
+              <MenuItem icon={Flag} danger description="Only this message is shared with moderators" onClick={() => { setMenu(false); setReporting(true); }}>
+                Report message
+              </MenuItem>
+            )}
           </MenuGroup>
           <p className="mt-3 px-3 text-caption text-fg-subtle">{sent ? `Sent ${fullTime(sent)}` : "Sending…"}</p>
         </Dialog>
+      )}
+      {reporting && (
+        <ReportDialog onClose={() => setReporting(false)}
+          target={{ type: "message", id: m.id, authorId: m.senderId, chatId: chat.id, text: m.text || "" }} />
       )}
       {confirmUnsend && (
         <ConfirmDialog title="Unsend this message?" confirmLabel="Unsend message"
           body="It'll be removed for everyone in the conversation." onConfirm={unsend} onClose={() => setConfirmUnsend(false)} />
       )}
     </li>
+  );
+}
+
+/* A call leaves a line in the conversation: how long it ran, or that it was missed. */
+function CallLog({ call }) {
+  const missed = !call.seconds;
+  const Icon = missed ? PhoneMissed : call.video ? Video : Phone;
+  return (
+    <span className="flex items-center gap-2.5">
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${missed ? "bg-danger/20 text-danger-text" : "bg-black/15"}`}>
+        <Icon size={16} aria-hidden="true" />
+      </span>
+      <span className="font-semibold">{call.summary}</span>
+    </span>
   );
 }
 
@@ -455,7 +576,7 @@ function SharedPostCard({ post }) {
               </span>
             </>
           ) : (
-            <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover" />
+            <MediaImg src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover" placeholderClass="h-full w-full" />
           )}
         </span>
       ) : (
@@ -524,7 +645,7 @@ function PollDialog({ chatId, onClose }) {
     const opts = options.map((o) => o.trim()).filter(Boolean);
     if (q.length < 3) return setError("Ask a question of at least 3 characters.");
     if (opts.length < 2) return setError("Add at least two options.");
-    const mod = checkContent([q, ...opts].join("\n"), { key: "poll", skipCooldown: true });
+    const mod = checkContent([q, ...opts].join("\n"), { key: "poll", skipCooldown: true, hate: false });
     if (mod.error) return setError(mod.error);
     setBusy(true);
     try { await sendPoll(chatId, q, opts); onClose(); }
@@ -586,8 +707,6 @@ function ChatDetails({ chat, onClose }) {
 
   const saveNick = async (e) => {
     e.preventDefault();
-    const check = checkName(nick);
-    if (check.error) return setError(check.error);
     try {
       await setNickname(chat.id, target, nick.trim());
       setNick("");
@@ -600,8 +719,6 @@ function ChatDetails({ chat, onClose }) {
     e.preventDefault();
     const t = name.trim();
     if (t.length < LIMITS.chatName.min) return setError(`Group names need at least ${LIMITS.chatName.min} characters.`);
-    const check = checkName(t);
-    if (check.error) return setError(check.error);
     setError("");
     run(() => renameGroupChat(chat.id, t.slice(0, LIMITS.chatName.max)), "Group renamed", "Couldn't rename the group");
   };
@@ -832,8 +949,6 @@ export function NewChatDialog({ onClose, onCreated, group = false }) {
         return;
       }
       const name = groupName.trim() || selected.map((s) => s.username).slice(0, 3).join(", ");
-      const check = checkName(name);
-      if (check.error) { setBusy(false); return setError(check.error); }
       const { id, skipped } = await createGroupChat(name.slice(0, LIMITS.chatName.max), selected);
       if (skipped.length) {
         toast({ tone: "info", title: `Group made without ${skipped.map((u) => `@${u.username}`).join(", ")}`, body: "They only accept group adds from people they follow." });

@@ -70,7 +70,7 @@ const PAGES = [
   [/^\/$/, () => ({ tab: "home", section: "foryou" })],
   [/^\/following$/, () => ({ tab: "home", section: "following" })],
   [/^\/flicks(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "flicks", id: m[1] || null })],
-  [/^\/news$/, () => ({ tab: "home", section: "news" })],
+  [/^\/news(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "news", id: m[1] ? decodeURIComponent(m[1]) : null })],
   [/^\/circles(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "circles", id: m[1] || null })],
   [/^\/gatherings\/([^/]+)$/, (m) => ({ tab: "home", section: "circles", gatheringId: m[1] })],
   [/^\/search$/, () => ({ tab: "home", section: "search" })],
@@ -78,6 +78,7 @@ const PAGES = [
   [/^\/messages(?:\/([^/]+))?$/, (m) => ({ tab: "messages", id: m[1] || null })],
   [/^\/account$/, () => ({ tab: "account", view: "profile" })],
   [/^\/account\/settings$/, () => ({ tab: "account", view: "settings" })],
+  [/^\/account\/moderation$/, () => ({ tab: "account", view: "moderation" })],
   [/^\/legal(?:\/([a-z]+))?$/, (m) => ({ tab: "account", view: "legal", doc: m[1] || "privacy" })],
 ];
 

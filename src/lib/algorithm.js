@@ -26,8 +26,35 @@
 //      feed converges on whatever is cheapest to consume and the other formats
 //      starve. The floors are the anti-cannibalisation mechanism; they are not
 //      optional and they are not a tuning knob to zero out.
+//
+// And one rule about harm: reach is earned, not owed. Posts that read as
+// mocking a group are allowed, but they sink for anyone who doesn't follow
+// the author and never appear back to back, so a feed can't turn into fifty
+// posts in a row making fun of the same people. Reports lower a post's
+// reach; enough reports from established accounts take it out of feeds
+// until a moderator looks. Every group gets the same treatment.
 
-import { tsMillis } from "./db";
+import { tsMillis, isHeld } from "./db";
+import { assessText, hitsHiddenWords } from "./moderation";
+
+const textOf = (p) => `${p.title || ""}\n${p.text || ""}\n${p.poll ? p.poll.options.join("\n") : ""}`;
+const verdicts = new Map(); // post id + text length -> "ok" | "quoted" | "borderline" | "block"
+function levelOf(post) {
+  const key = `${post.id}:${(post.text || "").length}`;
+  if (!verdicts.has(key)) verdicts.set(key, assessText(textOf(post)).level);
+  return verdicts.get(key);
+}
+// Only mockery is held back. A post quoting abuse to call it out isn't:
+// that would bury the people it happened to.
+const borderline = (post) => levelOf(post) === "borderline";
+
+/** Drop what this viewer shouldn't be shown at all: held posts, their hidden
+    words, and anything the filter would block (older posts, or ones that went
+    round the app). Your own posts always show for you. */
+export function screenForViewer(posts, { myUid, hiddenWords = [] } = {}) {
+  return posts.filter((p) => p.authorId === myUid
+    || (!isHeld(p) && !hitsHiddenWords(textOf(p), hiddenWords) && levelOf(p) !== "block"));
+}
 
 const SESSION_SEED = Math.random() * 1000;
 
@@ -117,7 +144,15 @@ function positionBiasFactor(post) {
   return 1 / (1 + Math.log2(1 + lastRank) * 0.15);
 }
 
-export function scorePost(post, { followingSet, affinity, myUid }) {
+// Interests you picked: a post tagged with one of them gets a lift. Capped,
+// so interests shape the feed without turning it into a single topic.
+function interestValue2(post, interests) {
+  if (!interests?.length || !post.topics?.length) return 0;
+  const hits = post.topics.filter((t) => interests.includes(t)).length;
+  return Math.min(hits, 2) * 2.5;
+}
+
+export function scorePost(post, { followingSet, affinity, myUid, interests = [] }) {
   // Endorsements estimate how much value a post carries in total, so they are
   // scaled by how long that value takes to deliver before the division,
   // otherwise a like on a 20-minute video counts for a twentieth of a like on
@@ -133,10 +168,15 @@ export function scorePost(post, { followingSet, affinity, myUid }) {
 
   // Freshness and jitter sit outside the per-minute term: recency and
   // exploration shouldn't be divided away by a format's length.
-  let score = earned + freshnessValue(post) + jitter(post.id) * 2;
+  let score = earned + freshnessValue(post) + interestValue2(post, interests) + jitter(post.id) * 2;
 
   // Your own posts belong on your profile, not your For You page.
   if (post.authorId === myUid) score -= 3;
+
+  // Not amplified: borderline posts reach their author's followers, and
+  // sink for everyone else. Each report (up to five) costs some reach.
+  if (borderline(post) && post.authorId !== myUid && !followingSet?.has(post.authorId)) score -= 8;
+  score -= Math.min(post.reportCount || 0, 5) * 0.8;
 
   return score;
 }
@@ -151,9 +191,11 @@ const FLOOR_WINDOW = 20;
 const MAX_RUN_PER_KIND = 2;
 const MAX_PER_AUTHOR_IN_WINDOW = 2;
 const AUTHOR_WINDOW = 6;
+const BORDERLINE_GAP = 8;
 
 export function rankFeed(posts, ctx) {
-  const scored = posts
+  const pool = screenForViewer(posts, ctx);
+  const scored = pool
     .map((p) => ({ post: p, score: scorePost(p, ctx) }))
     .sort((a, b) => b.score - a.score);
 
@@ -161,7 +203,7 @@ export function rankFeed(posts, ctx) {
   const out = [];
 
   // How many of each format the floors demand within the first window.
-  const available = countKinds(posts);
+  const available = countKinds(pool);
   const quota = {};
   for (const [kind, share] of Object.entries(FORMAT_FLOORS)) {
     quota[kind] = Math.min(Math.floor(FLOOR_WINDOW * share), available[kind] || 0);
@@ -220,5 +262,8 @@ function fitsDiversity(post, out) {
   if (sameKindRun) return false;
 
   const recentAuthors = out.slice(-AUTHOR_WINDOW).filter((p) => p.authorId === post.authorId);
-  return recentAuthors.length < MAX_PER_AUTHOR_IN_WINDOW;
+  if (recentAuthors.length >= MAX_PER_AUTHOR_IN_WINDOW) return false;
+
+  // Never two borderline posts close together, whoever posted them.
+  return !borderline(post) || !out.slice(-BORDERLINE_GAP).some(borderline);
 }

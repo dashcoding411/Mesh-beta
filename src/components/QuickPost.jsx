@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Image, Clapperboard, Lock } from "lucide-react";
+import { Image, Clapperboard, Lock, ChartBar, Sticker } from "lucide-react";
+import { gifsEnabled } from "../lib/gifs";
 import { createPost, isMinor, STRAND_MAX } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
@@ -21,6 +22,7 @@ export default function QuickPost({ onPosted }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [warned, setWarned] = useState("");
   // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
   const minor = isMinor(profile) || !!profile?.isPrivate;
   const remaining = STRAND_MAX - text.length;
@@ -30,14 +32,16 @@ export default function QuickPost({ onPosted }) {
     const v = validateText(text, STRAND_MAX, "Strand");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "strand" });
+    const mod = checkContent(v.text, { key: "strand", allowQuoted: true });
     if (mod.error) return setError(mod.error);
+    if (mod.note && !warned) return setWarned(mod.note);
     setBusy(true);
     setError("");
     try {
-      const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public" });
+      const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive });
       markPosted("strand", v.text);
       setText("");
+      setWarned("");
       setFocused(false);
       onPosted?.(post);
       toast({ title: "Strand posted" });
@@ -58,13 +62,16 @@ export default function QuickPost({ onPosted }) {
         <label htmlFor="quick-strand" className="sr-only">Write a Strand</label>
         <Textarea id="quick-strand" autoGrow rows={1} maxRows={10} value={text}
           onFocus={() => setFocused(true)}
-          onChange={(e) => { setText(e.target.value); if (error) setError(""); }}
+          onChange={(e) => { setText(e.target.value); setWarned(""); if (error) setError(""); }}
           placeholder="What's on your mind?" maxLength={STRAND_MAX}
           aria-invalid={error ? "true" : undefined} aria-describedby="quick-strand-help"
           className="!border-transparent !bg-transparent !px-0 !py-1.5 !text-title-3 !font-normal hover:!border-transparent focus:!ring-0" />
 
         <div id="quick-strand-help" aria-live="polite" className="mt-1">
           <InlineMessage>{error}</InlineMessage>
+          {warned && (
+            <p className="mt-1 text-caption text-warning-text">{warned}</p>
+          )}
           {minor && focused && (
             <p className="flex items-center gap-1.5 text-caption text-fg-subtle">
               <Lock size={12} aria-hidden="true" /> {profile?.isPrivate ? "Your account is private, so this goes to your followers." : "Under-16 accounts post to followers only."}
@@ -77,6 +84,8 @@ export default function QuickPost({ onPosted }) {
         <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
           <IconButton icon={Image} label="Post a photo" size={20} onClick={() => openComposer({ kind: "post" })} className="-ml-2.5 text-accent-text" />
           <IconButton icon={Clapperboard} label="Post a Flick" size={20} onClick={() => openComposer({ kind: "video" })} className="text-accent-text" />
+          <IconButton icon={ChartBar} label="Ask with a poll" size={20} onClick={() => openComposer({ kind: "text", attach: "poll", text })} className="text-accent-text" />
+          {gifsEnabled && <IconButton icon={Sticker} label="Post a GIF" size={20} onClick={() => openComposer({ kind: "text", attach: "gif", text })} className="text-accent-text" />}
           <span className="flex-1" />
           {text.length > 0 && (
             <span className={`mr-2 tabular text-caption ${remaining < 0 ? "text-danger-text" : remaining <= 40 ? "text-warning-text" : "text-fg-subtle"}`}
@@ -85,7 +94,7 @@ export default function QuickPost({ onPosted }) {
             </span>
           )}
           <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!text.trim() || remaining < 0}>
-            Post
+            {warned ? "Post anyway" : "Post"}
           </Button>
         </div>
       </div>

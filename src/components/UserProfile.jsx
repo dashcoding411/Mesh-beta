@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban } from "lucide-react";
+import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag } from "lucide-react";
+import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
   hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser,
@@ -197,8 +198,14 @@ export default function UserProfile({ uid }) {
               description={isBlocked ? undefined : "They won't be told"}>
               {isBlocked ? `Unblock @${profile.username}` : `Block @${profile.username}`}
             </MenuItem>
+            <MenuItem icon={Flag} danger onClick={() => setDialog("report")} description="A moderator reviews the account">
+              Report @{profile.username}
+            </MenuItem>
           </MenuGroup>
         </Dialog>
+      )}
+      {dialog === "report" && profile && (
+        <ReportDialog onClose={() => setDialog(null)} target={{ type: "user", id: uid, authorId: uid }} />
       )}
       {dialog === "block" && profile && (
         <ConfirmDialog title={isBlocked ? `Unblock @${profile.username}?` : `Block @${profile.username}?`}

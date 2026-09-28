@@ -3,7 +3,7 @@ import {
   Link2, Share2, EyeOff, Flag, Trash2, UserRound, Check, Send, ShieldAlert,
 } from "lucide-react";
 import {
-  sendPostTo, hidePost, reportPost, deletePost, REPORT_REASONS, openUserProfile, kindLabel, me,
+  sendPostTo, hidePost, reportPost, deletePost, openUserProfile, kindLabel, me,
 } from "../lib/db";
 import { postUrl } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
@@ -13,6 +13,7 @@ import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
 import { EmptyState } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import ReportDialog from "./ReportDialog";
 
 async function copyLink(post, toast) {
   try {
@@ -143,19 +144,6 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
     }
   };
 
-  const report = async (reason) => {
-    setBusy(true);
-    try {
-      await reportPost(post, reason.id);
-      onClose();
-      onRemoved();
-      toast({ title: "Thanks, sent for review", body: "We've hidden it from your feed." });
-    } catch {
-      setBusy(false);
-      toast({ tone: "error", title: "Couldn't send the report", body: "Try again in a moment." });
-    }
-  };
-
   if (mode === "delete") {
     return (
       <ConfirmDialog title={`Delete this ${label.toLowerCase()}?`} confirmLabel={`Delete ${label.toLowerCase()}`}
@@ -166,16 +154,10 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
 
   if (mode === "report") {
     return (
-      <Dialog title="Report post" onClose={onClose}>
-        <p className="mb-3 text-callout text-fg-muted">
-          What's wrong with it? Reports go to a person for review. The author isn't told who reported them.
-        </p>
-        <MenuGroup>
-          {REPORT_REASONS.map((r) => (
-            <MenuItem key={r.id} onClick={() => report(r)} disabled={busy}>{r.label}</MenuItem>
-          ))}
-        </MenuGroup>
-      </Dialog>
+      <ReportDialog target={{ type: "post", id: post.id, authorId: post.authorId }} onClose={onClose}
+        report={(t, reason, details) => reportPost(post, reason, details)}
+        // Reporting also hides it from your own feed straight away.
+        onReported={onRemoved} />
     );
   }
 

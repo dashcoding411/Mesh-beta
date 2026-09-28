@@ -16,6 +16,15 @@ npm install
 npm run dev
 ```
 
+### Optional settings (`.env.local`)
+
+| Variable | What it turns on |
+|---|---|
+| `VITE_GIPHY_API_KEY` | GIFs in posts, comments and messages. Get a free key at developers.giphy.com. Without it the GIF buttons are hidden. |
+| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls between some mobile and office networks fail to connect. |
+| `VITE_APPLE_SIGNIN=on` | Shows "Continue with Apple". Only set it once Apple sign-in is configured in Firebase. |
+| `VITE_STORAGE=on` | Uses Cloud Storage for uploads (and turns on video). Set it after enabling the Blaze plan and deploying `storage.rules`. Until then photos and voice messages are stored in Firestore. |
+
 ## Surfaces
 
 Names are deliberately our own. "Shorts" belongs to YouTube, "Groups" to
@@ -125,12 +134,27 @@ edit window with an "edited" marker, unsend that leaves a tombstone rather than
 silently reshuffling the thread, live typing indicators, presence ("Active now",
 "Active 12m ago"), read receipts, and mark-as-unread.
 
-**Inbox**: Primary / General / Requests. A thread lands in Requests when it was
-started by someone you don't follow; muting moves a thread to General. Up to
-three chats can be pinned to the top.
+**Inbox**: General and Requests. A thread lands in Requests when it was
+started by someone you don't follow. Up to three chats can be pinned to the top.
 
 **Personalisation**: five chat themes, and per-thread nicknames that only
 display inside that conversation.
+
+**Voice messages**: tap the mic when the box is empty, talk, tap send. Up to a
+minute, recorded at speech quality (about 180 KB a minute), with a live
+waveform while recording and a scrubbable one on playback, at 1×, 1.5× or 2×.
+Recordings are stored inside the conversation (`chats/{id}/media`), so only its
+members can play them, and unsending deletes the recording too.
+
+**GIFs** from GIPHY, in messages, comments and Strands.
+
+**Calls**: voice and video, one-to-one, from the phone and camera buttons in a
+chat. You can only ring someone who follows you, so strangers can't make
+someone's phone ring. WebRTC carries the audio and video directly between the two devices;
+Firestore only passes the setup messages, which are deleted when the call ends.
+Each call leaves a line in the chat ("Video call · 3:12", "Missed voice call").
+Group calls would need a media server (an SFU), so they're not included. Without
+a TURN relay (see Optional settings) some network pairs can't connect.
 
 **Extras**: group polls with live percentages, and 60-character **Thoughts**
 that sit above the inbox for 24 hours. Sharing a post from the feed's Send
@@ -240,21 +264,109 @@ mutual-follow signal is honest enough without them.
 
 ## Moderation
 
-`src/lib/moderation.js` runs on usernames, posts, comments, messages, group
-names, news and profile fields.
+One rule for everyone: the same checks apply whichever group is targeted
+(majority or minority) and whichever political side is speaking. Criticising
+ideas, religions as belief systems, countries, governments and policies is
+allowed; attacking people for who they are is not. The public version of this
+is in the Community Guidelines (`src/legal/content.js`).
 
-- **Hate speech**: the slur list covers every group even-handedly: South Asian
-  (including the anti-Indian slurs most filters skip), Black, East and Southeast
-  Asian, Latino, Jewish, Muslim and Arab, Roma, Indigenous, white, LGBTQ+, and
-  disabled people. Text is normalised first (lowercase, leetspeak folded,
-  separators stripped) so `n1gg3r` and `p a j e e t` are caught too. Terms with
-  innocent collocations are context-checked, so "cracker barrel" passes while
-  the slur usage does not.
-- **Spam**: link flooding, character mashing, all-caps walls, a 15-second
-  posting cooldown, and duplicate-post detection.
+**Context, not keywords.** Every match is read in its sentence before it's
+judged: negated ("not all X are..."), called out ("saying X are dirty is
+racist"), reported ("he called me a ..."), in-group ("we Indians are always
+late lol"), or endorsed (a laugh, "facts", "not racist but..."). Endorsement
+cancels the others, so "lol my mate said X are dirty 😂" is still blocked.
 
-This is the client-side layer. For production scale, mirror it in a Cloud
-Function so writes from outside the app are covered too.
+**What's checked:** everything other people read in public. Private messages,
+group chat names and nicknames aren't filtered; people block and report.
+
+**Four outcomes** (`src/lib/moderation.js`, `assessText`):
+
+| Outcome | What it catches | What happens |
+|---|---|---|
+| block | Slurs against any group; dehumanising generalisations ("X are vermin / dirty / a disease"); calls for violence or exclusion ("kill all X", "deport every X"); "I hate X" about people; "go back to your country"; stereotype abuse phrases; telling someone to kill themselves | Not posted. The message says why, without teaching how to get round it. |
+| borderline | Blanket insults about a group ("X are stupid"); a group, a stereotype and a laugh together (the "50 reels mocking Indians" pattern); coded terms | Posts after a second press. Not recommended to people who don't follow the author, never two within 8 slots, folded away behind a tap in comments and hidden from the comment preview. |
+| quoted | Slurs or abuse quoted to report or call it out | Posts after a second press, behind a tap-to-read warning. Not demoted: that would bury the people it happened to. |
+| ok | Everything else, including criticism, negation and calling hate out | Normal. |
+
+Groups are one list (race, ethnicity, nationality, migration status, religion,
+sexuality, gender, disability), so "white people are vermin" and "Indians are
+vermin" are blocked by the same pattern. Political identities (leftists,
+conservatives, zionists, feminists and so on) are protected only from violence
+and dehumanising language: you can argue with any side, not call it vermin.
+Text is normalised first: look-alike Unicode letters, accents, zero-width
+characters, leetspeak, stretched letters, censoring asterisks, and dots or
+spaces between letters. Words with innocent meanings are checked in context
+("spic and span", "fag end", "tranny fluid", "coon cheese", "chink in the
+armour", "ABO blood group"). It's English only.
+
+The check runs on everything people write that others read: posts (text,
+titles, image descriptions, poll options), comments, messages, names, bios,
+circles, gatherings, news and chat names. GIF searches for slurs return
+nothing, and GIFs whose titles fail the check are dropped.
+
+**On the server** (`hateFree()` in `firestore.rules`): the slurs with no
+innocent meaning are refused by the database itself on every public field.
+Posts and comments can carry one only when labelled `sensitive: true` (the app
+sets it for quoted and borderline text), and every viewer's app covers or
+limits labelled text, so a slur can't reach anyone unwarned by going around
+the app. Viewers' apps also re-check every post: anything that would be
+blocked is left out of feeds and covered elsewhere. The rules language
+can't read context, so this is the narrow core; the contextual checks run in
+every viewer's app, including in the ranker, where they decide what that
+viewer is shown. To change the server list, edit `scripts/rules-slur-regex.mjs`,
+run it, paste the output into `hateFree()`, and deploy the rules.
+
+**Reports**: posts, comments, messages and accounts, with nine reasons and
+optional details. One report per person per thing (the document id enforces
+it). A reported comment or message carries its exact text, which the rules
+check against the original, so a report can't put words in someone's mouth,
+and moderators see only that message, never the conversation. When three
+accounts over a day old report a post, it leaves feeds and search until a
+moderator reviews it; fresh accounts can report but don't count, so a brigade
+of new accounts can't bury a post. A moderator who keeps a post up clears it
+for good.
+
+**Moderators** are the accounts listed in `admins/{uid}` (add one in the
+Firebase console). They get Settings > Moderation: reports grouped by the thing
+reported, the busiest first, with the automatic filter's opinion alongside.
+Actions: remove it, keep it up, or suspend the author for 1, 7 or 30 days or
+permanently. A suspension is enforced by the rules (`notSuspended()`): the
+account can read but can't post, comment, message or create anything. The
+person sees why, until when, and how to appeal. Every decision records who
+made it and when.
+
+**People's own controls**: block, hidden words (Settings > Hidden words; hides
+posts and comments with those words or phrases from feeds, Flicks, search and
+comments, private to them), who can comment, who can message, and "Not
+interested".
+
+**Spam**: link flooding, character mashing, all-caps walls, a 15-second
+posting cooldown, and duplicate-post detection.
+
+**Limits, honestly**: a word-and-pattern filter will miss new slang and
+occasionally stop something harmless, and it can't read images, video or
+voice. Reports and people fill that gap. A machine-learning classifier (such
+as a hosted toxicity model) would catch more, but needs Cloud Functions, which
+need the Blaze plan.
+
+## Posts, interests and topics
+
+Every post card shows who liked it ("Liked by @sam and 11 others"), the first
+comment, a one-line reply box, and labelled Like, Comment, Repost, Share, Copy
+link and Save actions. On your own posts you also see how many people saved or
+sent it, which nobody else sees.
+
+**Polls** on Strands: 2 to 4 options, open for an hour up to a week. Votes are
+anonymous and final. The vote and the count are written together in one batch,
+and the rules check both, so nobody can vote twice or inflate a count.
+
+**Interests**: people pick up to 12 from a fixed list, first on sign-up and
+later in Settings. They're stored in `users/{uid}/private/prefs`, readable only
+by the owner. Sensitive categories (health, religion, politics, sexuality) are
+deliberately not on the list. Posts carry up to 3 **topics** (suggested from the
+text; the author decides), and circles up to 3 interests. For you and Flicks get
+a chip row to filter by your interests, the ranker boosts matching topics, and
+Circles has a "For your interests" section, interest filters and a search box.
 
 ## News review
 
@@ -269,6 +381,17 @@ Anyone can submit, nobody can self-publish:
    sees. Authors cannot approve their own.
 4. Submitting requires ticking a declaration that the story is accurate and
    contains no AI-fabricated evidence; it's recorded server-side as `attestedAt`.
+
+5. Sources are cited by number in the script (`[1]`, `[2]`). Citations become
+   links to the numbered source list, and the form refuses a citation with no
+   matching source. The rules also require every source to be an http(s) link.
+6. Reviewers must tick a three-point checklist before Approve is enabled.
+7. Readers can **suggest a correction** (only reviewers see these). Reviewers add
+   **public corrections**, shown dated at the top of the story; the rules only
+   allow appending, so a correction can never be quietly removed.
+
+Stories have a topic, optional location, up to three key points and a cover
+photo, and each has its own page at `/news/<id>`.
 
 The app says "reviewed against sources", never "fact-checked": review is one
 person checking a story against the sources given, not a guarantee of truth.
@@ -319,9 +442,12 @@ Firestore directly. All are rejected server-side.
 Firebase now requires the pay-as-you-go **Blaze** plan to create a Cloud Storage
 bucket. Until it's enabled:
 
-- Text posts, groups, events, news, messaging, follows and search all work.
-- Photo/video uploads, stories and profile pictures show a clear message
-  explaining that media uploads aren't enabled yet.
+- Everything except video works. Photos (Stills, stories, profile pictures,
+  news covers) are compressed in the browser to WebP or JPEG and stored in
+  Firestore (`media/{id}`, under 900 KB, referenced as `mesh-media:<id>`).
+  Voice messages are stored the same way inside their conversation.
+- Video uploads show a clear message explaining they need Storage. When Storage
+  is switched on, photos go there automatically too.
 
 Enabling Blaze needs a payment method, so it's your call. Blaze still includes a
 free tier (5 GB stored, 1 GB/day downloaded), so light use typically costs
@@ -330,6 +456,9 @@ nothing. Once enabled, deploy the storage rules:
 ```bash
 npx firebase-tools deploy --only storage --project mesh-a293c
 ```
+
+Then add `VITE_STORAGE=on` to `.env.local` (and to the environment you build
+the hosted site from) so the app starts using the bucket.
 
 Note the free-tier Storage locations are US-only (`us-east1`, `us-central1`,
 `us-west1`); Australian buckets are Blaze-only.

@@ -25,10 +25,14 @@
 
 import {
   fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers,
-  fetchAffinity, tsMillis,
+  fetchAffinity, tsMillis, isHeld,
 } from "./db";
 import { db } from "../firebase";
 import { collection, getDocs, limit, query } from "firebase/firestore";
+import { interestById, newsTopicById } from "./interests";
+import { assessText, hitsHiddenWords } from "./moderation";
+
+const topicWords = (ids) => (ids || []).map((id) => interestById(id)?.label || "").join(" ");
 
 // ---------- text normalisation ----------
 
@@ -157,10 +161,12 @@ const sectionFor = (post) =>
  * Sections are ordered by their strongest result, so a query that names a
  * person leads with People and a query about an event leads with Gatherings.
  */
-export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set() } = {}) {
+export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set(), hiddenWords = [] } = {}) {
   const q = normalise(rawQuery).replace(/^@/, "");
   const qTokens = tokens(q);
   if (!qTokens.length) return { top: null, sections: [], total: 0 };
+  // Searching for a slur or an attack on a group finds nothing to amplify.
+  if (assessText(rawQuery).level === "block") return { top: null, sections: [], total: 0 };
 
   const [data, handleHits] = await Promise.all([
     loadPool(),
@@ -174,6 +180,9 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
     if (rel <= 0) return;
     // Blocked people don't turn up in your search, as people or as authors.
     if (blocked.has(item.authorId) || (section === "people" && blocked.has(item.id))) return;
+    // Held posts and your hidden words stay out of results too.
+    if (item.authorId && item.authorId !== me && isHeld(item)) return;
+    if (item.authorId !== me && hitsHiddenWords(`${item.title || ""} ${item.text || ""}`, hiddenWords)) return;
     results.push({ section, item, score: rel * (1 + prior) });
   };
 
@@ -192,7 +201,8 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   // described can be found by what's in it.
   for (const p of posts) {
     const rel = relevance(
-      [[p.title, 2.6], [p.text, 1.4], [p.alt, 0.8], [p.authorName, 1.2], [p.authorDisplayName, 1]],
+      [[p.title, 2.6], [p.text, 1.4], [p.alt, 0.8], [p.authorName, 1.2], [p.authorDisplayName, 1], [topicWords(p.topics), 1.1],
+        [p.poll ? p.poll.options.join(" ") : "", 0.6]],
       q, qTokens
     );
     const engagement =
@@ -200,16 +210,20 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
       log1p(p.saveCount) * 0.08 + log1p(p.repostCount) * 0.08;
     const personal = (following.has(p.authorId) ? 0.35 : 0) + Math.min(log1p(affinity.get(p.authorId)) * 0.08, 0.4);
     const prior = engagement + personal + 0.4 * decay(p.createdAt, 14);
-    push(sectionFor(p), p, rel, prior);
+    // Borderline posts can be found, but rank low unless you follow the author.
+    const damp = !following.has(p.authorId) && assessText(`${p.title || ""}\n${p.text || ""}`).level !== "ok" ? 0.2 : 1;
+    push(sectionFor(p), p, rel * damp * (1 - Math.min(p.reportCount || 0, 4) * 0.15), prior);
   }
 
   for (const n of news) {
-    const rel = relevance([[n.title, 2.8], [n.script, 0.9], [n.authorName, 0.8]], q, qTokens);
+    const rel = relevance([[n.title, 2.8], [newsTopicById(n.topic)?.label, 1.2], [n.script, 0.9], [n.authorName, 0.8]], q, qTokens);
     push("news", n, rel, 0.6 * decay(n.createdAt, 7));
   }
 
   for (const g of circles) {
-    const rel = relevance([[g.name, 3], [g.description, 1]], q, qTokens);
+    // A circle tagged "Running" should turn up for "running", even if its
+    // name is "Night Owls".
+    const rel = relevance([[g.name, 3], [topicWords(g.interests), 1.8], [g.description, 1]], q, qTokens);
     push("circles", g, rel, 0.1 * log1p(g.memberCount));
   }
 

@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus, Search as SearchIcon, Sparkles, X } from "lucide-react";
+import { INTERESTS, interestById } from "../lib/interests";
+import { useShell } from "./shell/ShellContext";
+import { InterestToggles } from "./Interests";
 import { fetchGroups, createGroup, CIRCLE_PRIVACY, fetchEvents, fetchInvitedEvents, fetchMyRsvps, fetchMembership } from "../lib/db";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkName } from "../lib/moderation";
@@ -69,11 +72,16 @@ export function PrivacyBadge({ privacy }) {
   return <Badge tone={p.tone} icon={p.icon}>{p.label}</Badge>;
 }
 
-/* Your circles first, then the rest to discover. */
+/* Your circles first, then circles that match your interests, then the
+   rest. A search box and interest chips narrow all three. */
 function CircleList({ onCreate }) {
+  const { interests, openInterests } = useShell();
   const [groups, setGroups] = useState(null);
   const [mine, setMine] = useState(new Set());
   const [error, setError] = useState(false);
+  const [q, setQ] = useState("");
+  const [topic, setTopic] = useState("all");
+  const [allChips, setAllChips] = useState(false);
   const load = useCallback(async () => {
     try {
       const list = await fetchGroups();
@@ -85,6 +93,23 @@ function CircleList({ onCreate }) {
   }, []);
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
+  // Your interests lead the chip row; the rest follow so anything can be browsed.
+  const chipIds = useMemo(() => {
+    const yours = (interests || []).filter((id) => interestById(id));
+    return [...yours, ...INTERESTS.map((i) => i.id).filter((id) => !yours.includes(id))];
+  }, [interests]);
+
+  const shown = useMemo(() => {
+    if (!groups) return null;
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return groups.filter((g) => {
+      if (topic !== "all" && !(g.interests || []).includes(topic)) return false;
+      if (!words.length) return true;
+      const hay = [g.name, g.description, ...(g.interests || []).map((id) => interestById(id)?.label || "")].join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [groups, q, topic]);
+
   if (error) return <ErrorState title="Couldn't load circles" onRetry={() => { setError(false); setGroups(null); load(); }} />;
   if (groups === null) return <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 !rounded-card" />)}</div>;
   if (!groups.length) {
@@ -95,17 +120,73 @@ function CircleList({ onCreate }) {
     );
   }
 
-  const yours = groups.filter((g) => mine.has(g.id));
-  const others = groups.filter((g) => !mine.has(g.id));
+  const mineSet = new Set(interests || []);
+  const overlap = (g) => (g.interests || []).filter((id) => mineSet.has(id)).length;
+  const yours = shown.filter((g) => mine.has(g.id));
+  const rest = shown.filter((g) => !mine.has(g.id));
+  const matched = rest.filter((g) => overlap(g) > 0)
+    .sort((a, b) => overlap(b) - overlap(a) || (b.memberCount || 0) - (a.memberCount || 0));
+  const others = rest.filter((g) => overlap(g) === 0);
+  const filtering = q.trim() || topic !== "all";
+
   return (
-    <div className="space-y-8">
-      {yours.length > 0 && <CircleSection title="Your circles" groups={yours} />}
-      {others.length > 0 && <CircleSection title={yours.length ? "Discover" : "All circles"} groups={others} />}
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <div className="relative">
+          <SearchIcon size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+          <label htmlFor="circle-search" className="sr-only">Find circles</label>
+          <Input id="circle-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Find circles by name or interest" className="!pl-10" />
+        </div>
+        <div role="radiogroup" aria-label="Filter circles by interest" className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:flex-wrap md:px-0">
+          {[{ id: "all", label: "All" }, ...chipIds.map((id) => interestById(id))]
+            // On wide screens the full list wraps to four rows; show your
+            // interests and a few more until asked. Phones scroll sideways.
+            .filter((c, i) => allChips || i <= Math.max(8, (interests || []).length + 4) || c.id === topic)
+            .map((c) => {
+            const on = topic === c.id;
+            return (
+              <button key={c.id} type="button" role="radio" aria-checked={on} onClick={() => setTopic(c.id)}
+                className={`press inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-caption font-semibold transition-colors ${
+                  on ? "bg-fg text-canvas" : mineSet.has(c.id) ? "bg-accent-soft text-fg hover:bg-surface-3" : "bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg"
+                }`}>
+                {c.icon && <c.icon size={13} aria-hidden="true" />}{c.label}
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setAllChips((x) => !x)} aria-expanded={allChips}
+            className="press inline-flex min-h-9 shrink-0 items-center rounded-full px-3.5 text-caption font-semibold text-accent-text hover:underline">
+            {allChips ? "Fewer" : "More interests"}
+          </button>
+        </div>
+        {!(interests || []).length && (
+          <button type="button" onClick={openInterests}
+            className="press inline-flex min-h-9 items-center gap-1.5 rounded-full bg-accent-soft px-3.5 text-caption font-semibold text-accent-ring">
+            <Sparkles size={14} aria-hidden="true" /> Pick your interests to see circles for you
+          </button>
+        )}
+      </div>
+
+      <p className="sr-only" aria-live="polite">{filtering ? `${shown.length} circles found` : ""}</p>
+      {shown.length === 0 ? (
+        <EmptyState compact icon={SearchIcon} title="No circles match"
+          body={topic !== "all" ? `Nobody has started a ${interestById(topic)?.label.toLowerCase()} circle yet. It could be yours.` : "Try other words, or start the circle you're looking for."}
+          action={<div className="flex flex-wrap justify-center gap-2">
+            {filtering && <Button icon={X} onClick={() => { setQ(""); setTopic("all"); }}>Clear filters</Button>}
+            <Button variant="primary" icon={Plus} onClick={onCreate}>Start a circle</Button>
+          </div>} />
+      ) : (
+        <div className="space-y-8">
+          {yours.length > 0 && <CircleSection title="Your circles" groups={yours} highlight={mineSet} />}
+          {matched.length > 0 && <CircleSection title="For your interests" groups={matched} highlight={mineSet} />}
+          {others.length > 0 && <CircleSection title={yours.length || matched.length ? "Discover" : "All circles"} groups={others} highlight={mineSet} />}
+        </div>
+      )}
     </div>
   );
 }
 
-function CircleSection({ title, groups }) {
+function CircleSection({ title, groups, highlight }) {
   return (
     <section aria-label={title}>
       <h2 className="mb-3 text-title-3">{title}</h2>
@@ -121,8 +202,18 @@ function CircleSection({ title, groups }) {
                   <PrivacyBadge privacy={g.privacy} />
                 </span>
                 {g.description && <span className="mt-0.5 line-clamp-1 block text-callout text-fg-muted">{g.description}</span>}
-                <span className="mt-1 block text-caption text-fg-subtle">
-                  {plural(g.memberCount || 0, "member")}{g.ageLimit ? ` · ${g.ageLimit}+` : ""}
+                <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-subtle">
+                  <span>{plural(g.memberCount || 0, "member")}{g.ageLimit ? ` · ${g.ageLimit}+` : ""}</span>
+                  {(g.interests || []).map((id) => {
+                    const it = interestById(id);
+                    return it ? (
+                      <span key={id} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-label font-semibold ${
+                        highlight?.has(id) ? "bg-accent-soft text-fg" : "bg-surface-2 text-fg-muted"
+                      }`}>
+                        <it.icon size={11} aria-hidden="true" />{it.label}
+                      </span>
+                    ) : null;
+                  })}
                 </span>
               </span>
               <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
@@ -186,6 +277,7 @@ function NewCircleDialog({ onClose, onCreated }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [privacy, setPrivacy] = useState("public");
+  const [topics, setTopics] = useState([]);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
 
@@ -202,7 +294,7 @@ function NewCircleDialog({ onClose, onCreated }) {
     if (Object.keys(errs).length) return;
     setBusy(true);
     try {
-      onCreated(await createGroup({ name: trimmed, description: vDesc.text, privacy }));
+      onCreated(await createGroup({ name: trimmed, description: vDesc.text, privacy, interests: topics }));
     } catch (err) {
       console.error(err);
       setErrors({ submit: "Couldn't create the circle. Check your connection and try again." });
@@ -230,6 +322,10 @@ function NewCircleDialog({ onClose, onCreated }) {
         <Field label="What's it about?" optional error={errors.description} count={description.length} max={LIMITS.groupDescription}>
           <Textarea autoGrow rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.groupDescription} />
         </Field>
+        <fieldset>
+          <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3, so the right people find it</span></legend>
+          <InterestToggles value={topics} onChange={setTopics} max={3} label="Circle interests" />
+        </fieldset>
         <fieldset>
           <legend className="mb-2 text-callout font-medium">Who can see it?</legend>
           <div className="space-y-2">

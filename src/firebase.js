@@ -23,3 +23,7 @@ export const db = initializeFirestore(app, {
   useFetchStreams: false,
 });
 export const storage = getStorage(app);
+// Reads (like the one-off check for whether Storage is switched on) give up
+// after 8 seconds instead of retrying for two minutes. Uploads keep their
+// own, longer retry window.
+storage.maxOperationRetryTime = 8000;

@@ -36,6 +36,8 @@ function GoogleMark() {
   );
 }
 
+const APPLE_ENABLED = import.meta.env.VITE_APPLE_SIGNIN === "on";
+
 function AppleMark() {
   return (
     <svg width="18" height="18" viewBox="0 0 384 512" aria-hidden="true" fill="currentColor">
@@ -241,10 +243,14 @@ export default function AuthPage() {
             className={`${SOCIAL} bg-white text-zinc-900 hover:bg-zinc-200`}>
             <GoogleMark /> Continue with Google
           </button>
-          <button onClick={() => handleProvider(signInApple)} disabled={busy}
-            className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-surface`}>
-            <AppleMark /> Continue with Apple
-          </button>
+          {/* Sign in with Apple needs an Apple Developer account and a Services ID
+              set up in Firebase first; until then the button would only fail. */}
+          {APPLE_ENABLED && (
+            <button onClick={() => handleProvider(signInApple)} disabled={busy}
+              className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-surface`}>
+              <AppleMark /> Continue with Apple
+            </button>
+          )}
         </div>
         <p className="mt-3 text-center text-caption text-fg-subtle">
           We only use this to verify who you are. Mesh will never post without your permission.

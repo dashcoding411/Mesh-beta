@@ -15,6 +15,7 @@ import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
 import Tabs from "./ui/Tabs";
 import Avatar from "./ui/Avatar";
+import MediaImg from "./ui/MediaImg";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import IconButton from "./ui/IconButton";
@@ -43,7 +44,7 @@ const FILTERS = [
    strongest section first. The query lives in the URL, so Back and refresh
    both keep your place. */
 export default function Search({ initialQuery, filter }) {
-  const { following, blocked } = useShell();
+  const { following, blocked, hiddenWords } = useShell();
   const [term, setTerm] = useState(initialQuery);
   const [results, setResults] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | loading | done | error
@@ -65,7 +66,7 @@ export default function Search({ initialQuery, filter }) {
     const id = ++runId.current;
     setStatus("loading");
     try {
-      const r = await search(value, { following, me: me(), blocked });
+      const r = await search(value, { following, me: me(), blocked, hiddenWords });
       if (id !== runId.current) return; // a newer keystroke won
       setResults(r);
       setStatus("done");
@@ -73,7 +74,7 @@ export default function Search({ initialQuery, filter }) {
       console.error(err);
       if (id === runId.current) setStatus("error");
     }
-  }, [following, blocked]);
+  }, [following, blocked, hiddenWords]);
 
   // Debounced: search 300ms after typing stops, and keep the URL in step.
   useEffect(() => {
@@ -281,18 +282,18 @@ function FollowButton({ person, following, setFollowing, className = "" }) {
 /* The wander-through mix: Flicks, Stills and Strands in one mosaic, ordered
    by the same ranker as the feed. */
 function Explore() {
-  const { following, blocked } = useShell();
+  const { following, blocked, hiddenWords } = useShell();
   const [items, setItems] = useState(null);
   const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { posts, affinity } = await loadPool();
-      const ranked = rankFeed(posts.filter((p) => !p.groupId), { followingSet: following, affinity, myUid: me() });
+      const ranked = rankFeed(posts.filter((p) => !p.groupId), { followingSet: following, affinity, myUid: me(), hiddenWords });
       setItems(ranked.filter((p) => p.authorId !== me() && !blocked.has(p.authorId)).slice(0, 30));
       setError(false);
     } catch { setError(true); }
-  }, [following, blocked]);
+  }, [following, blocked, hiddenWords]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
@@ -334,7 +335,7 @@ export function Tile({ post, tall = false }) {
         className="press group relative block h-full w-full overflow-hidden bg-surface-2 aspect-square data-[tall=true]:aspect-auto"
         data-tall={tall}>
         {post.kind === "post" && post.mediaUrl && (
-          <img src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover transition-transform duration-emphasis group-hover:scale-105" />
+          <MediaImg src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover transition-transform duration-emphasis group-hover:scale-105" placeholderClass="h-full w-full" />
         )}
         {(post.kind === "short" || post.kind === "video") && (
           <>
@@ -487,7 +488,7 @@ function ResultRow({ section, item, q, big = false }) {
 
   const Icon = icon;
   const go = () => {
-    if (section === "news") navigate(`/news?story=${encodeURIComponent(item.id)}`);
+    if (section === "news") navigate(`/news/${encodeURIComponent(item.id)}`);
     else if (section === "circles") navigate(`/circles/${encodeURIComponent(item.id)}`);
     else navigate("/circles?view=gatherings");
   };

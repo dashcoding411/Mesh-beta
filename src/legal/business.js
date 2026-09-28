@@ -31,7 +31,7 @@ export const BUSINESS = {
   copyrightEmail: "TODO: copyright@yourdomain",
 
   website: "TODO: https://yourdomain",
-  lastUpdated: "24 September 2026",
+  lastUpdated: "28 September 2026",
 };
 
 export function isConfigured() {

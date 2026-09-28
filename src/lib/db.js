@@ -27,6 +27,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { navigate } from "./router";
+import { storeInlineImage, storeVoiceNote, isInline, INLINE_PREFIX } from "./media";
 
 export function tsMillis(t) {
   return t?.toMillis ? t.toMillis() : 0;
@@ -61,7 +62,7 @@ export async function fetchProfile(uid) {
 /* Bump this when the terms or privacy policy change materially. Existing
    accounts keep the version they accepted, which is what lets you tell who
    still needs to see a change notice. */
-export const POLICY_VERSION = "2026-09-24";
+export const POLICY_VERSION = "2026-09-28";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -137,8 +138,10 @@ export function isMinor(profile) {
 }
 
 export async function uploadAvatar(file, onProgress) {
+  const previous = (await fetchProfile(me()).catch(() => null))?.photoURL;
   const { url } = await uploadMedia(file, onProgress, "avatars");
   await updateDoc(doc(db, "users", me()), { photoURL: url });
+  await deleteInline(previous);
   return url;
 }
 
@@ -158,10 +161,15 @@ export class StorageUnavailableError extends Error {
 
 // Probed once per session so the composer can tell the user *why* posting is
 // blocked instead of failing at the end of a form.
-let storageOk = null;
+let storageCheck = null;
 
-export async function storageAvailable() {
-  if (storageOk !== null) return storageOk;
+export function storageAvailable() {
+  // Cloud Storage needs the Blaze plan. Until VITE_STORAGE=on is set, don't
+  // probe a bucket that doesn't exist from every visitor's browser.
+  if (import.meta.env.VITE_STORAGE !== "on") return Promise.resolve(false);
+  // One shared check: callers that arrive while it's running wait for it
+  // rather than starting their own.
+  if (storageCheck) return storageCheck;
   // A missing bucket can leave the SDK retrying instead of erroring, so the
   // probe races a timeout; an unanswered bucket is treated as unavailable.
   const probe = (async () => {
@@ -173,11 +181,11 @@ export async function storageAvailable() {
       return err?.code === "storage/object-not-found";
     }
   })();
-  storageOk = await Promise.race([
+  storageCheck = Promise.race([
     probe,
     new Promise((res) => setTimeout(() => res(false), 6000)),
   ]);
-  return storageOk;
+  return storageCheck;
 }
 
 function isBucketMissing(err) {
@@ -190,7 +198,21 @@ function isBucketMissing(err) {
   );
 }
 
-export function uploadMedia(file, onProgress, folder = "uploads") {
+/* Photos go to Cloud Storage when it's on, and into Firestore (compressed)
+   when it isn't; video needs Storage either way. */
+export async function uploadMedia(file, onProgress, folder = "uploads") {
+  if (!(await storageAvailable())) {
+    if (!file.type.startsWith("image/")) throw new StorageUnavailableError();
+    onProgress?.(40);
+    // Avatars show at 40 to 120px, so there's no point keeping a big one.
+    const stored = await storeInlineImage(file, folder === "avatars" ? { maxSide: 480 } : {});
+    onProgress?.(100);
+    return stored;
+  }
+  return uploadToStorage(file, onProgress, folder);
+}
+
+function uploadToStorage(file, onProgress, folder) {
   const uid = me();
   const safeName = file.name.replace(/[^\w.-]/g, "_").slice(-80);
   const path = `${folder}/${uid}/${Date.now()}-${safeName}`;
@@ -231,9 +253,16 @@ export function kindLabel(post) {
   return KINDS[post?.kind]?.label || "Post";
 }
 
+export const POLL_DURATIONS = [
+  { id: 1, label: "1 hour", hours: 1 },
+  { id: 24, label: "1 day", hours: 24 },
+  { id: 72, label: "3 days", hours: 72 },
+  { id: 168, label: "1 week", hours: 168 },
+];
+
 export async function createPost({
   kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
-  duration = 0, trailerStart = 0, aiGenerated = false,
+  duration = 0, trailerStart = 0, aiGenerated = false, topics = [], poll = null, gif = null, sensitive = false,
 }) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
@@ -256,6 +285,18 @@ export async function createPost({
     // The author's own label for AI-made or AI-altered media. Shown on the
     // post. The Terms require it wherever media could pass for real.
     aiGenerated: !!aiGenerated,
+    topics: topics.slice(0, 3),
+    // A Strand can carry a poll (2–4 options) or a GIF from GIPHY. Votes are
+    // counted per option here and recorded privately per voter; see votePoll.
+    ...(poll ? {
+      poll: { options: poll.options, endsAt: Timestamp.fromMillis(Date.now() + poll.hours * 3600e3) },
+      pollVotes0: 0, pollVotes1: 0, pollVotes2: 0, pollVotes3: 0,
+    } : {}),
+    ...(gif ? { gif } : {}),
+    // Let through on context (quoting or calling out abuse, or borderline
+    // mockery). Viewers' apps fold or limit it, and the server only accepts
+    // a slur when this is set, so a slur can never go out unlabelled.
+    ...(sensitive ? { sensitive: true } : {}),
     likeCount: 0,
     commentCount: 0,
     saveCount: 0,
@@ -295,6 +336,27 @@ export async function fetchPostsByKind(kind) {
   return snapToList(await getDocs(q))
     .filter((p) => !p.groupId)
     .sort(byNewest);
+}
+
+/** Public posts tagged with an interest, for the feed's interest chips. */
+export async function fetchTopicPosts(topic) {
+  const q = query(collection(db, "posts"), where("visibility", "==", "public"), where("topics", "array-contains", topic), limit(100));
+  return snapToList(await getDocs(q)).filter((p) => !p.groupId).sort(byNewest);
+}
+
+/* Poll voting. One vote per person, final, and anonymous: the vote record
+   is readable only by the voter, and the post only holds totals. The vote
+   and the total move together in one write, which the rules require. */
+export async function votePostPoll(post, option) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, "posts", post.id, "votes", me()), { option, createdAt: serverTimestamp() });
+  batch.update(doc(db, "posts", post.id), { [`pollVotes${option}`]: increment(1) });
+  await batch.commit();
+}
+
+export async function fetchMyVote(postId) {
+  const snap = await getDoc(doc(db, "posts", postId, "votes", me())).catch(() => null);
+  return snap?.exists() ? snap.data().option : null;
 }
 
 /** Short and long Flicks together. Long ones play as their trailer. */
@@ -349,8 +411,14 @@ export async function approvePost(post, group) {
   await updateDoc(doc(db, "posts", post.id), { visibility: circleVisibility(group) });
 }
 
+// A photo kept in Firestore goes with the post, story or avatar that used it.
+async function deleteInline(url) {
+  if (isInline(url)) await deleteDoc(doc(db, "media", url.slice(INLINE_PREFIX.length))).catch(() => {});
+}
+
 export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
+  await deleteInline(post.mediaUrl);
   if (post.mediaPath) {
     try {
       await deleteObject(ref(storage, post.mediaPath));
@@ -416,10 +484,21 @@ export async function toggleLike(post, currentlyLiked) {
     await deleteDoc(likeRef);
     await updateDoc(postRef, { likeCount: increment(-1) });
   } else {
-    await setDoc(likeRef, { createdAt: serverTimestamp() });
+    const profile = await fetchProfile(uid);
+    await setDoc(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
     await updateDoc(postRef, { likeCount: increment(1) });
     bumpAffinity(post.authorId, SIGNAL.like).catch(() => {});
   }
+}
+
+/** A couple of recent likers, for "Liked by @a and 12 others". */
+export async function fetchLikers(postId, n = 2) {
+  const snap = await getDocs(query(collection(db, "posts", postId, "likes"), limit(8))).catch(() => null);
+  return (snap?.docs || [])
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((l) => l.username)
+    .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt))
+    .slice(0, n);
 }
 
 export async function fetchAffinity() {
@@ -605,26 +684,149 @@ export async function fetchHiddenPostIds() {
   return set;
 }
 
-export async function reportPost(post, reason) {
-  await addDoc(collection(db, "reports"), {
-    reporterId: me(),
-    postId: post.id,
-    authorId: post.authorId,
-    reason,
-    status: "open",
-    createdAt: serverTimestamp(),
-  });
-  await hidePost(post, "reported").catch(() => {});
-}
+// ---------- reports and moderation ----------
+// Anything someone else wrote can be reported: posts, comments, messages and
+// accounts. One report per person per thing. A reported message or comment
+// carries its exact text (the rules check it matches), because moderators
+// can't open private conversations.
 
 export const REPORT_REASONS = [
-  { id: "hate", label: "Hate speech or harassment" },
+  { id: "hate", label: "Hate or discrimination", description: "Attacks people for their race, ethnicity, nationality, religion, caste, sexuality, gender or disability" },
+  { id: "harassment", label: "Bullying or harassment", description: "Targets someone, piles on, or tells them to hurt themselves" },
+  { id: "violence", label: "Violence or threats", description: "Threatens or encourages harm" },
+  { id: "sexual", label: "Sexual content or nudity" },
+  { id: "self_harm", label: "Self-harm or suicide", description: "Someone may be at risk" },
   { id: "spam", label: "Spam or scam" },
-  { id: "violence", label: "Violence or dangerous content" },
-  { id: "sexual", label: "Sexual content" },
   { id: "misinfo", label: "False information" },
+  { id: "impersonation", label: "Pretending to be someone else" },
   { id: "other", label: "Something else" },
 ];
+
+export const REPORT_LABEL = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r.label]));
+
+/** A post reported by this many established accounts leaves feeds until reviewed. */
+export const HOLD_AFTER_REPORTS = 3;
+
+export function isHeld(post) {
+  return (post?.reportCount || 0) >= HOLD_AFTER_REPORTS && post?.modStatus !== "cleared";
+}
+
+/**
+ * target: { type: "post" | "comment" | "message" | "user", id, authorId,
+ *           postId?, chatId?, text? }
+ */
+export async function reportContent(target, reason, details = "") {
+  const uid = me();
+  const id = `${target.type}_${target.id}_${uid}`;
+  const report = {
+    reporterId: uid,
+    targetType: target.type,
+    targetId: target.id,
+    authorId: target.authorId,
+    reason,
+    details: String(details || "").slice(0, 500),
+    status: "open",
+    createdAt: serverTimestamp(),
+    ...(target.postId ? { postId: target.postId } : {}),
+    ...(target.chatId ? { chatId: target.chatId } : {}),
+    ...(target.type === "comment" || target.type === "message" ? { excerpt: target.text || "" } : {}),
+  };
+  const reportRef = doc(db, "reports", id);
+  // Only moderators can read reports, so a repeat shows up as a refused
+  // write (the report already exists and can't be overwritten).
+  const plain = () => setDoc(reportRef, report).then(() => ({ duplicate: false }), (err) => {
+    if (err?.code === "permission-denied") return { duplicate: true };
+    throw err;
+  });
+  if (target.type !== "post") return plain();
+  // The report and the post's count go together. Accounts under a day old
+  // can report, but their report doesn't count towards holding the post.
+  const batch = writeBatch(db);
+  batch.set(reportRef, report);
+  batch.update(doc(db, "posts", target.id), { reportCount: increment(1) });
+  try { await batch.commit(); return { duplicate: false }; }
+  catch (err) {
+    if (err?.code !== "permission-denied") throw err;
+    return plain();
+  }
+}
+
+export async function reportPost(post, reason, details = "") {
+  const res = await reportContent({ type: "post", id: post.id, authorId: post.authorId }, reason, details);
+  await hidePost(post, "reported").catch(() => {});
+  return res;
+}
+
+/** Moderators: open reports, newest first. */
+export async function fetchReports(status = "open") {
+  const q = query(collection(db, "reports"), where("status", "==", status), limit(300));
+  return snapToList(await getDocs(q))
+    // Reports made before targets had types were always about posts.
+    .map((r) => (r.targetType ? r : { ...r, targetType: "post", targetId: r.postId }))
+    .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+export async function resolveReports(reports, status, action = "") {
+  const profile = await fetchProfile(me());
+  const batch = writeBatch(db);
+  for (const r of reports) {
+    batch.update(doc(db, "reports", r.id), {
+      status, action, reviewedBy: profile?.username || "", reviewedAt: serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
+/** Keep a reported post up, and stop reports from holding it back again. */
+export async function clearPost(postId) {
+  await updateDoc(doc(db, "posts", postId), { modStatus: "cleared" });
+}
+
+export async function removeComment(postId, commentId) {
+  await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+  await updateDoc(doc(db, "posts", postId), { commentCount: increment(-1) }).catch(() => {});
+}
+
+export async function removeMessage(chatId, messageId) {
+  await deleteDoc(doc(db, "chats", chatId, "messages", messageId));
+}
+
+export const SUSPENSION_LENGTHS = [
+  { id: "1", days: 1, label: "1 day" },
+  { id: "7", days: 7, label: "7 days" },
+  { id: "30", days: 30, label: "30 days" },
+  { id: "forever", days: null, label: "Permanently" },
+];
+
+export async function suspendUser(uid, days, reason) {
+  const until = days ? Timestamp.fromMillis(Date.now() + days * 86_400_000) : Timestamp.fromDate(new Date("9999-12-31"));
+  const profile = await fetchProfile(me());
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users", uid), { suspendedUntil: until });
+  batch.set(doc(db, "suspensions", uid), { until, reason, by: profile?.username || "", createdAt: serverTimestamp() });
+  await batch.commit();
+}
+
+export async function liftSuspension(uid) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users", uid), { suspendedUntil: Timestamp.fromMillis(0) });
+  batch.delete(doc(db, "suspensions", uid));
+  await batch.commit();
+}
+
+export function isSuspended(profile) {
+  return tsMillis(profile?.suspendedUntil) > Date.now();
+}
+
+export async function fetchSuspensions() {
+  const snap = await getDocs(query(collection(db, "suspensions"), limit(200)));
+  return snapToList(snap).filter((s) => tsMillis(s.until) > Date.now());
+}
+
+export async function fetchMySuspension() {
+  const snap = await getDoc(doc(db, "suspensions", me())).catch(() => null);
+  return snap?.exists() ? snap.data() : null;
+}
 
 // ---------- comments ----------
 
@@ -633,7 +835,14 @@ export async function fetchComments(postId) {
   return snapToList(await getDocs(q));
 }
 
-export async function addComment(post, text) {
+/** The first comment on a post, shown under it in the feed. */
+export async function fetchTopComment(postId) {
+  const snap = await getDocs(query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limit(1))).catch(() => null);
+  const d = snap?.docs[0];
+  return d ? { id: d.id, ...d.data() } : null;
+}
+
+export async function addComment(post, text, gif = null, sensitive = false) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
   const comment = {
@@ -642,6 +851,8 @@ export async function addComment(post, text) {
     authorDisplayName: profile?.name || profile?.username || "",
     authorPhoto: profile?.photoURL || "",
     text,
+    ...(gif ? { gif } : {}),
+    ...(sensitive ? { sensitive: true } : {}),
     createdAt: serverTimestamp(),
   };
   const ref_ = await addDoc(collection(db, "posts", post.id, "comments"), comment);
@@ -656,6 +867,29 @@ export async function deleteComment(post, commentId) {
   await updateDoc(doc(db, "posts", post.id), { commentCount: increment(-1) }).catch(() => {});
 }
 
+// ---------- your interests (private) ----------
+// Stored where only you can read them, and used only to order and filter
+// what you see. Never shown on your profile.
+
+export async function fetchMyPrefs() {
+  const snap = await getDoc(doc(db, "users", me(), "private", "prefs")).catch(() => null);
+  return snap?.exists() ? snap.data() : { interests: [] };
+}
+
+/** Words and phrases you never want to see: posts and comments with them are hidden for you. */
+export async function saveHiddenWords(words) {
+  const clean = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))].slice(0, 200).map((w) => w.slice(0, 60));
+  await setDoc(doc(db, "users", me(), "private", "prefs"), { hiddenWords: clean, updatedAt: serverTimestamp() }, { merge: true });
+  return clean;
+}
+
+export async function saveMyInterests(interests) {
+  await setDoc(doc(db, "users", me(), "private", "prefs"), {
+    interests: interests.slice(0, 12),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
 // ---------- follows ----------
 
 export async function fetchMyFollowingSet() {
@@ -663,6 +897,12 @@ export async function fetchMyFollowingSet() {
   const set = new Set();
   (await getDocs(q)).docs.forEach((d) => set.add(d.id));
   return set;
+}
+
+/** Does `uid` follow you? Calls need it: only followers can be rung. */
+export async function followsMe(uid) {
+  const snap = await getDoc(doc(db, "users", uid, "following", me())).catch(() => null);
+  return !!snap?.exists();
 }
 
 export async function isFollowing(targetUid) {
@@ -858,14 +1098,19 @@ export async function fetchActiveStories(followingSet = new Set()) {
 
 // ---------- news (reviewed against sources before publication) ----------
 
-export async function submitNews({ title, script, sources }) {
+export async function submitNews({ title, script, sources, topic = "world", keyPoints = [], location = "", coverUrl = "" }) {
   const profile = await fetchProfile(me());
   const item = {
     authorId: me(),
     authorName: profile?.username || "unknown",
     title,
-    script,
+    script,       // [1], [2]… in the text cite the numbered sources
     sources, // array of URLs
+    topic,
+    keyPoints: keyPoints.slice(0, 3),
+    location,
+    coverUrl,
+    corrections: [],
     status: "pending",
     reviewNote: "",
     likeCount: 0,
@@ -894,7 +1139,48 @@ export async function isAdmin() {
 }
 
 export async function reviewNews(id, status, reviewNote = "") {
-  await updateDoc(doc(db, "news", id), { status, reviewNote });
+  const profile = await fetchProfile(me());
+  await updateDoc(doc(db, "news", id), {
+    status,
+    reviewNote,
+    reviewedBy: profile?.username || "",
+    reviewedAt: serverTimestamp(),
+  });
+}
+
+/** Authors can withdraw a submission; reviewers can take a story down. */
+export async function deleteNews(id) {
+  const story = await fetchNewsStory(id);
+  await deleteDoc(doc(db, "news", id));
+  await deleteInline(story?.coverUrl);
+}
+
+export async function fetchNewsStory(id) {
+  const snap = await getDoc(doc(db, "news", id)).catch(() => null);
+  return snap?.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+/** Anyone can flag an error; only admins read the flags. */
+export async function suggestCorrection(storyId, text) {
+  const profile = await fetchProfile(me());
+  await addDoc(collection(db, "news", storyId, "correctionRequests"), {
+    authorId: me(),
+    authorName: profile?.username || "",
+    text,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function fetchCorrectionRequests(storyId) {
+  const q = query(collection(db, "news", storyId, "correctionRequests"), limit(100));
+  return snapToList(await getDocs(q));
+}
+
+/** Admins append a public correction to a published story. It's never edited away. */
+export async function addCorrection(story, note) {
+  await updateDoc(doc(db, "news", story.id), {
+    corrections: arrayUnion({ note, at: Timestamp.now() }),
+  });
 }
 
 // ---------- messaging ----------
@@ -1041,6 +1327,13 @@ export function listenMessages(chatId, callback) {
   return onSnapshot(q, (snap) => callback(snapToList(snap)));
 }
 
+/* Record-and-send: the audio goes into the conversation's own media (so
+   only its members can play it), then a message points at it. */
+export async function sendVoiceMessage(chatId, blob, duration, peaks) {
+  const mediaId = await storeVoiceNote(chatId, blob, duration);
+  await sendMessage(chatId, "", { voice: { mediaId, duration: Math.round(duration), peaks } });
+}
+
 export async function sendMessage(chatId, text, extras = {}) {
   const uid = me();
   const msg = {
@@ -1052,7 +1345,11 @@ export async function sendMessage(chatId, text, extras = {}) {
   };
   await addDoc(collection(db, "chats", chatId, "messages"), msg);
   await updateDoc(chatDoc(chatId), {
-    lastMessage: (extras.poll ? "📊 " + extras.poll.question : text).slice(0, 80),
+    lastMessage: (extras.poll ? `Poll: ${extras.poll.question}`
+      : extras.voice ? `Voice message · ${Math.floor(extras.voice.duration / 60)}:${String(extras.voice.duration % 60).padStart(2, "0")}`
+      : extras.gif ? "Sent a GIF"
+      : extras.call ? extras.call.summary
+      : text).slice(0, 80),
     lastSenderId: uid,
     updatedAt: serverTimestamp(),
   });
@@ -1074,12 +1371,18 @@ export async function editMessage(chatId, msg, text) {
 }
 
 // Unsend keeps a tombstone so the thread doesn't silently reshuffle.
-export async function unsendMessage(chatId, msg) {
+export async function unsendMessage(chatId, msg, { latest = false } = {}) {
   await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
     text: "",
     deleted: true,
     sharedPost: deleteField(),
+    gif: deleteField(),
+    voice: deleteField(),
   });
+  // The recording itself goes too, not just the bubble pointing at it.
+  if (msg.voice?.mediaId) await deleteDoc(doc(db, "chats", chatId, "media", msg.voice.mediaId)).catch(() => {});
+  // The inbox preview shouldn't keep showing what was unsent.
+  if (latest) await updateDoc(chatDoc(chatId), { lastMessage: "Unsent a message" }).catch(() => {});
 }
 
 // --- reactions ---
@@ -1334,7 +1637,7 @@ export async function fetchMyGroups() {
   return mineIds.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-export async function createGroup({ name, description, privacy = "public", ageLimit = 0 }) {
+export async function createGroup({ name, description, privacy = "public", ageLimit = 0, interests = [] }) {
   const uid = me();
   const profile = await fetchProfile(uid);
   const group = {
@@ -1345,6 +1648,7 @@ export async function createGroup({ name, description, privacy = "public", ageLi
     memberCount: 1,
     requireApproval: privacy !== "public",
     ageLimit,
+    interests: interests.slice(0, 3),
     rules: "",
     coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
     pinnedPostId: "",
@@ -1408,6 +1712,10 @@ export function circleVisibility(group) {
 
 export async function updateCircle(groupId, fields) {
   await updateDoc(doc(db, "groups", groupId), fields);
+}
+
+export async function setCircleInterests(groupId, interests) {
+  await updateDoc(doc(db, "groups", groupId), { interests: interests.slice(0, 3) });
 }
 
 export async function setCircleRules(groupId, rules) {
@@ -1809,6 +2117,7 @@ export async function exportMyData() {
     fetchFollowList(uid, "followers"),
   ]);
   const reposts = await fetchRepostsBy([uid], 500).catch(() => []);
+  const prefs = await fetchMyPrefs().catch(() => null);
   const comments = [];
   for (const p of posts) {
     const cs = await fetchComments(p.id).catch(() => []);
@@ -1818,6 +2127,7 @@ export async function exportMyData() {
     exportedAt: new Date().toISOString(),
     account: { uid, email: auth.currentUser?.email || "", phone: auth.currentUser?.phoneNumber || "" },
     profile,
+    interests: prefs?.interests || [],
     posts,
     comments,
     reposts: reposts.map(({ postId, createdAt }) => ({ postId, createdAt })),
@@ -1860,6 +2170,14 @@ export async function deleteMyAccountData() {
     await deleteDoc(d.ref).catch(() => {});
   }
   await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
+  await deleteDoc(doc(db, "users", uid, "private", "prefs")).catch(() => {});
+  // Stories, then every photo you stored (posts, stories, avatar, news covers).
+  const mine = async (col, field) => {
+    const snap = await getDocs(query(collection(db, col), where(field, "==", uid), limit(500))).catch(() => null);
+    return snap?.docs || [];
+  };
+  for (const d of await mine("stories", "authorId")) await deleteDoc(d.ref).catch(() => {});
+  for (const d of await mine("media", "ownerId")) await deleteDoc(d.ref).catch(() => {});
   await deleteDoc(doc(db, "users", uid)).catch(() => {});
 }
 

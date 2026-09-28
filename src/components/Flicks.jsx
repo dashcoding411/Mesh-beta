@@ -3,7 +3,7 @@ import {
   Heart, MessageCircle, Repeat2, Send, Bookmark, Play, Pause, Volume2, VolumeX, Plus, Check, Clapperboard, WandSparkles,
 } from "lucide-react";
 import {
-  fetchVideos, fetchPost, fetchAffinity, toggleLike, toggleSave, toggleRepost, toggleFollow,
+  fetchVideos, fetchPost, fetchAffinity, toggleLike, toggleSave, toggleRepost, toggleFollow, fetchTopicPosts,
   recordSignal, openUserProfile, openWatch, me, TRAILER_SECONDS,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
@@ -11,6 +11,8 @@ import { usePostStates } from "../lib/usePostStates";
 import { formatDuration, shortTime, compact } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
+import { InterestChips } from "./Interests";
+import { interestById } from "../lib/interests";
 import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState, Spinner } from "./ui/States";
@@ -28,7 +30,8 @@ let soundOn = false;
    so long-form gets discovered where people are already watching, and you
    decide whether it's worth your next twenty minutes. */
 export default function Flicks({ startId }) {
-  const { following, blocked } = useShell();
+  const { following, blocked, interests, openInterests, hiddenWords } = useShell();
+  const [topic, setTopic] = useState("all");
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
   const [viewer, setViewer] = usePostStates(videos);
@@ -38,8 +41,12 @@ export default function Flicks({ startId }) {
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [list, affinity] = await Promise.all([fetchVideos(), fetchAffinity().catch(() => new Map())]);
-      let ordered = rankFeed(list.filter((p) => !blocked.has(p.authorId)), { followingSet: following, affinity, myUid: me() });
+      const [all, affinity] = await Promise.all([
+        topic === "all" ? fetchVideos() : fetchTopicPosts(topic).then((l) => l.filter((p) => p.kind === "short" || p.kind === "video")),
+        fetchAffinity().catch(() => new Map()),
+      ]);
+      const list = all.filter((p) => !blocked.has(p.authorId));
+      let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords });
       if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
         if (start && (start.kind === "short" || start.kind === "video")) {
@@ -53,7 +60,7 @@ export default function Flicks({ startId }) {
     }
     // startId only matters on arrival; re-ranking when it changes would reshuffle under the viewer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following, blocked]);
+  }, [following, blocked, topic, interests, hiddenWords]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
@@ -78,7 +85,10 @@ export default function Flicks({ startId }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
-      <HomeHeader section="flicks" transparent />
+      <HomeHeader section="flicks" transparent>
+        <InterestChips interests={interests} value={topic} onEdit={openInterests} overlay
+          onChange={(t) => { setTopic(t); setVideos(null); scroller.current?.scrollTo({ top: 0 }); }} />
+      </HomeHeader>
 
       {error && <div className="flex flex-1 items-center justify-center"><ErrorState title="Couldn't load Flicks" onRetry={load} /></div>}
 
@@ -90,9 +100,10 @@ export default function Flicks({ startId }) {
 
       {!error && videos?.length === 0 && (
         <div className="flex flex-1 items-center justify-center">
-          <EmptyState icon={Clapperboard} title="No Flicks yet"
-            body="Short videos play here in full. Long ones play a trailer, then open to the whole thing."
-            action={<CreateFlickButton />} />
+          <EmptyState icon={Clapperboard}
+            title={topic === "all" ? "No Flicks yet" : `No ${interestById(topic)?.label || ""} Flicks yet`}
+            body={topic === "all" ? "Short videos play here in full. Long ones play a trailer, then open to the whole thing." : "Flicks tagged with this interest show here."}
+            action={topic === "all" ? <CreateFlickButton /> : <Button onClick={() => setTopic("all")}>Show all Flicks</Button>} />
         </div>
       )}
 

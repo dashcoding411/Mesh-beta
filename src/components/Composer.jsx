@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info } from "lucide-react";
+import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags } from "lucide-react";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
@@ -7,6 +7,11 @@ import {
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration } from "../lib/format";
+import { suggestTopics, MAX_POST_TOPICS } from "../lib/interests";
+import { gifsEnabled } from "../lib/gifs";
+import { InterestToggles } from "./Interests";
+import GifPicker, { GifView } from "./GifPicker";
+import { PollBuilder } from "./Poll";
 import Dialog from "./ui/Dialog";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
@@ -43,12 +48,12 @@ function readDuration(file) {
    seconds play as its trailer in the Flicks feed.
 
    Nothing you've typed or picked is lost when something fails. */
-export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind }) {
+export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "" }) {
   const toast = useToast();
   // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
   const minor = isMinor(profile) || !!profile?.isPrivate;
   const [kind, setKind] = useState(initialKind || lastKind);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [title, setTitle] = useState("");
   const [alt, setAlt] = useState("");
   const [ai, setAi] = useState(false);
@@ -58,12 +63,23 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [trailerStart, setTrailerStart] = useState(0);
   const [errors, setErrors] = useState({});
   const [progress, setProgress] = useState(null);
+  // A borderline or quoted post needs a second, deliberate press, with a note
+  // saying what happens next. Any edit resets it.
+  const [warned, setWarned] = useState("");
+  const [note, setNote] = useState("");
   const [mediaReady, setMediaReady] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [topics, setTopics] = useState([]);
+  const [topicsTouched, setTopicsTouched] = useState(false);
+  const [poll, setPoll] = useState(attach === "poll" ? { options: ["", ""], hours: 24 } : null);
+  const [gif, setGif] = useState(null);
+  const [gifPicker, setGifPicker] = useState(attach === "gif" && gifsEnabled);
   const fileInput = useRef(null);
   const fileId = useId();
 
   const spec = KINDS.find((k) => k.id === kind);
+  // Suggest topics from the words until the author picks their own.
+  const shownTopics = topicsTouched ? topics : suggestTopics(`${title} ${text}`);
   const long = kind === "video" && duration > LONG_VIDEO_SECONDS;
   const busy = progress !== null;
 
@@ -96,32 +112,42 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     const max = kind === "text" ? STRAND_MAX : LIMITS.text;
     const vText = validateText(text, max, kind === "text" ? "Strand" : "Caption");
     if (vText.error) e.text = vText.error;
-    if (kind === "text" && !vText.text) e.text = "Write something first.";
+    if (kind === "text" && !vText.text && !gif) e.text = poll ? "Ask your question first." : "Write something first.";
+    if (kind === "text" && poll) {
+      const opts = poll.options.map((o) => o.trim()).filter(Boolean);
+      if (opts.length < 2) e.poll = "Give the poll at least two choices.";
+      else if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) e.poll = "Each choice needs to be different.";
+    }
     if (spec.media && !file) e.file = kind === "post" ? "Add a photo. Stills are photos." : "Add a video.";
     if (long) {
       const vTitle = validateText(title, LIMITS.title, "Title");
       if (vTitle.error) e.title = vTitle.error;
       else if (!vTitle.text) e.title = "Long Flicks need a title. It's what people see before they commit.";
     }
-    const mod = checkContent(`${long ? title : ""}\n${text}`, { key: kind });
+    // Everything someone else will read goes through the same check.
+    const pollText = kind === "text" && poll ? poll.options.join("\n") : "";
+    const altText = spec.media === "image" ? alt : "";
+    const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}`, { key: kind, allowQuoted: true });
     if (!e.text && mod.error) e.text = mod.error;
     if (group && !e.text) {
       const blocked = screenPost(`${title}\n${text}`, group, profile, membership);
       if (blocked) e.text = blocked;
     }
-    return { e, text: vText.text || "" };
+    return { e, text: vText.text || "", note: mod.note || "", sensitive: !!mod.sensitive };
   };
 
   const submit = async (ev) => {
     ev.preventDefault();
-    const { e, text: clean } = validate();
+    const { e, text: clean, note: modNote, sensitive } = validate();
     setErrors(e);
     if (Object.keys(e).length) {
       // Send focus to the first field that needs attention.
-      const first = ["file", "title", "text"].find((k) => e[k]);
+      const first = ["file", "title", "text", "poll"].find((k) => e[k]);
       document.getElementById(`composer-${first}`)?.focus();
       return;
     }
+    const fingerprint = `${title}|${text}|${alt}|${poll?.options.join("|") || ""}`;
+    if (modNote && warned !== fingerprint) { setWarned(fingerprint); setNote(modNote); return; }
     try {
       let media = { url: "", path: "" };
       if (file) {
@@ -139,6 +165,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         duration,
         trailerStart: long ? trailerStart : 0,
         aiGenerated: spec.media ? ai : false,
+        topics: shownTopics,
+        sensitive,
+        poll: kind === "text" && poll ? { options: poll.options.map((o) => o.trim()).filter(Boolean), hours: poll.hours } : null,
+        gif: kind === "text" && gif ? { url: gif.url, width: gif.width, height: gif.height, title: gif.title } : null,
         groupId,
         // In a circle the circle decides: members-only for private circles,
         // and "pending" when the circle wants to approve posts first.
@@ -162,7 +192,8 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     }
   };
 
-  const mediaBlocked = spec.media && mediaReady === false;
+  // Photos work without Cloud Storage (stored compressed in Firestore); video doesn't.
+  const mediaBlocked = spec.media === "video" && mediaReady === false;
   const heading = group ? `Post to ${group.name}` : "Create";
   const remaining = STRAND_MAX - text.length;
 
@@ -171,6 +202,9 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       footer={
         <div className="space-y-3">
           <div aria-live="polite"><InlineMessage>{errors.submit}</InlineMessage></div>
+          {warned === `${title}|${text}|${alt}|${poll?.options.join("|") || ""}` && (
+            <p role="status" className="rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">{note}</p>
+          )}
           {busy && (
             <div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar"
@@ -186,7 +220,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             )}
             <span className="flex-1" />
             <Button type="submit" form="composer-form" variant="primary" loading={busy} disabled={mediaBlocked}>
-              Post {long ? "long Flick" : spec.label}
+              {warned === `${title}|${text}|${alt}|${poll?.options.join("|") || ""}` ? "Post anyway" : `Post ${long ? "long Flick" : spec.label}`}
             </Button>
           </div>
           {minor && !groupId && (
@@ -204,9 +238,9 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           <div className="flex gap-3 rounded-card border border-amber-500/30 bg-amber-500/10 p-4" role="note">
             <Info size={18} className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
             <div>
-              <p className="text-callout font-semibold text-warning-text">Photo and video uploads aren't switched on yet</p>
+              <p className="text-callout font-semibold text-warning-text">Video uploads aren't switched on yet</p>
               <p className="mt-1 text-caption text-fg-muted">
-                They need Firebase Cloud Storage, which needs the Blaze plan. Strands work right now.
+                Video needs Firebase Cloud Storage, which needs the Blaze plan. Stills and Strands work right now.
               </p>
               <Button size="sm" className="mt-3" onClick={() => switchKind("text")}>Write a Strand instead</Button>
             </div>
@@ -290,6 +324,24 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                   {remaining} left
                 </span>
               </div>
+              {gif && (
+                <div className="relative mt-3 w-fit">
+                  <GifView gif={gif} />
+                  <IconButton icon={X} label="Remove GIF" tone="overlay" className="absolute right-1 top-1" onClick={() => setGif(null)} />
+                </div>
+              )}
+              {poll && (
+                <div className="mt-3">
+                  <PollBuilder value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />
+                  <div aria-live="polite" className="mt-1.5"><InlineMessage>{errors.poll}</InlineMessage></div>
+                </div>
+              )}
+              {!poll && !gif && (
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" icon={ChartBar} onClick={() => setPoll({ options: ["", ""], hours: 24 })}>Add a poll</Button>
+                  {gifsEnabled && <Button size="sm" icon={Image} onClick={() => setGifPicker(true)}>Add a GIF</Button>}
+                </div>
+              )}
             </div>
           ) : (
             <Field label={long ? "Description" : "Caption"} optional error={errors.text} count={text.length} max={LIMITS.text}>
@@ -308,6 +360,18 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </Field>
         )}
 
+        {!mediaBlocked && (
+          <fieldset>
+            <legend className="mb-2 flex items-center gap-2 text-callout font-medium">
+              <Tags size={16} aria-hidden="true" /> Topics
+              <span className="font-normal text-fg-subtle">Up to {MAX_POST_TOPICS}{!topicsTouched && shownTopics.length ? ", suggested from your words" : ""}</span>
+            </legend>
+            <InterestToggles value={shownTopics} max={MAX_POST_TOPICS} label="Topics"
+              onChange={(v) => { setTopicsTouched(true); setTopics(v); }} />
+            <p className="mt-2 text-caption text-fg-subtle">Topics put your post in front of people who follow that interest.</p>
+          </fieldset>
+        )}
+
         {file && spec.media && (
           <div className="rounded-card border border-line bg-surface p-3">
             <Checkbox checked={ai} onChange={setAi}
@@ -317,6 +381,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </div>
         )}
       </form>
+      {gifPicker && <GifPicker onClose={() => setGifPicker(false)} onPick={(g) => { setGif(g); setGifPicker(false); }} />}
     </Dialog>
   );
 }

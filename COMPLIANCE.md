@@ -80,10 +80,11 @@ guidelines**, which are conditions of using those sign-in services.
 
 ### R4: Media stored outside Australia · **MEDIUM**
 
-Firestore is in `australia-southeast1` (Sydney). The default Cloud Storage
-bucket is **not**: uploaded photos and video go to the US. That is a
-cross-border disclosure under Australian Privacy Principle 8, and the Privacy
-Policy discloses it honestly.
+Firestore is in `australia-southeast1` (Sydney). While Cloud Storage is off,
+photos and voice messages are stored in Firestore, so they stay in Sydney too.
+The default Cloud Storage bucket would **not**: video (and photos, once Storage
+is on) would go to the US. That is a cross-border disclosure under Australian
+Privacy Principle 8, and the Privacy Policy discloses it honestly.
 
 **Fix properly:** when you enable the Blaze plan (Storage is off entirely right
 now), create the bucket in `australia-southeast1` and update the policy. Do it
@@ -124,6 +125,16 @@ Both have been rewritten to describe what actually happens. **Keep them that
 way.** Overstating safety is a misleading-conduct risk under ACL s18 and is
 also how platforms end up in front of regulators.
 
+September 2026: moderation now has a server-side slur check, reports on posts,
+comments, messages and accounts, a moderators' queue, suspensions enforced by
+the rules, and reach limits for borderline content. The Community Guidelines
+describe each of these and say plainly that the filter misses things, covers
+English only, and can't read images, video or voice. That's accurate; keep it
+accurate as the system changes. The Online Safety Act 2021 (basic online
+safety expectations) expects reporting tools and timely action on reports:
+someone has to actually work the queue, and response times should be tracked
+once there's volume.
+
 ### R8: No App Check · **LOW-MEDIUM**
 
 The Firebase config is client-side, which is normal and not a secret. But
@@ -143,6 +154,15 @@ quota abuse and automated signup are open. **Enable App Check before launch.**
   lazily by the Firebase SDK and *only* when someone requests an SMS code
   (`AuthPage.jsx`). Email and Google sign-in never load it.
 - **Embeds: none.** No YouTube, no Twitter, no iframes.
+- **GIPHY** (only if `VITE_GIPHY_API_KEY` is set). Search words and the
+  viewer's IP address go to GIPHY when the picker is open, and every GIF shown
+  on Mesh loads from GIPHY's media servers. No account details are sent. The
+  picker shows "Powered by GIPHY" as GIPHY's API terms require, and under-16
+  accounts get G-rated results only. Disclosed in the Privacy Policy.
+- **Google STUN during calls.** Browsers ask Google's public STUN servers for
+  their public address, so Google sees the IP addresses of people on calls, and
+  each side learns the other's IP address. Disclosed in the Privacy Policy. Call
+  setup data is deleted from Firestore when a call ends.
 
 ### Storage in the browser
 - Firebase Auth session token (session-only unless "Keep me signed in").

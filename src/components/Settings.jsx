@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
-  MessageCircle, MessageSquare, Ban, UserPlus, Check, X,
+  MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
 } from "lucide-react";
+import { plural } from "../lib/format";
+import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage } from "../lib/auth";
 import {
   exportMyData, deleteMyAccountData, updateProfileFields, me, POLICY_VERSION, tsMillis, isMinor,
   setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile,
+  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords,
 } from "../lib/db";
 import Switch from "./ui/Switch";
 import IconButton from "./ui/IconButton";
@@ -32,13 +34,15 @@ const PROVIDERS = { password: "Email and password", "google.com": "Google", "app
    header says so, because the line between "my profile" and "my account"
    is exactly where people get confused about who can see what. */
 export default function Settings() {
-  const { profile, setProfile } = useShell();
+  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords } = useShell();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
+  const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     fetchFollowRequests().then(setRequests).catch(() => setRequests([]));
     fetchBlocked().then(setBlockedList).catch(() => setBlockedList([]));
+    isAdmin().then(setAdmin).catch(() => {});
   }, []);
   const user = auth.currentUser;
   const providers = user?.providerData?.map((p) => p.providerId) || [];
@@ -102,6 +106,23 @@ export default function Settings() {
               onClick={() => setDialog("blocked")} />
           </Group>
 
+          <Group title="Your feed">
+            <Row icon={Sparkles} label="Your interests"
+              value={interests?.length ? interests.map((id) => interestById(id)?.label).filter(Boolean).join(", ") : "None picked yet"}
+              help="Shapes For you, Flicks and circle suggestions. Private: nobody else can see them."
+              onClick={openInterests} />
+            <Row icon={EyeOff} label="Hidden words"
+              value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
+              help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
+              onClick={() => setDialog("hidden")} />
+          </Group>
+
+          {admin && (
+            <Group title="Moderation">
+              <Row icon={Gavel} label="Moderation queue" value="Review reports and suspensions" onClick={() => navigate("/account/moderation")} />
+            </Group>
+          )}
+
           <Group title="Age">
             <Row icon={CalendarDays} label="Birth year"
               value={profile?.birthYear > 0 ? String(profile.birthYear) : "Not set"}
@@ -158,6 +179,10 @@ export default function Settings() {
       )}
       {dialog === "blocked" && (
         <BlockedDialog list={blockedList || []} onClose={() => setDialog(null)} onChange={setBlockedList} />
+      )}
+      {dialog === "hidden" && (
+        <HiddenWordsDialog initial={hiddenWords || []} onClose={() => setDialog(null)}
+          onSaved={(list) => { setHiddenWords(list); setDialog(null); }} />
       )}
       {dialog === "password" && <PasswordDialog onClose={() => setDialog(null)} />}
       {dialog === "birthyear" && (
@@ -533,6 +558,66 @@ function BlockedDialog({ list, onClose, onChange }) {
             </li>
           ))}
         </ul>
+      )}
+    </Dialog>
+  );
+}
+
+/* Your own filter, on top of Mesh's. Anything with these words or phrases
+   is hidden from your feeds, Flicks, search and comments. Nobody else sees
+   the list, and the people who used the words aren't told. */
+function HiddenWordsDialog({ initial, onClose, onSaved }) {
+  const toast = useToast();
+  const [words, setWords] = useState(initial);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const add = (e) => {
+    e?.preventDefault();
+    const w = draft.trim().toLowerCase();
+    if (!w || words.includes(w) || words.length >= 200) return;
+    setWords([...words, w.slice(0, 60)]);
+    setDraft("");
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      const list = await saveHiddenWords(words);
+      toast({ title: "Hidden words saved" });
+      onSaved(list);
+    } catch {
+      toast({ tone: "error", title: "Couldn't save them" });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog title="Hidden words" onClose={busy ? undefined : onClose}
+      footer={<div className="flex justify-end gap-2">
+        <Button onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" loading={busy} onClick={save}>Save</Button>
+      </div>}>
+      <p className="mb-4 text-callout text-fg-muted">
+        Posts and comments with these words or phrases are hidden for you. Mesh already blocks slurs and attacks on groups for
+        everyone; this is for anything else you'd rather not see.
+      </p>
+      <form onSubmit={add} className="flex items-end gap-2">
+        <Field label="Add a word or phrase" className="flex-1">
+          <Input value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} placeholder="e.g. spoilers" />
+        </Field>
+        <Button type="submit" icon={Plus} disabled={!draft.trim()}>Add</Button>
+      </form>
+      {words.length > 0 ? (
+        <ul className="mt-4 flex flex-wrap gap-2" aria-label="Your hidden words">
+          {words.map((w) => (
+            <li key={w} className="inline-flex min-h-9 items-center gap-1 rounded-full bg-surface-2 pl-3 text-callout">
+              {w}
+              <IconButton icon={X} label={`Remove ${w}`} size={14} onClick={() => setWords(words.filter((x) => x !== w))} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 text-caption text-fg-subtle">No hidden words yet.</p>
       )}
     </Dialog>
   );

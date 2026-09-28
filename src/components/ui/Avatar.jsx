@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMediaSrc } from "../../lib/media";
 
 /* Initials on a gradient when there's no photo, or when the photo fails to
    load, which is the case people forget. alt="" on purpose: an avatar always
@@ -6,6 +7,7 @@ import { useState } from "react";
    reader say the name twice. */
 export default function Avatar({ profile, size = 40, ring = false, className = "" }) {
   const [broken, setBroken] = useState(false);
+  const src = useMediaSrc(profile?.photoURL);
   const name = profile?.name || profile?.username || "?";
   const initials = name
     .replace(/^@/, "")
@@ -18,8 +20,8 @@ export default function Avatar({ profile, size = 40, ring = false, className = "
   const style = { width: size, height: size };
   const text = size >= 56 ? "text-title-3" : size >= 36 ? "text-callout" : "text-label";
 
-  const face = profile?.photoURL && !broken ? (
-    <img src={profile.photoURL} alt="" onError={() => setBroken(true)} style={style}
+  const face = src && !broken ? (
+    <img src={src} alt="" onError={() => setBroken(true)} style={style}
       className="shrink-0 rounded-full bg-surface-2 object-cover" />
   ) : (
     <span aria-hidden="true" style={style}

@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft, Pin, PinOff, Lock, LockOpen, ShieldCheck, Settings2, PenLine, CalendarPlus, Users,
   UserPlus, Clock, Check, X, MessageSquare, CalendarDays, Info, Image, Clapperboard, Hourglass,
-  Link2Off, UserCheck, BadgeCheck, Ban, VolumeX,
+  Link2Off, UserCheck, BadgeCheck, Ban, VolumeX, ChartBar, Sticker,
 } from "lucide-react";
+import { gifsEnabled } from "../lib/gifs";
 import {
   fetchGroupPosts, fetchPendingPosts, approvePost, deletePost, fetchMembership, fetchMembers, joinGroup,
   leaveGroup, setMemberRole, removeMember, ROLES, fetchEvents, fetchMyRsvps, me, fetchGroupById,
   requestToJoin, myJoinRequest, fetchJoinRequests, approveJoinRequest, declineJoinRequest,
-  setCircleRules, setScreeningQuestions, setCircleLimits, AUTOMOD_DEFAULTS, AGE_LIMITS,
+  setCircleRules, setCircleInterests, setScreeningQuestions, setCircleLimits, AUTOMOD_DEFAULTS, AGE_LIMITS,
   setPinnedPost, setPostLocked, penaliseMember, isMuted, isCircleMod, contributorBadge, countPostsByMember,
   createPost, screenPost, circlePostVisibility, canJoinDirectly, meetsAgeLimit, STRAND_MAX,
 } from "../lib/db";
@@ -29,6 +30,8 @@ import { EmptyState, ErrorState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import PostCard from "./PostCard";
 import { PrivacyBadge } from "./Circles";
+import { InterestToggles } from "./Interests";
+import { interestById } from "../lib/interests";
 import { GatheringCard, NewGatheringDialog } from "./Events";
 
 const TABS = [
@@ -234,6 +237,18 @@ function About({ group, memberCount, limits }) {
       <Panel title="About" icon={Info}>
         <p className="text-callout text-fg">{group.description || "No description yet."}</p>
         <p className="mt-2 text-caption text-fg-subtle">{plural(memberCount, "member")} · started {shortTime(group.createdAt)}</p>
+        {group.interests?.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Interests">
+            {group.interests.map((id) => {
+              const it = interestById(id);
+              return it ? (
+                <li key={id} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-caption font-semibold text-fg-muted">
+                  <it.icon size={12} aria-hidden="true" />{it.label}
+                </li>
+              ) : null;
+            })}
+          </ul>
+        )}
       </Panel>
       <Panel title="Limits" icon={ShieldCheck}>
         {limits.length === 0 ? (
@@ -287,6 +302,7 @@ function Panel({ title, icon: Icon, children }) {
 function CircleQuickPost({ group, membership, onPosted }) {
   const { profile, openComposer } = useShell();
   const toast = useToast();
+  const [warned, setWarned] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -296,14 +312,15 @@ function CircleQuickPost({ group, membership, onPosted }) {
     const v = validateText(text, STRAND_MAX, "Post");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "strand" });
+    const mod = checkContent(v.text, { key: "strand", allowQuoted: true });
     if (mod.error) return setError(mod.error);
     const blocked = screenPost(v.text, group, profile, membership);
     if (blocked) return setError(blocked);
+    if (mod.note && !warned) return setWarned(mod.note);
     setBusy(true);
     setError("");
     try {
-      const post = await createPost({ kind: "text", text: v.text, groupId: group.id, visibility: circlePostVisibility(group, membership) });
+      const post = await createPost({ kind: "text", text: v.text, groupId: group.id, visibility: circlePostVisibility(group, membership), sensitive: mod.sensitive });
       markPosted("strand", v.text);
       setText("");
       onPosted(post);
@@ -327,16 +344,23 @@ function CircleQuickPost({ group, membership, onPosted }) {
         <div className="min-w-0 flex-1">
           <label htmlFor="circle-post" className="sr-only">Write a post</label>
           <Textarea id="circle-post" autoGrow rows={1} maxRows={8} value={text}
-            onChange={(e) => { setText(e.target.value); if (error) setError(""); }}
+            onChange={(e) => { setText(e.target.value); setWarned(""); if (error) setError(""); }}
             placeholder={`Share something with ${group.name}…`} maxLength={STRAND_MAX}
             aria-invalid={error ? "true" : undefined} aria-describedby="circle-post-error"
             className="!border-transparent !bg-transparent !px-0 !py-1.5 hover:!border-transparent focus:!ring-0" />
-          <div aria-live="polite" className="mt-1"><InlineMessage id="circle-post-error">{error}</InlineMessage></div>
+          <div aria-live="polite" className="mt-1">
+            <InlineMessage id="circle-post-error">{error}</InlineMessage>
+            {warned && <p className="text-caption text-warning-text">{warned}</p>}
+          </div>
           <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
             <IconButton icon={Image} label="Post a photo" size={20} className="-ml-2.5 text-accent-text" onClick={() => openComposer(composerOpts("post"))} />
             <IconButton icon={Clapperboard} label="Post a Flick" size={20} className="text-accent-text" onClick={() => openComposer(composerOpts("video"))} />
+            <IconButton icon={ChartBar} label="Ask with a poll" size={20} className="text-accent-text" onClick={() => openComposer({ ...composerOpts("text"), attach: "poll", text })} />
+            {gifsEnabled && <IconButton icon={Sticker} label="Post a GIF" size={20} className="text-accent-text" onClick={() => openComposer({ ...composerOpts("text"), attach: "gif", text })} />}
             <span className="flex-1" />
-            <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!text.trim()}>Post</Button>
+            <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!text.trim()}>
+              {warned ? "Post anyway" : "Post"}
+            </Button>
           </div>
         </div>
       </div>
@@ -649,7 +673,7 @@ function ManageDialog({ group, isOwner, section, onSection, onClose, onSaved, on
           { id: "requests", label: "Requests" },
           { id: "posts", label: "Posts" },
           { id: "limits", label: "Limits" },
-          { id: "rules", label: "Rules" },
+          { id: "rules", label: "Details" },
         ]} />
       {section === "requests" && <JoinRequests group={group} onCountChange={onCountChange} />}
       {section === "posts" && <PostQueue group={group} />}
@@ -860,6 +884,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
   const toast = useToast();
   const [rules, setRules] = useState(group.rules || "");
   const [questions, setQuestions] = useState(group.screeningQuestions || []);
+  const [topics, setTopics] = useState(group.interests || []);
   const [busy, setBusy] = useState(false);
 
   if (!isOwner) return <p className="text-callout text-fg-muted">Only the circle's admin can edit rules and questions.</p>;
@@ -869,6 +894,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
     try {
       await setCircleRules(group.id, rules.trim());
       await setScreeningQuestions(group.id, questions.filter((q) => q && q.trim()));
+      await setCircleInterests(group.id, topics);
       onSaved();
       toast({ title: "Rules saved" });
     } catch { toast({ tone: "error", title: "Couldn't save the rules" }); }
@@ -877,6 +903,10 @@ function RulesEditor({ group, onSaved, isOwner }) {
 
   return (
     <div className="space-y-5">
+      <fieldset>
+        <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3. People find the circle by these.</span></legend>
+        <InterestToggles value={topics} onChange={setTopics} max={3} label="Circle interests" />
+      </fieldset>
       <Field label="Rules" hint="One per line. People agree to them when they ask to join." count={rules.length} max={2000}>
         <Textarea autoGrow rows={4} value={rules} maxLength={2000} onChange={(e) => setRules(e.target.value)}
           placeholder={"Be kind\nNo self-promotion\nStay on topic"} />
@@ -890,7 +920,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
         ))}
         <p className="text-caption text-fg-subtle">Asking anything means every new member needs approval.</p>
       </fieldset>
-      <Button variant="primary" full loading={busy} onClick={save}>Save rules</Button>
+      <Button variant="primary" full loading={busy} onClick={save}>Save rules and interests</Button>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { storyAlt } from "../lib/a11y";
 import { shortTime } from "../lib/format";
 import Avatar from "./ui/Avatar";
+import MediaImg from "./ui/MediaImg";
 import IconButton from "./ui/IconButton";
 
 const IMAGE_MS = 5000;
@@ -87,7 +88,7 @@ export default function StoryViewer({ thread, onClose, onNextThread }) {
             <video key={item.id} src={item.mediaUrl} className="h-full w-full object-contain" autoPlay playsInline
               onEnded={next} aria-label={storyAlt(item, thread.authorName)} />
           ) : (
-            <img key={item.id} src={item.mediaUrl} alt={storyAlt(item, thread.authorName)} className="h-full w-full object-contain anim-fade" />
+            <MediaImg key={item.id} src={item.mediaUrl} alt={storyAlt(item, thread.authorName)} className="h-full w-full object-contain anim-fade" placeholderClass="h-full w-full" />
           )}
         </div>
 
