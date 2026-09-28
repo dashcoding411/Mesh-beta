@@ -8,7 +8,7 @@ import { Spinner } from "./States";
      secondary: a real alternative (Cancel, Message)
      ghost:     low-emphasis actions that sit in a row of others
      danger:    destroys something; always paired with a confirmation
-     brand:     the gradient. Reserved for Create and first-run CTAs.
+     brand:     solid accent. Reserved for Create and first-run CTAs.
 
    Hover goes darker, never lighter: white text on violet-500 is only 4.2:1,
    which fails AA. violet-700 on hover is 7.1:1. */
@@ -18,7 +18,7 @@ const VARIANTS = {
   ghost: "text-fg-muted hover:text-fg hover:bg-surface-2",
   danger: "bg-danger text-white hover:bg-red-700",
   "danger-ghost": "text-danger-text hover:bg-red-500/10",
-  brand: "bg-gradient-to-r from-brand-from to-brand-to text-white shadow-glow hover:brightness-90",
+  brand: "bg-accent text-white hover:bg-accent-hover",
 };
 
 const SIZES = {

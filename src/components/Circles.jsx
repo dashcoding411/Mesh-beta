@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus, Search as SearchIcon, Sparkles, X } from "lucide-react";
 import { INTERESTS, interestById } from "../lib/interests";
+import { coverClass, initialsOf, LATTICE } from "../lib/covers";
 import { useShell } from "./shell/ShellContext";
 import { InterestToggles } from "./Interests";
 import { fetchGroups, createGroup, CIRCLE_PRIVACY, fetchEvents, fetchInvitedEvents, fetchMyRsvps, fetchMembership } from "../lib/db";
@@ -195,7 +196,10 @@ function CircleSection({ title, groups, highlight }) {
           <li key={g.id}>
             <button type="button" onClick={() => navigate(`/circles/${g.id}`)}
               className="press flex w-full items-center gap-4 overflow-hidden rounded-card border border-line bg-surface p-3 text-left transition-colors hover:border-line-strong">
-              <span className={`h-16 w-16 shrink-0 rounded-control bg-gradient-to-br ${g.coverColor || "from-violet-600 via-fuchsia-600 to-rose-500"}`} aria-hidden="true" />
+              <span aria-hidden="true" style={LATTICE}
+                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-control font-display text-title-3 font-bold text-white ${coverClass(g.coverColor)}`}>
+                {initialsOf(g.name)}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span className="truncate text-title-3">{g.name}</span>

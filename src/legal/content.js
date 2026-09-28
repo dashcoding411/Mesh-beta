@@ -1,4 +1,4 @@
-import { BUSINESS } from "./business";
+import { BUSINESS } from "./business.js";
 
 /* These documents describe what the code in this repository actually does.
    If you change what data is collected, who it is shared with, or how long it

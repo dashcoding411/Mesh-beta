@@ -7,11 +7,13 @@ import IconButton from "./ui/IconButton";
 import Button from "./ui/Button";
 import { EmptyState } from "./ui/States";
 import PostCard from "./PostCard";
+import { usePageTitle } from "../lib/usePageTitle";
 import { FeedSkeleton } from "./HomeFeed";
 
 /* One post on its own URL: where shared links and chat previews land. */
 export default function PostViewer({ postId }) {
   const [post, setPost] = useState(undefined); // undefined = loading, null = gone
+  usePageTitle(post ? `Post by @${post.authorName}` : null, 2);
   const [viewer, setViewer] = usePostStates(post ? [post] : null);
 
   useEffect(() => {

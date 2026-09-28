@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe } from "./lib/db";
 import { CallSession, listenIncomingCalls, callsSupported } from "./lib/calls";
-import { CallScreen, IncomingCall } from "./components/CallScreen";
-import { InterestsDialog } from "./components/Interests";
+
 import { useToast } from "./components/ui/toast-context";
 import { useLocation, resolve, navigate } from "./lib/router";
 import { useInbox } from "./lib/inbox";
@@ -14,23 +13,51 @@ import BottomNav from "./components/shell/BottomNav";
 import HomeDrawer from "./components/shell/HomeDrawer";
 import AuthPage from "./components/AuthPage";
 import HomeFeed from "./components/HomeFeed";
-import Flicks from "./components/Flicks";
-import Search from "./components/Search";
-import Saved from "./components/Saved";
-import News from "./components/News";
-import Circles from "./components/Circles";
-import GatheringPage from "./components/GatheringPage";
-import Messages from "./components/Messages";
-import Profile from "./components/Profile";
-import Settings from "./components/Settings";
-import Legal from "./components/Legal";
-import UserProfile from "./components/UserProfile";
-import PostViewer from "./components/PostViewer";
-import Watch from "./components/Watch";
-import Composer from "./components/Composer";
 import StorageNotice from "./components/StorageNotice";
-import Moderation from "./components/Moderation";
 import SuspensionBanner from "./components/SuspensionBanner";
+import { Loading } from "./components/ui/States";
+import { usePageTitle } from "./lib/usePageTitle";
+import { DOCUMENTS } from "./legal/content.js";
+
+// Everything but the shell and the home feed loads when it's first opened,
+// so the first visit downloads only what it shows.
+const named = (load, name) => lazy(() => load().then((m) => ({ default: m[name] })));
+const Flicks = lazy(() => import("./components/Flicks"));
+const Search = lazy(() => import("./components/Search"));
+const Saved = lazy(() => import("./components/Saved"));
+const News = lazy(() => import("./components/News"));
+const Circles = lazy(() => import("./components/Circles"));
+const GatheringPage = lazy(() => import("./components/GatheringPage"));
+const Messages = lazy(() => import("./components/Messages"));
+const Profile = lazy(() => import("./components/Profile"));
+const Settings = lazy(() => import("./components/Settings"));
+const Legal = lazy(() => import("./components/Legal"));
+const Moderation = lazy(() => import("./components/Moderation"));
+const NotFound = lazy(() => import("./components/NotFound"));
+const UserProfile = lazy(() => import("./components/UserProfile"));
+const PostViewer = lazy(() => import("./components/PostViewer"));
+const Watch = lazy(() => import("./components/Watch"));
+const Composer = lazy(() => import("./components/Composer"));
+const CallScreen = named(() => import("./components/CallScreen"), "CallScreen");
+const IncomingCall = named(() => import("./components/CallScreen"), "IncomingCall");
+const InterestsDialog = named(() => import("./components/Interests"), "InterestsDialog");
+
+const SECTION_TITLES = {
+  foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search", saved: "Saved",
+};
+
+/* The tab title for the section on screen. Pages inside a section (a circle,
+   a profile, a story) set a more specific one with usePageTitle. */
+function sectionTitle(page, signedIn, query) {
+  if (page.view === "legal") return DOCUMENTS.find((d) => d.id === page.doc)?.title || "Policies";
+  if (!signedIn) return null;
+  if (page.notFound) return "Page not found";
+  if (page.tab === "messages") return "Messages";
+  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation" }[page.view] || "Your profile";
+  if (page.section === "search" && query?.get("q")) return `${query.get("q").slice(0, 40)} · Search`;
+  if (page.section === "circles" && page.gatheringId) return "Gatherings";
+  return SECTION_TITLES[page.section] ?? null;
+}
 
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -137,6 +164,7 @@ export default function App() {
   }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords]);
 
   const { page, overlay, bgQuery } = resolve(loc);
+  usePageTitle(sectionTitle(page, signedIn, overlay ? bgQuery : loc.query), 0);
 
   if (!authReady) {
     return (
@@ -151,7 +179,9 @@ export default function App() {
     if (page.view === "legal") {
       return (
         <div className="h-dvh overflow-y-auto" data-scroll>
-          <Legal key={page.doc} doc={page.doc} standalone />
+          <Suspense fallback={<Loading label="Loading" />}>
+            <Legal key={page.doc} doc={page.doc} standalone />
+          </Suspense>
         </div>
       );
     }
@@ -187,6 +217,7 @@ export default function App() {
   } else {
     content = <Profile />;
   }
+  if (page.notFound) content = <NotFound />;
 
   return (
     <ShellContext.Provider value={shell}>
@@ -198,11 +229,14 @@ export default function App() {
 
         <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           <SuspensionBanner profile={profile} />
-          {content}
+          <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
         </main>
 
         <BottomNav page={page} profile={profile} unread={inbox.unreadCount} immersive={immersive} />
 
+        {/* Overlays and dialogs load on first use; while one loads, nothing
+            flashes (they open over a page that's already there). */}
+        <Suspense fallback={null}>
         {overlay?.overlay === "user" && <UserProfile key={overlay.id} uid={overlay.id} />}
         {overlay?.overlay === "post" && <PostViewer key={overlay.id} postId={overlay.id} />}
         {overlay?.overlay === "watch" && <Watch key={overlay.id} postId={overlay.id} />}
@@ -239,6 +273,7 @@ export default function App() {
           <IncomingCall call={incoming[0]} onAnswer={() => answer(incoming[0])} onDecline={() => decline(incoming[0])} />
         )}
         {call && <CallScreen session={call} onClose={() => setCall(null)} />}
+        </Suspense>
       </div>
     </ShellContext.Provider>
   );

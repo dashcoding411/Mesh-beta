@@ -209,7 +209,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             <div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar"
                 aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress">
-                <div className="h-full bg-gradient-to-r from-brand-from to-brand-to transition-[width] duration-standard" style={{ width: `${progress}%` }} />
+                <div className="h-full bg-accent transition-[width] duration-standard" style={{ width: `${progress}%` }} />
               </div>
               <p className="mt-1.5 text-caption text-fg-subtle tabular">Uploading… {progress}%. Keep this open until it finishes.</p>
             </div>

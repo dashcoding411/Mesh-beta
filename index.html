@@ -2,13 +2,63 @@
 <html lang="en-AU">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Mesh: posts, video, communities and sourced news</title>
+    <meta name="description" content="Mesh is a social network for posts, short and long video, communities and news that has to cite its sources. No ads, no data sold, no third-party trackers." />
+    <link rel="canonical" href="https://mesh-a293c.web.app/" />
+    <meta name="theme-color" content="#0b0b0f" />
+    <meta name="color-scheme" content="dark" />
+
     <link rel="icon" type="image/svg+xml" href="/mesh.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Mesh: Making Every Story Heard. Photos, short video, long-form video, communities and sourced news in one place. Built for people, not advertisers." />
-    <title>Mesh</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- How a shared link looks in Messages, WhatsApp, Facebook, X and Slack. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Mesh" />
+    <meta property="og:title" content="Mesh: Making Every Story Heard" />
+    <meta property="og:description" content="Posts, short and long video, communities and news that has to cite its sources. No ads, no data sold." />
+    <meta property="og:url" content="https://mesh-a293c.web.app/" />
+    <meta property="og:image" content="https://mesh-a293c.web.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Mesh logo and the words Making Every Story Heard." />
+    <meta property="og:locale" content="en_AU" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Mesh",
+        "alternateName": "Making Every Story Heard",
+        "url": "https://mesh-a293c.web.app/",
+        "inLanguage": "en-AU"
+      }
+    </script>
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-canvas text-fg">
+    <!-- What arrives before the app starts, for search engines, link
+         previewers and anyone without JavaScript. React replaces it. -->
+    <div id="root">
+      <main class="mx-auto flex min-h-dvh max-w-xl flex-col justify-center px-6 py-16">
+        <p class="font-display text-title-2 font-extrabold">Mesh</p>
+        <h1 class="mt-6 font-display text-display font-extrabold leading-tight">Making Every Story Heard.</h1>
+        <p class="mt-4 text-body text-fg-muted">
+          A social network for posts, short and long video, communities and news that has to cite its sources.
+          No ads, no data sold, no third-party trackers.
+        </p>
+        <noscript>
+          <p class="mt-6 text-body">Mesh needs JavaScript switched on to sign in and use it.</p>
+        </noscript>
+        <nav aria-label="Policies" class="mt-10 flex flex-wrap gap-x-5 gap-y-2 text-callout text-fg-muted">
+          <a href="/legal/privacy">Privacy Policy</a>
+          <a href="/legal/terms">Terms of Service</a>
+          <a href="/legal/guidelines">Community Guidelines</a>
+          <a href="/legal/cookies">Cookies &amp; Storage</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -19,7 +19,8 @@ import { MenuItem, MenuGroup } from "./ui/Menu";
 import { Input } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
-import ChatView, { NewChatDialog } from "./ChatView";
+import ChatView from "./ChatView";
+import { NewChatDialog } from "./chat/NewChatDialog";
 import { chatTitle, chatAvatar } from "../lib/chat";
 
 /* Messages. Two panes on desktop, the inbox stays put while a conversation

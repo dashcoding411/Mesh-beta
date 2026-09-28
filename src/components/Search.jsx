@@ -352,7 +352,7 @@ export function Tile({ post, tall = false }) {
           </span>
         )}
         {asText && (
-          <span className="flex h-full w-full flex-col justify-between bg-gradient-to-br from-violet-900/70 via-surface-2 to-fuchsia-900/40 p-3 text-left">
+          <span className="flex h-full w-full flex-col justify-between border-l-2 border-accent bg-surface-2 p-3 text-left">
             <Type size={16} className="text-accent-text" aria-hidden="true" />
             <span className="line-clamp-4 text-caption font-medium text-fg">{post.text}</span>
             <span className="truncate text-label text-fg-subtle">@{post.authorName}</span>

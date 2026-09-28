@@ -15,7 +15,10 @@ createServer(async (req, res) => {
   const url = decodeURIComponent(new URL(req.url, "http://x").pathname);
   let file = normalize(join(root, url));
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
-  try { if (!(await stat(file)).isFile()) throw new Error(); } catch { file = join(root, "index.html"); }
+  // Like Hosting: a file, else a folder's index.html (the prerendered
+  // pages), else the app's index.html.
+  const isFile = async (f) => { try { return (await stat(f)).isFile(); } catch { return false; } };
+  if (!(await isFile(file))) file = (await isFile(join(file, "index.html"))) ? join(file, "index.html") : join(root, "index.html");
   const body = await readFile(file);
   res.writeHead(200, { ...globalHeaders, "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
   res.end(body);

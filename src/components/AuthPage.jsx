@@ -11,6 +11,7 @@ import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../l
 import { Eye, EyeOff, AlertTriangle, Check } from "lucide-react";
 import { navigate } from "../lib/router";
 import { LogoMark } from "./shell/Sidebar";
+import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Tabs from "./ui/Tabs";
 
@@ -234,7 +235,7 @@ export default function AuthPage() {
           {signup ? "Create your account" : "Welcome back"}
         </h2>
         <p className="mb-6 mt-1 text-callout text-fg-muted">
-          {signup ? "Join the fabric. It takes a minute." : "Log in to pick up where you left off."}
+          {signup ? "It takes about a minute." : "Log in to pick up where you left off."}
         </p>
 
         {/* ---- social first ---- */}
@@ -408,26 +409,20 @@ export default function AuthPage() {
 function Shell({ children }) {
   return (
     <div className="flex min-h-dvh bg-canvas">
-      <div className="relative hidden flex-1 items-center justify-center overflow-hidden bg-gradient-to-br from-violet-950 via-canvas to-fuchsia-950/60 lg:flex">
-        <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" aria-hidden="true" />
-        <div className="absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-fuchsia-600/20 blur-3xl" aria-hidden="true" />
-        <div className="relative max-w-md px-12 anim-rise">
-          <LogoMark size={64} />
-          <p className="mt-8 font-display text-[3.5rem] font-extrabold leading-[1.05] tracking-tight">
+      <div className="relative hidden flex-1 items-center justify-center overflow-hidden border-r border-line bg-surface lg:flex" style={LATTICE}>
+        <div className="relative max-w-md px-12">
+          <LogoMark size={56} />
+          <p className="mt-8 font-display text-[3rem] font-extrabold leading-[1.05] tracking-tight">
             Making Every<br />Story Heard.
           </p>
-          <ul className="mt-8 space-y-3 text-body text-fg-muted">
-            {[
-              "Flicks, Stills and Strands in one feed",
-              "News that has to show its sources",
-              "No ads, no data sold, no third-party trackers",
-            ].map((t) => (
-              <li key={t} className="flex items-center gap-3">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent-soft text-accent-ring"><Check size={14} aria-hidden="true" /></span>
-                {t}
-              </li>
-            ))}
-          </ul>
+          <p className="mt-6 text-body text-fg-muted">
+            Posts, short and long video, communities and news that has to cite its sources, in one place.
+          </p>
+          <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-6 text-callout">
+            <div><dt className="text-fg-subtle">Ads</dt><dd className="mt-0.5 font-semibold">None</dd></div>
+            <div><dt className="text-fg-subtle">Data sold</dt><dd className="mt-0.5 font-semibold">Never</dd></div>
+            <div><dt className="text-fg-subtle">Trackers</dt><dd className="mt-0.5 font-semibold">None</dd></div>
+          </dl>
         </div>
       </div>
       <main className="flex flex-1 items-center justify-center overflow-y-auto p-6">

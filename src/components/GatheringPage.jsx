@@ -23,6 +23,7 @@ import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { Input, Textarea } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import { usePageTitle } from "../lib/usePageTitle";
 import { DateBlock, GatheringForm } from "./Events";
 
 const STATUS_LABEL = { going: "Going", interested: "Interested", maybe: "Maybe", cant: "Can't go" };
@@ -34,6 +35,7 @@ const STATUS_LABEL = { going: "Going", interested: "Interested", maybe: "Maybe",
 export default function GatheringPage({ eventId }) {
   const toast = useToast();
   const [event, setEvent] = useState(undefined);
+  usePageTitle(event?.title || null, 1);
   const [circle, setCircle] = useState(null);
   const [status, setStatus] = useState(null);
   const [tab, setTab] = useState("discussion");

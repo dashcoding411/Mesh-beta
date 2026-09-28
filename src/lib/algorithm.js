@@ -194,7 +194,10 @@ const AUTHOR_WINDOW = 6;
 const BORDERLINE_GAP = 8;
 
 export function rankFeed(posts, ctx) {
-  const pool = screenForViewer(posts, ctx);
+  // Recommendations only: a borderline post reaches its author's followers
+  // (in Following, on the profile, in search), never strangers' For you.
+  const pool = screenForViewer(posts, ctx)
+    .filter((p) => !borderline(p) || p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId));
   const scored = pool
     .map((p) => ({ post: p, score: scorePost(p, ctx) }))
     .sort((a, b) => b.score - a.score);
@@ -230,12 +233,12 @@ export function rankFeed(posts, ctx) {
 
     const pick = (pred) => queue.findIndex((c) => pred(c.post));
     let idx = -1;
-    if (behind.length) {
-      // Prefer a behind-pace format that also satisfies diversity.
-      idx = pick((p) => behind.includes(p.kind) && fitsDiversity(p, out));
-      if (idx === -1) idx = pick((p) => behind.includes(p.kind));
-    }
+    // Rules give way in order: the format quota first, then the format-run
+    // rule, and author and borderline spacing last of all.
+    if (behind.length) idx = pick((p) => behind.includes(p.kind) && fitsDiversity(p, out));
     if (idx === -1) idx = pick((p) => fitsDiversity(p, out));
+    if (idx === -1 && behind.length) idx = pick((p) => behind.includes(p.kind) && fitsSpacing(p, out));
+    if (idx === -1) idx = pick((p) => fitsSpacing(p, out));
     if (idx === -1) idx = 0;
 
     const chosen = queue.splice(idx, 1)[0].post;
@@ -259,8 +262,11 @@ function fitsDiversity(post, out) {
   const lastKinds = out.slice(-MAX_RUN_PER_KIND).map((p) => p.kind);
   const sameKindRun =
     lastKinds.length === MAX_RUN_PER_KIND && lastKinds.every((k) => k === post.kind);
-  if (sameKindRun) return false;
+  return !sameKindRun && fitsSpacing(post, out);
+}
 
+// The rules that hold even when formats can't be varied.
+function fitsSpacing(post, out) {
   const recentAuthors = out.slice(-AUTHOR_WINDOW).filter((p) => p.authorId === post.authorId);
   if (recentAuthors.length >= MAX_PER_AUTHOR_IN_WINDOW) return false;
 

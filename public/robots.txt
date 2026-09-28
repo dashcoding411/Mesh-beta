@@ -1,0 +1,9 @@
+# Mesh: everything behind sign-in is private to members, so only the public
+# pages are listed in the sitemap.
+User-agent: *
+Allow: /
+Disallow: /messages
+Disallow: /account
+Disallow: /saved
+
+Sitemap: https://mesh-a293c.web.app/sitemap.xml

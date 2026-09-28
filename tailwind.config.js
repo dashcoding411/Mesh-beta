@@ -37,10 +37,6 @@ export default {
           soft: "rgb(139 92 246 / 0.14)", // selected backgrounds
           ring: "#c4b5fd", // violet-300, focus outline, 8.6–10.8:1
         },
-        brand: {
-          from: "#7c3aed",
-          to: "#c026d3", // fuchsia-600, white on it is 4.7:1
-        },
         danger: { DEFAULT: "#dc2626", text: "#f87171" }, // 4.8:1 / 5.7–7.2:1
         success: { text: "#34d399" },
         warning: { text: "#fbbf24" },
@@ -73,7 +69,6 @@ export default {
       boxShadow: {
         raised: "0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.03)",
         overlay: "0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05)",
-        glow: "0 8px 24px -8px rgb(124 58 237 / 0.55)",
       },
 
       transitionTimingFunction: {

@@ -14,6 +14,7 @@ import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import { EmptyState, Skeleton } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import { usePageTitle } from "../lib/usePageTitle";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
 /* Someone else's profile, opened over whatever you were doing. It has its
@@ -22,6 +23,7 @@ export default function UserProfile({ uid }) {
   const { following, setFollowing, blocked, setBlocked } = useShell();
   const toast = useToast();
   const [profile, setProfile] = useState(undefined);
+  usePageTitle(profile ? `@${profile.username}` : null, 2);
   const [posts, setPosts] = useState(null);
   const [reposts, setReposts] = useState(null);
   const [tab, setTab] = useState("posts");

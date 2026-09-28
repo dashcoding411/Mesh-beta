@@ -16,6 +16,7 @@ import Badge from "./ui/Badge";
 import { EmptyState, Skeleton, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
+import { usePageTitle } from "../lib/usePageTitle";
 import { ShareSheet } from "./PostActions";
 
 /* The full-length player for long Flicks, where a trailer leads when you
@@ -26,6 +27,7 @@ export default function Watch({ postId }) {
   const { following, setFollowing } = useShell();
   const toast = useToast();
   const [post, setPost] = useState(undefined);
+  usePageTitle(post ? post.title || `Video by @${post.authorName}` : null, 2);
   const [more, setMore] = useState(null);
   const [viewer, setViewer] = usePostStates(post ? [post] : []);
   const [sheet, setSheet] = useState(null);

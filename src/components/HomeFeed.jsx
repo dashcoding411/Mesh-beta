@@ -147,7 +147,7 @@ export default function HomeFeed({ mode }) {
                     <CheckCheck size={22} aria-hidden="true" />
                   </span>
                   <p className="text-callout font-semibold text-fg">You're all caught up</p>
-                  <p className="mt-1 text-caption text-fg-subtle">That's everything for now. Go do something good.</p>
+                  <p className="mt-1 text-caption text-fg-subtle">That's everything new. Check back later, or follow more people to see more here.</p>
                 </div>
               )}
             </div>

@@ -16,7 +16,7 @@ import {
 import Switch from "./ui/Switch";
 import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
-import { EmptyState, Skeleton } from "./ui/States";
+import { EmptyState } from "./ui/States";
 import { validBirthYear } from "../lib/validate";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
