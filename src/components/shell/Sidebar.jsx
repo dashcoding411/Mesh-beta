@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Plus, Menu, Keyboard } from "lucide-react";
 import { navigate } from "../../lib/router";
 import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
@@ -121,10 +121,20 @@ function MoreMenu({ page }) {
 
 /** The Mesh mark: threads crossing, the same as the favicon. */
 export function LogoMark({ size = 28 }) {
+  // Each mark needs its own gradient id: if two share one and the first sits
+  // inside a hidden element (the desktop sidebar on a phone), browsers drop the
+  // gradient and every copy renders as a blank square.
+  const gradient = `mesh-mark-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
+      <defs>
+        <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#e879f9" />
+        </linearGradient>
+      </defs>
       <rect width="64" height="64" rx="16" fill="#18181c" />
-      <g stroke="#a78bfa" strokeWidth="4" strokeLinecap="round" fill="none">
+      <g stroke={`url(#${gradient})`} strokeWidth="4" strokeLinecap="round" fill="none">
         <path d="M16 22h32M16 32h32M16 42h32" />
         <path d="M22 16v32M32 16v32M42 16v32" />
       </g>
