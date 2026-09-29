@@ -230,10 +230,36 @@ rules:
 | Who can join | Anyone, or admins approve. Private and hidden circles always approve. Screening questions always mean approval. |
 | Age limit | Everyone, 16+ or 18+. Under-age accounts can't join or even ask. |
 | Who can post | All members, or admins and moderators only (this also covers planning gatherings). |
-| Approve posts first | Members' posts wait as `pending`, visible only to the author and admins, until approved. |
-| Block links | Posts with `http(s)://` or `www.` are refused. Admins exempt. |
-| Hold back new accounts | Accounts under 7 days old can read but not post. Admins exempt. |
+| Review every post | Members' posts wait as `pending`, visible only to the author and admins, until approved. |
+| Links | Allow, review first, or decline. |
+| New accounts | Under 7, 30, 90 or 180 days old: review first, or decline. |
+| No profile photo | Review first. |
+| Contact details | Decline phone numbers, emails and card numbers (ten or more digits; not years or prices). |
+| Shortest post | Decline Strands under 10, 20 or 50 characters. |
+| Words only | Decline photos and videos. |
+| Removed posts | Decline posts from anyone with a post removed by a moderator in the last 28 days (a "strike"). |
+| Slow mode | Members wait 5, 15 or 60 minutes between posts. The post and a `lastPostAt` stamp on the membership go in one batch, and the rules compare the two. |
 | Blocked words | Up to 40 words, refused for everyone, admins included. |
+
+These are "Admin Assist": every condition either declines a post with the
+reason in words, or sends it to the approval queue. Admins and moderators are
+exempt from all but blocked words. The rules' circle check is kept lean on
+purpose (`circlePostOkAs`, `memberPostOk`, `needsReview`): Firestore caps how
+much one request may evaluate, and the post rule (`postCreateOk`) already does
+a lot. If you add a condition, test posting in a circle as an ordinary member.
+
+**Also in a circle:**
+
+- **Featured**: under the header, the next gathering, the rules and the
+  guides; at the top of Discussion, up to three posts admins feature.
+- **Topics**: the admin sets up to 12 (Manage → Details); members tag a post
+  with one and anyone can filter the discussion by them. Search within the
+  circle matches words in posts and authors.
+- **Chat**: the admin starts it once; members join it themselves (the rules
+  let a circle member add only themselves, and only to the chat the circle
+  points to). It's an ordinary group chat after that.
+- **Guides**: step-by-step units (a welcome, a how-to) with each member's
+  progress, which admins can see as "started / finished".
 
 Also enforced: muted members can't post until the mute ends; paused threads
 take no new comments; private and hidden circles post with visibility
@@ -254,6 +280,19 @@ Each gathering has its own page (`/gatherings/:id`) with replies, a
   count honest and the limit real.
 - **Who posts.** Everyone who has replied, or the host only (announcements).
 - **Guest list.** Visible to guests, or to the host only; enforced on reads.
+- **Replies**: Going, Interested or Can't go (public); Going, Maybe or Can't
+  go (private). Each reply is also copied to `users/{uid}/rsvps`, which is
+  what "Coming up" in Notifications reads.
+- **Add to calendar**: Google Calendar, or an `.ics` file for everything else
+  with alarms a day and two hours before. That's the reminder system: the
+  calendar does it, so Mesh never needs a server to send anything.
+- **Invite link**: a public gathering's page opens for anyone with the link,
+  signed in or not (`PublicGathering`), with add-to-calendar and a way to
+  join Mesh to reply.
+
+Not built, because each needs a server of our own: email or SMS invites to
+people without accounts, webhooks for ticketing tools, and semantic (AI)
+search. Search within a circle is word matching.
 
 ## Privacy controls
 
@@ -272,6 +311,64 @@ In Settings → Privacy and safety, all enforced in `firestore.rules`:
   comments stop showing for you, but follows stay and they can still message
   you. Nobody is told. Mute from a post's menu or a profile; the list lives in
   `users/{uid}/private/prefs` (`muted`, up to 500) and is managed in Settings.
+
+## Notifications
+
+`users/{uid}/notifications`, written by the person who acts (there's no server
+to do it), for likes, comments, reposts, mentions in public posts, follows,
+follow requests and approvals, gathering invites, being let into a circle, and
+parental-control invites and requests. The rules (`noticeHappened`) accept a
+notice only if the thing happened (the like, comment or follow exists), it's
+addressed to the right person, it carries the actor's real handle and photo,
+quoted words are the start of the real comment, and the recipient hasn't
+blocked the actor. Each action has one fixed id (`like_{post}_{actor}`), so
+toggling can't flood anyone; undoing an action takes the notice back.
+
+One listener feeds the badge (sidebar and the phone header's bell) and the
+page. Likes and reposts of one post fold together; opening the page marks
+everything read, and notices older than 90 days are deleted then. "Coming up"
+lists gatherings you've replied to that start within a week.
+
+## Brick mode
+
+Mesh down to messages and calls, on your terms, and slow to undo
+(Settings → Brick mode, `/account/brick`; the engine is `src/lib/brick.js`).
+
+- **Scheduled times**: weekly windows, stored as half-hour slots per day in
+  your own time zone (`slots.d1` is Monday).
+- **Daily limits**: minutes a day for Feed (For you, Following, Search,
+  Circles, Saved), Flicks and News. Time is counted only for sections with a
+  limit: every 30 visible seconds adds 30 to `usage/{uid}_{year}-{day}`, which
+  the rules only let go up, by at most 30, at most every 25 seconds.
+- **Instant brick**: 2 hours, until midnight, or 3 days (at most 8 days).
+
+**Stricter applies now; looser waits 24 hours.** The rules compare every
+change with the current limits (`tighterOrSame`). Anything looser can only go
+into `pending`, stamped with the server's time, and can only be applied once
+24 hours have passed. More loosening adds to what's waiting and restarts the
+clock; tightening while something waits is carried into it so it can't be
+undone tomorrow. Daylight saving moves an hour on its own (at most every 20
+days); a bigger time-zone change waits like any loosening. The limits can't be
+deleted except with the account.
+
+**What the server enforces.** Browsing reads check `lockedFor()`: a scheduled
+window or instant brick refuses posts, comments, stories and news; a used-up
+News limit refuses news, and a used-up Feed or Flicks limit refuses single
+posts of that kind. A feed query mixes Stills and Flicks, so the server can't
+tell a capped section's query from another's; the app keeps those sections
+closed. So refreshing, reinstalling or the website can't get round any limit,
+but a hand-written client could still read feed posts past a Feed or Flicks
+limit (not past a scheduled or instant brick). Closing that last gap needs a
+server that serves the feed itself (Cloud Functions, on the Blaze plan).
+Messages, calls, notifications, settings, your own posts and gathering pages
+never lock.
+
+**Parental controls** use the same engine. A parent (19+ by birth year)
+invites an under-18 account; the teen has to accept, and is told what that
+means first. The parent's limits apply at once, only the parent can loosen
+them (the teen can ask, with a note, including asking to end it), and they
+stop counting on 1 January of the year the teen turns 18. The parent sees the
+teen's limits and today's minutes, nothing else.
 
 ## Everyday comforts
 
@@ -589,6 +686,12 @@ and a bare `firebase deploy` would overwrite that project instead.
   and private `affinity/`, `saved/`, `hidden/`, `blocked/` and `private/prefs`
   (interests, hidden words, muted accounts)
 - `usernames/{name}`: uniqueness registry
+- `users/{uid}/notifications/{id}`, `users/{uid}/rsvps/{eventId}`: your
+  notifications and your gathering replies (see above)
+- `locks/{uid}`: brick mode limits (`self`, `pending`, a parent's `parent`,
+  and a teen's `parentRequest`); `usage/{uid}_{year}-{day}`: minutes per
+  section; `familyLinks/{teenUid}`: a parent and a teen
+- `groups/{id}/guides/{guideId}` (with `progress/{uid}`): circle guides
 - `rateLimits/{uid}`: the last post, comment, photo and edit times, for flood limits
 - `media/{id}`: photos stored in Firestore while Cloud Storage is off
 - `calls/{id}`: call setup, deleted when a call ends

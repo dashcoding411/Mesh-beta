@@ -1,5 +1,5 @@
 // Your data: export, and deleting your account.
-import { collection, deleteDoc, doc, getDocs, increment, limit, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { fetchGroups } from "./circles.js";
 import { me } from "./core.js";
@@ -21,6 +21,11 @@ export async function exportMyData() {
   ]);
   const reposts = await fetchRepostsBy([uid], 500).catch(() => []);
   const prefs = await fetchMyPrefs().catch(() => null);
+  const limits = await getDoc(doc(db, "locks", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
+  const usage = await getDocs(query(collection(db, "usage"), where("uid", "==", uid))).then((s) => s.docs.map((d) => ({ day: d.id.split("_")[1], ...d.data() }))).catch(() => []);
+  const notifications = await getDocs(query(collection(db, "users", uid, "notifications"), limit(500))).then((s) => s.docs.map((d) => d.data())).catch(() => []);
+  const family = await getDoc(doc(db, "familyLinks", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
+  const gatherings = await getDocs(query(collection(db, "users", uid, "rsvps"), limit(500))).then((s) => s.docs.map((d) => ({ gatheringId: d.id, ...d.data() }))).catch(() => []);
   const comments = [];
   for (const p of posts) {
     const cs = await fetchComments(p.id).catch(() => []);
@@ -38,6 +43,11 @@ export async function exportMyData() {
     eventsHosted: events,
     following,
     followers,
+    hiddenWords: prefs?.hiddenWords || [],
+    mutedAccounts: prefs?.muted || [],
+    brickMode: { limits, usage, parentLink: family },
+    gatheringReplies: gatherings,
+    notifications,
   };
 }
 
@@ -61,7 +71,7 @@ export async function deleteMyAccountData() {
     const snap = await getDocs(query(collection(db, "users", uid, name), limit(500))).catch(() => null);
     return snap?.docs || [];
   };
-  for (const name of ["affinity", "saved", "hidden", "blocked", "followRequests"]) {
+  for (const name of ["affinity", "saved", "hidden", "blocked", "followRequests", "notifications", "rsvps"]) {
     for (const d of await sub(name)) await deleteDoc(d.ref).catch(() => {});
   }
   for (const d of await sub("following")) {
@@ -85,6 +95,16 @@ export async function deleteMyAccountData() {
   const last = writeBatch(db);
   last.delete(doc(db, "users", uid));
   if (profile?.username) last.delete(doc(db, "usernames", profile.username));
+  // Teens you supervise: take your limits off, then end the link.
+  for (const d of await mine("familyLinks", "parentId")) {
+    await updateDoc(doc(db, "locks", d.id), { parent: null, parentRequest: null, updatedAt: serverTimestamp() }).catch(() => {});
+    await deleteDoc(d.ref).catch(() => {});
+  }
   await last.commit().catch(() => deleteDoc(doc(db, "users", uid)).catch(() => {}));
   await deleteDoc(doc(db, "rateLimits", uid)).catch(() => {});
+  // Brick mode's records can only go once the profile has (the rules
+  // won't let limits be lifted any other way).
+  for (const d of await mine("usage", "uid")) await deleteDoc(d.ref).catch(() => {});
+  await deleteDoc(doc(db, "locks", uid)).catch(() => {});
+  await deleteDoc(doc(db, "familyLinks", uid)).catch(() => {});
 }

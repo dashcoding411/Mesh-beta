@@ -46,4 +46,10 @@ describe("app and security rules agree", () => {
     expect(written.size).toBeGreaterThan(0);
     for (const k of written) expect(allowed).toContain(k);
   });
+
+  it("on what counts as contact details in a circle post", () => {
+    const circles = readFileSync(new URL("../data/circles.js", import.meta.url), "utf8");
+    expect(circles).toContain("(\\d[ ().-]{0,2}){9,}\\d");
+    expect(rules).toContain("([0-9][ ().-]{0,2}){9,}[0-9]");
+  });
 });

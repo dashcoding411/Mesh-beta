@@ -6,6 +6,8 @@ import {
 } from "../lib/db";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
+import { useBrick } from "../lib/useBrick";
+import LockScreen from "./LockScreen";
 import TopBar from "./shell/TopBar";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
@@ -17,6 +19,8 @@ import { ProfileHeader, FollowListDialog, PostGrid, EditProfileDialog } from "./
    see. Private settings are one tap away behind the gear, and say so. */
 export default function Profile() {
   const { profile, setProfile, openComposer } = useShell();
+  const brick = useBrick();
+  const feedLock = brick.state("feed");
   const toast = useToast();
   const [tab, setTab] = useState("posts");
   const [posts, setPosts] = useState(null);
@@ -143,6 +147,9 @@ export default function Profile() {
               { id: "saved", label: "Saved" },
             ]} />
 
+          {feedLock ? (
+            <LockScreen compact section="feed" lock={feedLock} opensAt={brick.opensAt("feed")} now={brick.now} parentName={brick.policy?.parent?.parentName} />
+          ) : (
           <div role="tabpanel" className="pt-0.5">
             {tab === "posts" && (
               <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="Share your first post"
@@ -163,6 +170,7 @@ export default function Profile() {
               </>
             )}
           </div>
+          )}
 
         </div>
       </div>

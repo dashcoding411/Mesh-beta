@@ -81,3 +81,26 @@ export function compact(n) {
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
+
+/** "7:00am", "tomorrow at 7:00am", "Friday at 7:00am", in this device's time. */
+export function whenLabel(ms, now = Date.now()) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const time = `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
+  const day = (t) => new Date(t).toDateString();
+  if (day(ms) === day(now)) return time;
+  if (day(ms) === day(now + 86400000)) return `tomorrow at ${time}`;
+  if (ms - now < 6 * 86400000) return `${d.toLocaleDateString(undefined, { weekday: "long" })} at ${time}`;
+  return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} at ${time}`;
+}
+
+/** "2h 14m", "45m", "under a minute". */
+export function spanLabel(ms) {
+  if (ms < 60000) return "under a minute";
+  const m = Math.round(ms / 60000);
+  const h = Math.floor(m / 60);
+  if (h >= 48) return `${Math.round(h / 24)} days`;
+  return h ? `${h}h ${m % 60}m` : `${m}m`;
+}

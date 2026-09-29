@@ -7,6 +7,7 @@ import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { bumpAffinity, deleteInline, fetchPostsByAuthor, SIGNAL } from "./posts.js";
 import { uploadMedia } from "./uploads.js";
+import { notify, unnotify } from "./notifications.js";
 
 // ---------- users & profiles ----------
 
@@ -18,7 +19,7 @@ export async function fetchProfile(uid) {
 /* Bump this when the terms or privacy policy change materially. Existing
    accounts keep the version they accepted, which is what lets you tell who
    still needs to see a change notice. */
-export const POLICY_VERSION = "2026-09-29";
+export const POLICY_VERSION = "2026-09-29.2";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -182,6 +183,7 @@ export async function toggleFollow(target, currentlyFollowing) {
     batch.update(doc(db, "users", uid), { followingCount: increment(-1), lastFollowing: target.id });
     batch.update(doc(db, "users", target.id), { followerCount: increment(-1), lastFollower: uid });
     await batch.commit();
+    unnotify(target.id, "follow");
     return "unfollowed";
   }
   const full = target.isPrivate === undefined ? await fetchProfile(target.id) : target;
@@ -197,6 +199,7 @@ export async function toggleFollow(target, currentlyFollowing) {
   batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
   await batch.commit();
   bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
+  notify(target.id, "follow");
   return "following";
 }
 
@@ -208,10 +211,12 @@ export async function requestFollow(target) {
     username: profile?.username || "",
     createdAt: serverTimestamp(),
   });
+  notify(target.id, "request");
 }
 
 export async function cancelFollowRequest(targetId) {
   await deleteDoc(doc(db, "users", targetId, "followRequests", me()));
+  unnotify(targetId, "request");
 }
 
 export async function hasRequestedFollow(targetId) {
@@ -236,6 +241,7 @@ export async function approveFollowRequest(request) {
   batch.update(doc(db, "users", request.id), { followingCount: increment(1), lastFollowing: uid });
   batch.delete(doc(db, "users", uid, "followRequests", request.id));
   await batch.commit();
+  notify(request.id, "accept");
 }
 
 export async function declineFollowRequest(request) {

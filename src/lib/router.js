@@ -75,9 +75,11 @@ const PAGES = [
   [/^\/gatherings\/([^/]+)$/, (m) => ({ tab: "home", section: "circles", gatheringId: m[1] })],
   [/^\/search$/, () => ({ tab: "home", section: "search" })],
   [/^\/saved$/, () => ({ tab: "home", section: "saved" })],
+  [/^\/notifications$/, () => ({ tab: "home", section: "notifications" })],
   [/^\/messages(?:\/([^/]+))?$/, (m) => ({ tab: "messages", id: m[1] || null })],
   [/^\/account$/, () => ({ tab: "account", view: "profile" })],
   [/^\/account\/settings$/, () => ({ tab: "account", view: "settings" })],
+  [/^\/account\/brick$/, () => ({ tab: "account", view: "brick" })],
   [/^\/account\/moderation$/, () => ({ tab: "account", view: "moderation" })],
   [/^\/legal(?:\/([a-z]+))?$/, (m) => ({ tab: "account", view: "legal", doc: m[1] || "privacy" })],
 ];

@@ -17,6 +17,8 @@ import IconButton from "./ui/IconButton";
 import { EmptyState, Skeleton } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { usePageTitle } from "../lib/usePageTitle";
+import { useBrick } from "../lib/useBrick";
+import LockScreen from "./LockScreen";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
 /* Someone else's profile, opened over whatever you were doing. It has its
@@ -37,6 +39,8 @@ export default function UserProfile({ uid }) {
   const followed = following.has(uid);
   const isBlocked = blocked.has(uid);
   const isMuted = muted.has(uid);
+  const brick = useBrick();
+  const feedLock = brick.state("feed");
   const locked = !!profile?.isPrivate && !following.has(uid);
 
   useEffect(() => {
@@ -187,14 +191,18 @@ export default function UserProfile({ uid }) {
               <>
                 <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
                   tabs={[{ id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
-                <div role="tabpanel" className="pt-0.5">
-                  {tab === "posts" ? (
-                    <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
-                      emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
-                  ) : (
-                    <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet" />
-                  )}
-                </div>
+                {feedLock ? (
+                  <LockScreen compact section="feed" lock={feedLock} opensAt={brick.opensAt("feed")} now={brick.now} parentName={brick.policy?.parent?.parentName} />
+                ) : (
+                  <div role="tabpanel" className="pt-0.5">
+                    {tab === "posts" ? (
+                      <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
+                        emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
+                    ) : (
+                      <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet" />
+                    )}
+                  </div>
+                )}
               </>
             )}
           </>

@@ -1,11 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted } from "./lib/db";
+import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
+import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { CallSession, listenIncomingCalls, callsSupported } from "./lib/calls";
 
 import { useToast } from "./components/ui/toast-context";
-import { useLocation, resolve, navigate } from "./lib/router";
+import { useLocation, resolve, navigate, goBack } from "./lib/router";
+import { ArrowLeft } from "lucide-react";
+import IconButton from "./components/ui/IconButton";
 import { useInbox } from "./lib/inbox";
 import { ShellContext } from "./components/shell/ShellContext";
 import Sidebar, { LogoMark } from "./components/shell/Sidebar";
@@ -20,6 +23,8 @@ import Shortcuts from "./components/Shortcuts";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
 import { DOCUMENTS } from "./legal/content.js";
+import LockScreen from "./components/LockScreen";
+import HomeHeader from "./components/shell/HomeHeader";
 
 // Everything but the shell and the home feed loads when it's first opened,
 // so the first visit downloads only what it shows.
@@ -33,6 +38,9 @@ const GatheringPage = lazy(() => import("./components/GatheringPage"));
 const Messages = lazy(() => import("./components/Messages"));
 const Profile = lazy(() => import("./components/Profile"));
 const Settings = lazy(() => import("./components/Settings"));
+const BrickSettings = lazy(() => import("./components/BrickSettings"));
+const Notifications = lazy(() => import("./components/Notifications"));
+const PublicGathering = lazy(() => import("./components/PublicGathering"));
 const Legal = lazy(() => import("./components/Legal"));
 const Moderation = lazy(() => import("./components/Moderation"));
 const NotFound = lazy(() => import("./components/NotFound"));
@@ -46,7 +54,16 @@ const InterestsDialog = named(() => import("./components/Interests"), "Interests
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search", saved: "Saved",
+  notifications: "Notifications",
 };
+
+/* Which brick-mode section a page belongs to. Messages, calls, your
+   notifications and settings never lock, and nor do a gathering's details:
+   those are for getting somewhere, not for scrolling. */
+function lockSectionOf(page) {
+  if (page.tab !== "home" || page.gatheringId || page.notFound) return null;
+  return { foryou: "feed", following: "feed", search: "feed", circles: "feed", saved: "feed", flicks: "flicks", news: "news" }[page.section] || null;
+}
 
 /* The tab title for the section on screen. Pages inside a section (a circle,
    a profile, a story) set a more specific one with usePageTitle. */
@@ -55,7 +72,7 @@ function sectionTitle(page, signedIn, query) {
   if (!signedIn) return null;
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
-  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation" }[page.view] || "Your profile";
+  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode" }[page.view] || "Your profile";
   if (page.section === "search" && query?.get("q")) return `${query.get("q").slice(0, 40)} · Search`;
   if (page.section === "circles" && page.gatheringId) return "Gatherings";
   return SECTION_TITLES[page.section] ?? null;
@@ -113,6 +130,15 @@ export default function App() {
 
   const signedIn = !!(user && profile);
   const inbox = useInbox(following, signedIn);
+  const brick = useBrickEngine(signedIn);
+
+  // Notifications, live: one listener feeds the badge and the page.
+  const [notices, setNotices] = useState(null);
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    return listenNotifications(setNotices);
+  }, [signedIn]);
+  const noticesUnread = useMemo(() => (notices || []).filter((n) => !n.read && !muted.has(n.actorId) && !blocked.has(n.actorId)).length, [notices, muted, blocked]);
 
   // Incoming calls, while signed in.
   useEffect(() => { if (signedIn && callsSupported()) return listenIncomingCalls(setIncoming); }, [signedIn]);
@@ -184,12 +210,15 @@ export default function App() {
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords,
-    muted, toggleMute, hiddenAuthors,
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread,
   }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords,
-    muted, toggleMute, hiddenAuthors]);
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread]);
 
   const { page, overlay, bgQuery } = resolve(loc);
   usePageTitle(sectionTitle(page, signedIn, overlay ? bgQuery : loc.query), 0);
+  const lockSection = lockSectionOf(page);
+  // Time on a capped section counts towards today's limit (the full player counts as Flicks).
+  useUsageMeter(brick, overlay ? (overlay.overlay === "watch" ? "flicks" : overlay.overlay === "post" ? "feed" : null) : lockSection);
 
   if (!authReady) {
     return (
@@ -208,6 +237,14 @@ export default function App() {
             <Legal key={page.doc} doc={page.doc} standalone />
           </Suspense>
         </div>
+      );
+    }
+    // An invite link to a public gathering works before signing in.
+    if (page.gatheringId) {
+      return (
+        <Suspense fallback={<Loading label="Loading" />}>
+          <PublicGathering eventId={page.gatheringId} />
+        </Suspense>
       );
     }
     return <AuthPage />;
@@ -229,12 +266,15 @@ export default function App() {
         break;
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
       case "saved": content = <Saved />; break;
+      case "notifications": content = <Notifications />; break;
       default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
     content = <Messages chatId={page.id} />;
   } else if (page.view === "settings") {
     content = <Settings />;
+  } else if (page.view === "brick") {
+    content = <BrickSettings />;
   } else if (page.view === "moderation") {
     content = <Moderation />;
   } else if (page.view === "legal") {
@@ -244,13 +284,28 @@ export default function App() {
   }
   if (page.notFound) content = <NotFound />;
 
+  // Brick mode: a locked section shows why and until when, instead of its
+  // content. (The server refuses the content anyway; this is the kind way.)
+  const locked = lockSection ? brick.state(lockSection) : null;
+  if (locked) {
+    content = (
+      <>
+        <HomeHeader section={page.section} />
+        <LockScreen section={lockSection} lock={locked} opensAt={brick.opensAt(lockSection)} now={brick.now}
+          parentName={brick.policy?.parent?.parentName} />
+      </>
+    );
+  }
+  const overlayLock = overlay?.overlay === "watch" ? brick.state("flicks") : overlay?.overlay === "post" ? brick.state("feed") : null;
+
   return (
     <ShellContext.Provider value={shell}>
+    <BrickContext.Provider value={brick}>
       <div className="flex h-dvh flex-col md:flex-row">
         {/* Keyboard users land here first and can jump the navigation. */}
         <a href="#mesh-main" className="skip-link">Skip to content</a>
 
-        <Sidebar page={page} profile={profile} unread={inbox.unreadCount} onCreate={() => openComposer()} />
+        <Sidebar page={page} profile={profile} unread={inbox.unreadCount} notifications={noticesUnread} onCreate={() => openComposer()} />
 
         <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           <OfflineBanner />
@@ -264,8 +319,14 @@ export default function App() {
             flashes (they open over a page that's already there). */}
         <Suspense fallback={null}>
         {overlay?.overlay === "user" && <UserProfile key={overlay.id} uid={overlay.id} />}
-        {overlay?.overlay === "post" && <PostViewer key={overlay.id} postId={overlay.id} />}
-        {overlay?.overlay === "watch" && <Watch key={overlay.id} postId={overlay.id} />}
+        {overlayLock ? (
+          <LockedOverlay section={overlay.overlay === "watch" ? "flicks" : "feed"} lock={overlayLock} brick={brick} />
+        ) : (
+          <>
+            {overlay?.overlay === "post" && <PostViewer key={overlay.id} postId={overlay.id} />}
+            {overlay?.overlay === "watch" && <Watch key={overlay.id} postId={overlay.id} />}
+          </>
+        )}
 
         {drawerOpen && <HomeDrawer page={page} profile={profile} onClose={() => setDrawerOpen(false)} />}
 
@@ -302,6 +363,20 @@ export default function App() {
         {call && <CallScreen session={call} onClose={() => setCall(null)} />}
         </Suspense>
       </div>
+    </BrickContext.Provider>
     </ShellContext.Provider>
+  );
+}
+
+/* A post or video opened by link while its section is locked. */
+function LockedOverlay({ section, lock, brick }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Locked"
+      className="fixed inset-0 z-overlay flex flex-col bg-canvas anim-fade md:left-[76px] xl:left-64">
+      <div className="flex h-14 items-center px-2 pt-safe">
+        <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/messages")} />
+      </div>
+      <LockScreen section={section} lock={lock} opensAt={brick.opensAt(section)} now={brick.now} parentName={brick.policy?.parent?.parentName} />
+    </div>
   );
 }

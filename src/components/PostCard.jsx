@@ -240,7 +240,7 @@ export default function PostCard({
       {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
       {sheet === "menu" && (
         <PostMenu post={post} mine={mine} canModerate={canModerate} onEdit={() => setSheet("edit")}
-          onClose={() => setSheet(null)} onRemoved={() => onRemoved?.(post.id)} />
+          onClose={() => setSheet(null)} onRemoved={(why) => onRemoved?.(post.id, why)} />
       )}
       {sheet === "edit" && (
         <EditPostDialog post={post} onClose={() => setSheet(null)}

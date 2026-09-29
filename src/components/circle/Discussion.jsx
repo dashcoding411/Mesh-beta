@@ -1,12 +1,14 @@
 // A circle's posts, and the box for posting in it.
 import {
-  ChartBar, Clapperboard, Hourglass, Image, Info, Lock, LockOpen, MessageSquare, Pin, PinOff, Sticker, VolumeX,
+  ChartBar, Clapperboard, Hourglass, Image, Info, Lock, LockOpen, MessageSquare, Pin, PinOff, Sticker, VolumeX, Search as SearchIcon, X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  circlePostVisibility, createPost, fetchGroupPosts, fetchPendingPosts, isCircleMod, isMuted,
-  screenPost, setPinnedPost, setPostLocked, STRAND_MAX,
+  addStrike, circlePostVisibility, createPost, featuredIds, fetchGroupPosts, fetchPendingPosts, isCircleMod, isMuted,
+  me, screenPost, setFeaturedPosts, setPostLocked, STRAND_MAX,
 } from "../../lib/db";
+import { normalise } from "../../lib/search";
+import { TopicChips } from "./TopicPicker";
 import { plural } from "../../lib/format";
 import { gifsEnabled } from "../../lib/gifs";
 import { checkContent, markPosted } from "../../lib/moderation";
@@ -31,6 +33,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
   const toast = useToast();
   const [warned, setWarned] = useState("");
   const [text, setText] = useState("");
+  const [topic, setTopic] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -41,18 +44,21 @@ function CircleQuickPost({ group, membership, onPosted }) {
     if (!v.text) return;
     const mod = checkContent(v.text, { key: "post", allowQuoted: true });
     if (mod.error) return setError(mod.error);
-    const blocked = screenPost(v.text, group, profile, membership);
+    const blocked = screenPost(v.text, group, profile, membership, { kind: "text" });
     if (blocked) return setError(blocked);
     if (mod.note && !warned) return setWarned(mod.note);
     setBusy(true);
     setError("");
     try {
-      const post = await createPost({ kind: "text", text: v.text, groupId: group.id, visibility: circlePostVisibility(group, membership), sensitive: mod.sensitive });
+      const post = await createPost({
+        kind: "text", text: v.text, groupId: group.id, circleTopic: topic, sensitive: mod.sensitive,
+        visibility: circlePostVisibility(group, membership, { text: v.text, profile }),
+      });
       markPosted("post", v.text);
       setText("");
       onPosted(post);
       toast(post.visibility === "pending"
-        ? { tone: "info", title: "Sent to the admins", body: "It'll appear once someone approves it." }
+        ? { tone: "info", title: "Sent to the admins", body: "This circle reviews posts like this one first. It'll appear once someone approves it." }
         : { title: "Posted to the circle" });
     } catch (err) {
       console.error(err);
@@ -62,7 +68,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
     } finally { setBusy(false); }
   };
 
-  const composerOpts = (kind) => ({ kind, groupId: group.id, group, membership });
+  const composerOpts = (kind) => ({ kind, groupId: group.id, group, membership, circleTopic: topic });
 
   return (
     <form onSubmit={submit} className="group rounded-card border border-line bg-surface p-4" aria-label={`Post in ${group.name}`}>
@@ -79,6 +85,9 @@ function CircleQuickPost({ group, membership, onPosted }) {
             <InlineMessage id="circle-post-error">{error}</InlineMessage>
             {warned && <p className="text-caption text-warning-text">{warned}</p>}
           </div>
+          {group.topics?.length > 0 && text.trim() && (
+            <div className="mt-2"><TopicChips topics={group.topics} value={topic} onChange={setTopic} label="Topic" /></div>
+          )}
           <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
             <IconButton icon={Image} label="Post a photo" size={20} className="-ml-2.5 text-accent-text" onClick={() => openComposer(composerOpts("post"))} />
             <IconButton icon={Clapperboard} label="Post a Flick" size={20} className="text-accent-text" onClick={() => openComposer(composerOpts("video"))} />
@@ -95,7 +104,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
   );
 }
 
-export function Discussion({ group, membership, onChanged, onReview }) {
+export function Discussion({ group, membership, onChanged, onReview, onPosted }) {
   const toast = useToast();
   const member = !!membership;
   const moderator = isCircleMod(membership);
@@ -104,6 +113,8 @@ export function Discussion({ group, membership, onChanged, onReview }) {
   const [mine, setMine] = useState([]);
   const [queue, setQueue] = useState(0);
   const [error, setError] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [term, setTerm] = useState("");
   const [viewer, setViewer] = usePostStates(posts);
 
   const load = useCallback(async () => {
@@ -117,13 +128,15 @@ export function Discussion({ group, membership, onChanged, onReview }) {
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
-  const pin = async (p) => {
-    const on = group.pinnedPostId !== p.id;
+  const featured = featuredIds(group);
+  const feature = async (p) => {
+    const on = !featured.includes(p.id);
+    if (on && featured.length >= 3) return toast({ tone: "info", title: "Three posts are featured already", body: "Unfeature one first." });
     try {
-      await setPinnedPost(group.id, on ? p.id : "");
+      await setFeaturedPosts(group.id, on ? [...featured, p.id] : featured.filter((id) => id !== p.id));
       onChanged();
-      toast({ title: on ? "Pinned to the top" : "Unpinned" });
-    } catch { toast({ tone: "error", title: "Couldn't change the pin" }); }
+      toast({ title: on ? "Featured at the top" : "No longer featured" });
+    } catch { toast({ tone: "error", title: "Couldn't change that" }); }
   };
 
   const lock = async (p) => {
@@ -134,14 +147,63 @@ export function Discussion({ group, membership, onChanged, onReview }) {
     } catch { toast({ tone: "error", title: "Couldn't change comments" }); }
   };
 
-  const pinned = posts?.find((p) => p.id === group.pinnedPostId);
-  const ordered = posts ? [...(pinned ? [pinned] : []), ...posts.filter((p) => p.id !== group.pinnedPostId)] : null;
+  // A moderator's removal counts against its author for 28 days, which the
+  // circle can use to pause their posting (Admin Assist).
+  const removed = (id, why) => {
+    const post = posts?.find((x) => x.id === id);
+    setPosts((prev) => prev.filter((x) => x.id !== id));
+    if (why === "deleted" && moderator && post && post.authorId !== me()) {
+      addStrike(group.id, post.authorId);
+      toast({ title: "Removed from the circle", body: "It counts against the author for 28 days." });
+    }
+  };
+
+  // Topic chips and search narrow what's shown; nothing is refetched.
+  const query = normalise(term).trim();
+  const shown = useMemo(() => {
+    const words = query.split(/\s+/).filter((w) => w.length >= 2);
+    return (posts || []).filter((p) => {
+      if (topic && p.circleTopic !== topic) return false;
+      if (!words.length) return true;
+      const hay = normalise(`${p.title || ""} ${p.text || ""} ${p.authorName || ""}`);
+      return words.every((w) => hay.includes(w));
+    });
+  }, [posts, topic, query]);
+  const filtering = !!topic || query.length >= 2;
+  const top = filtering ? [] : featured.map((id) => posts?.find((p) => p.id === id)).filter(Boolean);
+  const rest = shown.filter((p) => !top.includes(p));
+
+  const row = (p, isFeatured) => (
+    <div key={p.id} className="border-b border-line last:border-0">
+      {isFeatured && (
+        <p className="flex items-center gap-1.5 px-4 pt-3 text-label font-semibold uppercase tracking-wider text-accent-text">
+          <Pin size={12} aria-hidden="true" /> Featured
+        </p>
+      )}
+      {p.circleTopic && !isFeatured && (
+        <p className="px-4 pt-3 text-label font-semibold text-fg-subtle">{p.circleTopic}</p>
+      )}
+      <PostCard post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator} highlight={term || undefined}
+        onRemoved={removed} />
+      {moderator && (
+        <div className="-mt-2 flex flex-wrap items-center gap-1 px-4 pb-3 pl-[60px]">
+          <Button size="sm" variant="ghost" icon={featured.includes(p.id) ? PinOff : Pin} onClick={() => feature(p)}>
+            {featured.includes(p.id) ? "Unfeature" : "Feature"}
+          </Button>
+          <Button size="sm" variant="ghost" icon={p.locked ? LockOpen : Lock} onClick={() => lock(p)}>
+            {p.locked ? "Reopen comments" : "Pause comments"}
+          </Button>
+          {p.locked && <Badge tone="warning">Comments paused</Badge>}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       {status.ok ? (
         <CircleQuickPost group={group} membership={membership}
-          onPosted={(p) => (p.visibility === "pending" ? setMine((m) => [p, ...m]) : setPosts((prev) => [p, ...(prev || [])]))} />
+          onPosted={(p) => { onPosted?.(); if (p.visibility === "pending") setMine((m) => [p, ...m]); else setPosts((prev) => [p, ...(prev || [])]); }} />
       ) : (
         <p className="flex items-start gap-2 rounded-card border border-line bg-surface p-4 text-callout text-fg-muted">
           {isMuted(membership) ? <VolumeX size={18} className="mt-0.5 shrink-0" aria-hidden="true" /> : <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />}
@@ -170,35 +232,37 @@ export function Discussion({ group, membership, onChanged, onReview }) {
         </section>
       )}
 
+      {posts?.length > 0 && (
+        <div className="space-y-3">
+          <div className="relative">
+            <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+            <label htmlFor="circle-search" className="sr-only">Search this circle</label>
+            <input id="circle-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={`Search ${group.name}`}
+              className="field min-h-11 w-full rounded-control border border-field bg-surface-2 pl-9 pr-10 text-callout text-fg placeholder:text-fg-subtle focus:border-accent-text focus:ring-4 focus:ring-accent/25" />
+            {term && (
+              <button type="button" onClick={() => setTerm("")} aria-label="Clear search"
+                className="press absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-fg-subtle hover:text-fg">
+                <X size={16} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          {group.topics?.length > 0 && <TopicChips topics={group.topics} value={topic} onChange={setTopic} label="Filter by topic" withAll />}
+        </div>
+      )}
+
       {error && <ErrorState compact title="Couldn't load the discussion" onRetry={() => { setError(false); setPosts(null); load(); }} />}
-      {!error && ordered === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
-      {ordered?.length === 0 && (
+      {!error && posts === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
+      {posts?.length === 0 && (
         <EmptyState compact icon={MessageSquare} title="Nothing posted yet" body={status.ok ? "Start things off." : "Check back soon."} />
       )}
-      {ordered?.length > 0 && (
+      {posts?.length > 0 && filtering && rest.length === 0 && (
+        <EmptyState compact icon={SearchIcon} title="Nothing matches" body="Try other words, or another topic."
+          action={<Button onClick={() => { setTerm(""); setTopic(""); }}>Show everything</Button>} />
+      )}
+      {(top.length > 0 || rest.length > 0) && (
         <div className="overflow-hidden rounded-card border border-line">
-          {ordered.map((p) => (
-            <div key={p.id} className="border-b border-line last:border-0">
-              {p.id === group.pinnedPostId && (
-                <p className="flex items-center gap-1.5 px-4 pt-3 text-label font-semibold uppercase tracking-wider text-accent-text">
-                  <Pin size={12} aria-hidden="true" /> Pinned
-                </p>
-              )}
-              <PostCard post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator}
-                onRemoved={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))} />
-              {moderator && (
-                <div className="-mt-2 flex flex-wrap items-center gap-1 px-4 pb-3 pl-[60px]">
-                  <Button size="sm" variant="ghost" icon={group.pinnedPostId === p.id ? PinOff : Pin} onClick={() => pin(p)}>
-                    {group.pinnedPostId === p.id ? "Unpin" : "Pin to top"}
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={p.locked ? LockOpen : Lock} onClick={() => lock(p)}>
-                    {p.locked ? "Reopen comments" : "Pause comments"}
-                  </Button>
-                  {p.locked && <Badge tone="warning">Comments paused</Badge>}
-                </div>
-              )}
-            </div>
-          ))}
+          {top.map((p) => row(p, true))}
+          {rest.map((p) => row(p, false))}
         </div>
       )}
     </div>

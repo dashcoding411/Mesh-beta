@@ -13,6 +13,7 @@ import { readDraft, useDraft } from "../lib/drafts";
 import { InterestToggles } from "./Interests";
 import GifPicker, { GifView } from "./GifPicker";
 import { PollBuilder } from "./Poll";
+import { TopicChips } from "./circle/TopicPicker";
 import Dialog from "./ui/Dialog";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
@@ -49,7 +50,7 @@ function readDuration(file) {
    seconds play as its trailer in the Flicks feed.
 
    Nothing you've typed or picked is lost when something fails. */
-export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "" }) {
+export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "", circleTopic: initialCircleTopic }) {
   const toast = useToast();
   // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
   const minor = isMinor(profile) || !!profile?.isPrivate;
@@ -77,6 +78,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [mediaReady, setMediaReady] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [topics, setTopics] = useState(d.topics || []);
+  const [circleTopic, setCircleTopic] = useState(initialCircleTopic || "");
   const [topicsTouched, setTopicsTouched] = useState(!!d.topics);
   const [poll, setPoll] = useState(d.poll || (attach === "poll" ? { options: ["", ""], hours: 24 } : null));
   const [gif, setGif] = useState(d.gif || null);
@@ -153,7 +155,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}`, { key: "post", allowQuoted: true });
     if (!e.text && mod.error) e.text = mod.error;
     if (group && !e.text) {
-      const blocked = screenPost(`${title}\n${text}`, group, profile, membership);
+      const blocked = screenPost(`${title}\n${text}`, group, profile, membership, { kind });
       if (blocked) e.text = blocked;
     }
     return { e, text: vText.text || "", note: mod.note || "", sensitive: !!mod.sensitive };
@@ -195,7 +197,8 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         groupId,
         // In a circle the circle decides: members-only for private circles,
         // and "pending" when the circle wants to approve posts first.
-        visibility: groupId ? circlePostVisibility(group, membership) : minor ? "followers" : visibility,
+        visibility: groupId ? circlePostVisibility(group, membership, { text: `${title}\n${clean}`, profile }) : minor ? "followers" : visibility,
+        circleTopic: groupId ? circleTopic : "",
       });
       markPosted("post", clean);
       finishDraft();
@@ -390,6 +393,13 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             <Textarea autoGrow rows={2} maxRows={5} value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={LIMITS.alt}
               placeholder="e.g. Two friends laughing on a beach at sunset" />
           </Field>
+        )}
+
+        {group?.topics?.length > 0 && (
+          <div>
+            <p className="mb-2 text-callout font-medium">Topic in {group.name} <span className="font-normal text-fg-subtle">Optional</span></p>
+            <TopicChips topics={group.topics} value={circleTopic} onChange={setCircleTopic} label={`Topic in ${group.name}`} />
+          </div>
         )}
 
         {!mediaBlocked && (

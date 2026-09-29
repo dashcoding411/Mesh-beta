@@ -65,7 +65,7 @@ export async function openDirectChat(target) {
    one at a time, because the rules check every add (blocked? only takes
    messages from people they follow?). Returns the chat id and anyone who
    couldn't be added. */
-export async function createGroupChat(name, targets) {
+export async function createGroupChat(name, targets, extra = {}) {
   const uid = me();
   const myProfile = await fetchProfile(uid);
   const refDoc = await addDoc(collection(db, "chats"), {
@@ -82,6 +82,7 @@ export async function createGroupChat(name, targets) {
     lastSenderId: "",
     createdBy: uid,
     updatedAt: serverTimestamp(),
+    ...extra,
   });
   const skipped = await addToGroup(refDoc.id, targets);
   return { id: refDoc.id, skipped };

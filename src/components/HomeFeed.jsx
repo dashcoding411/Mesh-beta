@@ -9,6 +9,7 @@ import { rankFeed, screenForViewer } from "../lib/algorithm";
 import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
 import { useShell } from "./shell/ShellContext";
+import { useBrick } from "../lib/useBrick";
 import HomeHeader from "./shell/HomeHeader";
 import FeedTabs from "./shell/FeedTabs";
 import Button from "./ui/Button";
@@ -157,8 +158,11 @@ export default function HomeFeed({ mode }) {
   }, [load]);
 
   const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
-  // Someone you block or mute disappears at once, without waiting for a reload.
-  const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)) ?? null;
+  // Someone you block or mute disappears at once, without waiting for a
+  // reload, and Flicks step out of the mix once today's Flicks limit is used.
+  const flicksLocked = !!useBrick().state("flicks");
+  const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)
+    && !(flicksLocked && (p.kind === "short" || p.kind === "video"))) ?? null;
   const page = visiblePosts?.slice(0, shown) ?? null;
   const more = visiblePosts ? visiblePosts.length - shown : 0;
 

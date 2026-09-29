@@ -6,6 +6,7 @@ import {
 import { auth, db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { fetchProfile } from "./users.js";
+import { notify } from "./notifications.js";
 
 // ---------- gatherings (events, scoped to a circle or standalone) ----------
 // Public gatherings take Going / Interested; private ones take Going / Maybe /
@@ -15,6 +16,7 @@ export const RSVP_OPTIONS = {
   public: [
     { id: "going", label: "Going" },
     { id: "interested", label: "Interested" },
+    { id: "cant", label: "Can't go" },
   ],
   private: [
     { id: "going", label: "Going" },
@@ -107,6 +109,7 @@ export async function deleteEvent(eventId) {
 /** Invite people to a private gathering by adding them to its guest list. */
 export async function inviteToEvent(eventId, users) {
   await updateDoc(doc(db, "events", eventId), { invitees: arrayUnion(...users.map((u) => u.id)) });
+  users.forEach((u) => notify(u.id, "invite", { ref: eventId }));
 }
 
 export async function uninviteFromEvent(eventId, uid) {
@@ -147,12 +150,83 @@ export async function setRsvp(event, previous, next) {
   const batch = writeBatch(db);
   if (result) batch.set(rsvpRef, { status: result, username: profile?.username || "", createdAt: serverTimestamp() });
   else batch.delete(rsvpRef);
+  // Your own list of replies, for reminders and "coming up".
+  const mineRef = doc(db, "users", uid, "rsvps", event.id);
+  if (result) {
+    batch.set(mineRef, {
+      status: result,
+      title: (event.title || "").slice(0, 150),
+      location: (event.location || "").slice(0, 300),
+      startsAt: event.startsAt,
+      updatedAt: serverTimestamp(),
+    });
+  } else batch.delete(mineRef);
   const counters = {};
   if (delta.goingCount) counters.goingCount = increment(delta.goingCount);
   if (delta.interestedCount) counters.interestedCount = increment(delta.interestedCount);
   if (Object.keys(counters).length) batch.update(eventRef, counters);
   await batch.commit();
   return result;
+}
+
+/** Gatherings you said you're going to (or interested in, or maybe) that
+    haven't finished, soonest first. */
+export async function fetchUpcomingRsvps(max = 10) {
+  const since = Timestamp.fromMillis(Date.now() - 3 * 3600000);
+  const q = query(collection(db, "users", me(), "rsvps"), where("startsAt", ">=", since), orderBy("startsAt", "asc"), limit(max));
+  const list = snapToList(await getDocs(q));
+  return list.filter((r) => r.status !== "cant");
+}
+
+/** A public gathering by link, for someone who isn't signed in. */
+export async function fetchPublicEvent(eventId) {
+  const snap = await getDoc(doc(db, "events", eventId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export function eventUrl(eventId) {
+  return `${window.location.origin}/gatherings/${encodeURIComponent(eventId)}`;
+}
+
+// --- calendars ---
+// Gatherings have a start time but no end, so calendars get two hours.
+
+const HOURS = 2;
+const icsTime = (ms) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+const icsText = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => `\\${c}`).replace(/\r?\n/g, "\\n");
+
+/** An .ics file your calendar app can import, with alerts a day and two
+    hours before: the reminders, without Mesh having to send anything. */
+export function eventIcs(event) {
+  const start = tsMillis(event.startsAt);
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mesh//Gatherings//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${event.id}@mesh`,
+    `DTSTAMP:${icsTime(Date.now())}`,
+    `DTSTART:${icsTime(start)}`,
+    `DTEND:${icsTime(start + HOURS * 3600000)}`,
+    `SUMMARY:${icsText(event.title)}`,
+    event.location ? `LOCATION:${icsText(event.location)}` : null,
+    `DESCRIPTION:${icsText(`${(event.description || "").slice(0, 600)}\n\n${eventUrl(event.id)}`)}`,
+    `URL:${eventUrl(event.id)}`,
+    "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(event.title)} is tomorrow`, "TRIGGER:-PT24H", "END:VALARM",
+    "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(event.title)} starts in 2 hours`, "TRIGGER:-PT2H", "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR",
+  ].filter(Boolean);
+  return lines.join("\r\n");
+}
+
+export function googleCalendarUrl(event) {
+  const start = tsMillis(event.startsAt);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title || "",
+    dates: `${icsTime(start)}/${icsTime(start + HOURS * 3600000)}`,
+    details: `${(event.description || "").slice(0, 600)}\n\n${eventUrl(event.id)}`,
+    location: event.location || "",
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
 }
 
 // --- a gathering's discussion ---

@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
@@ -11,6 +11,15 @@ import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
 import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
 import { clearAllDrafts } from "../lib/drafts";
+import { useBrick } from "../lib/useBrick";
+import { hasAnyLimit, parentActive } from "../lib/brick";
+
+function brickSummary(brick) {
+  if (brick.state("")) return "Bricked right now";
+  const p = brick.policy;
+  if (!p || (!hasAnyLimit(p.self) && !parentActive(p, brick.now))) return "Off";
+  return p.pending ? "On, with a change waiting" : "On";
+}
 import {
   exportMyData, deleteMyAccountData, updateProfileFields, me, POLICY_VERSION, tsMillis, isMinor,
   setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
@@ -39,6 +48,7 @@ const PROVIDERS = { password: "Email and password", "google.com": "Google", "app
    is exactly where people get confused about who can see what. */
 export default function Settings() {
   const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, muted } = useShell();
+  const brick = useBrick();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
   const [admin, setAdmin] = useState(false);
@@ -126,6 +136,10 @@ export default function Settings() {
               value={interests?.length ? interests.map((id) => interestById(id)?.label).filter(Boolean).join(", ") : "None picked yet"}
               help="Shapes For you, Flicks and circle suggestions. Private: nobody else can see them."
               onClick={openInterests} />
+            <Row icon={BrickWall} label="Brick mode"
+              value={brickSummary(brick)}
+              help="Lock Mesh down to messages and calls at set times, or after a daily limit. Loosening waits 24 hours."
+              onClick={() => navigate("/account/brick")} />
             <Row icon={EyeOff} label="Hidden words"
               value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."

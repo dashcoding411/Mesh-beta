@@ -1,4 +1,4 @@
-import { Menu, Plus, Search } from "lucide-react";
+import { Bell, Menu, Plus, Search } from "lucide-react";
 import IconButton from "../ui/IconButton";
 import { sectionById } from "../../lib/surfaces";
 import { navigate } from "../../lib/router";
@@ -12,7 +12,7 @@ import { LogoMark } from "./Sidebar";
    Desktop: the section's name and what it's for, since the sidebar already
    handles getting around. `children` renders under both (e.g. feed tabs). */
 export default function HomeHeader({ section, children, actions, transparent = false }) {
-  const { openDrawer, openComposer } = useShell();
+  const { openDrawer, openComposer, noticesUnread } = useShell();
   const meta = sectionById(section);
   const isFeed = section === "foryou" || section === "following";
 
@@ -38,6 +38,15 @@ export default function HomeHeader({ section, children, actions, transparent = f
         </div>
         {section !== "search" && (
           <IconButton icon={Search} label="Search" onClick={() => navigate("/search")} tone={transparent ? "overlay" : "ghost"} />
+        )}
+        {section !== "notifications" && (
+          <span className="relative">
+            <IconButton icon={Bell} label={noticesUnread > 0 ? `Notifications, ${noticesUnread} new` : "Notifications"}
+              onClick={() => navigate("/notifications")} tone={transparent ? "overlay" : "ghost"} />
+            {noticesUnread > 0 && (
+              <span aria-hidden="true" className="pointer-events-none absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-canvas" />
+            )}
+          </span>
         )}
         {actions}
         <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />

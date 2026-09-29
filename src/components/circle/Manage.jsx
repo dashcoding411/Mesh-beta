@@ -2,16 +2,16 @@
 import { Check, Hourglass, Trash2, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
-  AGE_LIMITS, approveJoinRequest, approvePost, AUTOMOD_DEFAULTS, declineJoinRequest, deleteGroup,
+  AGE_LIMITS, approveJoinRequest, approvePost, declineJoinRequest, deleteGroup, effectiveAutomod,
   deletePost, fetchJoinRequests, fetchPendingPosts, setCircleInterests, setCircleLimits,
-  setCircleRules, setScreeningQuestions,
+  setCircleRules, setCircleTopics, setScreeningQuestions,
 } from "../../lib/db";
 import { shortTime } from "../../lib/format";
 import { navigate } from "../../lib/router";
 import { InterestToggles } from "../Interests";
 import Button from "../ui/Button";
 import Dialog, { ConfirmDialog } from "../ui/Dialog";
-import { Checkbox, Field, Input, Textarea } from "../ui/Field";
+import { Checkbox, Field, Input, Select, Textarea } from "../ui/Field";
 import { EmptyState, Skeleton } from "../ui/States";
 import Tabs from "../ui/Tabs";
 import { useToast } from "../ui/toast-context";
@@ -104,13 +104,14 @@ function PostQueue({ group }) {
     } finally { setBusy(""); }
   };
 
-  const approval = { ...AUTOMOD_DEFAULTS, ...(group.automod || {}) }.requirePostApproval;
+  const am = effectiveAutomod(group);
+  const approval = am.requirePostApproval || am.linkAction === "hold" || (am.newAccountDays > 0 && am.newAccountAction === "hold") || am.holdNoPhoto;
 
   if (posts === null) return <Skeleton className="h-24 !rounded-card" />;
   if (!posts.length) {
     return (
       <EmptyState compact icon={Hourglass} title="Nothing waiting"
-        body={approval ? "New posts from members land here before anyone else sees them." : "Turn on post approval in Limits to review members' posts first."} />
+        body={approval ? "New posts from members land here before anyone else sees them." : "Turn on a review-first rule in Limits to review members' posts first."} />
     );
   }
   return (
@@ -133,7 +134,7 @@ function PostQueue({ group }) {
 /* Every switch here is enforced by the server, not just the app. */
 function LimitsEditor({ group, onSaved, isOwner }) {
   const toast = useToast();
-  const [a, setA] = useState({ ...AUTOMOD_DEFAULTS, ...(group.automod || {}) });
+  const [a, setA] = useState(effectiveAutomod(group));
   const [words, setWords] = useState((group.automod?.bannedWords || []).join(", "));
   const [requireApproval, setRequireApproval] = useState(!!group.requireApproval || group.privacy !== "public");
   const [ageLimit, setAgeLimit] = useState(group.ageLimit || 0);
@@ -189,17 +190,42 @@ function LimitsEditor({ group, onSaved, isOwner }) {
       </section>
 
       <section>
-        <h3 className="mb-1 text-callout font-semibold">What gets through</h3>
-        <div className={`rounded-card border border-line bg-surface-2 px-3 ${locked ? "pointer-events-none opacity-60" : ""}`}>
+        <h3 className="text-callout font-semibold">Admin Assist</h3>
+        <p className="mb-2 text-caption text-fg-subtle">
+          Checked on every post before it appears. "Review first" sends it to Manage → Posts; "decline" turns it down with the reason.
+          Admins and moderators are exempt. The server applies all of these, not just the app.
+        </p>
+        <div className={`space-y-1 rounded-card border border-line bg-surface-2 px-3 py-1 ${locked ? "pointer-events-none opacity-60" : ""}`}>
           <Checkbox checked={!!a.requirePostApproval} onChange={set("requirePostApproval")}
-            description="Members' posts wait in Manage → Posts until an admin or moderator approves them.">
-            Approve posts before they appear
+            description="Every member's post waits for an admin or moderator.">
+            Review every post first
           </Checkbox>
-          <Checkbox checked={!!a.blockLinks} onChange={set("blockLinks")} description="Stops link spam. Admins and moderators can still post links.">
-            Block posts with links
+          <Rule label="Links" value={a.linkAction} onChange={set("linkAction")}
+            options={[["allow", "Allow"], ["hold", "Review first"], ["block", "Decline"]]} />
+          <Rule label="New accounts" value={String(a.newAccountDays)} onChange={(v) => set("newAccountDays")(Number(v))}
+            options={[["0", "No limit"], ["7", "Under 7 days"], ["30", "Under 30 days"], ["90", "Under 90 days"], ["180", "Under 180 days"]]}
+            extra={a.newAccountDays > 0 && (
+              <Select aria-label="What happens to new accounts' posts" value={a.newAccountAction} onChange={(e) => set("newAccountAction")(e.target.value)} className="!w-auto">
+                <option value="hold">Review first</option>
+                <option value="decline">Decline</option>
+              </Select>
+            )} />
+          <Rule label="Shortest post" value={String(a.minLength)} onChange={(v) => set("minLength")(Number(v))}
+            options={[["0", "Any length"], ["10", "10 characters"], ["20", "20 characters"], ["50", "50 characters"]]} />
+          <Rule label="Slow mode" value={String(a.slowModeMinutes)} onChange={(v) => set("slowModeMinutes")(Number(v))}
+            options={[["0", "Off"], ["5", "5 minutes between posts"], ["15", "15 minutes"], ["60", "1 hour"]]} />
+          <Checkbox checked={!!a.holdNoPhoto} onChange={set("holdNoPhoto")} description="A common sign of a throwaway account.">
+            Review posts from accounts with no profile photo
           </Checkbox>
-          <Checkbox checked={!!a.blockNewAccounts} onChange={set("blockNewAccounts")} description="Accounts under 7 days old can read but not post.">
-            Hold back brand-new accounts
+          <Checkbox checked={!!a.blockContactInfo} onChange={set("blockContactInfo")} description="Decline phone numbers, email addresses and card numbers, where scams and doxxing start.">
+            Keep contact details out of posts
+          </Checkbox>
+          <Checkbox checked={!a.mediaAllowed} onChange={(v) => set("mediaAllowed")(!v)} description="Strands only: no photos or videos.">
+            Words only
+          </Checkbox>
+          <Checkbox checked={!!a.declineRecentStrikes} onChange={set("declineRecentStrikes")}
+            description="When a moderator removes someone's post, they can't post again for 28 days.">
+            Pause posting after a removed post
           </Checkbox>
         </div>
       </section>
@@ -209,6 +235,20 @@ function LimitsEditor({ group, onSaved, isOwner }) {
       </Field>
 
       {!locked && <Button variant="primary" full loading={busy} onClick={save}>Save limits</Button>}
+    </div>
+  );
+}
+
+/* One Admin Assist condition: a label and its setting on one line. */
+function Rule({ label, value, onChange, options, extra }) {
+  const id = `rule-${label.replace(/\s/g, "")}`;
+  return (
+    <div className="flex min-h-12 flex-wrap items-center gap-2 py-1.5">
+      <label htmlFor={id} className="min-w-0 flex-1 text-callout text-fg">{label}</label>
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="!w-auto">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </Select>
+      {extra}
     </div>
   );
 }
@@ -236,6 +276,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
   const [rules, setRules] = useState(group.rules || "");
   const [questions, setQuestions] = useState(group.screeningQuestions || []);
   const [topics, setTopics] = useState(group.interests || []);
+  const [postTopics, setPostTopics] = useState((group.topics || []).join(", "));
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -248,6 +289,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
       await setCircleRules(group.id, rules.trim());
       await setScreeningQuestions(group.id, questions.filter((q) => q && q.trim()));
       await setCircleInterests(group.id, topics);
+      await setCircleTopics(group.id, postTopics.split(","));
       onSaved();
       toast({ title: "Rules saved" });
     } catch { toast({ tone: "error", title: "Couldn't save the rules" }); }
@@ -260,6 +302,10 @@ function RulesEditor({ group, onSaved, isOwner }) {
         <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3. People find the circle by these.</span></legend>
         <InterestToggles value={topics} onChange={setTopics} max={3} label="Circle interests" />
       </fieldset>
+      <Field label="Post topics" optional hint="Comma separated, up to 12. Members tag posts with one, and anyone can filter the discussion by them."
+        count={postTopics.length} max={400}>
+        <Input value={postTopics} maxLength={400} onChange={(e) => setPostTopics(e.target.value)} placeholder="Questions, Show and tell, Events, For sale" />
+      </Field>
       <Field label="Rules" hint="One per line. People agree to them when they ask to join." count={rules.length} max={2000}>
         <Textarea autoGrow rows={4} value={rules} maxLength={2000} onChange={(e) => setRules(e.target.value)}
           placeholder={"Be kind\nNo self-promotion\nStay on topic"} />
@@ -273,7 +319,7 @@ function RulesEditor({ group, onSaved, isOwner }) {
         ))}
         <p className="text-caption text-fg-subtle">Asking anything means every new member needs approval.</p>
       </fieldset>
-      <Button variant="primary" full loading={busy} onClick={save}>Save rules and interests</Button>
+      <Button variant="primary" full loading={busy} onClick={save}>Save details</Button>
 
       <section aria-labelledby="danger-h" className="rounded-card border border-danger/40 p-4">
         <h3 id="danger-h" className="text-callout font-semibold text-danger-text">Delete this circle</h3>

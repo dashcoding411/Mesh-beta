@@ -9,7 +9,8 @@ import { navigate } from "../router";
 import { INLINE_PREFIX, isInline } from "../media";
 import { circleVisibility } from "./circles.js";
 import { me, snapToList, tsMillis } from "./core.js";
-import { fetchProfile } from "./users.js";
+import { fetchProfile, uidForUsername } from "./users.js";
+import { mentionedHandles, notify, unnotify } from "./notifications.js";
 
 // ---------- posts ----------
 
@@ -44,6 +45,7 @@ export const POLL_DURATIONS = [
 export async function createPost({
   kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
   duration = 0, trailerStart = 0, aiGenerated = false, topics = [], poll = null, gif = null, sensitive = false,
+  circleTopic = "",
 }) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
@@ -78,6 +80,8 @@ export async function createPost({
     // mockery). Viewers' apps fold or limit it, and the server only accepts
     // a slur when this is set, so a slur can never go out unlabelled.
     ...(sensitive ? { sensitive: true } : {}),
+    // One of the circle's own topics, so members can filter the discussion.
+    ...(groupId && circleTopic ? { circleTopic: circleTopic.slice(0, 40) } : {}),
     likeCount: 0,
     commentCount: 0,
     saveCount: 0,
@@ -93,7 +97,17 @@ export async function createPost({
   const batch = writeBatch(db);
   batch.set(refDoc, post);
   batch.set(doc(db, "rateLimits", user.uid), { post: serverTimestamp() }, { merge: true });
+  // In a circle, your last-post time goes with it (a circle's slow mode reads it).
+  if (groupId) batch.update(doc(db, "groups", groupId, "members", user.uid), { lastPostAt: serverTimestamp() });
   await batch.commit();
+  // Tell anyone @mentioned in a public post. Followers-only and circle posts
+  // don't notify: the person might not be able to open them.
+  if (post.visibility === "public") {
+    mentionedHandles(post.text).forEach(async (handle) => {
+      const uid = await uidForUsername(handle).catch(() => null);
+      if (uid) notify(uid, "mention", { postId: refDoc.id, text: post.text.slice(0, 140) });
+    });
+  }
   return { id: refDoc.id, ...post, createdAt: Timestamp.now() };
 }
 
@@ -289,12 +303,14 @@ export async function toggleLike(post, currentlyLiked) {
     batch.delete(likeRef);
     batch.update(postRef, { likeCount: increment(-1) });
     await batch.commit();
+    unnotify(post.authorId, "like", { postId: post.id });
   } else {
     const profile = await fetchProfile(uid);
     batch.set(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
     batch.update(postRef, { likeCount: increment(1) });
     await batch.commit();
     bumpAffinity(post.authorId, SIGNAL.like).catch(() => {});
+    notify(post.authorId, "like", { postId: post.id });
   }
 }
 
@@ -435,6 +451,7 @@ export async function toggleRepost(post, currentlyReposted) {
     batch.delete(ref_);
     batch.update(postRef, { repostCount: increment(-1) });
     await batch.commit();
+    unnotify(post.authorId, "repost", { postId: post.id });
   } else {
     const profile = await fetchProfile(uid);
     batch.set(ref_, {
@@ -447,6 +464,7 @@ export async function toggleRepost(post, currentlyReposted) {
     batch.update(postRef, { repostCount: increment(1) });
     await batch.commit();
     bumpAffinity(post.authorId, SIGNAL.repost).catch(() => {});
+    notify(post.authorId, "repost", { postId: post.id });
   }
 }
 
@@ -544,6 +562,7 @@ export async function addComment(post, text, gif = null, sensitive = false) {
   batch.update(doc(db, "posts", post.id), { commentCount: increment(1), lastCommentId: ref_.id });
   await batch.commit();
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
+  notify(post.authorId, "comment", { postId: post.id, commentId: ref_.id, text: text.slice(0, 140) });
   return { id: ref_.id, ...comment, createdAt: Timestamp.now() };
 }
 

@@ -1,10 +1,13 @@
-import { ArrowLeft, Check, Clock, Lock, Settings2, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Check, Clock, Lock, Settings2, UserPlus, Users, MessagesSquare, CalendarDays, ScrollText, ListChecks } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { coverClass, LATTICE } from "../lib/covers";
 import {
   canJoinDirectly, fetchGroupById, fetchMembership, isCircleMod, joinGroup, leaveGroup, me,
-  meetsAgeLimit, myJoinRequest, ROLES,
+  meetsAgeLimit, myJoinRequest, ROLES, createCircleChat, joinCircleChat, fetchEvents, fetchGuides, tsMillis,
 } from "../lib/db";
+import { navigate } from "../lib/router";
+import { whenLabel } from "../lib/format";
+import { Guides } from "./circle/Guides";
 import { plural } from "../lib/format";
 import { goBack } from "../lib/router";
 import { usePageTitle } from "../lib/usePageTitle";
@@ -27,6 +30,7 @@ import { useToast } from "./ui/toast-context";
 
 const TABS = [
   { id: "discussion", label: "Discussion" },
+  { id: "guides", label: "Guides" },
   { id: "gatherings", label: "Gatherings" },
   { id: "members", label: "Members" },
   { id: "about", label: "About" },
@@ -56,7 +60,8 @@ export default function CirclePage({ circleId }) {
     myJoinRequest(circleId).then(setPendingRequest).catch(() => {});
   }, [circleId, load]);
 
-  const { profile } = useShell();
+  const { profile, inbox } = useShell();
+  const [chatBusy, setChatBusy] = useState(false);
 
   if (group === undefined) {
     return (
@@ -113,6 +118,25 @@ export default function CirclePage({ circleId }) {
 
   const openManage = (section = "requests") => { setManageSection(section); setDialog("manage"); };
 
+  // The circle's chat: the admin opens it once; members join themselves.
+  const inChat = !!group.chatId && inbox.chats.some((c) => c.id === group.chatId);
+  const openChat = async () => {
+    setChatBusy(true);
+    try {
+      let id = group.chatId;
+      if (!id) {
+        id = await createCircleChat(group);
+        await load();
+      } else if (!inChat) {
+        await joinCircleChat(group);
+      }
+      navigate(`/messages/${id}`);
+    } catch {
+      toast({ tone: "error", title: "Couldn't open the chat", body: "Try again in a moment." });
+    } finally { setChatBusy(false); }
+  };
+  const refreshMembership = () => fetchMembership(circleId).then(setMembership).catch(() => {});
+
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
       <div className={`relative h-36 sm:h-48 ${coverClass(group.coverColor)}`} style={LATTICE}>
@@ -135,6 +159,11 @@ export default function CirclePage({ circleId }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {membership && (group.chatId || isOwner) && (
+              <Button icon={MessagesSquare} loading={chatBusy} onClick={openChat}>
+                {group.chatId ? (inChat ? "Chat" : "Join chat") : "Start a chat"}
+              </Button>
+            )}
             {moderator && <Button icon={Settings2} onClick={() => openManage()}>Manage</Button>}
             {membership !== undefined && !isOwner && (
               membership ? (
@@ -156,6 +185,8 @@ export default function CirclePage({ circleId }) {
           </ul>
         )}
 
+        {canRead && <Featured group={group} member={!!membership} onTab={setTab} />}
+
         <Tabs variant="underline" label="Circle sections" value={tab} onChange={setTab} className="mt-5" tabs={TABS} />
 
         <div role="tabpanel" className="pt-5">
@@ -165,7 +196,9 @@ export default function CirclePage({ circleId }) {
             <EmptyState icon={Lock} title="This circle is private"
               body={pendingRequest ? "Your request is waiting for an admin." : oldEnough ? "Ask to join to see what's being shared." : `It's for people ${group.ageLimit} and over.`} />
           ) : tab === "discussion" ? (
-            <Discussion group={group} membership={membership} onChanged={load} onReview={() => openManage("posts")} />
+            <Discussion group={group} membership={membership} onChanged={load} onReview={() => openManage("posts")} onPosted={refreshMembership} />
+          ) : tab === "guides" ? (
+            <Guides group={group} membership={membership} />
           ) : tab === "gatherings" ? (
             <CircleGatherings group={group} membership={membership} />
           ) : (
@@ -188,5 +221,38 @@ export default function CirclePage({ circleId }) {
           onConfirm={leave} onClose={() => setDialog(null)} />
       )}
     </div>
+  );
+}
+
+/* Beneath the header: the next gathering, the rules and the guides, so the
+   things that matter most in a circle are one tap away. */
+function Featured({ group, member, onTab }) {
+  const [next, setNext] = useState(null);
+  const [guides, setGuides] = useState(0);
+  const [now] = useState(() => Date.now());
+  useEffect(() => {
+    fetchEvents(group.id, { member }).then((list) => setNext(list.find((e) => tsMillis(e.startsAt) > now) || null)).catch(() => {});
+    fetchGuides(group.id).then((l) => setGuides(l.length)).catch(() => {});
+  }, [group.id, member, now]);
+  const rules = (group.rules || "").split("\n").map((r) => r.trim()).filter(Boolean);
+  const cards = [
+    next && { key: "next", icon: CalendarDays, title: next.title, sub: whenLabel(tsMillis(next.startsAt), now), onClick: () => navigate(`/gatherings/${next.id}`) },
+    rules.length > 0 && { key: "rules", icon: ScrollText, title: "Rules", sub: rules[0], onClick: () => onTab("about") },
+    guides > 0 && { key: "guides", icon: ListChecks, title: guides === 1 ? "1 guide" : `${guides} guides`, sub: "Step by step", onClick: () => onTab("guides") },
+  ].filter(Boolean);
+  if (!cards.length) return null;
+  return (
+    <section aria-label="Featured" className="mt-5 flex gap-2 overflow-x-auto no-scrollbar">
+      {cards.map(({ key, icon: Icon, title, sub, onClick }) => (
+        <button key={key} type="button" onClick={onClick}
+          className="press flex min-w-[180px] max-w-[260px] flex-1 items-center gap-3 rounded-card border border-line bg-surface p-3 text-left hover:border-line-strong">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text"><Icon size={18} aria-hidden="true" /></span>
+          <span className="min-w-0">
+            <span className="block truncate text-callout font-semibold">{title}</span>
+            <span className="block truncate text-caption text-fg-subtle">{sub}</span>
+          </span>
+        </button>
+      ))}
+    </section>
   );
 }

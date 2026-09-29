@@ -124,7 +124,7 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
     try {
       await hidePost(post);
       onClose();
-      onRemoved();
+      onRemoved("hidden");
       toast({ title: "Got it. You'll see less like this" });
     } catch {
       setBusy(false);
@@ -137,7 +137,7 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
     try {
       await deletePost(post);
       onClose();
-      onRemoved();
+      onRemoved("deleted");
       toast({ title: `${label} deleted` });
     } catch {
       setBusy(false);
@@ -158,7 +158,7 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
       <ReportDialog target={{ type: "post", id: post.id, authorId: post.authorId }} onClose={onClose}
         report={(t, reason, details) => reportPost(post, reason, details)}
         // Reporting also hides it from your own feed straight away.
-        onReported={onRemoved} />
+        onReported={() => onRemoved("reported")} />
     );
   }
 

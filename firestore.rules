@@ -157,6 +157,313 @@ service cloud.firestore {
             || follows(uid, request.auth.uid));
     }
 
+    // ---------- notifications ----------
+    // A notice is written by the person who acted, so it must describe
+    // something that really happened, addressed to the right person, with a
+    // fixed id per action (one like, one notice). Words copied into it must
+    // be the start of the real comment or post, so a notice can't say
+    // something the comment didn't.
+    function noticeHappened(uid, id, n) {
+      let actor = request.auth.uid;
+      let postPath = /databases/$(database)/documents/posts/$(n.postId);
+      return (n.type == 'like' && id == 'like_' + n.postId + '_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/posts/$(n.postId)/likes/$(actor))
+            && get(postPath).data.authorId == uid)
+        || (n.type == 'repost' && id == 'repost_' + n.postId + '_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/reposts/$(n.postId + '_' + actor))
+            && get(postPath).data.authorId == uid)
+        || (n.type == 'comment' && id == 'comment_' + n.commentId
+            && get(/databases/$(database)/documents/posts/$(n.postId)/comments/$(n.commentId)).data.authorId == actor
+            && get(/databases/$(database)/documents/posts/$(n.postId)/comments/$(n.commentId)).data.text[0:n.text.size()] == n.text
+            && get(postPath).data.authorId == uid)
+        || (n.type == 'mention' && id == 'mention_' + n.postId
+            && get(postPath).data.authorId == actor
+            && get(postPath).data.visibility == 'public'
+            && get(postPath).data.createdAt > request.time - duration.value(10, 'm')
+            && get(postPath).data.text[0:n.text.size()] == n.text
+            && get(postPath).data.text.lower().matches('(?s)(.*[^a-z0-9_.])?@' + profileOf(uid).username + '([^a-z0-9_].*)?'))
+        || (n.type == 'follow' && id == 'follow_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/users/$(uid)/followers/$(actor)))
+        || (n.type == 'request' && id == 'request_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/users/$(uid)/followRequests/$(actor)))
+        || (n.type == 'accept' && id == 'accept_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/users/$(actor)/followers/$(uid)))
+        || familyNotice(uid, id, n, actor)
+        || inviteNotice(uid, id, n, actor);
+    }
+    // Asked to a gathering by its host, or let into a circle by its admins.
+    function inviteNotice(uid, id, n, actor) {
+      let eventPath = /databases/$(database)/documents/events/$(n.ref);
+      return (n.type == 'invite' && id == 'invite_' + n.ref && n.text == ''
+            && get(eventPath).data.hostId == actor
+            && uid in get(eventPath).data.get('invitees', []))
+        || (n.type == 'joined' && id == 'joined_' + n.ref && n.text == ''
+            && isModOf(n.ref)
+            && exists(/databases/$(database)/documents/groups/$(n.ref)/members/$(uid)));
+    }
+
+    // Everything a new post must be, as one function that gets the post
+    // once: calling incomingData() seventy times costs enough of Firestore's
+    // per-request evaluation budget to crowd out a circle's own checks.
+    function postCreateOk(d, circleMod) {
+      return d.keys().hasOnly([
+            'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
+            'alt', 'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
+            'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'circleTopic',
+            'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
+            'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
+            'viewCount', 'completeCount', 'createdAt'
+          ])
+          && validTopics(d.get('topics', []))
+          && d.get('circleTopic', '') is string && d.get('circleTopic', '').size() <= 40
+          && notSuspended()
+          && authorIsMe(d)
+          && d.createdAt == request.time
+          && rateOk('post', 10)
+          && d.get('viewCount', 0) == 0
+          && d.get('completeCount', 0) == 0
+          && d.get('mediaType', '') is string && d.get('mediaType', '').size() <= 100
+          && d.get('mediaPath', '') is string && d.get('mediaPath', '').size() <= 500
+          // A slur only goes out labelled: the app sets `sensitive` when it's
+          // quoted to report or call out abuse, and every viewer's app then shows
+          // it behind a warning. Unlabelled, it's refused.
+          && d.get('sensitive', false) is bool
+          && (d.get('sensitive', false) == true
+              || (hateFree(d.text + ' ' + d.title + ' ' + d.alt)
+                  && (!('poll' in d) || hateFree(d.poll.options.join(' ')))))
+          // A poll: 2 to 4 short options, open for at most a week, no votes yet.
+          && (!('poll' in d)
+              || (d.kind == 'text'
+                  && d.poll.keys().hasOnly(['options', 'endsAt'])
+                  && d.poll.options is list
+                  && d.poll.options.size() >= 2
+                  && d.poll.options.size() <= 4
+                  && d.poll.options[0] is string && d.poll.options[0].size() <= 50
+                  && d.poll.options[1] is string && d.poll.options[1].size() <= 50
+                  && (d.poll.options.size() < 3 || (d.poll.options[2] is string && d.poll.options[2].size() <= 50))
+                  && (d.poll.options.size() < 4 || (d.poll.options[3] is string && d.poll.options[3].size() <= 50))
+                  && d.poll.endsAt is timestamp
+                  && d.poll.endsAt > request.time
+                  && d.poll.endsAt < request.time + duration.value(169, 'h')
+                  && d.pollVotes0 == 0 && d.pollVotes1 == 0
+                  && d.pollVotes2 == 0 && d.pollVotes3 == 0))
+          && (!('gif' in d) || (d.kind == 'text' && gifOk(d.gif)))
+          && d.authorId == request.auth.uid
+          // post = Still (photo), text = Strand, short/video = Flick (video
+          // over three minutes plays as a trailer in the feed).
+          && d.kind in ['post', 'text', 'short', 'video']
+          // Outside circles: public or followers-only, and under-16s never
+          // public. Inside a circle: whatever the circle's limits decide.
+          && ((d.groupId == ''
+                && (d.visibility == 'followers'
+                    || (d.visibility == 'public' && isAdult()
+                        && myProfile().get('isPrivate', false) != true)))
+              || (d.groupId != '' && circlePostOkAs(d, circleMod)))
+          && d.text is string
+          && d.text.size() <= 5000
+          && d.title is string
+          && d.title.size() <= 150
+          && d.alt is string
+          && d.alt.size() <= 500
+          && d.likeCount == 0
+          && d.commentCount == 0
+          && d.saveCount == 0
+          && d.sendCount == 0
+          && d.get('repostCount', 0) == 0
+          && d.get('duration', 0) is number
+          && d.get('duration', 0) >= 0
+          && d.get('duration', 0) <= 43200
+          && d.get('trailerStart', 0) is number
+          && d.get('trailerStart', 0) >= 0
+          && d.get('aiGenerated', false) is bool
+          // A Strand is words (up to 500 characters), optionally with a poll or
+          // a GIF, and no uploaded media. Every other format carries media: in
+          // our own Storage bucket, or (photos only, while Storage is off) a
+          // photo you stored in Firestore.
+          && ((d.kind == 'text'
+                && d.mediaUrl == ''
+                && d.mediaPath == ''
+                && d.text.size() <= 500
+                && (d.text.size() >= 1 || 'gif' in d))
+              || (d.kind != 'text'
+                && d.mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
+              || (d.kind == 'post' && ownInlineImage(d.mediaUrl)));
+    }
+
+    // ---------- brick mode: the lock engine ----------
+    // Each person's limits live in locks/{uid}: their own ("self") and, for
+    // an under-18 account linked to a parent, the parent's. Browsing reads
+    // (posts, comments, stories, news) check them here, so a refresh, a
+    // reinstall or the website can't get round a lock: the server won't send
+    // the content. Messages and calls never check them.
+    //
+    // Times are the person's local time, from the offset stored with the
+    // rules. Weekly windows are half-hour slots per day (d1 = Monday), so
+    // "is this slot locked" and "is the new schedule at least as strict" are
+    // both plain list checks.
+    function localTime(l) {
+      return request.time + duration.value(l.get('tzOffset', 0), 'm');
+    }
+    function dayKeyOf(l) {
+      let t = localTime(l);
+      return string(t.year()) + '-' + string(t.dayOfYear());
+    }
+    function slotOf(t) {
+      return t.hours() * 2 + (t.minutes() >= 30 ? 1 : 0);
+    }
+    function layerBricked(x, t) {
+      return x.get('until', timestamp.value(0)) > request.time
+        || x.get('slots', {}).get('d' + string(t.dayOfWeek()), []).hasAny([slotOf(t)]);
+    }
+    function capOf(x, section) {
+      return x.get('caps', {}).get(section, 0);
+    }
+    // A parent's layer counts until 1 January of the year the account holder
+    // turns 18, then stops on its own.
+    function parentOn(l) {
+      return l.get('parent', null) != null && request.time < timestamp.date(l.parent.untilYear, 1, 1);
+    }
+    function usedToday(l, section) {
+      let path = /databases/$(database)/documents/usage/$(request.auth.uid + '_' + dayKeyOf(l));
+      return exists(path) ? get(path).data.get(section, 0) : 0;
+    }
+    function capHit(l, section) {
+      let own = capOf(l.self, section);
+      let par = parentOn(l) ? capOf(l.parent, section) : 0;
+      return (own > 0 || par > 0)
+        && ((own > 0 && usedToday(l, section) >= own * 60) || (par > 0 && usedToday(l, section) >= par * 60));
+    }
+    function lockedBy(l, section) {
+      let t = localTime(l);
+      return layerBricked(l.self, t)
+        || (parentOn(l) && layerBricked(l.parent, t))
+        || (section != '' && capHit(l, section));
+    }
+    // section: 'feed', 'flicks', 'news', or '' for "any lock that covers
+    // everything" (a scheduled window or an instant brick).
+    function lockedFor(section) {
+      let path = /databases/$(database)/documents/locks/$(request.auth.uid);
+      return exists(path) && lockedBy(get(path).data, section);
+    }
+    function sectionOfKind(kind) {
+      return kind in ['short', 'video'] ? 'flicks' : 'feed';
+    }
+
+    // Shapes. A layer is slots + daily caps (minutes) + an instant brick.
+    // Shapes are kept light: Firestore caps how much one request may
+    // evaluate, and a change already runs the full strictness comparison
+    // below. A malformed value can't loosen anything: every check that
+    // reads it fails closed, which only ever locks more.
+    function validLayerBody(x) {
+      return x is map
+        && x.slots is map && x.slots.keys().hasOnly(['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'])
+        && x.caps is map && x.caps.keys().hasOnly(['feed', 'flicks', 'news'])
+        && x.until is timestamp && x.until <= request.time + duration.value(8, 'd')
+        && x.get('windows', []).size() <= 21;
+    }
+    function validLayer(x) {
+      return validLayerBody(x) && x.keys().hasOnly(['slots', 'caps', 'until', 'windows']);
+    }
+    function capNoLooser(a, b) {
+      return a == b || (a > 0 && (b == 0 || a < b));
+    }
+    // `a` is at least as strict as `b`: every locked slot stays locked, no
+    // cap goes up or away, and an instant brick isn't cut short.
+    function tighterOrSame(a, b) {
+      return a.slots.get('d1', []).hasAll(b.slots.get('d1', []))
+        && a.slots.get('d2', []).hasAll(b.slots.get('d2', []))
+        && a.slots.get('d3', []).hasAll(b.slots.get('d3', []))
+        && a.slots.get('d4', []).hasAll(b.slots.get('d4', []))
+        && a.slots.get('d5', []).hasAll(b.slots.get('d5', []))
+        && a.slots.get('d6', []).hasAll(b.slots.get('d6', []))
+        && a.slots.get('d7', []).hasAll(b.slots.get('d7', []))
+        && capNoLooser(a.caps.get('feed', 0), b.caps.get('feed', 0))
+        && capNoLooser(a.caps.get('flicks', 0), b.caps.get('flicks', 0))
+        && capNoLooser(a.caps.get('news', 0), b.caps.get('news', 0))
+        && (a.until >= b.until || b.until <= request.time);
+    }
+    function validLock(d) {
+      return d.keys().hasOnly(['tzOffset', 'tzName', 'tzChangedAt', 'self', 'pending', 'parent', 'parentRequest', 'updatedAt'])
+        && d.tzOffset is int && d.tzOffset >= -720 && d.tzOffset <= 840
+        && d.tzName is string && d.tzName.size() <= 64
+        && d.tzChangedAt is timestamp
+        && validLayer(d.self)
+        && (d.get('pending', null) == null
+            || (d.pending.keys().hasOnly(['self', 'requestedAt', 'tzOffset', 'tzName'])
+                && validLayer(d.pending.self)
+                && d.pending.requestedAt is timestamp
+                && d.pending.get('tzOffset', 0) is int && d.pending.get('tzOffset', 0) >= -720 && d.pending.get('tzOffset', 0) <= 840))
+        && (d.get('parentRequest', null) == null
+            || (d.parentRequest.keys().hasOnly(['self', 'note', 'unlink', 'at'])
+                && validLayer(d.parentRequest.self)
+                && d.parentRequest.note is string && d.parentRequest.note.size() <= 280
+                && d.parentRequest.unlink is bool
+                && d.parentRequest.at is timestamp));
+    }
+    function isParentOf(uid) {
+      let link = /databases/$(database)/documents/familyLinks/$(uid);
+      return signedIn() && exists(link)
+        && get(link).data.parentId == request.auth.uid
+        && get(link).data.status == 'active';
+    }
+    function parentLayerOk(uid, p) {
+      return p.keys().hasOnly(['slots', 'caps', 'until', 'windows', 'parentId', 'parentName', 'untilYear'])
+        && validLayerBody(p)
+        && p.parentId == request.auth.uid
+        && isMyName(p.parentName)
+        && p.untilYear == profileOf(uid).birthYear + 18;
+    }
+    // The owner changing their own limits: tightening now, loosening only
+    // through `pending`, which can be applied once 24 hours have passed.
+    function pendingOk(n, o) {
+      let np = n.get('pending', null);
+      let op = o.get('pending', null);
+      return np == op
+        || np == null
+        || np.requestedAt == request.time
+        || (op != null && np.requestedAt == op.requestedAt
+            && np.get('tzOffset', null) == op.get('tzOffset', null)
+            && tighterOrSame(np.self, op.self));
+    }
+    // The clock shifts by an hour for daylight saving at most every 20 days;
+    // anything bigger (moving countries) goes through `pending`.
+    function tzOk(n, o) {
+      return (n.tzOffset == o.tzOffset && n.tzChangedAt == o.tzChangedAt)
+        || (math.abs(n.tzOffset - o.tzOffset) <= 60
+            && o.tzChangedAt < request.time - duration.value(20, 'd')
+            && n.tzChangedAt == request.time);
+    }
+    function applyingPending(n, o) {
+      let op = o.get('pending', null);
+      return op != null
+        && request.time >= op.requestedAt + duration.value(24, 'h')
+        && n.self == op.self
+        && n.get('pending', null) == null
+        && n.tzOffset == op.get('tzOffset', o.tzOffset)
+        && (n.tzChangedAt == o.tzChangedAt || n.tzChangedAt == request.time);
+    }
+    function parentRequestOk(n, o) {
+      let nr = n.get('parentRequest', null);
+      return nr == o.get('parentRequest', null)
+        || nr == null
+        || (o.get('parent', null) != null && nr.at == request.time);
+    }
+    // Notices about a family link: the invite, the yes, and a request for
+    // the parent to change a limit.
+    function familyNotice(uid, id, n, actor) {
+      let linkToMe = /databases/$(database)/documents/familyLinks/$(uid);
+      let linkFromActor = /databases/$(database)/documents/familyLinks/$(actor);
+      return (n.type == 'family' && id == 'family_' + actor && n.text == ''
+            && get(linkToMe).data.parentId == actor)
+        || (n.type == 'familyok' && id == 'familyok_' + actor && n.text == ''
+            && get(linkFromActor).data.parentId == uid
+            && get(linkFromActor).data.status == 'active')
+        || (n.type == 'familyask' && id == 'familyask_' + actor
+            && get(linkFromActor).data.parentId == uid
+            && get(/databases/$(database)/documents/locks/$(actor)).data.get('parentRequest', null) != null
+            && get(/databases/$(database)/documents/locks/$(actor)).data.parentRequest.note[0:n.text.size()] == n.text);
+    }
+
     // ---------- circle membership, used by posts, circles and gatherings ----------
     function circleOf(groupId) {
       return get(/databases/$(database)/documents/groups/$(groupId)).data;
@@ -190,25 +497,52 @@ service cloud.firestore {
     // The app checks the same things first so people get a clear reason;
     // this is what makes the limits hold against anyone who skips the app.
     // Admins and moderators are exempt from the posting limits, not from
-    // blocked words.
+    // blocked words. Kept lean on purpose: Firestore caps how much one
+    // request may evaluate, and a post's own rule already does a lot.
     function circlePostOk(p) {
+      return circlePostOkAs(p, isModOf(p.groupId));
+    }
+    function circlePostOkAs(p, mod) {
       let g = circleOf(p.groupId);
       let am = g.get('automod', {});
-      let mod = isModOf(p.groupId);
+      let m = membershipIn(p.groupId);
+      return (m.get('mutedUntil', null) == null || m.mutedUntil < request.time)
+        && (mod || am.get('postingPermission', 'members') != 'admins')
+        && (mod || am.size() == 0 || memberPostOk(p, am, m))
+        && !(p.text + ' ' + p.title).lower().split('[^a-z0-9]+').hasAny(am.get('bannedWords', []))
+        && (p.get('circleTopic', '') == '' || p.circleTopic in g.get('topics', []))
+        && p.visibility == (!mod && am.size() > 0 && needsReview(p, am) ? 'pending' : (g.privacy == 'public' ? 'public' : 'circle'));
+    }
+    function linkActionOf(am) {
+      return am.get('linkAction', am.get('blockLinks', false) == true ? 'block' : 'allow');
+    }
+    function youngFor(am) {
+      let days = am.get('newAccountDays', am.get('blockNewAccounts', false) == true ? 7 : 0);
+      return days > 0 && request.time < myProfile().createdAt + duration.value(days, 'd');
+    }
+    // Admin Assist conditions that turn a post down.
+    function memberPostOk(p, am, m) {
       let words = (p.text + ' ' + p.title).lower();
-      let needsApproval = am.get('requirePostApproval', false) == true && !mod;
-      return isMemberOf(p.groupId)
-        && (membershipIn(p.groupId).get('mutedUntil', null) == null
-            || membershipIn(p.groupId).mutedUntil < request.time)
-        && (am.get('postingPermission', 'members') != 'admins' || mod)
-        && (am.get('blockLinks', false) != true || mod
-            || !words.matches('(?s).*(https?://|www[.]).*'))
-        && (am.get('blockNewAccounts', false) != true || mod
-            || request.time > myProfile().createdAt + duration.value(7, 'd'))
-        && !words.split('[^a-z0-9]+').hasAny(am.get('bannedWords', []))
-        && ((needsApproval && p.visibility == 'pending')
-            || (!needsApproval && g.privacy == 'public' && p.visibility == 'public')
-            || (!needsApproval && g.privacy != 'public' && p.visibility == 'circle'));
+      return (linkActionOf(am) != 'block' || !words.matches('(?s).*(https?://|www[.]).*'))
+        && (am.get('newAccountAction', 'decline') != 'decline' || !youngFor(am))
+        // Phone numbers, email addresses and card numbers, when the circle
+        // keeps them out (scams and doxxing start here).
+        && (am.get('blockContactInfo', false) != true
+            || !words.matches('(?s).*([a-z0-9._%+-]+@[a-z0-9-]+[.][a-z0-9.-]*[a-z]{2,}|[+]?([0-9][ ().-]{0,2}){9,}[0-9]).*'))
+        && (p.kind != 'text' || p.text.size() >= am.get('minLength', 0))
+        && (am.get('mediaAllowed', true) == true || p.kind == 'text')
+        && (am.get('declineRecentStrikes', false) != true
+            || m.get('lastStrikeAt', timestamp.value(0)) < request.time - duration.value(28, 'd'))
+        && (am.get('slowModeMinutes', 0) == 0
+            || (getAfter(/databases/$(database)/documents/groups/$(p.groupId)/members/$(request.auth.uid)).data.get('lastPostAt', null) == request.time
+                && m.get('lastPostAt', timestamp.value(0)) < request.time - duration.value(am.slowModeMinutes, 'm')));
+    }
+    // Admin Assist conditions that send a post to the approval queue.
+    function needsReview(p, am) {
+      return am.get('requirePostApproval', false) == true
+        || (linkActionOf(am) == 'hold' && (p.text + ' ' + p.title).lower().matches('(?s).*(https?://|www[.]).*'))
+        || (am.get('newAccountAction', 'decline') == 'hold' && youngFor(am))
+        || (am.get('holdNoPhoto', false) == true && myProfile().get('photoURL', '') == '');
     }
 
     // ---------- reports ----------
@@ -436,6 +770,38 @@ service cloud.firestore {
         allow delete: if isUser(uid) || isUser(requesterUid);
         allow update: if false;
       }
+      // Gatherings you've replied to, kept with your account so reminders
+      // and "coming up" don't have to search every gathering.
+      match /rsvps/{eventId} {
+        allow read, delete: if isUser(uid);
+        allow create, update: if isUser(uid)
+          && incomingData().keys().hasOnly(['status', 'title', 'startsAt', 'location', 'updatedAt'])
+          && incomingData().status in ['going', 'interested', 'maybe', 'cant']
+          && incomingData().title is string && incomingData().title.size() <= 150
+          && incomingData().location is string && incomingData().location.size() <= 300
+          && incomingData().startsAt is timestamp
+          && incomingData().updatedAt == request.time;
+      }
+      // Your notifications. Only you read them, mark them read or delete
+      // them; whoever caused one can take it back (an unlike, an unfollow).
+      match /notifications/{noticeId} {
+        allow read: if isUser(uid);
+        allow update: if isUser(uid) && onlyKey('read') && incomingData().read == true;
+        allow delete: if isUser(uid) || (signedIn() && resource.data.actorId == request.auth.uid);
+        allow create: if signedIn() && uid != request.auth.uid
+          && incomingData().keys().hasOnly(['type', 'actorId', 'actorName', 'actorPhoto', 'postId', 'commentId', 'ref', 'text', 'read', 'createdAt'])
+          && incomingData().actorId == request.auth.uid
+          && isMyName(incomingData().actorName)
+          && isMyPhoto(incomingData().actorPhoto)
+          && incomingData().read == false
+          && incomingData().createdAt == request.time
+          && incomingData().postId is string && incomingData().postId.size() <= 128
+          && incomingData().commentId is string && incomingData().commentId.size() <= 64
+          && incomingData().ref is string && incomingData().ref.size() <= 128
+          && incomingData().text is string && incomingData().text.size() <= 140
+          && !blockedBy(uid)
+          && noticeHappened(uid, noticeId, incomingData());
+      }
       // Who you've blocked. Private to you; the rules elsewhere check it.
       match /blocked/{otherUid} {
         allow read, write: if isUser(uid);
@@ -484,9 +850,117 @@ service cloud.firestore {
             || getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username != name);
     }
 
+    // ---------- brick mode ----------
+    match /locks/{uid} {
+      allow read: if isUser(uid) || isParentOf(uid);
+      // Setting up your own: anything goes, it can only add limits.
+      allow create: if (isUser(uid)
+          && validLock(incomingData())
+          && incomingData().get('parent', null) == null
+          && incomingData().get('pending', null) == null
+          && incomingData().get('parentRequest', null) == null
+          && incomingData().tzChangedAt == request.time
+          && incomingData().updatedAt == request.time)
+        // A parent setting limits before the teen has set any of their own.
+        || (isParentOf(uid)
+          && validLock(incomingData())
+          && incomingData().self.slots == {} && incomingData().self.caps == {'feed': 0, 'flicks': 0, 'news': 0}
+          && incomingData().self.until == timestamp.value(0)
+          && incomingData().get('pending', null) == null
+          && incomingData().get('parentRequest', null) == null
+          && parentLayerOk(uid, incomingData().parent)
+          && incomingData().tzChangedAt == request.time
+          && incomingData().updatedAt == request.time);
+      allow update: if (isUser(uid)
+          && validLock(incomingData())
+          && incomingData().get('parent', null) == resource.data.get('parent', null)
+          && incomingData().updatedAt == request.time
+          && parentRequestOk(incomingData(), resource.data)
+          && ((tighterOrSame(incomingData().self, resource.data.self)
+                && pendingOk(incomingData(), resource.data)
+                && tzOk(incomingData(), resource.data))
+              || applyingPending(incomingData(), resource.data)))
+        // The parent changes only their own layer, and answers requests.
+        || (isParentOf(uid)
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['parent', 'parentRequest', 'updatedAt'])
+          && incomingData().updatedAt == request.time
+          && (incomingData().get('parent', null) == null || parentLayerOk(uid, incomingData().parent))
+          && incomingData().get('parentRequest', null) == null);
+      // Only together with the account itself: deleting it would lift every limit.
+      allow delete: if isUser(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid));
+    }
+
+    // Minutes spent per section per local day, for daily caps. Only you (or
+    // your linked parent) can read them. They only go up, 30 seconds at a
+    // time at most every 25 seconds, and today's can't be deleted.
+    match /usage/{docId} {
+      function usageOwner() {
+        return docId.split('_')[0];
+      }
+      function todayId() {
+        return request.auth.uid + '_' + dayKeyOf(get(/databases/$(database)/documents/locks/$(request.auth.uid)).data);
+      }
+      function stepOk(k) {
+        return incomingData().get(k, 0) is int
+          && incomingData().get(k, 0) >= (resource == null ? 0 : resource.data.get(k, 0))
+          && incomingData().get(k, 0) <= (resource == null ? 0 : resource.data.get(k, 0)) + 30;
+      }
+      function totalStepOk() {
+        return incomingData().get('feed', 0) + incomingData().get('flicks', 0) + incomingData().get('news', 0)
+          <= (resource == null ? 0 : resource.data.get('feed', 0) + resource.data.get('flicks', 0) + resource.data.get('news', 0)) + 30;
+      }
+      allow get: if signedIn() && (usageOwner() == request.auth.uid || isParentOf(usageOwner()));
+      allow list: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
+      allow create: if signedIn() && docId == todayId()
+        && incomingData().keys().hasOnly(['uid', 'feed', 'flicks', 'news', 'at'])
+        && incomingData().uid == request.auth.uid
+        && incomingData().at == request.time
+        && stepOk('feed') && stepOk('flicks') && stepOk('news') && totalStepOk();
+      allow update: if signedIn() && docId == todayId()
+        && incomingData().keys().hasOnly(['uid', 'feed', 'flicks', 'news', 'at'])
+        && incomingData().uid == request.auth.uid
+        && incomingData().at == request.time
+        && resource.data.at < request.time - duration.value(25, 's')
+        && stepOk('feed') && stepOk('flicks') && stepOk('news') && totalStepOk();
+      allow delete: if signedIn() && usageOwner() == request.auth.uid
+        && (!existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) || docId != todayId());
+    }
+
+    // A parent and an under-18 account. The parent asks; the teen agrees,
+    // knowing that from then on only the parent can loosen the parent's
+    // limits. The link ends when the parent removes it, or on 1 January of
+    // the year the teen turns 18.
+    match /familyLinks/{childUid} {
+      allow read: if signedIn() && (request.auth.uid == childUid || resource.data.parentId == request.auth.uid);
+      allow create: if signedIn()
+        && childUid != request.auth.uid
+        && incomingData().keys().hasOnly(['parentId', 'parentName', 'childName', 'status', 'createdAt'])
+        && incomingData().parentId == request.auth.uid
+        && isMyName(incomingData().parentName)
+        && incomingData().childName == profileOf(childUid).username
+        && incomingData().status == 'invited'
+        && incomingData().createdAt == request.time
+        && myProfile().get('birthYear', 0) > 0 && request.time.year() - myProfile().birthYear >= 19
+        && profileOf(childUid).get('birthYear', 0) > 0 && request.time.year() - profileOf(childUid).birthYear < 18
+        && !blockedBy(childUid)
+        && notSuspended();
+      allow update: if signedIn() && request.auth.uid == childUid
+        && resource.data.status == 'invited'
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status'])
+        && incomingData().status == 'active';
+      allow delete: if signedIn()
+        && (resource.data.parentId == request.auth.uid
+            || (request.auth.uid == childUid
+                && (resource.data.status == 'invited'
+                    || !existsAfter(/databases/$(database)/documents/users/$(childUid))
+                    || request.time >= timestamp.date(myProfile().birthYear + 18, 1, 1))));
+    }
+
     // ---------- posts ----------
     match /posts/{postId} {
-      allow get: if signedIn() && canReadPost(resource.data);
+      // Your own posts stay yours during a brick: they aren't scrolling.
+      allow get: if signedIn() && canReadPost(resource.data)
+        && (resource.data.authorId == request.auth.uid || !lockedFor(sectionOfKind(resource.data.kind)));
 
       function votedNow(option) {
         return resource.data.get('poll', null) != null
@@ -505,93 +979,17 @@ service cloud.firestore {
       // requires a direct get, which runs the follower check above.
       // Circle queries constrain groupId, which is what lets the membership
       // check run here.
+      // A query can mix Stills and Flicks, so it's only the locks that cover
+      // everything that stop it here; the app keeps capped sections closed.
       allow list: if signedIn()
         && (resource.data.visibility == 'public'
             || resource.data.authorId == request.auth.uid
             || (resource.data.visibility == 'circle' && isMemberOf(resource.data.groupId))
-            || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)));
+            || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)))
+        && (resource.data.authorId == request.auth.uid || !lockedFor(''));
       allow create: if signedIn()
-        && incomingData().keys().hasOnly([
-          'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
-          'alt', 'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
-          'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive',
-          'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
-          'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
-          'viewCount', 'completeCount', 'createdAt'
-        ])
-        && validTopics(incomingData().get('topics', []))
-        && notSuspended()
-        && authorIsMe(incomingData())
-        && incomingData().createdAt == request.time
-        && rateOk('post', 10)
-        && incomingData().get('viewCount', 0) == 0
-        && incomingData().get('completeCount', 0) == 0
-        && incomingData().get('mediaType', '') is string && incomingData().get('mediaType', '').size() <= 100
-        && incomingData().get('mediaPath', '') is string && incomingData().get('mediaPath', '').size() <= 500
-        // A slur only goes out labelled: the app sets `sensitive` when it's
-        // quoted to report or call out abuse, and every viewer's app then shows
-        // it behind a warning. Unlabelled, it's refused.
-        && incomingData().get('sensitive', false) is bool
-        && (incomingData().get('sensitive', false) == true
-            || (hateFree(incomingData().text + ' ' + incomingData().title + ' ' + incomingData().alt)
-                && (!('poll' in incomingData()) || hateFree(incomingData().poll.options.join(' ')))))
-        // A poll: 2 to 4 short options, open for at most a week, no votes yet.
-        && (!('poll' in incomingData())
-            || (incomingData().kind == 'text'
-                && incomingData().poll.keys().hasOnly(['options', 'endsAt'])
-                && incomingData().poll.options is list
-                && incomingData().poll.options.size() >= 2
-                && incomingData().poll.options.size() <= 4
-                && incomingData().poll.options[0] is string && incomingData().poll.options[0].size() <= 50
-                && incomingData().poll.options[1] is string && incomingData().poll.options[1].size() <= 50
-                && (incomingData().poll.options.size() < 3 || (incomingData().poll.options[2] is string && incomingData().poll.options[2].size() <= 50))
-                && (incomingData().poll.options.size() < 4 || (incomingData().poll.options[3] is string && incomingData().poll.options[3].size() <= 50))
-                && incomingData().poll.endsAt is timestamp
-                && incomingData().poll.endsAt > request.time
-                && incomingData().poll.endsAt < request.time + duration.value(169, 'h')
-                && incomingData().pollVotes0 == 0 && incomingData().pollVotes1 == 0
-                && incomingData().pollVotes2 == 0 && incomingData().pollVotes3 == 0))
-        && (!('gif' in incomingData()) || (incomingData().kind == 'text' && gifOk(incomingData().gif)))
-        && incomingData().authorId == request.auth.uid
-        // post = Still (photo), text = Strand, short/video = Flick (video
-        // over three minutes plays as a trailer in the feed).
-        && incomingData().kind in ['post', 'text', 'short', 'video']
-        // Outside circles: public or followers-only, and under-16s never
-        // public. Inside a circle: whatever the circle's limits decide.
-        && ((incomingData().groupId == ''
-              && (incomingData().visibility == 'followers'
-                  || (incomingData().visibility == 'public' && isAdult()
-                      && myProfile().get('isPrivate', false) != true)))
-            || (incomingData().groupId != '' && circlePostOk(incomingData())))
-        && incomingData().text is string
-        && incomingData().text.size() <= 5000
-        && incomingData().title is string
-        && incomingData().title.size() <= 150
-        && incomingData().alt is string
-        && incomingData().alt.size() <= 500
-        && incomingData().likeCount == 0
-        && incomingData().commentCount == 0
-        && incomingData().saveCount == 0
-        && incomingData().sendCount == 0
-        && incomingData().get('repostCount', 0) == 0
-        && incomingData().get('duration', 0) is number
-        && incomingData().get('duration', 0) >= 0
-        && incomingData().get('duration', 0) <= 43200
-        && incomingData().get('trailerStart', 0) is number
-        && incomingData().get('trailerStart', 0) >= 0
-        && incomingData().get('aiGenerated', false) is bool
-        // A Strand is words (up to 500 characters), optionally with a poll or
-        // a GIF, and no uploaded media. Every other format carries media: in
-        // our own Storage bucket, or (photos only, while Storage is off) a
-        // photo you stored in Firestore.
-        && ((incomingData().kind == 'text'
-              && incomingData().mediaUrl == ''
-              && incomingData().mediaPath == ''
-              && incomingData().text.size() <= 500
-              && (incomingData().text.size() >= 1 || 'gif' in incomingData()))
-            || (incomingData().kind != 'text'
-              && incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
-            || (incomingData().kind == 'post' && ownInlineImage(incomingData().mediaUrl)));
+        && postCreateOk(request.resource.data,
+             request.resource.data.get('groupId', '') != '' && isModOf(request.resource.data.get('groupId', '')));
       allow update: if signedIn() && (
         // Authors edit their own posts outside circles. (Inside a circle an
         // edit could sneak past its limits, so circle posts aren't editable.)
@@ -722,7 +1120,7 @@ service cloud.firestore {
         function parentPost() {
           return get(/databases/$(database)/documents/posts/$(postId)).data;
         }
-        allow read: if signedIn() && canReadPost(parentPost());
+        allow read: if signedIn() && canReadPost(parentPost()) && !lockedFor('');
         allow create: if signedIn()
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive', 'createdAt'])
           && authorIsMe(incomingData())
@@ -851,11 +1249,13 @@ service cloud.firestore {
       allow get: if signedIn()
         && (resource.data.get('audience', 'public') == 'public'
             || resource.data.authorId == request.auth.uid
-            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
+            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)))
+        && !lockedFor('feed');
       allow list: if signedIn()
         && (resource.data.audience == 'public'
             || resource.data.authorId == request.auth.uid
-            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)));
+            || exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)))
+        && !lockedFor('feed');
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'mediaUrl', 'mediaPath', 'mediaType',
@@ -881,7 +1281,8 @@ service cloud.firestore {
       allow read: if signedIn()
         && (resource.data.status == 'approved'
             || resource.data.authorId == request.auth.uid
-            || isAdmin());
+            || isAdmin())
+        && !lockedFor('news');
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'title', 'script', 'sources',
@@ -1077,6 +1478,22 @@ service cloud.firestore {
               && incomingData().get('memberNames', {}).diff(resource.data.get('memberNames', {})).affectedKeys()
                    .difference(resource.data.members.toSet().difference(incomingData().members.toSet())).size() == 0)
         );
+      // A circle's community chat: any member of the circle can join it
+      // themselves (and only themselves), as long as the circle points to
+      // this chat. The chat's admins can still remove people.
+      allow update: if signedIn()
+        && resource.data.get('circleId', '') != ''
+        && isMemberOf(resource.data.circleId)
+        && circleOf(resource.data.circleId).get('chatId', '') == chatId
+        && !(request.auth.uid in resource.data.members)
+        && changed().hasOnly(['members', 'memberNames'])
+        && incomingData().members.size() == resource.data.members.size() + 1
+        && incomingData().members.size() <= 1000
+        && (resource.data.members.size() == 0
+            || incomingData().members[0:resource.data.members.size()] == resource.data.members)
+        && incomingData().members[incomingData().members.size() - 1] == request.auth.uid
+        && incomingData().memberNames.diff(resource.data.get('memberNames', {})).affectedKeys().hasOnly([request.auth.uid])
+        && incomingData().memberNames[request.auth.uid] == myProfile().username;
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
 
       match /messages/{messageId} {
@@ -1247,14 +1664,24 @@ service cloud.firestore {
           && g.get('pinnedPostId', '') is string && g.get('pinnedPostId', '').size() <= 40
           && validTopics(g.get('interests', []))
           && g.get('automod', {}).get('postingPermission', 'members') in ['members', 'admins']
-          && g.get('automod', {}).get('bannedWords', []).size() <= 40;
+          && g.get('automod', {}).get('bannedWords', []).size() <= 40
+          // Admin Assist: the conditions a circle can set on posts.
+          && g.get('automod', {}).get('newAccountDays', 0) in [0, 7, 30, 90, 180]
+          && g.get('automod', {}).get('newAccountAction', 'decline') in ['decline', 'hold']
+          && g.get('automod', {}).get('linkAction', 'allow') in ['allow', 'hold', 'block']
+          && g.get('automod', {}).get('minLength', 0) in [0, 10, 20, 50]
+          && g.get('automod', {}).get('slowModeMinutes', 0) in [0, 5, 15, 60]
+          && g.get('featuredPostIds', []) is list && g.get('featuredPostIds', []).size() <= 3
+          && g.get('topics', []) is list && g.get('topics', []).size() <= 12
+          && g.get('topics', []).join(' ').size() <= 400
+          && g.get('chatId', '') is string && g.get('chatId', '').size() <= 64;
       }
 
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'name', 'description', 'privacy', 'ownerId', 'memberCount',
           'requireApproval', 'ageLimit', 'interests', 'rules', 'coverColor', 'pinnedPostId',
-          'screeningQuestions', 'automod', 'createdAt'
+          'screeningQuestions', 'automod', 'createdAt', 'featuredPostIds', 'topics', 'chatId'
         ])
         && incomingData().ownerId == request.auth.uid
         && incomingData().privacy in ['public', 'private', 'hidden']
@@ -1265,25 +1692,32 @@ service cloud.firestore {
         && incomingData().name.size() <= 80
         && incomingData().description is string
         && incomingData().description.size() <= 1000
-        && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', ''))
+        && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', '') + ' ' + incomingData().get('topics', []).join(' '))
         && notSuspended()
         && incomingData().createdAt == request.time
         && incomingData().get('pinnedPostId', '') == ''
+        && incomingData().get('featuredPostIds', []) == []
+        && incomingData().get('chatId', '') == ''
         && incomingData().memberCount == 1;
       allow update: if signedIn() && (
         (isCircleOwner()
           && incomingData().diff(resource.data).affectedKeys()
                .hasOnly(['name', 'description', 'privacy', 'requireApproval', 'ageLimit', 'interests',
                          'rules', 'coverColor', 'pinnedPostId',
-                         'screeningQuestions', 'automod'])
+                         'screeningQuestions', 'automod', 'featuredPostIds', 'topics', 'chatId'])
           && incomingData().privacy in ['public', 'private', 'hidden']
           && limitsOk(incomingData())
-          && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', '')))
+          && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', '') + ' ' + incomingData().get('topics', []).join(' '))
+          // The community chat has to be this circle's own.
+          && (incomingData().get('chatId', '') == resource.data.get('chatId', '')
+              || incomingData().chatId == ''
+              || get(/databases/$(database)/documents/chats/$(incomingData().chatId)).data.get('circleId', '') == groupId))
         // moderators may pin a post without touching anything else
         || (signedIn()
           && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
           && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedPostId']))
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['pinnedPostId', 'featuredPostIds'])
+          && limitsOk(incomingData()))
         // The member count moves only with a membership, named by lastMember.
         || (incomingData().diff(resource.data).affectedKeys().hasOnly(['memberCount', 'lastMember'])
           && incomingData().lastMember is string
@@ -1343,13 +1777,19 @@ service cloud.firestore {
           // Admins and moderators apply graduated penalties.
           || (exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
             && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role in ['owner', 'moderator']
-            && incomingData().diff(resource.data).affectedKeys().hasOnly(['penalty', 'mutedUntil'])
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['penalty', 'mutedUntil', 'strikes', 'lastStrikeAt'])
+            && incomingData().get('strikes', 0) is int
+            && (incomingData().get('lastStrikeAt', null) == resource.data.get('lastStrikeAt', null) || incomingData().lastStrikeAt == request.time)
             // The owner can penalise anyone but themselves; moderators only
             // ordinary members.
             && resource.data.role != 'owner'
             && (resource.data.role == 'member'
                 || get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner')
             && (incomingData().get('mutedUntil', null) == null || incomingData().mutedUntil is timestamp))
+          // Your own last-post time, stamped with each post (for slow mode).
+          || (isUser(uid)
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['lastPostAt'])
+            && incomingData().lastPostAt == request.time)
         );
         // Leave yourself, or be removed: by the owner (anyone but themselves),
         // or by a moderator (ordinary members only). Nobody removes the owner.
@@ -1359,6 +1799,33 @@ service cloud.firestore {
                   || (resource.data.role == 'member'
                       && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
                       && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'moderator')));
+      }
+
+      // Guides: step-by-step units an admin puts together (a welcome, a
+      // how-to). Anyone who can read the circle can read them; each member's
+      // progress is theirs, and the admins see it to know what helps.
+      match /guides/{guideId} {
+        allow read: if signedIn() && (circleOf(groupId).privacy == 'public' || isMemberOf(groupId));
+        allow create, update: if isModOf(groupId)
+          && incomingData().keys().hasOnly(['title', 'unitTitles', 'unitBodies', 'createdBy', 'createdAt', 'updatedAt'])
+          && incomingData().title is string && incomingData().title.size() >= 2 && incomingData().title.size() <= 100
+          && incomingData().unitTitles is list && incomingData().unitTitles.size() >= 1 && incomingData().unitTitles.size() <= 20
+          && incomingData().unitBodies is list && incomingData().unitBodies.size() == incomingData().unitTitles.size()
+          && incomingData().unitTitles.join(' ').size() <= 2000
+          && incomingData().unitBodies.join(' ').size() <= 20000
+          && hateFree(incomingData().title + ' ' + incomingData().unitTitles.join(' ') + ' ' + incomingData().unitBodies.join(' '))
+          && incomingData().updatedAt == request.time
+          && ((resource == null && incomingData().createdBy == request.auth.uid && incomingData().createdAt == request.time)
+              || (resource != null && incomingData().createdBy == resource.data.createdBy && incomingData().createdAt == resource.data.createdAt));
+        allow delete: if isModOf(groupId);
+        match /progress/{uid} {
+          allow read: if isUser(uid) || isModOf(groupId);
+          allow create, update: if isUser(uid) && isMemberOf(groupId)
+            && incomingData().keys().hasOnly(['done', 'updatedAt'])
+            && incomingData().done is list && incomingData().done.size() <= 20
+            && incomingData().updatedAt == request.time;
+          allow delete: if isUser(uid) || isModOf(groupId);
+        }
       }
     }
 
@@ -1399,7 +1866,11 @@ service cloud.firestore {
           && e.get('invitees', []).size() <= 300;
       }
 
-      allow get: if signedIn() && canViewEvent(resource.data);
+      // A public gathering's page opens for anyone with the link, signed in
+      // or not, so an invitation can go to people who aren't on Mesh.
+      allow get: if (signedIn() && canViewEvent(resource.data))
+        || (resource.data.privacy == 'public'
+            && (resource.data.get('groupId', '') == '' || circleOf(resource.data.groupId).privacy == 'public'));
       allow list: if signedIn()
         && (resource.data.privacy == 'public'
             || resource.data.hostId == request.auth.uid

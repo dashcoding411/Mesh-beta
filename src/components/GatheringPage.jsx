@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft, MapPin, Ticket, ExternalLink, Globe, Lock, Users, Check, Heart, Trash2, UserPlus, Pencil,
-  CalendarX2, Megaphone, MessageSquare, X, Search as SearchIcon, Blend,
+  CalendarX2, Megaphone, MessageSquare, X, Search as SearchIcon, Blend, CalendarPlus, Share2, Download,
 } from "lucide-react";
 import {
   fetchEvent, fetchMyRsvps, setRsvp, RSVP_OPTIONS, fetchGuestList, fetchEventPosts, addEventPost,
   deleteEventPost, toggleEventPostLike, fetchAnnouncements, updateEvent, deleteEvent, inviteToEvent,
   uninviteFromEvent, searchUsers, canPostInEvent, isEventFull, fetchGroupById, openUserProfile, me,
+  eventIcs, googleCalendarUrl, eventUrl,
 } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent } from "../lib/moderation";
@@ -102,6 +103,7 @@ export default function GatheringPage({ eventId }) {
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack(event.groupId ? `/circles/${event.groupId}` : "/circles?view=gatherings")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{event.title}</p>
+        <IconButton icon={Share2} label="Share invite" onClick={() => shareGathering(event, toast)} />
         {isHost && <IconButton icon={Pencil} label="Edit gathering" onClick={() => setDialog("edit")} />}
       </header>
 
@@ -164,6 +166,8 @@ export default function GatheringPage({ eventId }) {
             )}
           </div>
         )}
+
+        {!past && <CalendarButtons event={event} />}
 
         {event.ticketUrl && (
           <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer nofollow ugc"
@@ -463,5 +467,44 @@ function InviteDialog({ event, onClose, onChange }) {
         </>
       )}
     </Dialog>
+  );
+}
+
+/* A link to the gathering. Public ones open for anyone, even without a
+   Mesh account; private ones only for the people invited. */
+async function shareGathering(event, toast) {
+  const url = eventUrl(event.id);
+  try {
+    if (navigator.share) await navigator.share({ title: event.title, url });
+    else {
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Invite link copied",
+        body: event.privacy === "public" ? "Anyone with it can see the gathering, even without a Mesh account." : "Only people you've invited can open it." });
+    }
+  } catch { /* dismissed */ }
+}
+
+/* Into your own calendar, which then does the reminding: a day before and
+   two hours before. */
+export function CalendarButtons({ event }) {
+  const download = () => {
+    const blob = new Blob([eventIcs(event)], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(event.title || "gathering").replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}.ics`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <span className="flex items-center gap-1.5 text-caption font-semibold text-fg-muted"><CalendarPlus size={15} aria-hidden="true" /> Add to calendar</span>
+      <a href={googleCalendarUrl(event)} target="_blank" rel="noopener noreferrer"
+        className="press inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-line-strong px-3 text-callout font-semibold text-fg hover:bg-surface-2">
+        Google Calendar <ExternalLink size={13} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span>
+      </a>
+      <Button size="sm" icon={Download} onClick={download}>Apple, Outlook and others</Button>
+      <span className="w-full text-caption text-fg-subtle">The download includes reminders a day before and two hours before; Google Calendar uses your usual reminders.</span>
+    </div>
   );
 }

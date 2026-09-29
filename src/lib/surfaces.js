@@ -1,6 +1,6 @@
 import {
   Sparkles, Users, Clapperboard, Newspaper, Blend, Search, Bookmark,
-  House, MessageCircle, UserRound,
+  House, MessageCircle, UserRound, Bell,
 } from "lucide-react";
 
 /* Names are our own: "Shorts" is YouTube's, "Groups" is Facebook's.
@@ -28,6 +28,7 @@ const ALL = {
   following: { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
   news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },
   saved: { id: "saved", path: "/saved", label: "Saved", icon: Bookmark, blurb: "Posts you've kept. Only you see these" },
+  notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell, blurb: "Likes, comments, follows and invites" },
 };
 
 /** The Home sidebar, in this order. */

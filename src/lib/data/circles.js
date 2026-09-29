@@ -1,12 +1,14 @@
 // Circles: communities, their rules and limits, members and join requests.
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, query, serverTimestamp,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
   setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { deletePost, fetchGroupPosts, fetchPendingPosts } from "./posts.js";
 import { fetchProfile } from "./users.js";
+import { notify } from "./notifications.js";
+import { createGroupChat } from "./chats.js";
 
 // ---------- circles (communities) ----------
 // privacy: 'public':  anyone can find it and read posts
@@ -81,10 +83,33 @@ export async function createGroup({ name, description, privacy = "public", ageLi
 export const AUTOMOD_DEFAULTS = {
   postingPermission: "members", // "members" | "admins": who can start a post
   requirePostApproval: false,   // members' posts wait for an admin or moderator
-  blockLinks: false,
-  blockNewAccounts: false,      // accounts younger than 7 days can read but not post
   bannedWords: [],              // single words, stored lowercase
+  // Admin Assist: conditions checked on every post, each either declining
+  // it with a reason or holding it for an admin to review.
+  linkAction: "allow",          // "allow" | "hold" | "block"
+  newAccountDays: 0,            // 0, 7, 30, 90 or 180
+  newAccountAction: "decline",  // "decline" | "hold"
+  holdNoPhoto: false,           // hold posts from accounts with no profile photo
+  blockContactInfo: false,      // decline phone numbers, emails and card numbers
+  minLength: 0,                 // decline Strands shorter than this (0, 10, 20, 50)
+  mediaAllowed: true,           // false: Strands only, no photos or videos
+  declineRecentStrikes: false,  // decline posts from anyone with a post removed in 28 days
+  slowModeMinutes: 0,           // members wait this long between posts (0, 5, 15, 60)
 };
+
+/** A circle's Admin Assist settings, reading the older switches too. */
+export function effectiveAutomod(group) {
+  const a = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
+  if (!group?.automod?.linkAction && group?.automod?.blockLinks) a.linkAction = "block";
+  if (!group?.automod?.newAccountDays && group?.automod?.blockNewAccounts) a.newAccountDays = 7;
+  return a;
+}
+
+// The same patterns the rules use for contact details: an email address, or
+// ten or more digits with at most two spaces or brackets between each (phone
+// and card numbers, "(03) 9123 4567"), but not years, dates or prices.
+export const CONTACT_INFO = /[a-z0-9._%+-]+@[a-z0-9-]+\.[a-z0-9.-]*[a-z]{2,}|\+?(\d[ ().-]{0,2}){9,}\d/i;
+const LINK = /https?:\/\/|www\./i;
 
 export const AGE_LIMITS = [
   { id: 0, label: "Everyone", blurb: "Anyone with a Mesh account can join." },
@@ -129,12 +154,20 @@ function normaliseAutomod(a) {
   const words = (a.bannedWords || [])
     .map((w) => String(w).toLowerCase().trim())
     .filter(Boolean);
+  const pick = (v, list, d) => (list.includes(v) ? v : d);
   return {
     postingPermission: a.postingPermission === "admins" ? "admins" : "members",
     requirePostApproval: !!a.requirePostApproval,
-    blockLinks: !!a.blockLinks,
-    blockNewAccounts: !!a.blockNewAccounts,
     bannedWords: [...new Set(words)].slice(0, 40),
+    linkAction: pick(a.linkAction, ["allow", "hold", "block"], "allow"),
+    newAccountDays: pick(Number(a.newAccountDays), [0, 7, 30, 90, 180], 0),
+    newAccountAction: pick(a.newAccountAction, ["decline", "hold"], "decline"),
+    holdNoPhoto: !!a.holdNoPhoto,
+    blockContactInfo: !!a.blockContactInfo,
+    minLength: pick(Number(a.minLength), [0, 10, 20, 50], 0),
+    mediaAllowed: a.mediaAllowed !== false,
+    declineRecentStrikes: !!a.declineRecentStrikes,
+    slowModeMinutes: pick(Number(a.slowModeMinutes), [0, 5, 15, 60], 0),
   };
 }
 
@@ -147,10 +180,16 @@ export async function setCircleLimits(groupId, { requireApproval, ageLimit, auto
   });
 }
 
+const youngAccount = (profile, days) => {
+  if (!days) return false;
+  const age = Date.now() - tsMillis(profile?.createdAt);
+  return age >= 0 && age < days * 86400000;
+};
+
 // Runs before a post is written: the app-side mirror of the circle-post
-// rules in firestore.rules. Returns an error string, or null to allow.
-export function screenPost(text, group, profile, membership) {
-  const automod = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
+// rules in firestore.rules. Returns the reason in words, or null to allow.
+export function screenPost(text, group, profile, membership, { kind = "text" } = {}) {
+  const automod = effectiveAutomod(group);
   const body = String(text || "").toLowerCase();
   const mod = isCircleMod(membership);
 
@@ -159,26 +198,41 @@ export function screenPost(text, group, profile, membership) {
   if (automod.postingPermission === "admins" && !mod) {
     return "Only admins and moderators can post in this circle.";
   }
-  if (!mod && automod.blockLinks && /https?:\/\/|www\./i.test(body)) {
-    return "This circle doesn't allow links in posts.";
-  }
   const words = new Set(body.split(/[^a-z0-9]+/).filter(Boolean));
   const hit = (automod.bannedWords || []).find((w) => w && (words.has(w.toLowerCase()) || body.includes(w.toLowerCase())));
   if (hit) return `This circle blocks the word "${hit}".`;
+  if (mod) return null;
 
-  if (!mod && automod.blockNewAccounts) {
-    const age = Date.now() - tsMillis(profile?.createdAt);
-    if (age >= 0 && age < 7 * 86400000) {
-      return "This circle only takes posts from accounts older than 7 days.";
-    }
+  if (automod.linkAction === "block" && LINK.test(body)) return "This circle doesn't allow links in posts.";
+  if (automod.newAccountAction === "decline" && youngAccount(profile, automod.newAccountDays)) {
+    return `This circle takes posts from accounts at least ${automod.newAccountDays} days old.`;
+  }
+  if (automod.blockContactInfo && CONTACT_INFO.test(body)) {
+    return "This circle keeps phone numbers, email addresses and card numbers out of posts. Share them in a private message instead.";
+  }
+  if (kind === "text" && automod.minLength && String(text || "").trim().length < automod.minLength) {
+    return `Posts here need at least ${automod.minLength} characters. Say a little more.`;
+  }
+  if (!automod.mediaAllowed && kind !== "text") return "This circle takes words only: no photos or videos.";
+  if (automod.declineRecentStrikes && Date.now() - tsMillis(membership.lastStrikeAt) < 28 * 86400000) {
+    return "An admin removed one of your posts here in the last 28 days, so you can't post for now.";
+  }
+  if (automod.slowModeMinutes) {
+    const wait = tsMillis(membership.lastPostAt) + automod.slowModeMinutes * 60000 - Date.now();
+    if (wait > 0) return `Slow mode is on. You can post again in ${Math.ceil(wait / 60000)} minute${wait > 60000 ? "s" : ""}.`;
   }
   return null;
 }
 
-/** Whether a new post goes straight up, or waits for an admin. */
-export function circlePostVisibility(group, membership) {
-  const automod = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
-  return automod.requirePostApproval && !isCircleMod(membership) ? "pending" : circleVisibility(group);
+/** Whether a new post goes straight up, or waits for an admin, and why. */
+export function circlePostVisibility(group, membership, { text = "", profile } = {}) {
+  const automod = effectiveAutomod(group);
+  if (isCircleMod(membership)) return circleVisibility(group);
+  const hold = automod.requirePostApproval
+    || (automod.linkAction === "hold" && LINK.test(text))
+    || (automod.newAccountAction === "hold" && youngAccount(profile, automod.newAccountDays))
+    || (automod.holdNoPhoto && !profile?.photoURL);
+  return hold ? "pending" : circleVisibility(group);
 }
 
 // --- join requests (screening questions + rule agreement) ---
@@ -216,6 +270,7 @@ export async function approveJoinRequest(groupId, request) {
   batch.delete(doc(db, "groups", groupId, "joinRequests", request.uid));
   batch.update(doc(db, "groups", groupId), { memberCount: increment(1), lastMember: request.uid });
   await batch.commit();
+  notify(request.uid, "joined", { ref: groupId });
 }
 
 export async function declineJoinRequest(groupId, uid) {
@@ -231,6 +286,88 @@ export async function myJoinRequest(groupId) {
 
 export async function setPinnedPost(groupId, postId) {
   await updateDoc(doc(db, "groups", groupId), { pinnedPostId: postId || "" });
+}
+
+/** Up to three posts shown first, in the Featured section. */
+export function featuredIds(group) {
+  if (group?.featuredPostIds?.length) return group.featuredPostIds;
+  return group?.pinnedPostId ? [group.pinnedPostId] : [];
+}
+
+export async function setFeaturedPosts(groupId, ids) {
+  await updateDoc(doc(db, "groups", groupId), { featuredPostIds: ids.slice(0, 3), pinnedPostId: "" });
+}
+
+/** The circle's own post topics, set by its admin. */
+export async function setCircleTopics(groupId, topics) {
+  const clean = [...new Set(topics.map((t) => t.trim()).filter(Boolean))].slice(0, 12).map((t) => t.slice(0, 30));
+  await updateDoc(doc(db, "groups", groupId), { topics: clean });
+  return clean;
+}
+
+/** A moderator took a post down: it counts against its author for 28 days. */
+export async function addStrike(groupId, uid) {
+  await updateDoc(doc(db, "groups", groupId, "members", uid), { strikes: increment(1), lastStrikeAt: serverTimestamp() }).catch(() => {});
+}
+
+// --- the circle's community chat ---
+
+/** An admin opens a chat for the circle; members then join it themselves. */
+export async function createCircleChat(group) {
+  const { id } = await createGroupChat(`${group.name}`.slice(0, 60), [], { circleId: group.id });
+  await updateDoc(doc(db, "groups", group.id), { chatId: id });
+  return id;
+}
+
+export async function joinCircleChat(group) {
+  const profile = await fetchProfile(me());
+  await updateDoc(doc(db, "chats", group.chatId), {
+    members: arrayUnion(me()),
+    [`memberNames.${me()}`]: profile?.username || "?",
+  });
+}
+
+// --- guides: step-by-step units, with each member's progress ---
+
+export async function fetchGuides(groupId) {
+  const snap = await getDocs(query(collection(db, "groups", groupId, "guides"), orderBy("createdAt", "asc"), limit(20)));
+  return snapToList(snap);
+}
+
+export async function saveGuide(groupId, guide) {
+  const data = {
+    title: guide.title.trim().slice(0, 100),
+    unitTitles: guide.units.map((u) => u.title.trim().slice(0, 100)),
+    unitBodies: guide.units.map((u) => u.body.trim().slice(0, 2000)),
+    updatedAt: serverTimestamp(),
+  };
+  if (guide.id) {
+    await updateDoc(doc(db, "groups", groupId, "guides", guide.id), { ...data, createdBy: guide.createdBy, createdAt: guide.createdAt });
+    return guide.id;
+  }
+  const ref_ = await addDoc(collection(db, "groups", groupId, "guides"), { ...data, createdBy: me(), createdAt: serverTimestamp() });
+  return ref_.id;
+}
+
+export async function deleteGuide(groupId, guideId) {
+  await deleteDoc(doc(db, "groups", groupId, "guides", guideId));
+}
+
+export async function fetchGuideProgress(groupId, guideId) {
+  const snap = await getDoc(doc(db, "groups", groupId, "guides", guideId, "progress", me())).catch(() => null);
+  return snap?.exists() ? snap.data().done || [] : [];
+}
+
+export async function setGuideProgress(groupId, guideId, done) {
+  await setDoc(doc(db, "groups", groupId, "guides", guideId, "progress", me()), { done: [...new Set(done)].slice(0, 20), updatedAt: serverTimestamp() });
+}
+
+/** How many members have finished a guide (admins only can read these). */
+export async function fetchGuideCompletions(groupId, guide) {
+  const snap = await getDocs(query(collection(db, "groups", groupId, "guides", guide.id, "progress"), limit(500))).catch(() => null);
+  if (!snap) return null;
+  const total = guide.unitTitles.length;
+  return { started: snap.size, finished: snap.docs.filter((d) => (d.data().done || []).length >= total).length };
 }
 
 export async function setPostLocked(postId, locked) {
@@ -320,14 +457,23 @@ export async function removeMember(groupId, uid) {
    against the circle's owner, so the circle has to still exist. */
 export async function deleteGroup(group) {
   const uid = me();
+  // If the posts can't be listed (brick mode, a dropped connection), stop:
+  // deleting the circle anyway would leave its posts behind.
   const [posts, pending, requests, members] = await Promise.all([
-    fetchGroupPosts(group, { member: true }).catch(() => []),
+    fetchGroupPosts(group, { member: true }),
     fetchPendingPosts(group.id).catch(() => []),
     fetchJoinRequests(group.id).catch(() => []),
     fetchMembers(group.id).catch(() => []),
   ]);
   for (const p of [...posts, ...pending]) await deletePost(p).catch(() => {});
   for (const r of requests) await deleteDoc(doc(db, "groups", group.id, "joinRequests", r.id)).catch(() => {});
+  // Guides and everyone's progress in them, while the admins still count as admins.
+  for (const g of await fetchGuides(group.id).catch(() => [])) {
+    const progress = await getDocs(collection(db, "groups", group.id, "guides", g.id, "progress")).catch(() => null);
+    for (const d of progress?.docs || []) await deleteDoc(d.ref).catch(() => {});
+    await deleteGuide(group.id, g.id).catch(() => {});
+  }
+  if (group.chatId) await deleteDoc(doc(db, "chats", group.chatId)).catch(() => {});
   for (const m of members) if (m.id !== uid) await deleteDoc(doc(db, "groups", group.id, "members", m.id)).catch(() => {});
   await deleteDoc(doc(db, "groups", group.id));
   await deleteDoc(doc(db, "groups", group.id, "members", uid)).catch(() => {});
