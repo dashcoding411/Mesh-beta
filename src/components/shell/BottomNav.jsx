@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { House, MessageCircle } from "lucide-react";
 import { navigate } from "../../lib/router";
+import { scrollOrRefresh } from "./scrollOrRefresh";
 import Avatar from "../ui/Avatar";
 
 /* Phones get exactly three tabs, always: Home, Messages, Account. Everything
@@ -15,11 +16,9 @@ export default function BottomNav({ page, profile, unread, immersive }) {
   if (keyboardUp) return null;
 
   const tap = (tab, path) => {
-    // Tapping the tab you're already on takes you to its top level,
-    // the convention every major app follows.
-    if (page.tab === tab) {
-      document.getElementById("mesh-main")?.querySelector("[data-scroll]")?.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    // The tab you're already on: at its top level, scroll up or refresh;
+    // deeper in (a chat, Settings), go back up to the top level.
+    if (page.tab === tab && window.location.pathname === path) return scrollOrRefresh();
     navigate(path);
   };
 
@@ -30,7 +29,7 @@ export default function BottomNav({ page, profile, unread, immersive }) {
   ];
 
   return (
-    <nav aria-label="Main"
+    <nav aria-label="Main" data-theme={immersive ? "dark" : undefined}
       className={`md:hidden shrink-0 border-t pb-safe ${
         immersive ? "border-white/10 bg-black" : "border-line bg-canvas/95 backdrop-blur"
       }`}>

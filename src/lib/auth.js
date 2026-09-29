@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
@@ -52,6 +53,12 @@ export async function signInApple(remember) {
 
 export function resetPassword(email) {
   return sendPasswordResetEmail(auth, email.trim());
+}
+
+/** Email a link that confirms this address belongs to you. The link lands
+    back on Mesh, which reloads the account to pick up the change. */
+export function verifyEmail() {
+  return sendEmailVerification(auth.currentUser, { url: `${window.location.origin}/account/settings` });
 }
 
 export async function changePassword(currentPassword, newPassword) {

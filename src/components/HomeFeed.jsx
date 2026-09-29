@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
   fetchFeed, fetchAffinity, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
@@ -12,12 +12,21 @@ import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
 import FeedTabs from "./shell/FeedTabs";
 import Button from "./ui/Button";
-import { EmptyState, ErrorState, Skeleton, Loading } from "./ui/States";
+import { EmptyState, ErrorState, Skeleton, Loading, Spinner } from "./ui/States";
+import { useToast } from "./ui/toast-context";
 import PostCard from "./PostCard";
 import StoryRail from "./StoryRail";
 import QuickPost from "./QuickPost";
 
 const PAGE = 12;
+
+// Each feed as you left it: the posts, how far you'd paged and scrolled.
+// Going to Messages and back shouldn't reshuffle the feed or lose your
+// place. Kept for this visit only, and dropped after a while or when you
+// post, so coming back later still brings new things.
+const kept = new Map(); // `${uid}:${mode}:${topic}` -> { posts, shown, top, at, feedKey }
+const KEEP_MS = 15 * 60 * 1000;
+let lastTopic = "all";
 
 /* Home. Two feeds, one switch:
 
@@ -26,16 +35,45 @@ const PAGE = 12;
    Following: only people you follow, newest first, no ranking at all. The
                honest alternative for anyone who doesn't want an algorithm. */
 export default function HomeFeed({ mode }) {
-  const { following, blocked, interests, openInterests, hiddenWords } = useShell();
-  const [topic, setTopic] = useState("all");
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey } = useShell();
+  const toast = useToast();
+  const [chosen, setChosen] = useState(lastTopic);
+  const topic = mode === "foryou" ? chosen : "all"; // topics narrow For you only
+  const keepKey = `${me()}:${mode}:${topic}`;
+  const [restored] = useState(() => {
+    const k = kept.get(keepKey);
+    return k && k.feedKey === feedKey && Date.now() - k.at < KEEP_MS ? k : null;
+  });
   const feedScroll = useRef(null);
-  const [posts, setPosts] = useState(null);
+  const scrollTop = useRef(restored?.top || 0);
+  const loadedAt = useRef(restored?.at || 0);
+  const loadedFor = useRef(restored ? keepKey : null);
+  const [posts, setPosts] = useState(restored?.posts ?? null);
   const [error, setError] = useState(false);
-  const [shown, setShown] = useState(PAGE);
-  const [viewer, setViewer] = usePostStates(posts?.slice(0, shown));
+  const [refreshing, setRefreshing] = useState(false);
+  const [shown, setShown] = useState(restored?.shown ?? PAGE);
+  const [viewer, setViewerState] = usePostStates(posts?.slice(0, shown), keepKey);
 
-  const load = useCallback(async () => {
+  const setTopic = (t) => {
+    lastTopic = t;
+    setChosen(t);
+    setPosts(null);
+    setShown(PAGE);
+    scrollTop.current = 0;
+    feedScroll.current?.scrollTo({ top: 0 });
+  };
+
+  // Your own like, save or repost also moves the count kept with the feed,
+  // so a card rebuilt from it later shows the number you saw.
+  const setViewer = useCallback((id, field, on) => {
+    setViewerState(id, field, on);
+    const count = { liked: "likeCount", saved: "saveCount", reposted: "repostCount" }[field];
+    setPosts((prev) => prev?.map((p) => p.id === id ? { ...p, [count]: Math.max(0, (p[count] || 0) + (on ? 1 : -1)) } : p));
+  }, [setViewerState]);
+
+  const load = useCallback(async ({ quiet = false } = {}) => {
     setError(false);
+    if (quiet) setRefreshing(true);
     try {
       const [list, affinity, hidden, reposts] = await Promise.all([
         // A topic chip narrows the pool to posts tagged with it.
@@ -57,7 +95,7 @@ export default function HomeFeed({ mode }) {
         p.repostedBy = [...(p.repostedBy || []), { uid: r.uid, username: r.username, at: tsMillis(r.createdAt) }];
       }
 
-      const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !blocked.has(p.authorId));
+      const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !hiddenAuthors.has(p.authorId));
 
       if (mode === "following") {
         const mine = screenForViewer(visible, { myUid: me(), hiddenWords })
@@ -68,17 +106,61 @@ export default function HomeFeed({ mode }) {
       } else {
         setPosts(rankFeed(visible, { followingSet: following, affinity, myUid: me(), interests, hiddenWords }));
       }
+      loadedAt.current = Date.now();
     } catch (err) {
       console.error(err);
-      setError(true);
+      if (quiet) toast({ tone: "error", title: "Couldn't refresh", body: "Check your connection and try again." });
+      else setError(true);
+    } finally {
+      setRefreshing(false);
     }
-  }, [mode, following, blocked, topic, interests, hiddenWords]);
+  }, [mode, following, hiddenAuthors, topic, interests, hiddenWords, toast]);
 
-  useEffect(() => { (async () => { await load(); })(); }, [load]);
+  // Load when the feed or topic changes, not on every follow: following
+  // someone mid-scroll shouldn't reshuffle the posts under your thumb. It
+  // counts from the next refresh.
+  useEffect(() => {
+    if (loadedFor.current === keepKey) return;
+    loadedFor.current = keepKey;
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keepKey]);
+
+  // Keep what's on screen, and where you are in it.
+  useEffect(() => {
+    if (posts) kept.set(keepKey, { posts, shown, top: scrollTop.current, at: loadedAt.current, feedKey });
+  }, [keepKey, posts, shown, feedKey]);
+  useEffect(() => {
+    const el = feedScroll.current;
+    if (!el) return;
+    const onScroll = () => {
+      scrollTop.current = el.scrollTop;
+      const k = kept.get(keepKey);
+      if (k) k.top = el.scrollTop;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [keepKey]);
+  useLayoutEffect(() => {
+    if (!restored?.top || !feedScroll.current) return;
+    feedScroll.current.scrollTop = restored.top;
+    // Once more after the stories row and images have had a frame to size.
+    const id = requestAnimationFrame(() => { if (feedScroll.current) feedScroll.current.scrollTop = restored.top; });
+    return () => cancelAnimationFrame(id);
+  }, [restored]);
+
+  // Tapping Home (or For you in the sidebar) while you're at the top.
+  useEffect(() => {
+    const onRefresh = () => { setShown(PAGE); load({ quiet: true }); };
+    window.addEventListener("mesh:refresh", onRefresh);
+    return () => window.removeEventListener("mesh:refresh", onRefresh);
+  }, [load]);
 
   const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
-  const page = posts?.slice(0, shown) ?? null;
-  const more = posts ? posts.length - shown : 0;
+  // Someone you block or mute disappears at once, without waiting for a reload.
+  const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)) ?? null;
+  const page = visiblePosts?.slice(0, shown) ?? null;
+  const more = visiblePosts ? visiblePosts.length - shown : 0;
 
   return (
     <>
@@ -86,12 +168,17 @@ export default function HomeFeed({ mode }) {
         <FeedTabs value={mode} />
         {mode === "foryou" && (
           <InterestChips interests={interests} value={topic} onEdit={openInterests}
-            onChange={(t) => { setTopic(t); setPosts(null); setShown(PAGE); feedScroll.current?.scrollTo({ top: 0 }); }} />
+            onChange={setTopic} />
         )}
       </HomeHeader>
 
       <div ref={feedScroll} data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[640px] md:border-x md:border-line md:min-h-full">
+          {refreshing && (
+            <p role="status" className="flex items-center justify-center gap-2 border-b border-line py-2.5 text-caption text-fg-subtle anim-fade">
+              <Spinner size={14} /> Checking for new posts
+            </p>
+          )}
           {mode === "foryou" && topic === "all" && (
             <>
               <StoryRail />
@@ -125,7 +212,8 @@ export default function HomeFeed({ mode }) {
           {page?.length > 0 && (
             <div className="stagger">
               {page.map((p) => (
-                <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove} />
+                <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove}
+                  onChanged={(id, changes) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, ...changes } : x)))} />
               ))}
             </div>
           )}

@@ -2,6 +2,7 @@
 import { MessageCircle, Plus, Settings } from "lucide-react";
 import { HOME_SECTIONS, sidebarSection } from "../../lib/surfaces";
 import { navigate } from "../../lib/router";
+import { scrollOrRefresh } from "./scrollOrRefresh";
 import Avatar from "../ui/Avatar";
 
 /* Desktop navigation. Two widths: an icon rail between 768 and 1280px so
@@ -21,7 +22,8 @@ export default function Sidebar({ page, profile, unread, onCreate }) {
 
       <nav aria-label="Home sections" className="flex-1 space-y-1 overflow-y-auto no-scrollbar">
         {HOME_SECTIONS.map((s) => (
-          <NavRow key={s.id} icon={s.icon} label={s.label} active={current === s.id} onClick={() => navigate(s.path)} />
+          <NavRow key={s.id} icon={s.icon} label={s.label} active={current === s.id}
+            onClick={() => (window.location.pathname === s.path ? scrollOrRefresh() : navigate(s.path))} />
         ))}
 
         <div className="my-3 h-px bg-line" aria-hidden="true" />

@@ -1,12 +1,14 @@
 import { Fragment } from "react";
 import { navigate } from "../../lib/router";
+import { openUserProfile, uidForUsername } from "../../lib/db";
 
 // URLs, #tags and @handles. Nothing else is interpreted, no HTML, no markdown.
 // The lookbehinds stop "me@example.com" reading as a handle and "&#39;" as a tag.
 const TOKEN = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])|((?<![\p{L}\p{N}_&])#[\p{L}\p{N}_]{2,50})|((?<![\p{L}\p{N}_.])@[a-z0-9_]{3,30})/giu;
 
-/* Post text with its links made real. Tags and handles open Search, so a
-   #tag is a way in to everything else carrying it. Outbound links are marked
+/* Post text with its links made real. A #tag opens Search, so it's a way in
+   to everything else carrying it. An @handle opens that person's profile, or
+   Search if nobody has the handle (any more). Outbound links are marked
    rel="ugc nofollow noopener", user-generated, not endorsed by us, and
    unable to reach back into this tab. Only http(s) is ever linked. */
 export default function RichText({ text, className = "", highlight }) {
@@ -39,9 +41,16 @@ export default function RichText({ text, className = "", highlight }) {
           );
         }
         const q = p.v;
+        const search = () => navigate(`/search?q=${encodeURIComponent(q)}`);
+        const open = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (p.t === "tag") return search();
+          const uid = await uidForUsername(q).catch(() => null);
+          if (uid) openUserProfile(uid); else search();
+        };
         return (
-          <a key={i} href={`/search?q=${encodeURIComponent(q)}`}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/search?q=${encodeURIComponent(q)}`); }}
+          <a key={i} href={`/search?q=${encodeURIComponent(q)}`} onClick={open}
             className="text-accent-text hover:underline underline-offset-2">
             {q}
           </a>

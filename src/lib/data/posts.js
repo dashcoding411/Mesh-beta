@@ -194,6 +194,20 @@ export async function fetchPendingPosts(groupId, { mine = false } = {}) {
   return snapToList(await getDocs(q)).sort(byNewest);
 }
 
+/** Change the words on one of your own posts (not in a circle). Stamps
+    `editedAt`, which the rules require and every card shows as "Edited".
+    Returns the fields that changed, to merge into what's on screen. */
+export async function editPost(post, { text, title = "", alt = "", topics = [], sensitive = false, visibility }) {
+  const user = auth.currentUser;
+  const changes = { text, title, alt, topics, sensitive, editedAt: serverTimestamp() };
+  if (visibility) changes.visibility = visibility;
+  const batch = writeBatch(db);
+  batch.update(doc(db, "posts", post.id), changes);
+  batch.set(doc(db, "rateLimits", user.uid), { edit: serverTimestamp() }, { merge: true });
+  await batch.commit();
+  return { ...changes, editedAt: Timestamp.now() };
+}
+
 export async function approvePost(post, group) {
   await updateDoc(doc(db, "posts", post.id), { visibility: circleVisibility(group) });
 }

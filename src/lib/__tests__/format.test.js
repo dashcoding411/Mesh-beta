@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compact, formatDuration, plural } from "../format";
+import { compact, formatDuration, plural, relativeTime } from "../format";
 
 describe("format", () => {
   it("plural", () => {
@@ -15,5 +15,13 @@ describe("format", () => {
   });
   it("formatDuration", () => {
     expect(formatDuration(65)).toBe("1:05");
+  });
+  it("relativeTime reads as part of a sentence", () => {
+    const ago = (s) => relativeTime(Date.now() - s * 1000);
+    expect(ago(5)).toBe("just now");
+    expect(ago(60)).toMatch(/1 minute ago/);
+    expect(ago(5 * 60)).toMatch(/5 minutes ago/);
+    expect(ago(3 * 3600)).toMatch(/3 hours ago/);
+    expect(ago(26 * 3600)).toMatch(/yesterday|1 day ago/);
   });
 });

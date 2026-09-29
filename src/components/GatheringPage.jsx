@@ -324,7 +324,7 @@ function Discussion({ event, status }) {
                   <RichText text={p.text} className="mt-1 text-callout text-fg" />
                   {!p.legacy && (
                     <div className="-ml-2.5 mt-1 flex items-center">
-                      <IconButton icon={Heart} label={liked ? "Unlike" : "Like"} pressed={liked} activeClass="text-fuchsia-400"
+                      <IconButton icon={Heart} label={liked ? "Unlike" : "Like"} pressed={liked} activeClass="text-like"
                         count={(p.likedBy || []).length} countNoun="like" size={17} onClick={() => like(p)} />
                       {(p.authorId === me() || event.hostId === me()) && (
                         <IconButton icon={Trash2} label="Delete post" size={16} className="ml-auto" onClick={() => remove(p)} />

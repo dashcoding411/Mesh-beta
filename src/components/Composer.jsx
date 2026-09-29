@@ -6,9 +6,10 @@ import {
   uploadMedia, createPost, isMinor, StorageUnavailableError, storageAvailable, screenPost,
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
-import { formatDuration, spokenDuration } from "../lib/format";
+import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
 import { suggestTopics, MAX_POST_TOPICS } from "../lib/interests";
 import { gifsEnabled } from "../lib/gifs";
+import { readDraft, useDraft } from "../lib/drafts";
 import { InterestToggles } from "./Interests";
 import GifPicker, { GifView } from "./GifPicker";
 import { PollBuilder } from "./Poll";
@@ -52,12 +53,18 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const toast = useToast();
   // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
   const minor = isMinor(profile) || !!profile?.isPrivate;
-  const [kind, setKind] = useState(initialKind || lastKind);
-  const [text, setText] = useState(initialText);
-  const [title, setTitle] = useState("");
-  const [alt, setAlt] = useState("");
+  // What you were writing last time, unless you've arrived with something
+  // specific to post (a poll or GIF from the feed, say).
+  const draftScope = groupId ? `circle:${groupId}` : "post";
+  const [draft] = useState(() => (initialText || attach ? null : readDraft(draftScope)));
+  const d = draft?.data || {};
+  const [kind, setKind] = useState(initialKind || d.kind || lastKind);
+  const [text, setText] = useState(d.text ?? initialText);
+  const [title, setTitle] = useState(d.title || "");
+  const [alt, setAlt] = useState(d.alt || "");
   const [ai, setAi] = useState(false);
-  const [visibility, setVisibility] = useState(minor ? "followers" : "public");
+  const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
+  const [restored, setRestored] = useState(!!draft);
   const [file, setFile] = useState(null);
   const [duration, setDuration] = useState(0);
   const [trailerStart, setTrailerStart] = useState(0);
@@ -69,10 +76,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [note, setNote] = useState("");
   const [mediaReady, setMediaReady] = useState(null);
   const [dragging, setDragging] = useState(false);
-  const [topics, setTopics] = useState([]);
-  const [topicsTouched, setTopicsTouched] = useState(false);
-  const [poll, setPoll] = useState(attach === "poll" ? { options: ["", ""], hours: 24 } : null);
-  const [gif, setGif] = useState(null);
+  const [topics, setTopics] = useState(d.topics || []);
+  const [topicsTouched, setTopicsTouched] = useState(!!d.topics);
+  const [poll, setPoll] = useState(d.poll || (attach === "poll" ? { options: ["", ""], hours: 24 } : null));
+  const [gif, setGif] = useState(d.gif || null);
   const [gifPicker, setGifPicker] = useState(attach === "gif" && gifsEnabled);
   const fileInput = useRef(null);
   const fileId = useId();
@@ -84,6 +91,22 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const busy = progress !== null;
 
   useEffect(() => { storageAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
+
+  // Words and choices are saved as you go; a photo or video can't be.
+  const hasWords = !!(text.trim() || title.trim() || alt.trim() || gif || poll?.options.some((o) => o.trim()));
+  const finishDraft = useDraft(draftScope, hasWords ? {
+    kind, text, title, alt, visibility, gif,
+    poll: kind === "text" ? poll : null,
+    topics: topicsTouched ? topics : undefined,
+  } : null);
+  const discardDraft = () => {
+    setText(""); setTitle(""); setAlt(""); setPoll(null); setGif(null);
+    setTopics([]); setTopicsTouched(false); setRestored(false); setWarned("");
+  };
+  const close = () => {
+    if (hasWords) toast({ title: "Draft saved", body: "It'll be here next time you open Create." });
+    onClose();
+  };
   useEffect(() => { lastKind = kind; }, [kind]);
 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
@@ -175,6 +198,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         visibility: groupId ? circlePostVisibility(group, membership) : minor ? "followers" : visibility,
       });
       markPosted("post", clean);
+      finishDraft();
       toast(post.visibility === "pending"
         ? { tone: "info", title: "Sent to the circle's admins", body: "It'll appear once someone approves it." }
         : { title: `${long ? "Long Flick" : spec.label} posted` });
@@ -198,7 +222,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const remaining = STRAND_MAX - text.length;
 
   return (
-    <Dialog title={heading} onClose={busy ? undefined : onClose} dismissible={!busy} variant="full" size="lg"
+    <Dialog title={heading} onClose={busy ? undefined : close} dismissible={!busy} variant="full" size="lg"
       footer={
         <div className="space-y-3">
           <div aria-live="polite"><InlineMessage>{errors.submit}</InlineMessage></div>
@@ -230,6 +254,14 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           )}
         </div>
       }>
+      {restored && (
+        <div role="status" className="mb-4 flex items-center gap-3 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted">
+          <span className="min-w-0 flex-1">
+            Your draft from {relativeTime(draft.at)} is back.{spec.media ? ` Add your ${spec.media === "image" ? "photo" : "video"} again: files aren't kept.` : ""}
+          </span>
+          <Button size="sm" variant="ghost" onClick={discardDraft}>Discard</Button>
+        </div>
+      )}
       <Tabs label="What are you posting?" value={kind} onChange={switchKind} className="mb-5 flex w-full"
         tabs={KINDS.map((k) => ({ id: k.id, label: k.label }))} />
 

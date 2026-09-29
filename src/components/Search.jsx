@@ -44,7 +44,7 @@ const FILTERS = [
    strongest section first. The query lives in the URL, so Back and refresh
    both keep your place. */
 export default function Search({ initialQuery, filter }) {
-  const { following, blocked, hiddenWords } = useShell();
+  const { following, blocked, muted, hiddenWords } = useShell();
   const [term, setTerm] = useState(initialQuery);
   const [results, setResults] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | loading | done | error
@@ -66,7 +66,7 @@ export default function Search({ initialQuery, filter }) {
     const id = ++runId.current;
     setStatus("loading");
     try {
-      const r = await search(value, { following, me: me(), blocked, hiddenWords });
+      const r = await search(value, { following, me: me(), blocked, muted, hiddenWords });
       if (id !== runId.current) return; // a newer keystroke won
       setResults(r);
       setStatus("done");
@@ -74,7 +74,7 @@ export default function Search({ initialQuery, filter }) {
       console.error(err);
       if (id === runId.current) setStatus("error");
     }
-  }, [following, blocked, hiddenWords]);
+  }, [following, blocked, muted, hiddenWords]);
 
   // Debounced: search 300ms after typing stops, and keep the URL in step.
   useEffect(() => {
@@ -282,7 +282,7 @@ function FollowButton({ person, following, setFollowing, className = "" }) {
 /* The wander-through mix: Flicks, Stills and Strands in one mosaic, ordered
    by the same ranker as the feed. */
 function Explore() {
-  const { following, blocked, hiddenWords } = useShell();
+  const { following, hiddenAuthors, hiddenWords } = useShell();
   const [items, setItems] = useState(null);
   const [error, setError] = useState(false);
 
@@ -290,10 +290,10 @@ function Explore() {
     try {
       const { posts, affinity } = await loadPool();
       const ranked = rankFeed(posts.filter((p) => !p.groupId), { followingSet: following, affinity, myUid: me(), hiddenWords });
-      setItems(ranked.filter((p) => p.authorId !== me() && !blocked.has(p.authorId)).slice(0, 30));
+      setItems(ranked.filter((p) => p.authorId !== me() && !hiddenAuthors.has(p.authorId)).slice(0, 30));
       setError(false);
     } catch { setError(true); }
-  }, [following, blocked, hiddenWords]);
+  }, [following, hiddenAuthors, hiddenWords]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 

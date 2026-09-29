@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe } from "./lib/db";
+import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted } from "./lib/db";
 import { CallSession, listenIncomingCalls, callsSupported } from "./lib/calls";
 
 import { useToast } from "./components/ui/toast-context";
@@ -15,6 +15,8 @@ import AuthPage from "./components/AuthPage";
 import HomeFeed from "./components/HomeFeed";
 import StorageNotice from "./components/StorageNotice";
 import SuspensionBanner from "./components/SuspensionBanner";
+import OfflineBanner from "./components/OfflineBanner";
+import Shortcuts from "./components/Shortcuts";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
 import { DOCUMENTS } from "./legal/content.js";
@@ -67,6 +69,7 @@ export default function App() {
   const [blocked, setBlocked] = useState(new Set());
   const [interests, setInterests] = useState([]);
   const [hiddenWords, setHiddenWords] = useState([]);
+  const [muted, setMutedSet] = useState(() => new Set());
   const [interestsDialog, setInterestsDialog] = useState(null); // null | "first" | "edit"
   const [incoming, setIncoming] = useState([]);
   const [call, setCall] = useState(null);
@@ -91,6 +94,7 @@ export default function App() {
         setBlocked(b);
         setInterests(prefs.interests || []);
         setHiddenWords(prefs.hiddenWords || []);
+        setMutedSet(new Set(prefs.muted || []));
         // Ask once, on a new account's first visit. Skippable, never nagging.
         let asked = true;
         try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
@@ -100,6 +104,7 @@ export default function App() {
         setFollowing(new Set());
         setBlocked(new Set());
         setHiddenWords([]);
+        setMutedSet(new Set());
       }
       setAuthReady(true);
     });
@@ -158,10 +163,30 @@ export default function App() {
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const openInterests = useCallback(() => setInterestsDialog("edit"), []);
+  // Muting or unmuting someone: saved first, then shown, with a way back.
+  const saveMute = useCallback(async (person, on) => {
+    await setMuted(person.id, on);
+    setMutedSet((prev) => { const n = new Set(prev); if (on) n.add(person.id); else n.delete(person.id); return n; });
+  }, []);
+  const toggleMute = useCallback(async (person, on) => {
+    try {
+      await saveMute(person, on);
+      toast(on
+        ? { title: `Muted @${person.username}`, body: "Their posts, stories and comments won't show for you. They aren't told.",
+            action: { label: "Undo", onClick: () => saveMute(person, false).catch(() => toast({ tone: "error", title: "Couldn't unmute" })) } }
+        : { title: `Unmuted @${person.username}` });
+    } catch {
+      toast({ tone: "error", title: on ? "Couldn't mute" : "Couldn't unmute", body: "Check your connection and try again." });
+    }
+  }, [saveMute, toast]);
+  // Authors whose posts stay out of your feeds: blocked or muted.
+  const hiddenAuthors = useMemo(() => new Set([...blocked, ...muted]), [blocked, muted]);
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords,
-  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords]);
+    muted, toggleMute, hiddenAuthors,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords,
+    muted, toggleMute, hiddenAuthors]);
 
   const { page, overlay, bgQuery } = resolve(loc);
   usePageTitle(sectionTitle(page, signedIn, overlay ? bgQuery : loc.query), 0);
@@ -228,6 +253,7 @@ export default function App() {
         <Sidebar page={page} profile={profile} unread={inbox.unreadCount} onCreate={() => openComposer()} />
 
         <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
+          <OfflineBanner />
           <SuspensionBanner profile={profile} />
           <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
         </main>
@@ -254,6 +280,7 @@ export default function App() {
         )}
 
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+        <Shortcuts onCreate={openComposer} />
 
         {interestsDialog && (
           <InterestsDialog initial={interests} firstRun={interestsDialog === "first"}

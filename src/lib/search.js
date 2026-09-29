@@ -161,7 +161,7 @@ const sectionFor = (post) =>
  * Sections are ordered by their strongest result, so a query that names a
  * person leads with People and a query about an event leads with Gatherings.
  */
-export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set(), hiddenWords = [] } = {}) {
+export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set(), muted = new Set(), hiddenWords = [] } = {}) {
   const q = normalise(rawQuery).replace(/^@/, "");
   const qTokens = tokens(q);
   if (!qTokens.length) return { top: null, sections: [], total: 0 };
@@ -179,7 +179,9 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   const push = (section, item, rel, prior) => {
     if (rel <= 0) return;
     // Blocked people don't turn up in your search, as people or as authors.
-    if (blocked.has(item.authorId) || (section === "people" && blocked.has(item.id))) return;
+    // Muted people's posts don't either, but you can still find the person
+    // (to unmute them, say).
+    if (blocked.has(item.authorId) || muted.has(item.authorId) || (section === "people" && blocked.has(item.id))) return;
     // Held posts and your hidden words stay out of results too.
     if (item.authorId && item.authorId !== me && isHeld(item)) return;
     if (item.authorId !== me && hitsHiddenWords(`${item.title || ""} ${item.text || ""}`, hiddenWords)) return;

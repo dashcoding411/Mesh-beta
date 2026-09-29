@@ -1,11 +1,11 @@
-import { cloneElement, forwardRef, useEffect, useId, useRef } from "react";
+import { cloneElement, forwardRef, useCallback, useEffect, useId, useRef } from "react";
 import { InlineMessage } from "./States";
 
 /* Labels are always visible, placeholders are examples, never the label.
    The field wires up aria-describedby and aria-invalid itself so no caller
    can forget to.
 
-   Border is `field` (#6b6b76), which clears the 3:1 non-text contrast
+   Border is the `field` token, which clears the 3:1 non-text contrast
    minimum: an input should be findable by its edge, not only its hint. */
 
 export const fieldClass =
@@ -64,14 +64,27 @@ export const Textarea = forwardRef(function Textarea({ className = "", autoGrow 
     else if (ref) ref.current = el;
   };
 
-  useEffect(() => {
+  const fit = useCallback(() => {
     const el = inner.current;
     if (!autoGrow || !el) return;
     el.style.height = "auto";
     const line = parseFloat(getComputedStyle(el).lineHeight) || 24;
     const pad = el.offsetHeight - el.clientHeight + 20;
     el.style.height = `${Math.min(el.scrollHeight, line * maxRows + pad)}px`;
-  });
+  }, [autoGrow, maxRows]);
+  useEffect(fit);
+  // The words rewrap when the box gets wider or narrower (a rotated phone,
+  // a resized window, the web font arriving), so measure again then.
+  useEffect(() => {
+    const el = inner.current;
+    if (!autoGrow || !el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth !== width) { width = el.clientWidth; fit(); }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [autoGrow, fit]);
 
   return (
     <textarea ref={setRef} rows={rows}

@@ -11,7 +11,7 @@ import StoryViewer from "./StoryViewer";
 /* 24-hour stories across the top of For You. Only shows when there's
    something to show, or you can add one, an empty rail is just clutter. */
 export default function StoryRail() {
-  const { profile, following, blocked } = useShell();
+  const { profile, following, hiddenAuthors } = useShell();
   const toast = useToast();
   const [threads, setThreads] = useState([]);
   const [viewing, setViewing] = useState(null);
@@ -19,8 +19,8 @@ export default function StoryRail() {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    fetchActiveStories(following).then((t) => setThreads(t.filter((x) => !blocked.has(x.authorId)))).catch(() => {});
-  }, [following, blocked]);
+    fetchActiveStories(following).then((t) => setThreads(t.filter((x) => !hiddenAuthors.has(x.authorId)))).catch(() => {});
+  }, [following, hiddenAuthors]);
 
   const addStory = async (e) => {
     const file = e.target.files[0];

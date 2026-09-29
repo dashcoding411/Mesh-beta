@@ -85,7 +85,8 @@ export const PRIVACY = {
         "Your Firestore data, including photos and voice messages, is stored in Google's australia-southeast1 region (Sydney). When video uploads are switched on, video files are kept in Cloud Storage, which may be in the United States; that would be a transfer overseas, and Australian Privacy Principle 8 applies to it.",
         "GIFs come from GIPHY, a US company. When you open the GIF picker, your search words and your IP address go to GIPHY to fetch results. When anyone views a GIF on Mesh, their browser loads it from GIPHY's servers, so GIPHY sees their IP address. We never send GIPHY your name, handle, email or any account detail. Accounts under 16 only see G-rated GIFs. GIPHY's own privacy policy covers what it does with this.",
         "Voice and video calls connect your device directly to the other person's using WebRTC, and the audio and video are encrypted in transit. To find a route between you, your device contacts Google's public STUN servers, which see your IP address, and the other person's device learns your IP address during the call. The setup data is deleted from our database when the call ends. If a relay (TURN) server is configured for networks that block direct connections, the encrypted call passes through it without being decrypted.",
-        "If you sign in with Google or Apple, that provider knows you signed in to Mesh. If you use phone sign-in, Google reCAPTCHA runs to verify you are not a bot; that check sends data to Google and is only loaded at the moment you request an SMS code.",
+        "If you sign in with Google or Apple, that provider knows you signed in to Mesh.",
+        "Every visit to Mesh runs Google reCAPTCHA Enterprise in the background, through Firebase App Check. It checks that requests come from a real browser on this site and not from a script, and you never see a puzzle. To do that it sends Google information about your browser and device, and Google may set its own cookies. Google says it uses this data to run and improve reCAPTCHA and for general security, not for personalised advertising. If you use phone sign-in, reCAPTCHA also runs when you request an SMS code.",
         "We otherwise disclose personal information only where we are legally required to, or where it is necessary to prevent a serious threat to someone's life, health or safety.",
       ],
     },
@@ -110,7 +111,7 @@ export const PRIVACY = {
       p: [
         "You can access everything we hold about you: Account → Your data → Download gives you a JSON export immediately, with no request needed.",
         "You can correct your profile at any time from Profile → Edit profile.",
-        "You can delete your account permanently from Account → Danger zone.",
+        "You can delete your account permanently from Settings → Account → Delete account.",
         `If you want something we have not built a button for, or you want to complain about how we have handled your information, email ${B.privacyEmail}. We aim to respond within 30 days.`,
         "If you are not satisfied with our response, you can complain to the Office of the Australian Information Commissioner at oaic.gov.au. If the GDPR applies to you, you may complain to your local supervisory authority.",
       ],
@@ -207,7 +208,7 @@ export const TERMS = {
     {
       h: "Ending it",
       p: [
-        "You can delete your account at any time from Account → Danger zone. That is permanent.",
+        "You can delete your account at any time from Settings → Account → Delete account. That is permanent.",
         "We may suspend or close an account that breaches these terms, or where we are legally required to.",
       ],
     },
@@ -230,7 +231,7 @@ export const COOKIES = {
     {
       h: "The short version",
       p: [
-        "Mesh sets no advertising cookies and no analytics cookies. There is no third-party tracking on this site, and nothing here follows you to other websites. Even the fonts are served from Mesh itself rather than a font service, so loading a page doesn't tell anyone else you visited.",
+        "Mesh sets no advertising cookies and no analytics cookies. There is no third-party tracking on this site, and nothing here follows you to other websites. Fonts are served from Mesh itself rather than a font service. The one outside service every page contacts is Google reCAPTCHA, a security check described below.",
         "What we do store is the minimum needed to keep you signed in and to stop the same message being posted a hundred times a second.",
       ],
     },
@@ -242,7 +243,9 @@ export const COOKIES = {
         ["Recent searches", "Your last few searches, stored under 'mesh:recent-searches' so they're one tap away. Kept on this device only, never sent to us, and cleared by the Clear all button in Search."],
         ["Storage notice", "One key, 'mesh:storage-notice', remembering that you've dismissed the notice about this storage."],
         ["Interests prompt", "One key per account, beginning 'mesh:asked-interests:', so the 'pick your interests' screen only appears once on this device. Your interests themselves are saved to your account, not here."],
-        ["Google reCAPTCHA", "Only if you use phone sign-in. Google sets its own cookies to tell humans from bots. This does not load unless you request an SMS code."],
+        ["Appearance", "One key, 'mesh:appearance', holding the theme, text size, motion and video settings you chose in Settings, so this device keeps them. Kept on this device only."],
+        ["Drafts", "Keys beginning 'mesh:draft:' hold the words of a post or message you started but didn't send, so closing the composer or switching chats doesn't lose them. Photos and videos aren't kept. Kept on this device only, for a week at most, and deleted when you send, discard or sign out."],
+        ["Google reCAPTCHA", "Loaded on every visit by Firebase App Check to tell real visitors from scripts, and again if you request an SMS code. Google sets its own cookies for this. It's a security measure: it isn't used for advertising, and Mesh receives only a pass or fail."],
       ],
     },
     {
@@ -257,7 +260,7 @@ export const COOKIES = {
       h: "Controlling it",
       p: [
         "Your browser settings can block or clear all of this. Blocking storage for this site will sign you out and keep you signed out.",
-        "Signing out from Account → Danger zone clears your session on this device.",
+        "Signing out from Settings → Account → Sign out clears your session on this device.",
       ],
     },
   ],

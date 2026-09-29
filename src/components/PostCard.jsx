@@ -18,10 +18,12 @@ import IconButton from "./ui/IconButton";
 import RichText from "./ui/RichText";
 import InlineVideo from "./ui/InlineVideo";
 import MediaImg from "./ui/MediaImg";
+import Lightbox from "./ui/Lightbox";
 import Badge from "./ui/Badge";
 import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
 import { ShareSheet, PostMenu } from "./PostActions";
+import EditPostDialog from "./EditPost";
 import { GifView } from "./GifPicker";
 import { PollCard } from "./Poll";
 
@@ -30,9 +32,12 @@ import { PollCard } from "./Poll";
    on the right, the same shape whether it's a Strand, a Still or a Flick,
    with only the body changing. */
 export default function PostCard({
-  post, viewer, onViewerChange, onRemoved, canModerate = false, highlight, compact = false,
+  post: original, viewer, onViewerChange, onRemoved, onChanged, canModerate = false, highlight, compact = false,
 }) {
   const toast = useToast();
+  // Your own edits show at once, before any list holding the post catches up.
+  const [edits, setEdits] = useState(null);
+  const post = useMemo(() => (edits ? { ...original, ...edits } : original), [original, edits]);
   const [counts, setCounts] = useState({
     like: post.likeCount || 0, comment: post.commentCount || 0,
     repost: post.repostCount || 0, save: post.saveCount || 0,
@@ -43,7 +48,7 @@ export default function PostCard({
   const pending = useRef({});
   const cardRef = useRef(null);
   const seen = useInView(cardRef);
-  const { blocked, hiddenWords } = useShell();
+  const { hiddenAuthors, hiddenWords } = useShell();
   const [revealed, setRevealed] = useState(false);
   const mineNow = post.authorId === me();
   // Offensive words let through on context sit behind a tap, so nobody meets
@@ -124,7 +129,7 @@ export default function PostCard({
   };
 
   return (
-    <article aria-labelledby={titleId} ref={cardRef}
+    <article aria-labelledby={titleId} ref={cardRef} tabIndex={-1}
       className={`relative border-b border-line px-4 ${compact ? "py-3" : "py-4"} transition-colors`}>
       {post.repostedBy?.length > 0 && (
         <p className="mb-2 ml-[52px] flex items-center gap-1.5 text-caption font-medium text-fg-subtle">
@@ -154,6 +159,9 @@ export default function PostCard({
               className="shrink-0 text-caption text-fg-subtle tabular">
               {shortTime(post.createdAt)}
             </time>
+            {post.editedAt && (
+              <span className="shrink-0 text-caption text-fg-subtle" title={`Edited ${fullTime(post.editedAt)}`}>· Edited</span>
+            )}
             {post.visibility === "followers" && (
               <span className="shrink-0 text-fg-subtle" title="Followers only">
                 <Lock size={13} aria-hidden="true" />
@@ -199,7 +207,7 @@ export default function PostCard({
 
           <div className="-ml-2.5 mt-2 flex items-center gap-0.5" role="group" aria-label="Post actions">
             <Action icon={Heart} label={liked ? "Unlike" : "Like"} text="Like" pressed={liked} count={counts.like} noun="like"
-              activeClass="text-fuchsia-400" onClick={like} className={burst ? "anim-heart" : ""} />
+              activeClass="text-like" onClick={like} className={burst ? "anim-heart" : ""} />
             <Action icon={MessageCircle} label="Comments" text="Comment" count={counts.comment} noun="comment"
               onClick={() => setSheet("comments")} />
             <Action icon={Repeat2} label={reposted ? "Undo repost" : "Repost"} text="Repost" pressed={reposted}
@@ -213,7 +221,7 @@ export default function PostCard({
           </div>
 
           {!compact && (
-            <SocialProof post={post} counts={counts} seen={seen} blocked={blocked} mine={mine} hiddenWords={hiddenWords}
+            <SocialProof post={post} counts={counts} seen={seen} hiddenAuthors={hiddenAuthors} mine={mine} hiddenWords={hiddenWords}
               preview={preview} onOpenComments={() => setSheet("comments")} />
           )}
           {!compact && seen && !post.locked && (
@@ -231,8 +239,17 @@ export default function PostCard({
       )}
       {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
       {sheet === "menu" && (
-        <PostMenu post={post} mine={mine} canModerate={canModerate}
+        <PostMenu post={post} mine={mine} canModerate={canModerate} onEdit={() => setSheet("edit")}
           onClose={() => setSheet(null)} onRemoved={() => onRemoved?.(post.id)} />
+      )}
+      {sheet === "edit" && (
+        <EditPostDialog post={post} onClose={() => setSheet(null)}
+          onSaved={(changes) => {
+            setEdits((prev) => ({ ...prev, ...changes }));
+            onChanged?.(post.id, changes);
+            setRevealed(false);
+            setSheet(null);
+          }} />
       )}
     </article>
   );
@@ -252,25 +269,7 @@ function Body({ post, highlight, onDoubleTap, burst }) {
     );
   }
 
-  if (post.kind === "post") {
-    return (
-      <>
-        {post.text && <RichText text={post.text} highlight={highlight} className="mt-1 text-body text-fg" />}
-        {post.mediaUrl && (
-          <div className="relative mt-3 overflow-hidden rounded-card border border-line bg-surface"
-            onDoubleClick={onDoubleTap}>
-            <MediaImg src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy"
-              className="max-h-[70vh] w-full object-cover" placeholderClass="aspect-[4/5] w-full" />
-            {burst && (
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
-                <Heart size={96} className="anim-pop text-white drop-shadow-lg" fill="currentColor" />
-              </span>
-            )}
-          </div>
-        )}
-      </>
-    );
-  }
+  if (post.kind === "post") return <StillBody post={post} highlight={highlight} onDoubleTap={onDoubleTap} burst={burst} />;
 
   if (post.kind === "short") {
     return (
@@ -316,6 +315,42 @@ function Body({ post, highlight, onDoubleTap, burst }) {
   );
 }
 
+/* A Still: one tap opens the photo full screen, two taps like it. The
+   single tap waits a moment to be sure it isn't the first of two. */
+function StillBody({ post, highlight, onDoubleTap, burst }) {
+  const [open, setOpen] = useState(false);
+  const pending = useRef(null);
+  useEffect(() => () => clearTimeout(pending.current), []);
+  const tap = (e) => {
+    // A keyboard press is never half of a double tap.
+    if (e.detail === 0) return setOpen(true);
+    if (pending.current) {
+      clearTimeout(pending.current);
+      pending.current = null;
+      return onDoubleTap();
+    }
+    pending.current = setTimeout(() => { pending.current = null; setOpen(true); }, 260);
+  };
+  return (
+    <>
+      {post.text && <RichText text={post.text} highlight={highlight} className="mt-1 text-body text-fg" />}
+      {post.mediaUrl && (
+        <button type="button" onClick={tap} aria-label={`Open photo. ${mediaAlt(post)}`}
+          className="relative mt-3 block w-full cursor-zoom-in overflow-hidden rounded-card border border-line bg-surface">
+          <MediaImg src={post.mediaUrl} alt="" loading="lazy"
+            className="max-h-[70vh] w-full object-cover" placeholderClass="aspect-[4/5] w-full" />
+          {burst && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+              <Heart size={96} className="anim-pop text-white drop-shadow-lg" fill="currentColor" />
+            </span>
+          )}
+        </button>
+      )}
+      {open && <Lightbox src={post.mediaUrl} alt={post.alt} caption={post.text} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 /* Load the extras (who liked it, the first comment) only once the card is
    actually on screen, so a long feed doesn't cost a read per post up front. */
 function useInView(ref) {
@@ -350,7 +385,7 @@ function Action({ icon: Icon, label, text, count, noun, pressed, activeClass = "
 
 /* "Liked by @sam and 11 others", the first comment, and a way into the rest.
    Your own posts also show how many people saved or sent it, which only you see. */
-function SocialProof({ post, counts, seen, blocked, mine, hiddenWords, preview, onOpenComments }) {
+function SocialProof({ post, counts, seen, hiddenAuthors, mine, hiddenWords, preview, onOpenComments }) {
   const [likers, setLikers] = useState([]);
   const [top, setTop] = useState(null);
   const wantLikers = seen && counts.like > 0;
@@ -369,10 +404,10 @@ function SocialProof({ post, counts, seen, blocked, mine, hiddenWords, preview, 
     return () => { alive = false; };
   }, [wantTop, post.id]);
 
-  const shownLiker = likers.find((l) => !blocked.has(l.id) && l.id !== me());
+  const shownLiker = likers.find((l) => !hiddenAuthors.has(l.id) && l.id !== me());
   // The preview is the one comment everyone scrolling past sees, so it's
   // held to a higher bar: nothing borderline, nothing you've hidden.
-  const topOk = top && !blocked.has(top.authorId) && !isBorderline(top.text) && !hitsHiddenWords(top.text, hiddenWords);
+  const topOk = top && !hiddenAuthors.has(top.authorId) && !isBorderline(top.text) && !hitsHiddenWords(top.text, hiddenWords);
   const comment = preview || (topOk ? top : null);
   const stats = mine && ((post.saveCount || 0) > 0 || (post.sendCount || 0) > 0);
   if (!counts.like && !counts.comment && !stats) return null;

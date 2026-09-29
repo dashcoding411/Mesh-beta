@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag } from "lucide-react";
+import {
+  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2,
+} from "lucide-react";
 import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
@@ -20,7 +22,7 @@ import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 /* Someone else's profile, opened over whatever you were doing. It has its
    own URL, so Back closes it and the page underneath is exactly as you left it. */
 export default function UserProfile({ uid }) {
-  const { following, setFollowing, blocked, setBlocked } = useShell();
+  const { following, setFollowing, blocked, setBlocked, muted, toggleMute } = useShell();
   const toast = useToast();
   const [profile, setProfile] = useState(undefined);
   usePageTitle(profile ? `@${profile.username}` : null, 2);
@@ -34,6 +36,7 @@ export default function UserProfile({ uid }) {
   const [dialog, setDialog] = useState(null); // menu | block
   const followed = following.has(uid);
   const isBlocked = blocked.has(uid);
+  const isMuted = muted.has(uid);
   const locked = !!profile?.isPrivate && !following.has(uid);
 
   useEffect(() => {
@@ -167,6 +170,13 @@ export default function UserProfile({ uid }) {
                 </>
               )} />
 
+            {isMuted && !isBlocked && (
+              <p role="status" className="mx-4 mb-3 flex items-center gap-3 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted md:mx-6">
+                <VolumeX size={16} className="shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1">You've muted @{profile.username}. Their posts don't show in your feeds.</span>
+                <Button size="sm" variant="ghost" onClick={() => toggleMute({ id: uid, username: profile.username }, false)}>Unmute</Button>
+              </p>
+            )}
             {isBlocked ? (
               <EmptyState icon={Ban} title={`You've blocked @${profile.username}`}
                 body="You won't see their posts, and they can't follow you, message you or comment on your posts." />
@@ -196,6 +206,13 @@ export default function UserProfile({ uid }) {
         <Dialog title={`@${profile.username}`} onClose={() => setDialog(null)}>
           <MenuGroup>
             <MenuItem icon={Link2} onClick={() => { setDialog(null); share(); }}>Share profile</MenuItem>
+            {!isBlocked && (
+              <MenuItem icon={isMuted ? Volume2 : VolumeX}
+                description={isMuted ? undefined : "Stop seeing their posts, stories and comments. They won't know"}
+                onClick={() => { setDialog(null); toggleMute({ id: uid, username: profile.username }, !isMuted); }}>
+                {isMuted ? `Unmute @${profile.username}` : `Mute @${profile.username}`}
+              </MenuItem>
+            )}
             <MenuItem icon={Ban} danger={!isBlocked} onClick={() => setDialog("block")}
               description={isBlocked ? undefined : "They won't be told"}>
               {isBlocked ? `Unblock @${profile.username}` : `Block @${profile.username}`}

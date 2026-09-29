@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Volume2, VolumeX } from "lucide-react";
-
-const reduceMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+import { autoplayAllowed, useAppearance } from "../../lib/appearance";
 
 /* A muted preview that plays only while it's on screen.
 
@@ -11,7 +9,8 @@ const reduceMotion = () =>
      twenty decoders.
    - `start`/`length` loop a segment, that's how a long Flick's trailer
      plays without a second file.
-   - With reduced motion switched on, nothing autoplays; you get a play button.
+   - With reduced motion, or autoplay turned off in Settings (to save
+     mobile data), nothing plays until it's tapped.
    - It's muted, loops, and a tap pauses it, which satisfies WCAG 2.2.2
      (moving content longer than five seconds must be pausable). */
 export default function InlineVideo({
@@ -22,7 +21,7 @@ export default function InlineVideo({
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
   const [failed, setFailed] = useState(false);
-  const autoplay = !reduceMotion();
+  const autoplay = autoplayAllowed(useAppearance());
   const viewed = useRef(false);
   const onViewRef = useRef(onView);
   useEffect(() => { onViewRef.current = onView; });

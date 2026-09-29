@@ -1,6 +1,6 @@
 // Accounts and profiles, handles, interests, follows, follow requests, blocking, privacy settings, people search and spouse links.
 import {
-  addDoc, collection, deleteDoc, doc, documentId, endAt, getDoc, getDocs, increment, limit,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, endAt, getDoc, getDocs, increment, limit,
   orderBy, query, serverTimestamp, setDoc, startAt, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -18,7 +18,7 @@ export async function fetchProfile(uid) {
 /* Bump this when the terms or privacy policy change materially. Existing
    accounts keep the version they accepted, which is what lets you tell who
    still needs to see a change notice. */
-export const POLICY_VERSION = "2026-09-28";
+export const POLICY_VERSION = "2026-09-29";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -51,6 +51,17 @@ export async function fetchProfileByUsername(username) {
   const reg = await getDoc(doc(db, "usernames", username)).catch(() => null);
   const uid = reg?.exists() ? reg.data().uid : null;
   return uid ? fetchProfile(uid) : null;
+}
+
+const handleCache = new Map(); // handle -> uid | null, for this visit
+/** The account behind an @handle, or null if there isn't one. */
+export async function uidForUsername(username) {
+  const handle = String(username || "").toLowerCase().replace(/^@/, "");
+  if (!handleCache.has(handle)) {
+    const reg = await getDoc(doc(db, "usernames", handle)).catch(() => null);
+    handleCache.set(handle, reg?.exists() ? reg.data().uid : null);
+  }
+  return handleCache.get(handle);
 }
 
 export async function usernameTaken(username) {
@@ -121,6 +132,16 @@ export async function saveHiddenWords(words) {
   const clean = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))].slice(0, 200).map((w) => w.slice(0, 60));
   await setDoc(doc(db, "users", me(), "private", "prefs"), { hiddenWords: clean, updatedAt: serverTimestamp() }, { merge: true });
   return clean;
+}
+
+/** Mute or unmute someone: their posts, Flicks, stories and comments stop
+    showing for you. Unlike a block they can still message you, and they
+    aren't told. Kept with your other private preferences. */
+export async function setMuted(uid, on) {
+  await setDoc(doc(db, "users", me(), "private", "prefs"), {
+    muted: on ? arrayUnion(uid) : arrayRemove(uid),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
 
 export async function saveMyInterests(interests) {

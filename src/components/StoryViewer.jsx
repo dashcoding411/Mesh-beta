@@ -79,7 +79,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted }
   }, [idx, thread]);
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={`@${thread.authorName}'s story`}
+    <div role="dialog" aria-modal="true" aria-label={`@${thread.authorName}'s story`} data-theme="dark"
       className="fixed inset-0 z-sheet flex items-center justify-center bg-black anim-fade">
       <div className="relative h-full w-full max-w-md md:h-[92dvh] md:overflow-hidden md:rounded-sheet">
         <div className="absolute inset-x-3 top-3 z-10 flex gap-1 pt-safe" aria-hidden="true">

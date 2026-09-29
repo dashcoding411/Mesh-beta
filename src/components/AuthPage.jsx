@@ -241,14 +241,14 @@ export default function AuthPage() {
         {/* ---- social first ---- */}
         <div className="space-y-2.5">
           <button onClick={() => handleProvider(signInGoogle)} disabled={busy}
-            className={`${SOCIAL} bg-white text-zinc-900 hover:bg-zinc-200`}>
+            className={`${SOCIAL} border border-line-strong bg-white text-zinc-900 hover:bg-zinc-100`}>
             <GoogleMark /> Continue with Google
           </button>
           {/* Sign in with Apple needs an Apple Developer account and a Services ID
               set up in Firebase first; until then the button would only fail. */}
           {APPLE_ENABLED && (
             <button onClick={() => handleProvider(signInApple)} disabled={busy}
-              className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-surface`}>
+              className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-zinc-800`}>
               <AppleMark /> Continue with Apple
             </button>
           )}

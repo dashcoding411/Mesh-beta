@@ -265,15 +265,17 @@ service cloud.firestore {
     match /rateLimits/{uid} {
       allow read: if isUser(uid);
       allow create: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit'])
         && incomingData().get('post', request.time) == request.time
         && incomingData().get('comment', request.time) == request.time
-        && incomingData().get('media', request.time) == request.time;
+        && incomingData().get('media', request.time) == request.time
+        && incomingData().get('edit', request.time) == request.time;
       allow update: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit'])
         && (incomingData().get('post', null) == resource.data.get('post', null) || incomingData().post == request.time)
         && (incomingData().get('comment', null) == resource.data.get('comment', null) || incomingData().comment == request.time)
-        && (incomingData().get('media', null) == resource.data.get('media', null) || incomingData().media == request.time);
+        && (incomingData().get('media', null) == resource.data.get('media', null) || incomingData().media == request.time)
+        && (incomingData().get('edit', null) == resource.data.get('edit', null) || incomingData().edit == request.time);
       // Only as part of deleting the account (deleting it otherwise would
       // reset the limit).
       allow delete: if isUser(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid));
@@ -438,7 +440,8 @@ service cloud.firestore {
       match /blocked/{otherUid} {
         allow read, write: if isUser(uid);
       }
-      // Your interests: private, used only to order what you see.
+      // Your interests, hidden words and muted accounts: private, used only
+      // to order and filter what you see. Nobody is told they're muted.
       match /private/{docId} {
         allow read, delete: if isUser(uid);
         allow create, update: if isUser(uid)
@@ -446,7 +449,9 @@ service cloud.firestore {
           && incomingData().get('interests', []).size() <= 12
           && incomingData().get('interests', []).hasOnly(interestIds())
           && incomingData().get('hiddenWords', []) is list
-          && incomingData().get('hiddenWords', []).size() <= 200;
+          && incomingData().get('hiddenWords', []).size() <= 200
+          && incomingData().get('muted', []) is list
+          && incomingData().get('muted', []).size() <= 500;
       }
       // personalization signals: private to the user
       match /affinity/{authorId} {
@@ -590,9 +595,14 @@ service cloud.firestore {
       allow update: if signedIn() && (
         // Authors edit their own posts outside circles. (Inside a circle an
         // edit could sneak past its limits, so circle posts aren't editable.)
+        // Changing the words stamps editedAt, so everyone sees it was edited,
+        // and is paced like posting; changing only who can see it isn't.
         (resource.data.authorId == request.auth.uid
           && resource.data.get('groupId', '') == ''
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated', 'sensitive'])
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated', 'sensitive', 'topics', 'editedAt'])
+          && (!incomingData().diff(resource.data).affectedKeys().hasAny(['text', 'title', 'alt', 'topics', 'sensitive', 'editedAt'])
+              || (incomingData().editedAt == request.time && rateOk('edit', 3) && notSuspended()))
+          && validTopics(incomingData().get('topics', []))
           && incomingData().visibility in ['public', 'followers']
           && (incomingData().visibility == 'followers'
               || (isAdult() && myProfile().get('isPrivate', false) != true))

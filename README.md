@@ -268,6 +268,42 @@ In Settings → Privacy and safety, all enforced in `firestore.rules`:
 - **Blocked accounts.** A block ends follows both ways and stops the person
   following, requesting, messaging, adding you to groups or commenting.
   Their posts disappear from your feeds, search and stories.
+- **Muted accounts.** The quiet alternative: their posts, Flicks, stories and
+  comments stop showing for you, but follows stay and they can still message
+  you. Nobody is told. Mute from a post's menu or a profile; the list lives in
+  `users/{uid}/private/prefs` (`muted`, up to 500) and is managed in Settings.
+
+## Everyday comforts
+
+Small things that make the app easier to live with:
+
+- **Appearance** (Settings → Appearance, saved on the device in
+  `mesh:appearance`): System, Light or Dark theme; three text sizes (all sizes
+  are in rem, so everything scales together); Reduce motion; and whether feed
+  videos autoplay. Colours are CSS variables (`src/index.css`), so a theme is
+  one block of values. Screens over video or photos (Flicks, Stories, calls,
+  the photo viewer) set `data-theme="dark"` on their root and stay dark in any
+  theme.
+- **Drafts** (`src/lib/drafts.js`): the composer, the quick Strand box and
+  each chat keep unsent words on the device for a week, restore them with a
+  "Discard" option, and clear them on send. The inbox shows "Draft:" on chats
+  with one. Signing out removes every draft.
+- **Feeds keep their place.** Going to Messages and back returns you to the
+  same posts at the same scroll position (kept for 15 minutes, or until you
+  post). Tapping Home, For you or Following when you're already there scrolls
+  to the top; tapping again at the top refreshes.
+- **Editing posts.** Your own posts outside circles: the words, title, alt
+  text and topics, not the media or a poll's choices. The rules stamp
+  `editedAt` (shown as "Edited"), re-run the hate check, and pace edits to one
+  every 3 seconds.
+- **Photo viewer.** Tap a Still to see it full screen (Esc or tap outside to
+  close, ALT shows its description); double tap still likes it.
+- **@mentions** open the person's profile, or Search if the handle is free.
+- **Offline notice** when the connection drops, and "Back online" when it returns.
+- **Keyboard shortcuts** on desktop: `n` new post, `/` search, `j`/`k` next and
+  previous post, `g` then `h`/`m`/`f`/`p` to go Home, Messages, Flicks or your
+  profile, and `?` for the list. They pause while typing or in a dialog.
+- **Email verification**: Settings sends the link if your address isn't verified.
 
 ## Group chats
 
@@ -501,10 +537,10 @@ refused; every legitimate flow re-tested through the app's own code).
   session persistence, invisible reCAPTCHA on phone sign-in, and error copy
   that never reveals whether an account exists.
 
-**Still open:** Firebase App Check isn't on, so a script with a real account
-can still use the API directly (within all the limits above), and automated
-sign-ups are only slowed by Firebase Auth's own abuse protection. Turning App
-Check on (free, reCAPTCHA v3) is a console step; see COMPLIANCE.md R8.
+**Still open:** App Check is registered (reCAPTCHA Enterprise) and every
+request carries a token, but enforcement isn't on yet, so a script with a
+real account can still use the API directly within the limits above. Turn
+enforcement on once the App Check metrics look healthy; see COMPLIANCE.md R8.
 
 ## Storage requires the Blaze plan
 
@@ -551,16 +587,17 @@ and a bare `firebase deploy` would overwrite that project instead.
 
 - `users/{uid}`: profile, with `following/`, `followers/`, `followRequests/`,
   and private `affinity/`, `saved/`, `hidden/`, `blocked/` and `private/prefs`
-  (interests, hidden words)
+  (interests, hidden words, muted accounts)
 - `usernames/{name}`: uniqueness registry
-- `rateLimits/{uid}`: the last post, comment and photo times, for flood limits
+- `rateLimits/{uid}`: the last post, comment, photo and edit times, for flood limits
 - `media/{id}`: photos stored in Firestore while Cloud Storage is off
 - `calls/{id}`: call setup, deleted when a call ends
 - `suspensions/{uid}`: why an account was suspended (moderators and the owner)
 - `posts/{id}`: all content; `kind` is `post` (Still) | `text` (Strand) |
   `short` (Flick) | `video` (long Flick, with `duration` and `trailerStart`),
   with `likes/`, `saves/`, `sends/`, `votes/` and `comments/`; each count
-  moves only with the record it counts.
+  moves only with the record it counts. `editedAt` is set when the author
+  changes the words.
 - `reposts/{postId}_{uid}`: one per person per post; public posts by others only
 - `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
 - `reports/{type}_{id}_{uid}`: one per person per thing; moderators only

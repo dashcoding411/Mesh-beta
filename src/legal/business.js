@@ -31,7 +31,7 @@ export const BUSINESS = {
   copyrightEmail: "TODO: copyright@yourdomain",
 
   website: "TODO: https://yourdomain",
-  lastUpdated: "28 September 2026",
+  lastUpdated: "29 September 2026",
 };
 
 /** Fields still unfilled, for the launch checklist. */

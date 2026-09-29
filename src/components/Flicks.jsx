@@ -30,7 +30,7 @@ let soundOn = false;
    so long-form gets discovered where people are already watching, and you
    decide whether it's worth your next twenty minutes. */
 export default function Flicks({ startId }) {
-  const { following, blocked, interests, openInterests, hiddenWords } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords } = useShell();
   const [topic, setTopic] = useState("all");
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
@@ -45,7 +45,7 @@ export default function Flicks({ startId }) {
         topic === "all" ? fetchVideos() : fetchTopicPosts(topic).then((l) => l.filter((p) => p.kind === "short" || p.kind === "video")),
         fetchAffinity().catch(() => new Map()),
       ]);
-      const list = all.filter((p) => !blocked.has(p.authorId));
+      const list = all.filter((p) => !hiddenAuthors.has(p.authorId));
       let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords });
       if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
@@ -60,7 +60,7 @@ export default function Flicks({ startId }) {
     }
     // startId only matters on arrival; re-ranking when it changes would reshuffle under the viewer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following, blocked, topic, interests, hiddenWords]);
+  }, [following, hiddenAuthors, topic, interests, hiddenWords]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
@@ -84,7 +84,7 @@ export default function Flicks({ startId }) {
   }, []);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
+    <div data-theme="dark" className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
       <HomeHeader section="flicks" transparent>
         <InterestChips interests={interests} value={topic} onEdit={openInterests} overlay
           onChange={(t) => { setTopic(t); setVideos(null); scroller.current?.scrollTo({ top: 0 }); }} />
@@ -328,7 +328,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
           <div className="pointer-events-auto">
             <button type="button" onClick={() => openUserProfile(post.authorId)} className="text-callout font-semibold text-white hover:underline">
               @{post.authorName}
-              <span className="ml-2 font-normal text-white/70">{shortTime(post.createdAt)}</span>
+              <span className="ml-2 font-normal text-white/70">{shortTime(post.createdAt)}{post.editedAt ? " · Edited" : ""}</span>
             </button>
             {post.aiGenerated && (
               <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-label font-semibold text-white">
@@ -385,7 +385,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
         <div className={rail}>
           <button type="button" onClick={() => act("like")} aria-pressed={liked}
             aria-label={`${liked ? "Unlike" : "Like"}, ${counts.like} like${counts.like === 1 ? "" : "s"}`} className={railBtn}>
-            <Heart size={26} aria-hidden="true" fill={liked ? "currentColor" : "none"} className={liked ? "text-fuchsia-400" : ""} />
+            <Heart size={26} aria-hidden="true" fill={liked ? "currentColor" : "none"} className={liked ? "text-like" : ""} />
           </button>
           <span className="text-label font-semibold tabular drop-shadow" aria-hidden="true">{compact(counts.like)}</span>
         </div>

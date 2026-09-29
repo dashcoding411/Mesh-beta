@@ -20,7 +20,7 @@ import { useToast } from "./ui/toast-context";
    where a thumb already is. What you typed survives a failed send. */
 export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const toast = useToast();
-  const { blocked, hiddenWords } = useShell();
+  const { hiddenAuthors, hiddenWords } = useShell();
   const [reporting, setReporting] = useState(null);
   const [revealed, setRevealed] = useState(new Set());
   const [closedReason, setClosedReason] = useState("");
@@ -156,7 +156,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       )}
       {comments?.length > 0 && (
         <ul className="divide-y divide-line">
-          {comments.filter((c) => !blocked.has(c.authorId)).map((c) => {
+          {comments.filter((c) => !hiddenAuthors.has(c.authorId)).map((c) => {
             // Folded, not deleted: what might offend (or matches a word you've
             // hidden) waits behind a tap. Your own comments are never folded for you.
             const level = c.authorId === me() || revealed.has(c.id) ? "ok" : assessText(c.text).level;

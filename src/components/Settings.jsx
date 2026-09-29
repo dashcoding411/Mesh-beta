@@ -3,17 +3,21 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
+  SunMoon, Type, Waves, PlayCircle, VolumeX,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
-import { changePassword, resetPassword, reauthenticateAndDelete, authMessage } from "../lib/auth";
+import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
+import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
+import { clearAllDrafts } from "../lib/drafts";
 import {
   exportMyData, deleteMyAccountData, updateProfileFields, me, POLICY_VERSION, tsMillis, isMinor,
   setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords,
+  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile,
 } from "../lib/db";
 import Switch from "./ui/Switch";
+import Segmented from "./ui/Segmented";
 import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
 import { EmptyState } from "./ui/States";
@@ -34,15 +38,21 @@ const PROVIDERS = { password: "Email and password", "google.com": "Google", "app
    header says so, because the line between "my profile" and "my account"
    is exactly where people get confused about who can see what. */
 export default function Settings() {
-  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords } = useShell();
+  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, muted } = useShell();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
   const [admin, setAdmin] = useState(false);
 
+  const [, setChecked] = useState(0);
   useEffect(() => {
     fetchFollowRequests().then(setRequests).catch(() => setRequests([]));
     fetchBlocked().then(setBlockedList).catch(() => setBlockedList([]));
     isAdmin().then(setAdmin).catch(() => {});
+    // Coming back from the verification link: the signed-in user is cached,
+    // so ask again whether the address is verified now.
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+      auth.currentUser.reload().then(() => setChecked((n) => n + 1)).catch(() => {});
+    }
   }, []);
   const user = auth.currentUser;
   const providers = user?.providerData?.map((p) => p.providerId) || [];
@@ -66,7 +76,9 @@ export default function Settings() {
 
           <Group title="Sign-in">
             <Row icon={Mail} label="Email" value={user?.email || "Not set"}
-              meta={user?.email ? (user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null} />
+              meta={user?.email ? (user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null}
+              help={user?.email && !user.emailVerified ? "Verifying lets you recover your account if you lose access." : null}
+              action={user?.email && !user.emailVerified && <VerifyEmailButton email={user.email} />} />
             <Row icon={Phone} label="Phone" value={user?.phoneNumber || "Not set"} />
             <Row icon={ShieldCheck} label="Signs in with" value={providers.map((p) => PROVIDERS[p] || p).join(", ") || "None"} />
             <Row icon={KeyRound} label="Password"
@@ -101,6 +113,9 @@ export default function Settings() {
             <Row icon={MessageSquare} label="Who can comment on your posts"
               value={{ following: "Only people you follow", off: "No one" }[profile?.commentPolicy] || "Everyone"}
               onClick={() => setDialog("comments")} />
+            <Row icon={VolumeX} label="Muted accounts"
+              value={muted.size ? `${muted.size} muted` : "No one"}
+              onClick={() => setDialog("muted")} />
             <Row icon={Ban} label="Blocked accounts"
               value={blockedList === null ? "Loading…" : blockedList.length ? `${blockedList.length} blocked` : "No one"}
               onClick={() => setDialog("blocked")} />
@@ -116,6 +131,8 @@ export default function Settings() {
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
               onClick={() => setDialog("hidden")} />
           </Group>
+
+          <AppearanceGroup />
 
           {admin && (
             <Group title="Moderation">
@@ -180,6 +197,7 @@ export default function Settings() {
       {dialog === "blocked" && (
         <BlockedDialog list={blockedList || []} onClose={() => setDialog(null)} onChange={setBlockedList} />
       )}
+      {dialog === "muted" && <MutedDialog onClose={() => setDialog(null)} />}
       {dialog === "hidden" && (
         <HiddenWordsDialog initial={hiddenWords || []} onClose={() => setDialog(null)}
           onSaved={(list) => { setHiddenWords(list); setDialog(null); }} />
@@ -194,7 +212,7 @@ export default function Settings() {
           <p className="text-callout text-fg-muted">You'll need to sign in again on this device.</p>
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="primary" icon={LogOut} onClick={() => { signOut(auth); navigate("/", { replace: true }); }}>Sign out</Button>
+            <Button variant="primary" icon={LogOut} onClick={() => { clearAllDrafts(); signOut(auth); navigate("/", { replace: true }); }}>Sign out</Button>
           </div>
         </Dialog>
       )}
@@ -236,6 +254,51 @@ function Row({ icon: Icon, label, value, meta, help, action, onClick, danger = f
       {body}
       {action && <div className="shrink-0 self-center">{action}</div>}
     </div>
+  );
+}
+
+/* How Mesh looks on this device. Saved in this browser only, so a shared
+   laptop and your phone can each be set up the way that suits them. */
+function AppearanceGroup() {
+  const look = useAppearance();
+  const rows = [
+    { key: "theme", icon: SunMoon, label: "Theme", help: "System follows your device's light or dark setting." },
+    { key: "text", icon: Type, label: "Text size", help: "Scales all text and spacing in Mesh." },
+    { key: "motion", icon: Waves, label: "Motion", help: "Reduce turns off animations, and videos wait for you to press play." },
+    { key: "autoplay", icon: PlayCircle, label: "Videos in feeds", help: "Autoplayed videos start muted. Tap to play saves data." },
+  ];
+  return (
+    <Group title="Appearance">
+      {rows.map(({ key, icon: Icon, label, help }) => (
+        <div key={key} className="px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Icon size={20} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span id={`look-${key}`} className="block text-callout font-medium text-fg">{label}</span>
+              <span className="mt-0.5 block text-caption text-fg-subtle">{help}</span>
+            </span>
+          </div>
+          <Segmented className="mt-3" labelledBy={`look-${key}`} options={LOOKS[key]} value={look[key]}
+            onChange={(v) => setAppearance({ [key]: v })} />
+        </div>
+      ))}
+      <p className="px-4 py-3 text-caption text-fg-subtle">Saved on this device only.</p>
+    </Group>
+  );
+}
+
+function VerifyEmailButton({ email }) {
+  const toast = useToast();
+  const [state, setState] = useState("idle"); // idle | busy | sent
+  return (
+    <Button size="sm" loading={state === "busy"} disabled={state === "sent"} onClick={async () => {
+      setState("busy");
+      try {
+        await verifyEmail();
+        setState("sent");
+        toast({ title: "Check your email", body: `We sent a link to ${email}. Open it on any device.` });
+      } catch (err) { setState("idle"); toast({ tone: "error", title: authMessage(err) }); }
+    }}>{state === "sent" ? "Sent" : "Verify"}</Button>
   );
 }
 
@@ -367,6 +430,7 @@ function DeleteDialog({ hasPassword, onClose }) {
     try {
       await deleteMyAccountData();
       await reauthenticateAndDelete(hasPassword ? password : null);
+      clearAllDrafts();
       navigate("/", { replace: true });
     } catch (err) {
       setError(authMessage(err));
@@ -555,6 +619,49 @@ function BlockedDialog({ list, onClose, onChange }) {
               <Avatar profile={{ username: b.username || "?" }} size={40} />
               <span className="min-w-0 flex-1 truncate text-callout">@{b.username || "someone"}</span>
               <Button size="sm" onClick={() => unblock(b)}>Unblock</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
+}
+
+/* People whose posts you've stepped away from without blocking them. The
+   list is stored as ids, so their current handles are looked up here. */
+function MutedDialog({ onClose }) {
+  const { muted, toggleMute } = useShell();
+  const [people, setPeople] = useState(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([...muted].slice(0, 200).map((id) => fetchProfile(id).catch(() => null)))
+      .then((list) => { if (live) setPeople(list.filter(Boolean)); });
+    return () => { live = false; };
+    // Looked up once per opening; unmuting removes people from the list below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const shown = people?.filter((p) => muted.has(p.id));
+  return (
+    <Dialog title="Muted accounts" onClose={onClose}>
+      <p className="mb-3 text-callout text-fg-muted">
+        You don't see muted people's posts, Flicks, stories or comments. You still follow them if you did, they can still message you, and they aren't told.
+      </p>
+      {shown === undefined ? (
+        <div className="space-y-2" role="status" aria-label="Loading muted accounts">
+          {[0, 1].map((i) => <div key={i} className="skeleton h-14 rounded-control" />)}
+        </div>
+      ) : shown.length === 0 ? (
+        <EmptyState compact icon={VolumeX} title="You haven't muted anyone" body="Mute someone from a post's menu or their profile." />
+      ) : (
+        <ul className="space-y-1">
+          {shown.map((p) => (
+            <li key={p.id} className="flex min-h-14 items-center gap-3 rounded-control px-2">
+              <Avatar profile={p} size={40} />
+              <button type="button" onClick={() => { onClose(); openUserProfile(p.id); }} className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-callout font-medium">{p.name || p.username}</span>
+                <span className="block truncate text-caption text-fg-subtle">@{p.username}</span>
+              </button>
+              <Button size="sm" onClick={() => toggleMute({ id: p.id, username: p.username }, false)}>Unmute</Button>
             </li>
           ))}
         </ul>

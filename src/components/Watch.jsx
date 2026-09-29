@@ -137,6 +137,7 @@ export default function Watch({ postId }) {
               <h1 ref={heading} tabIndex={-1} className="mt-4 text-title-1 outline-none">{post.title || "Untitled"}</h1>
               <p className="mt-1 flex flex-wrap items-center gap-x-2 text-caption text-fg-subtle">
                 <time title={fullTime(post.createdAt)}>{shortTime(post.createdAt)}</time>
+                {post.editedAt && <span title={`Edited ${fullTime(post.editedAt)}`}>· Edited</span>}
                 {post.duration > 0 && <span>· {spokenDuration(post.duration)}</span>}
                 {post.aiGenerated && <Badge icon={WandSparkles}>Made with AI</Badge>}
               </p>
@@ -158,7 +159,7 @@ export default function Watch({ postId }) {
 
               <div className="-ml-2.5 mt-3 flex flex-wrap items-center" role="group" aria-label="Video actions">
                 <IconButton icon={Heart} label={liked ? "Unlike" : "Like"} pressed={liked} count={counts.like} countNoun="like"
-                  activeClass="text-fuchsia-400" onClick={() => act("liked", liked, () => toggleLike(post, liked), "like")} />
+                  activeClass="text-like" onClick={() => act("liked", liked, () => toggleLike(post, liked), "like")} />
                 <IconButton icon={MessageCircle} label="Comments" count={counts.comment} countNoun="comment" onClick={() => setSheet("comments")} />
                 <IconButton icon={Repeat2} label={reposted ? "Undo repost" : "Repost"} pressed={reposted} count={counts.repost} countNoun="repost"
                   activeClass="text-success-text" aria-disabled={mine || post.visibility !== "public" || undefined}

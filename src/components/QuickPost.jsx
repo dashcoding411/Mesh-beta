@@ -4,6 +4,7 @@ import { gifsEnabled } from "../lib/gifs";
 import { createPost, isMinor, STRAND_MAX } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
+import { readDraft, useDraft } from "../lib/drafts";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
@@ -14,11 +15,13 @@ import { useToast } from "./ui/toast-context";
 
 /* The fastest way to say something: a Strand, typed straight into the top
    of the feed. Photo and Flick open the full composer, since those need a
-   file. What you typed stays put if the post fails. */
+   file. What you typed stays put if the post fails, and is kept as a
+   draft if you leave before posting. */
 export default function QuickPost({ onPosted }) {
   const { profile, openComposer } = useShell();
   const toast = useToast();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => readDraft("quick")?.data?.text || "");
+  const finishDraft = useDraft("quick", text.trim() ? { text } : null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -40,6 +43,7 @@ export default function QuickPost({ onPosted }) {
     try {
       const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive });
       markPosted("post", v.text);
+      finishDraft();
       setText("");
       setWarned("");
       setFocused(false);
@@ -53,6 +57,12 @@ export default function QuickPost({ onPosted }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // The words move to the full composer (and its draft) with you.
+  const handOff = (attach) => {
+    openComposer({ kind: "text", attach, text });
+    setText("");
   };
 
   return (
@@ -84,8 +94,8 @@ export default function QuickPost({ onPosted }) {
         <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
           <IconButton icon={Image} label="Post a photo" size={20} onClick={() => openComposer({ kind: "post" })} className="-ml-2.5 text-accent-text" />
           <IconButton icon={Clapperboard} label="Post a Flick" size={20} onClick={() => openComposer({ kind: "video" })} className="text-accent-text" />
-          <IconButton icon={ChartBar} label="Ask with a poll" size={20} onClick={() => openComposer({ kind: "text", attach: "poll", text })} className="text-accent-text" />
-          {gifsEnabled && <IconButton icon={Sticker} label="Post a GIF" size={20} onClick={() => openComposer({ kind: "text", attach: "gif", text })} className="text-accent-text" />}
+          <IconButton icon={ChartBar} label="Ask with a poll" size={20} onClick={() => handOff("poll")} className="text-accent-text" />
+          {gifsEnabled && <IconButton icon={Sticker} label="Post a GIF" size={20} onClick={() => handOff("gif")} className="text-accent-text" />}
           <span className="flex-1" />
           {text.length > 0 && (
             <span className={`mr-2 tabular text-caption ${remaining < 0 ? "text-danger-text" : remaining <= 40 ? "text-warning-text" : "text-fg-subtle"}`}

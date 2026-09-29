@@ -14,6 +14,16 @@ export function shortTime(t) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
+/** "just now", "5 minutes ago", "yesterday", "3 days ago". For sentences. */
+export function relativeTime(t) {
+  const s = (Date.now() - toDate(t).getTime()) / 1000;
+  if (s < 45) return "just now";
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (s < 3600) return rtf.format(-Math.max(1, Math.round(s / 60)), "minute");
+  if (s < 86400) return rtf.format(-Math.round(s / 3600), "hour");
+  return rtf.format(-Math.round(s / 86400), "day");
+}
+
 /** The full date and time, for title attributes and screen readers. */
 export function fullTime(t) {
   return toDate(t).toLocaleString(undefined, {

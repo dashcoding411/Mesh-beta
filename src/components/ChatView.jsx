@@ -22,6 +22,7 @@ import { LiveBars } from "./Voice";
 import { ChatDetails } from "./chat/ChatDetails";
 import { MessageRow } from "./chat/MessageRow";
 import { PollDialog } from "./chat/PollDialog";
+import { readDraft, useDraft } from "../lib/drafts";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
@@ -68,7 +69,8 @@ export default function ChatView({ chat }) {
   const stopping = useRef(false);
   const toast = useToast();
   const [messages, setMessages] = useState(null);
-  const [text, setText] = useState("");
+  // Whatever you'd typed here last time, kept as a draft until it's sent.
+  const [text, setText] = useState(() => readDraft(`chat:${chat.id}`)?.data?.text || "");
   const [typing, setTypingUsers] = useState([]);
   const [reads, setReads] = useState(new Map());
   const [presence, setPresence] = useState(new Map());
@@ -78,6 +80,7 @@ export default function ChatView({ chat }) {
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [sending, setSending] = useState(false);
+  useDraft(`chat:${chat.id}`, text.trim() && !editing ? { text } : null);
   const scroller = useRef(null);
   const inputRef = useRef(null);
   const lastCount = useRef(0);

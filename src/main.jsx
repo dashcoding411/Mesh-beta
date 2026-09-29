@@ -5,6 +5,8 @@ import ReactDOM from "react-dom/client";
    promises exactly that, a CDN font would quietly break the promise. */
 import "@fontsource-variable/inter/wght.css";
 import "@fontsource-variable/plus-jakarta-sans/wght.css";
+// Theme, text size and motion are applied before the first render.
+import "./lib/appearance";
 import App from "./App.jsx";
 import { ToastProvider } from "./components/ui/Toast.jsx";
 import "./index.css";

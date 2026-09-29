@@ -1,16 +1,20 @@
 /* Mesh design tokens.
 
-   Every colour here was measured, not eyeballed, the ratios are in the
-   comments. Text tokens clear WCAG AA (4.5:1) on every surface they can land
-   on; `field` clears the 3:1 non-text minimum so inputs are identifiable by
-   their edge, not just their placeholder. If you add a token, measure it. */
+   The colours themselves live in src/index.css as CSS variables, one set for
+   the dark theme and one for the light, so every component follows the
+   theme without knowing about it. The measured contrast ratios are there,
+   next to each value. Text tokens clear WCAG AA (4.5:1) on every surface they
+   can land on, in both themes; `field` clears the 3:1 non-text minimum. */
+
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 const surfaces = {
-  canvas: "#09090b", // app background
+  canvas: v("canvas"), // app background
   surface: {
-    DEFAULT: "#111114", // cards, sidebars, sheets
-    2: "#18181c", // inputs, hovered rows, popovers
-    3: "#222228", // pressed / selected
+    DEFAULT: v("surface"), // cards, sidebars, sheets
+    2: v("surface-2"), // inputs, hovered rows, popovers
+    3: v("surface-3"), // pressed / selected
+    raised: v("surface-raised"), // the chosen segment, lifted off surface-2
   },
 };
 
@@ -21,25 +25,26 @@ export default {
       colors: {
         ...surfaces,
         line: {
-          DEFAULT: "#26262b", // dividers, decorative, never the only cue
-          strong: "#3f3f46",
+          DEFAULT: v("line"), // dividers, decorative, never the only cue
+          strong: v("line-strong"),
         },
-        field: "#6b6b76", // input borders, 3.0–3.8:1 on every surface
+        field: v("field"), // input borders
         fg: {
-          DEFAULT: "#f4f4f5", // 14.4–18.1:1
-          muted: "#a1a1aa", // 6.2–7.8:1, secondary text
-          subtle: "#8e8e98", // 4.9–6.1:1, metadata, timestamps
+          DEFAULT: v("fg"),
+          muted: v("fg-muted"), // secondary text
+          subtle: v("fg-subtle"), // metadata, timestamps
         },
         accent: {
-          DEFAULT: "#7c3aed", // violet-600, white on it is 5.7:1
-          hover: "#6d28d9", // violet-700, 7.1:1; hover goes darker, never lighter
-          text: "#a78bfa", // violet-400, 5.8–7.3:1 as text
-          soft: "rgb(139 92 246 / 0.14)", // selected backgrounds
-          ring: "#c4b5fd", // violet-300, focus outline, 8.6–10.8:1
+          DEFAULT: "#7c3aed", // violet-600, white on it is 5.7:1, both themes
+          hover: "#6d28d9", // violet-700; hover goes darker, never lighter
+          text: v("accent-text"), // accent-coloured text and icons
+          soft: "var(--accent-soft)", // selected backgrounds
+          ring: v("accent-ring"), // focus outline
         },
-        danger: { DEFAULT: "#dc2626", text: "#f87171" }, // 4.8:1 / 5.7–7.2:1
-        success: { text: "#34d399" },
-        warning: { text: "#fbbf24" },
+        danger: { DEFAULT: "#dc2626", text: v("danger-text") },
+        success: { text: v("success-text") },
+        warning: { text: v("warning-text") },
+        like: v("like"), // a liked heart
       },
 
       fontFamily: {
@@ -67,8 +72,8 @@ export default {
       },
 
       boxShadow: {
-        raised: "0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.03)",
-        overlay: "0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05)",
+        raised: "var(--shadow-raised)",
+        overlay: "var(--shadow-overlay)",
       },
 
       transitionTimingFunction: {

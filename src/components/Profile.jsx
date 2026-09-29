@@ -105,7 +105,7 @@ export default function Profile() {
 
           {spouseRequests.map((r) => (
             <div key={r.id} role="status" className="mx-4 mt-4 flex items-center gap-3 rounded-card border border-fuchsia-500/30 bg-fuchsia-500/10 p-4 md:mx-6">
-              <HeartHandshake size={22} className="shrink-0 text-fuchsia-300" aria-hidden="true" />
+              <HeartHandshake size={22} className="shrink-0 text-like" aria-hidden="true" />
               <p className="min-w-0 flex-1 text-callout"><strong>@{r.fromUsername}</strong> listed you as their spouse.</p>
               <Button size="sm" onClick={() => respond(r, false)}>Decline</Button>
               <Button size="sm" variant="primary" onClick={() => respond(r, true)}>Accept</Button>

@@ -135,16 +135,15 @@ safety expectations) expects reporting tools and timely action on reports:
 someone has to actually work the queue, and response times should be tracked
 once there's volume.
 
-### R8: No App Check · **LOW-MEDIUM**
+### R8: App Check registered, not yet enforced · **LOW**
 
-The Firebase config is client-side, which is normal and not a secret. But
-without Firebase App Check, anyone can call your Firestore and Auth endpoints
-directly with that config. The security rules hold (they were attacked on the
-live database, 109 ways) and now cap how fast one account can post, comment
-and upload, but automated sign-ups and quota abuse spread across many accounts
-are still open. **Enable App Check before launch** (Firebase console > App
-Check > register the web app with reCAPTCHA v3, then enforce for Firestore and
-Auth; the app needs `initializeAppCheck` added in `src/firebase.js`).
+The Firebase config is client-side, which is normal and not a secret. App
+Check is now registered with reCAPTCHA Enterprise and the app sends a token
+with every request (`src/firebase.js`). Until enforcement is switched on for
+Firestore and Auth (Firebase console > App Check > APIs), requests without a
+token are still accepted, so a script with the config can still reach the
+API within the limits the rules set. **Next step:** once the App Check
+metrics show nearly all requests verified, enforce for Firestore, then Auth.
 
 ---
 
@@ -154,9 +153,10 @@ Auth; the app needs `initializeAppCheck` added in `src/firebase.js`).
 - **Analytics: none.** No Google Analytics, no Meta pixel, no Segment, no
   Sentry, no telemetry of any kind.
 - **Third-party scripts in `index.html`: none.**
-- **The only third party reached at runtime is Google reCAPTCHA**, loaded
-  lazily by the Firebase SDK and *only* when someone requests an SMS code
-  (`AuthPage.jsx`). Email and Google sign-in never load it.
+- **Google reCAPTCHA Enterprise loads on every visit**, through Firebase App
+  Check, to prove requests come from the real site. It's disclosed in the
+  Privacy Policy and the Cookies & Storage policy as a security measure. Phone
+  sign-in runs a second, invisible reCAPTCHA when an SMS code is requested.
 - **Embeds: none.** No YouTube, no Twitter, no iframes.
 - **GIPHY** (only if `VITE_GIPHY_API_KEY` is set). Search words and the
   viewer's IP address go to GIPHY when the picker is open, and every GIF shown

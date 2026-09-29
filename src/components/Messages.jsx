@@ -8,6 +8,7 @@ import {
 import { checkContent } from "../lib/moderation";
 import { navigate } from "../lib/router";
 import { shortTime } from "../lib/format";
+import { readDraft } from "../lib/drafts";
 import { useShell } from "./shell/ShellContext";
 import TopBar from "./shell/TopBar";
 import Tabs from "./ui/Tabs";
@@ -161,6 +162,8 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
   const pinned = (chat.pinnedBy || []).includes(me());
   const muted = (chat.mutedBy || []).includes(me());
   const title = chatTitle(chat);
+  // Something you started writing here and didn't send shows first.
+  const draft = active ? null : readDraft(`chat:${chat.id}`)?.data?.text?.trim();
   const preview = chat.lastMessage
     ? `${chat.lastSenderId === me() ? "You: " : ""}${chat.lastMessage}`
     : "No messages yet";
@@ -175,7 +178,7 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
     <li className="group relative">
       <button type="button" onClick={() => navigate(`/messages/${chat.id}`)}
         aria-current={active ? "page" : undefined}
-        aria-label={`${title}${unread ? ", unread" : ""}${pinned ? ", pinned" : ""}${muted ? ", muted" : ""}. ${preview}`}
+        aria-label={`${title}${unread ? ", unread" : ""}${pinned ? ", pinned" : ""}${muted ? ", muted" : ""}. ${draft ? `Draft: ${draft}` : preview}`}
         className={`flex min-h-[72px] w-full items-center gap-3 py-2.5 pl-4 pr-12 text-left transition-colors ${
           active ? "bg-surface-2" : "hover:bg-surface"
         }`}>
@@ -189,7 +192,11 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
             {muted && <BellOff size={13} className="shrink-0 text-fg-subtle" aria-hidden="true" />}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className={`truncate text-caption ${unread ? "font-semibold text-fg" : "text-fg-subtle"}`}>{preview}</span>
+            {draft ? (
+              <span className="truncate text-caption text-fg-subtle"><span className="font-semibold text-danger-text">Draft:</span> {draft}</span>
+            ) : (
+              <span className={`truncate text-caption ${unread ? "font-semibold text-fg" : "text-fg-subtle"}`}>{preview}</span>
+            )}
             <span className="shrink-0 text-caption text-fg-subtle" aria-hidden="true">· {shortTime(chat.updatedAt)}</span>
           </span>
         </span>

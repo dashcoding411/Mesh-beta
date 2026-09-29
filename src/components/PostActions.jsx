@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Link2, Share2, EyeOff, Flag, Trash2, UserRound, Check, Send, ShieldAlert,
+  Link2, Share2, EyeOff, Flag, Trash2, UserRound, Check, Send, ShieldAlert, Pencil, VolumeX,
 } from "lucide-react";
 import {
   sendPostTo, hidePost, reportPost, deletePost, openUserProfile, kindLabel, me,
@@ -112,8 +112,9 @@ export function ShareSheet({ post, onClose }) {
 
 /* The ⋯ menu. What's offered depends on whose post it is, and deleting
    always asks first, naming exactly what goes. */
-export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
+export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }) {
   const toast = useToast();
+  const { toggleMute } = useShell();
   const [mode, setMode] = useState("menu"); // menu | report | delete
   const [busy, setBusy] = useState(false);
   const label = kindLabel(post);
@@ -164,6 +165,10 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
   return (
     <Dialog title="Post options" onClose={onClose} hideTitle>
       <MenuGroup>
+        {/* Circle posts aren't editable: an edit could slip past the circle's own rules. */}
+        {mine && !post.groupId && onEdit && (
+          <MenuItem icon={Pencil} onClick={onEdit}>Edit {label.toLowerCase()}</MenuItem>
+        )}
         <MenuItem icon={Link2} onClick={() => { copyLink(post, toast); onClose(); }}>Copy link</MenuItem>
         {!mine && (
           <MenuItem icon={UserRound} onClick={() => { onClose(); openUserProfile(post.authorId); }}>
@@ -173,6 +178,12 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved }) {
         {!mine && (
           <MenuItem icon={EyeOff} onClick={hide} disabled={busy} description="Hide it and show fewer posts like it">
             Not interested
+          </MenuItem>
+        )}
+        {!mine && (
+          <MenuItem icon={VolumeX} description="Stop seeing their posts without unfollowing. They won't know"
+            onClick={() => { onClose(); toggleMute({ id: post.authorId, username: post.authorName }, true); }}>
+            Mute @{post.authorName}
           </MenuItem>
         )}
         {!mine && <MenuItem icon={Flag} danger onClick={() => setMode("report")}>Report post</MenuItem>}

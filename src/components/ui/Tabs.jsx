@@ -46,7 +46,7 @@ export default function Tabs({ tabs, value, onChange, label, variant = "segmente
           <button key={t.id} ref={(el) => (refs.current[i] = el)} role="tab" type="button"
             aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={(e) => onKey(e, i)}
             className={`min-h-9 flex-1 rounded-[9px] px-3 text-callout font-semibold transition-colors ${
-              on ? "bg-surface-3 text-fg shadow-raised" : "text-fg-subtle hover:text-fg-muted"
+              on ? "bg-surface-raised text-fg shadow-raised" : "text-fg-subtle hover:text-fg-muted"
             }`}>
             {t.label}
             {t.count > 0 && <span className="ml-1.5 tabular text-label opacity-75">{t.count}</span>}

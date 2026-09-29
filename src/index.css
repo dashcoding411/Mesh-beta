@@ -2,11 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ---------- themes ----------
+   Colours as space-separated RGB so Tailwind's opacity modifiers work
+   (bg-canvas/90). Ratios measured against every surface in the same theme. */
+
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+  --canvas: 9 9 11;          /* #09090b */
+  --surface: 17 17 20;       /* #111114 */
+  --surface-2: 24 24 28;     /* #18181c */
+  --surface-3: 34 34 40;     /* #222228 */
+  --surface-raised: 34 34 40;/* the selected segment, above surface-2 */
+  --line: 38 38 43;          /* #26262b */
+  --line-strong: 63 63 70;   /* #3f3f46 */
+  --field: 107 107 118;      /* #6b6b76, 3.0–3.8:1 */
+  --fg: 244 244 245;         /* #f4f4f5, 14.4–18.1:1 */
+  --fg-muted: 161 161 170;   /* #a1a1aa, 6.2–7.8:1 */
+  --fg-subtle: 142 142 152;  /* #8e8e98, 4.9–6.1:1 */
+  --accent-text: 167 139 250;  /* violet-400, 5.8–7.3:1 */
+  --accent-ring: 196 181 253;  /* violet-300, 8.6–10.8:1 */
+  --accent-soft: rgb(139 92 246 / 0.14);
+  --danger-text: 248 113 113;  /* red-400, 5.7–7.2:1 */
+  --success-text: 52 211 153;  /* emerald-400 */
+  --warning-text: 251 191 36;  /* amber-400 */
+  --like: 232 121 249;         /* fuchsia-400 */
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.03);
+  --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+/* Screens that sit over video or photos (Flicks, Stories, the lightbox)
+   stay dark in every theme: they mark their root with data-theme="dark". */
+[data-theme="dark"]:not(:root) { color: rgb(var(--fg)); }
+
+/* Light, chosen in Settings or (with no choice made) from the phone's own
+   setting, which works before any JavaScript has run. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: 247 247 248;     /* #f7f7f8 */
+  --surface: 255 255 255;    /* #ffffff */
+  --surface-2: 241 241 243;  /* #f1f1f3 */
+  --surface-3: 228 228 232;  /* #e4e4e8 */
+  --surface-raised: 255 255 255;
+  --line: 228 228 231;       /* #e4e4e7 */
+  --line-strong: 212 212 216;/* #d4d4d8 */
+  --field: 128 128 138;      /* #80808a, 3.1–3.9:1 */
+  --fg: 24 24 27;            /* #18181b, 15.5–17.7:1 */
+  --fg-muted: 82 82 91;      /* #52525b, 6.6–7.7:1 */
+  --fg-subtle: 101 101 110;  /* #65656e, 4.9–5.8:1 */
+  --accent-text: 109 40 217;   /* violet-700, 6.1–7.1:1 */
+  --accent-ring: 124 58 237;   /* violet-600 */
+  --accent-soft: rgb(124 58 237 / 0.10);
+  --danger-text: 185 28 28;    /* red-700, 5.5–6.5:1 */
+  --success-text: 4 120 87;    /* emerald-700, 4.7–5.5:1 */
+  --warning-text: 180 83 9;    /* amber-700, 4.5–5.0:1 */
+  --like: 192 38 211;          /* fuchsia-600 */
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.04);
+  --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.06);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --canvas: 247 247 248; --surface: 255 255 255; --surface-2: 241 241 243; --surface-3: 228 228 232; --surface-raised: 255 255 255;
+    --line: 228 228 231; --line-strong: 212 212 216; --field: 128 128 138;
+    --fg: 24 24 27; --fg-muted: 82 82 91; --fg-subtle: 101 101 110;
+    --accent-text: 109 40 217; --accent-ring: 124 58 237; --accent-soft: rgb(124 58 237 / 0.10);
+    --danger-text: 185 28 28; --success-text: 4 120 87; --warning-text: 180 83 9; --like: 192 38 211;
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.04);
+    --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
+}
+
+:root {
   /* Tabular figures keep counts from jittering as they tick up. */
   font-feature-settings: "cv11", "ss01";
 }
+
+/* Text size, from Settings: every size in the app is in rem, so this scales
+   all of it (and the layout with it) at once. */
+:root[data-text="large"] { font-size: 112.5%; }
+:root[data-text="larger"] { font-size: 125%; }
 
 html,
 body,
@@ -27,10 +102,10 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: rgb(var(--line-strong)) transparent;
 }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+*::-webkit-scrollbar-thumb { background: rgb(var(--line-strong)); border-radius: 4px; }
 
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -90,7 +165,7 @@ body {
 
 /* Skeleton shimmer: shows the shape of what's coming, not a spinner. */
 .skeleton {
-  background: linear-gradient(90deg, #18181c 0%, #222228 50%, #18181c 100%);
+  background: linear-gradient(90deg, rgb(var(--surface-2)) 0%, rgb(var(--surface-3)) 50%, rgb(var(--surface-2)) 100%);
   background-size: 200% 100%;
   animation: mesh-shimmer 1.4s ease-in-out infinite;
 }
@@ -104,9 +179,9 @@ body {
 
 /* Every interactive element gets a visible focus ring for keyboard users.
    :focus-visible rather than :focus so pointer users don't see it on click.
-   violet-300 is 8.6–10.8:1 against every surface token. */
+   The ring colour is measured against every surface in each theme. */
 :focus-visible {
-  outline: 2px solid #c4b5fd;
+  outline: 2px solid rgb(var(--accent-ring));
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) { outline: none; }
@@ -128,8 +203,8 @@ body {
   z-index: 100;
   padding: 0.75rem 1rem;
   border-radius: 12px;
-  background: #c4b5fd;
-  color: #09090b;
+  background: rgb(var(--accent-ring));
+  color: rgb(var(--canvas));
   font-weight: 600;
   transition: top 150ms ease;
 }
@@ -146,6 +221,14 @@ body {
   }
   .skeleton { animation: none; }
 }
+/* ...or when asked for in Settings, whatever the phone says. */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+:root[data-motion="reduce"] .skeleton { animation: none; }
 
 /* Safe-area helpers for notched phones. */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }

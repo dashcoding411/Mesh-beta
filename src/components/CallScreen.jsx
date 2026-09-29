@@ -68,7 +68,7 @@ export function CallScreen({ session, onClose }) {
   const hasRemoteVideo = session.video && session.remoteStream.getVideoTracks().length > 0 && session.state === "active";
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={`${session.video ? "Video" : "Voice"} call with @${session.peer.username}`}
+    <div role="dialog" aria-modal="true" aria-label={`${session.video ? "Video" : "Voice"} call with @${session.peer.username}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col bg-zinc-950 text-white anim-fade">
       {hasRemoteVideo && <StreamVideo stream={session.remoteStream} className="absolute inset-0 h-full w-full object-cover" />}
       {!session.video && <audio ref={(el) => { if (el && el.srcObject !== session.remoteStream) el.srcObject = session.remoteStream; }} autoPlay />}
@@ -109,7 +109,7 @@ export function IncomingCall({ call, onAnswer, onDecline }) {
     return () => navigator.vibrate?.(0);
   }, []);
   return createPortal(
-    <div role="alertdialog" aria-modal="true" aria-label={`Incoming ${call.video ? "video" : "voice"} call from @${call.callerName}`}
+    <div role="alertdialog" aria-modal="true" aria-label={`Incoming ${call.video ? "video" : "voice"} call from @${call.callerName}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col items-center justify-between bg-zinc-950 px-6 py-16 text-white anim-fade">
       <div className="flex flex-col items-center gap-4 pt-safe text-center">
         <Avatar profile={{ username: call.callerName, photoURL: call.callerPhoto }} size={120} />
