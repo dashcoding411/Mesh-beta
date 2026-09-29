@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  House, Search, Clapperboard, Blend, Newspaper, MessageCircle, Bell, Plus, Menu, Settings, Bookmark, Lock, Keyboard,
-} from "lucide-react";
-import { sidebarSection } from "../../lib/surfaces";
+import { Plus, Menu, Keyboard } from "lucide-react";
 import { navigate } from "../../lib/router";
+import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
 import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
@@ -13,18 +11,9 @@ import { scrollOrRefresh } from "./scrollOrRefresh";
    rail between 768 and 1280px so the content keeps its room, and the same
    column with labels above that. */
 export default function Sidebar({ page, profile, unread, notifications, onCreate }) {
-  const current = page.tab === "home" ? sidebarSection(page.section) : page.tab;
-
+  const current = activeNavId(page);
+  const counts = { unread, notifications };
   const go = (path) => (window.location.pathname === path ? scrollOrRefresh() : navigate(path));
-  const items = [
-    { id: "foryou", label: "Home", icon: House, path: "/" },
-    { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
-    { id: "messages", label: "Messages", icon: MessageCircle, path: "/messages", badge: unread },
-    { id: "search", label: "Search", icon: Search, path: "/search" },
-    { id: "circles", label: "Circles", icon: Blend, path: "/circles" },
-    { id: "news", label: "News", icon: Newspaper, path: "/news" },
-    { id: "notifications", label: "Notifications", icon: Bell, path: "/notifications", badge: notifications },
-  ];
 
   return (
     <aside aria-label="Main" className="hidden md:flex w-[76px] xl:w-64 shrink-0 flex-col border-r border-line bg-canvas px-3 py-5">
@@ -35,8 +24,8 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
       </button>
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-y-auto py-4 no-scrollbar">
-        {items.map((s) => (
-          <NavRow key={s.id} icon={s.icon} label={s.label} badge={s.badge} active={current === s.id} onClick={() => go(s.path)} />
+        {MAIN_NAV.map((s) => (
+          <NavRow key={s.id} icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
         ))}
         <NavRow icon={Plus} label="Create" onClick={onCreate} />
         <button type="button" onClick={() => navigate("/account")} title="Profile"
@@ -82,9 +71,7 @@ function MoreMenu({ page }) {
   const wrap = useRef(null);
   const button = useRef(null);
   const entries = [
-    { label: "Settings", icon: Settings, run: () => navigate("/account/settings") },
-    { label: "Brick mode", icon: Lock, run: () => navigate("/account/brick") },
-    { label: "Saved", icon: Bookmark, run: () => navigate("/saved") },
+    ...MORE_NAV.map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) })),
     { label: "Keyboard shortcuts", icon: Keyboard, run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })) },
   ];
 
@@ -106,7 +93,7 @@ function MoreMenu({ page }) {
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key); };
   }, [open]);
 
-  const inSettings = page.tab === "account" && ["settings", "brick"].includes(page.view);
+  const inSettings = ["settings", "brick", "saved"].includes(activeNavId(page));
   return (
     <div ref={wrap} className="relative shrink-0">
       {open && (

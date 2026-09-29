@@ -127,9 +127,9 @@ export default function BrickSettings() {
             </div>
             <p className="mt-4 text-label font-semibold uppercase tracking-wider text-fg-subtle">Brick me</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
-              <Button onClick={() => setInstant(Date.now() + 2 * 3600000)}>For 2 hours</Button>
-              <Button onClick={() => setInstant(nextMidnight(Date.now(), deviceOffset()))}>Until tonight</Button>
-              <Button onClick={() => setInstant(Date.now() + 3 * 86400000)}>For 3 days</Button>
+              <Button onClick={() => setInstant(Date.now() + 2 * 3600000)}>2 hours</Button>
+              <Button onClick={() => setInstant(nextMidnight(Date.now(), deviceOffset()))}>Tonight</Button>
+              <Button onClick={() => setInstant(Date.now() + 3 * 86400000)}>3 days</Button>
             </div>
           </section>
 
@@ -560,7 +560,7 @@ function InstantRow({ onBrick, disabled }) {
       <p className="text-label font-semibold uppercase tracking-wider text-fg-subtle">Brick now</p>
       <div className="mt-2 grid grid-cols-3 gap-2">
         <Button size="sm" disabled={disabled} onClick={() => onBrick(Date.now() + 2 * 3600000)}>2 hours</Button>
-        <Button size="sm" disabled={disabled} onClick={() => onBrick(nextMidnight(Date.now(), deviceOffset()))}>Until tonight</Button>
+        <Button size="sm" disabled={disabled} onClick={() => onBrick(nextMidnight(Date.now(), deviceOffset()))}>Tonight</Button>
         <Button size="sm" disabled={disabled} onClick={() => onBrick(Date.now() + 3 * 86400000)}>3 days</Button>
       </div>
     </div>

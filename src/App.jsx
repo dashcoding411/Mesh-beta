@@ -328,7 +328,10 @@ export default function App() {
           </>
         )}
 
-        {drawerOpen && <HomeDrawer page={page} profile={profile} onClose={() => setDrawerOpen(false)} />}
+        {drawerOpen && (
+          <HomeDrawer page={page} profile={profile} unread={inbox.unreadCount} notifications={noticesUnread}
+            onCreate={() => openComposer()} onClose={() => setDrawerOpen(false)} />
+        )}
 
         {composer && (
           <Composer {...composer} profile={profile} onClose={() => setComposer(null)}
