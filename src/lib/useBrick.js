@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  applyPending, listenLock, listenUsage, me, pingUsage, syncTimeZone, tidyUsage,
+  applyPending, listenLock, listenUsage, me, pingUsage, syncBrickStats, syncTimeZone, tidyUsage,
 } from "./db";
 import { capFor, dayKey, lockState, pendingDueAt, unlockAt } from "./brick";
 
@@ -52,14 +52,26 @@ export function useBrickEngine(signedIn) {
     applyPending(raw).catch(() => {});
   }, [raw, due, now]);
 
-  // Once a visit: follow daylight saving, and drop usage older than a week.
+  // Once a visit: follow daylight saving, drop usage older than a week, and
+  // count any finished bricks towards your stats.
   const tidied = useRef(false);
+  const counted = useRef(0);
   useEffect(() => {
     if (!policy || tidied.current) return;
     tidied.current = true;
     syncTimeZone(policy).catch(() => {});
     tidyUsage(policy).catch(() => {});
-  }, [policy]);
+    counted.current = policy.self?.until || 0;
+    syncBrickStats(policy, raw).catch(() => {});
+  }, [policy, raw]);
+
+  // An instant brick that finishes while Mesh is open is counted straight away.
+  const brickEnd = policy?.self?.until || 0;
+  useEffect(() => {
+    if (!brickEnd || now < brickEnd || counted.current === brickEnd) return;
+    counted.current = brickEnd;
+    syncBrickStats(policy, raw).catch(() => {});
+  }, [brickEnd, now, policy, raw]);
 
   return useMemo(() => ({
     policy,

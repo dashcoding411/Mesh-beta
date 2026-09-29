@@ -7,7 +7,7 @@ import {
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
-import { suggestTopics, MAX_POST_TOPICS } from "../lib/interests";
+import { suggestTopics, MAX_POST_TOPICS, interestById } from "../lib/interests";
 import { gifsEnabled } from "../lib/gifs";
 import { readDraft, useDraft } from "../lib/drafts";
 import { InterestToggles } from "./Interests";
@@ -80,6 +80,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [topics, setTopics] = useState(d.topics || []);
   const [circleTopic, setCircleTopic] = useState(initialCircleTopic || "");
   const [topicsTouched, setTopicsTouched] = useState(!!d.topics);
+  const [pickingTopics, setPickingTopics] = useState(false);
   const [poll, setPoll] = useState(d.poll || (attach === "poll" ? { options: ["", ""], hours: 24 } : null));
   const [gif, setGif] = useState(d.gif || null);
   const [gifPicker, setGifPicker] = useState(attach === "gif" && gifsEnabled);
@@ -402,11 +403,28 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </div>
         )}
 
-        {!mediaBlocked && (
+        {!mediaBlocked && !pickingTopics && (
+          <div className="flex flex-wrap items-center gap-2 text-caption text-fg-subtle">
+            <Tags size={15} aria-hidden="true" />
+            {shownTopics.length ? (
+              <>
+                <span>Topics:</span>
+                {shownTopics.map((id) => (
+                  <span key={id} className="rounded-full bg-surface-2 px-2.5 py-1 font-semibold text-fg-muted ring-1 ring-line">{interestById(id)?.label}</span>
+                ))}
+                {!topicsTouched && <span>worked out from your words</span>}
+              </>
+            ) : (
+              <span>{text.trim() || title.trim() ? "No topic spotted in your words" : "Topics are worked out from your words"}</span>
+            )}
+            <button type="button" onClick={() => setPickingTopics(true)} className="font-semibold text-accent-text hover:underline">Change</button>
+          </div>
+        )}
+        {!mediaBlocked && pickingTopics && (
           <fieldset>
             <legend className="mb-2 flex items-center gap-2 text-callout font-medium">
               <Tags size={16} aria-hidden="true" /> Topics
-              <span className="font-normal text-fg-subtle">Up to {MAX_POST_TOPICS}{!topicsTouched && shownTopics.length ? ", suggested from your words" : ""}</span>
+              <span className="font-normal text-fg-subtle">Up to {MAX_POST_TOPICS}</span>
             </legend>
             <InterestToggles value={shownTopics} max={MAX_POST_TOPICS} label="Topics"
               onChange={(v) => { setTopicsTouched(true); setTopics(v); }} />

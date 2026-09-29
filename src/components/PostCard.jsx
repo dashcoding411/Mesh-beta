@@ -14,6 +14,7 @@ import { LIMITS, validateText } from "../lib/validate";
 import { checkContent, isBorderline, hitsHiddenWords, assessText, markPosted } from "../lib/moderation";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
+import LiveAvatar from "./ui/LiveAvatar";
 import IconButton from "./ui/IconButton";
 import RichText from "./ui/RichText";
 import InlineVideo from "./ui/InlineVideo";
@@ -144,7 +145,7 @@ export default function PostCard({
       <div className="flex gap-3">
         <button type="button" onClick={() => openUserProfile(post.authorId)} className="press h-fit shrink-0 rounded-full"
           aria-label={`${post.authorDisplayName || post.authorName}'s profile`}>
-          <Avatar profile={{ name: post.authorDisplayName, username: post.authorName, photoURL: post.authorPhoto }} size={40} />
+          <LiveAvatar uid={post.authorId} profile={{ name: post.authorDisplayName, username: post.authorName, photoURL: post.authorPhoto }} size={40} />
         </button>
 
         <div className="min-w-0 flex-1">

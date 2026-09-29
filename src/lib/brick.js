@@ -21,7 +21,7 @@
 // the app can show exactly what the server will do: what's locked, why, and
 // when it opens again.
 
-import { Timestamp } from "firebase/firestore";
+import { serverTimestamp, Timestamp } from "firebase/firestore";
 
 export const SECTIONS = [
   { id: "feed", label: "Feed", blurb: "For you, Following, Search, Circles and Saved" },
@@ -37,7 +37,14 @@ export const MAX_INSTANT_MS = 8 * 24 * 60 * 60 * 1000;
 const DAY_KEYS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
 
 export function emptyLayer() {
-  return { slots: {}, caps: { feed: 0, flicks: 0, news: 0 }, until: 0, windows: [] };
+  return { slots: {}, caps: { feed: 0, flicks: 0, news: 0 }, until: 0, since: 0, windows: [] };
+}
+
+/** The layer with an instant brick until `untilMs`: a new brick starts now;
+    one already running is extended and keeps its start. */
+export function withBrickUntil(layer, untilMs, now = Date.now()) {
+  if ((layer.until || 0) > now) return { ...layer, until: Math.max(layer.until, untilMs) };
+  return { ...layer, until: untilMs, since: "now" };
 }
 
 // ---------- time, in the zone the limits were set in ----------
@@ -224,7 +231,8 @@ export function tightest(a, b) {
     seen.add(k);
     return true;
   });
-  return { slots, caps, until: Math.max(a.until || 0, b.until || 0), windows };
+  const later = (a.until || 0) >= (b.until || 0) ? a : b;
+  return { slots, caps, until: later.until || 0, since: later.since || 0, windows };
 }
 
 /** You tightened `prev` into `next` while a loosening (`target`) waits.
@@ -250,7 +258,10 @@ export function carryTightening(target, prev, next) {
     const k = JSON.stringify([w.days, w.from, w.to]);
     if (!before.has(k) && !seen.has(k)) out.windows.push(w);
   }
-  out.until = Math.max(target.until || 0, (next.until || 0) > (prev.until || 0) ? next.until : 0);
+  if ((next.until || 0) > (prev.until || 0) && next.until > (target.until || 0)) {
+    out.until = next.until;
+    out.since = next.since;
+  }
   return out;
 }
 
@@ -267,7 +278,8 @@ export function applyChange(target, prev, next) {
   for (const s of SECTIONS) {
     if ((next.caps?.[s.id] || 0) !== (prev.caps?.[s.id] || 0)) caps[s.id] = next.caps?.[s.id] || 0;
   }
-  return { slots: windowsToSlots(windows), caps, until: Math.max(target.until || 0, next.until || 0), windows };
+  const later = (next.until || 0) > (target.until || 0) ? next : target;
+  return { slots: windowsToSlots(windows), caps, until: later.until || 0, since: later.since || 0, windows };
 }
 
 /** Plain-language list of what a change loosens, for the confirmation. */
@@ -297,8 +309,15 @@ export function layerToDoc(layer) {
     slots: layer.slots || {},
     caps: { feed: layer.caps?.feed || 0, flicks: layer.caps?.flicks || 0, news: layer.caps?.news || 0 },
     until: toTs(layer.until),
+    // "now" marks a brick starting with this write: the server stamps it.
+    since: layer.since === "now" ? serverTimestamp() : toTs(layer.since),
     windows: (layer.windows || []).map((w) => ({ days: w.days, from: w.from, to: w.to })),
   };
+}
+
+/** Did the weekly schedule change between two layers? */
+export function slotsChanged(a, b) {
+  return DAY_KEYS.some((k) => (a?.slots?.[k] || []).join() !== (b?.slots?.[k] || []).join());
 }
 
 export function layerFromDoc(d) {
@@ -307,6 +326,7 @@ export function layerFromDoc(d) {
     slots: d.slots || {},
     caps: { feed: d.caps?.feed || 0, flicks: d.caps?.flicks || 0, news: d.caps?.news || 0 },
     until: fromTs(d.until),
+    since: fromTs(d.since),
     windows: d.windows || [],
   };
 }
@@ -317,6 +337,7 @@ export function policyFromDoc(d) {
     tzOffset: d.tzOffset || 0,
     tzName: d.tzName || "",
     tzChangedAt: fromTs(d.tzChangedAt),
+    slotsChangedAt: d.slotsChangedAt ? fromTs(d.slotsChangedAt) : null,
     self: layerFromDoc(d.self) || emptyLayer(),
     pending: d.pending ? {
       self: layerFromDoc(d.pending.self),

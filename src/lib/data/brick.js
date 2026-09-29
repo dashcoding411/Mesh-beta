@@ -9,7 +9,8 @@ import { me, snapToList } from "./core.js";
 import { fetchProfile, uidForUsername } from "./users.js";
 import { notify } from "./notifications.js";
 import {
-  COOL_OFF_MS, applyChange, carryTightening, dayKey, deviceOffset, deviceZone, emptyLayer, isTighterOrSame, layerToDoc, policyFromDoc, tightest,
+  COOL_OFF_MS, applyChange, carryTightening, dayKey, deviceOffset, deviceZone, emptyLayer, isTighterOrSame, layerToDoc, policyFromDoc,
+  slotsChanged, tightest, withBrickUntil,
 } from "../brick.js";
 
 const lockRef = (uid) => doc(db, "locks", uid);
@@ -39,6 +40,7 @@ export async function saveOwnLimits(policy, raw, next) {
       tzOffset: deviceOffset(),
       tzName: deviceZone().slice(0, 64),
       tzChangedAt: serverTimestamp(),
+      slotsChangedAt: serverTimestamp(),
       self: layerToDoc(next),
       pending: null,
       parent: null,
@@ -49,6 +51,7 @@ export async function saveOwnLimits(policy, raw, next) {
   }
   if (isTighterOrSame(next, policy.self)) {
     const changes = { self: layerToDoc(next), updatedAt: serverTimestamp() };
+    if (slotsChanged(next, policy.self)) changes.slotsChangedAt = serverTimestamp();
     // A waiting loosening mustn't undo what you just tightened.
     if (policy.pending) {
       changes.pending = { ...raw.pending, self: layerToDoc(carryTightening(policy.pending.self, policy.self, next)) };
@@ -58,10 +61,12 @@ export async function saveOwnLimits(policy, raw, next) {
   }
   // Added to anything already waiting, and the 24 hours start again.
   const target = policy.pending ? applyChange(policy.pending.self, policy.self, next) : next;
+  const now = tightest(policy.self, next);
   await updateDoc(lockRef(me()), {
-    self: layerToDoc(tightest(policy.self, next)),
+    self: layerToDoc(now),
     pending: { self: layerToDoc(target), requestedAt: serverTimestamp() },
     updatedAt: serverTimestamp(),
+    ...(slotsChanged(now, policy.self) ? { slotsChangedAt: serverTimestamp() } : {}),
   });
   return { applied: false, dueAt: Date.now() + COOL_OFF_MS };
 }
@@ -74,6 +79,7 @@ export async function cancelPending() {
 export async function applyPending(raw) {
   const p = raw.pending;
   const changes = { self: p.self, pending: null, updatedAt: serverTimestamp() };
+  if (slotsChanged(p.self, raw.self)) changes.slotsChangedAt = serverTimestamp();
   if (typeof p.tzOffset === "number" && p.tzOffset !== raw.tzOffset) {
     changes.tzOffset = p.tzOffset;
     changes.tzName = p.tzName || "";
@@ -84,8 +90,7 @@ export async function applyPending(raw) {
 
 /** Brick now, until `untilMs`. Can't be ended early (that would be loosening). */
 export async function brickUntil(policy, raw, untilMs) {
-  const base = policy?.self || emptyLayer();
-  return saveOwnLimits(policy, raw, { ...base, until: Math.max(base.until || 0, untilMs) });
+  return saveOwnLimits(policy, raw, withBrickUntil(policy?.self || emptyLayer(), untilMs));
 }
 
 /* Keeping local time right. A daylight-saving hour moves at once (the rules

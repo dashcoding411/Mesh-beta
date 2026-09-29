@@ -370,6 +370,22 @@ them (the teen can ask, with a note, including asking to end it), and they
 stop counting on 1 January of the year the teen turns 18. The parent sees the
 teen's limits and today's minutes, nothing else.
 
+**Bricked time and the leaderboard** (`src/lib/data/brickStats.js`,
+`/leaderboard`). `brickStats/{uid}` holds your total, this week's and longest
+bricked time and a streak of bricked days. With no server to watch the clock,
+the client makes claims and the rules check each one against `locks/{uid}`:
+
+- An **instant brick** counts once it's over, for exactly the seconds between
+  its `since` (a server timestamp set when it started) and its `until`.
+- A **scheduled day** counts once the day is over, only for a day after the
+  schedule last changed (`slotsChangedAt`), so a schedule can't be added after
+  the fact. The client adds up that day's slots; the rules check the day's
+  bounds and that it wasn't already counted.
+
+Stats are private until you switch on sharing in Brick mode; only public ones
+can be listed, which is what the leaderboard (this week or all time) reads.
+Profiles show a "Bricked" highlight: always to you, to others only if shared.
+
 ## Everyday comforts
 
 Small things that make the app easier to live with:
@@ -396,6 +412,15 @@ Small things that make the app easier to live with:
 - **Photo viewer.** Tap a Still to see it full screen (Esc or tap outside to
   close, ALT shows its description); double tap still likes it.
 - **@mentions** open the person's profile, or Search if the handle is free.
+- **Links** in posts, comments and messages are clickable, including bare
+  `www.` ones. Mesh links open in the app; anything else first shows where it
+  goes (host and full address, with a warning for look-alike or numeric hosts)
+  and asks before leaving (`followLink` in `src/lib/links.js`).
+- **Profile photos.** Your own avatar has an "Add photo" outline until you set
+  one, the feed nudges you once (dismissed per device in
+  `mesh:photo-nudge:{uid}`), and Edit profile has a photo field. Posts,
+  comments and notifications show each person's current photo
+  (`src/lib/profileCache.js`), not the one saved when they posted.
 - **Offline notice** when the connection drops, and "Back online" when it returns.
 - **Keyboard shortcuts** on desktop: `n` new post, `/` search, `j`/`k` next and
   previous post, `g` then `h`/`m`/`f`/`p` to go Home, Messages, Flicks or your
@@ -543,38 +568,54 @@ and the rules check both, so nobody can vote twice or inflate a count.
 **Interests**: people pick up to 12 from a fixed list, first on sign-up and
 later in Settings. They're stored in `users/{uid}/private/prefs`, readable only
 by the owner. Sensitive categories (health, religion, politics, sexuality) are
-deliberately not on the list. Posts carry up to 3 **topics** (suggested from the
-text; the author decides), and circles up to 3 interests. For you and Flicks get
+deliberately not on the list. Posts carry up to 3 **topics**, detected from the
+words (`suggestTopics` in `src/lib/interests.js`, which knows plurals and
+verb forms); the full composer shows them with a Change button, and quick posts
+just use them. Circles have up to 3 interests. For you and Flicks get
 a chip row to filter by your interests, the ranker boosts matching topics, and
 Circles has a "For your interests" section, interest filters and a search box.
 
-## News review
+## Mesh News: the newsroom
 
-Anyone can submit, nobody can self-publish:
+Only **writers** can write news, and nobody can publish their own story.
 
-1. Submitting requires a headline, the **full script**, and **at least two
-   source URLs**, enforced in `firestore.rules`, not just the UI.
-2. The story is created with `status: 'pending'` and is invisible to everyone
-   except its author and admins.
-3. Only an admin (a document in `admins/{uid}`, writable only from the console)
-   can move it to `approved` or `rejected`, optionally with a note the author
-   sees. Authors cannot approve their own.
-4. Submitting requires ticking a declaration that the story is accurate and
-   contains no AI-fabricated evidence; it's recorded server-side as `attestedAt`.
-
-5. Sources are cited by number in the script (`[1]`, `[2]`). Citations become
-   links to the numbered source list, and the form refuses a citation with no
-   matching source. The rules also require every source to be an http(s) link.
-6. Reviewers must tick a three-point checklist before Approve is enabled.
-7. Readers can **suggest a correction** (only reviewers see these). Reviewers add
-   **public corrections**, shown dated at the top of the story; the rules only
-   allow appending, so a correction can never be quietly removed.
-
-Stories have a topic, optional location, up to three key points and a cover
-photo, and each has its own page at `/news/<id>`.
+- **Writers** are listed in `newsWriters/{uid}`. Admins add and remove them
+  (Moderation → News writers); a writer can also step down. The rules refuse a
+  new story, or a co-author, who isn't a writer.
+- **The desk** (`/news/desk`) lists your drafts, stories with the reviewers and
+  published ones. **The editor** (`/news/write/<id>`) is a block editor:
+  paragraphs, headings, quotes, lists, images (alt text required) and dividers.
+  Blocks are stored as parallel lists (`blockIds`, `blockTypes`, `blockTexts`,
+  `blockMedia`, `blockAlts`); `script` is the texts joined, and the rules check
+  that it matches. The document logic is `src/lib/storyDoc.js`.
+- **Writing together.** The lead author adds co-authors. While you're in a
+  block, `news/{id}/presence/{uid}` says so and others see it locked. Saving is
+  a transaction on `version`: if someone saved since you loaded, your changes
+  are merged onto theirs block by block (`mergeStory`), so no one's work is
+  overwritten. The rules require every author save to bump `version` by one.
+- **Drafts are private** to their authors. Sending for review saves a
+  **revision** (`news/{id}/revisions`, which can't be edited, and can be
+  deleted only along with the story); you can also save one by hand and see
+  or restore earlier versions from History.
+- **Before review** a story needs a headline, 100 characters of text, two
+  sources, every `[n]` citation matching a listed source, and alt text on every
+  image (`reviewProblems`, and the rules check the essentials). You tick a
+  declaration that it's accurate (`attestedAt`).
+- **Review.** Only admins (`admins/{uid}`, set in the console) approve,
+  reject or send a story back to its authors with a note. A writer can flag a
+  **legal read**; approval is refused until an admin clears it. Readers can
+  suggest corrections, which only admins see; admins append public, dated
+  corrections that can't be removed.
+- **Live blogs** are stories whose authors post timestamped updates
+  (`news/{id}/updates`) once published, marking key ones, and switch the live
+  label off when it's over.
 
 The app says "reviewed against sources", never "fact-checked": review is one
 person checking a story against the sources given, not a guarantee of truth.
+
+Not built, because they need a server (Cloud Functions, Blaze plan): alerts to
+Slack or email, syndication feeds to partners, AI assistance and scroll-driven
+story layouts.
 
 To make yourself an admin, add a document at `admins/<your-uid>` in the Firebase
 console. Your uid is in Settings.
@@ -705,7 +746,10 @@ and a bare `firebase deploy` would overwrite that project instead.
 - `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
 - `reports/{type}_{id}_{uid}`: one per person per thing; moderators only
 - `stories/{id}`: 24-hour media, filtered client-side
-- `news/{id}`: script + sources + review status
+- `news/{id}`: a story's blocks, `script`, sources, authors, `version` and
+  review status, with `revisions/`, `presence/`, `updates/` (live blogs) and
+  `correctionRequests/`; `newsWriters/{uid}`: who may write news
+- `brickStats/{uid}`: bricked time and streak, public only if you share it
 - `chats/{id}`: with `messages/`
 - `groups/{id}` (Circles): `privacy`, `ownerId`, `rules`, `screeningQuestions`,
   `automod`, `pinnedPostId`, with `members/` (roles, penalties) and

@@ -43,7 +43,7 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
       </nav>
 
       <nav aria-label="More" className="shrink-0 border-t border-line pt-2">
-        <ul className="grid grid-cols-3 gap-1">
+        <ul className="grid grid-cols-4 gap-1">
           {MORE_NAV.map(({ id, label, icon: Icon, path }) => (
             <li key={id}>
               <button type="button" onClick={() => go(path)} aria-current={current === id ? "page" : undefined}

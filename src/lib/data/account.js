@@ -4,6 +4,7 @@ import { auth, db } from "../../firebase";
 import { fetchGroups } from "./circles.js";
 import { me } from "./core.js";
 import { fetchEvents } from "./events.js";
+import { deleteNews } from "./news.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
 import { fetchFollowList, fetchMyPrefs, fetchProfile } from "./users.js";
 
@@ -25,6 +26,7 @@ export async function exportMyData() {
   const usage = await getDocs(query(collection(db, "usage"), where("uid", "==", uid))).then((s) => s.docs.map((d) => ({ day: d.id.split("_")[1], ...d.data() }))).catch(() => []);
   const notifications = await getDocs(query(collection(db, "users", uid, "notifications"), limit(500))).then((s) => s.docs.map((d) => d.data())).catch(() => []);
   const family = await getDoc(doc(db, "familyLinks", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
+  const brickedTime = await getDoc(doc(db, "brickStats", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
   const gatherings = await getDocs(query(collection(db, "users", uid, "rsvps"), limit(500))).then((s) => s.docs.map((d) => ({ gatheringId: d.id, ...d.data() }))).catch(() => []);
   const comments = [];
   for (const p of posts) {
@@ -45,7 +47,7 @@ export async function exportMyData() {
     followers,
     hiddenWords: prefs?.hiddenWords || [],
     mutedAccounts: prefs?.muted || [],
-    brickMode: { limits, usage, parentLink: family },
+    brickMode: { limits, usage, parentLink: family, brickedTime },
     gatheringReplies: gatherings,
     notifications,
   };
@@ -89,6 +91,8 @@ export async function deleteMyAccountData() {
     return snap?.docs || [];
   };
   for (const d of await mine("stories", "authorId")) await deleteDoc(d.ref).catch(() => {});
+  // News stories you lead, with their history and live updates.
+  for (const d of await mine("news", "authorId")) await deleteNews(d.id).catch(() => {});
   for (const d of await mine("media", "ownerId")) await deleteDoc(d.ref).catch(() => {});
   // The profile and its handle go together, so the handle is released only
   // as the profile stops using it.
@@ -102,6 +106,9 @@ export async function deleteMyAccountData() {
   }
   await last.commit().catch(() => deleteDoc(doc(db, "users", uid)).catch(() => {}));
   await deleteDoc(doc(db, "rateLimits", uid)).catch(() => {});
+  // Off the leaderboard, and out of the newsroom.
+  await deleteDoc(doc(db, "brickStats", uid)).catch(() => {});
+  await deleteDoc(doc(db, "newsWriters", uid)).catch(() => {});
   // Brick mode's records can only go once the profile has (the rules
   // won't let limits be lifted any other way).
   for (const d of await mine("usage", "uid")) await deleteDoc(d.ref).catch(() => {});

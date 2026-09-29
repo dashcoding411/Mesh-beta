@@ -18,6 +18,7 @@ import { useToast } from "./ui/toast-context";
 import PostCard from "./PostCard";
 import StoryRail from "./StoryRail";
 import QuickPost from "./QuickPost";
+import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
 
@@ -186,6 +187,7 @@ export default function HomeFeed({ mode }) {
           {mode === "foryou" && topic === "all" && (
             <>
               <StoryRail />
+              <PhotoNudge dismissible className="mx-4 mt-3" />
               <QuickPost onPosted={(p) => setPosts((prev) => [p, ...(prev || [])])} />
             </>
           )}

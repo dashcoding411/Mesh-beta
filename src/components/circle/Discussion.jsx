@@ -9,6 +9,7 @@ import {
 } from "../../lib/db";
 import { normalise } from "../../lib/search";
 import { TopicChips } from "./TopicPicker";
+import { suggestTopics } from "../../lib/interests";
 import { plural } from "../../lib/format";
 import { gifsEnabled } from "../../lib/gifs";
 import { checkContent, markPosted } from "../../lib/moderation";
@@ -51,7 +52,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
     setError("");
     try {
       const post = await createPost({
-        kind: "text", text: v.text, groupId: group.id, circleTopic: topic, sensitive: mod.sensitive,
+        kind: "text", text: v.text, groupId: group.id, circleTopic: topic, sensitive: mod.sensitive, topics: suggestTopics(v.text),
         visibility: circlePostVisibility(group, membership, { text: v.text, profile }),
       });
       markPosted("post", v.text);

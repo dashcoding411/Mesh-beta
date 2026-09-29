@@ -1,7 +1,7 @@
 // News submissions, review and corrections.
 import {
-  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp,
-  Timestamp, updateDoc, where,
+  addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, query, serverTimestamp,
+  Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
@@ -63,7 +63,12 @@ export async function reviewNews(id, status, reviewNote = "") {
 /** Authors can withdraw a submission; reviewers can take a story down. */
 export async function deleteNews(id) {
   const story = await fetchNewsStory(id);
-  await deleteDoc(doc(db, "news", id));
+  // Its history, live updates and who-was-editing go with it, in one write.
+  const sub = async (name) => (await getDocs(collection(db, "news", id, name)).catch(() => null))?.docs || [];
+  const batch = writeBatch(db);
+  for (const name of ["revisions", "updates", "presence"]) (await sub(name)).slice(0, 150).forEach((d) => batch.delete(d.ref));
+  batch.delete(doc(db, "news", id));
+  await batch.commit();
   await deleteInline(story?.coverUrl);
 }
 

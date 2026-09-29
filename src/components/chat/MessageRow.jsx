@@ -19,6 +19,7 @@ import IconButton from "../ui/IconButton";
 import MediaImg from "../ui/MediaImg";
 import { MenuGroup, MenuItem } from "../ui/Menu";
 import { useToast } from "../ui/toast-context";
+import { LinkedText } from "../ui/RichText";
 
 export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const { m, first, last } = row;
@@ -27,6 +28,8 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const [confirmUnsend, setConfirmUnsend] = useState(false);
   const [reporting, setReporting] = useState(false);
   const mine = m.senderId === me();
+  // Plain words with a web address in them: the address becomes a link.
+  const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
   const name = chat.nicknames?.[m.senderId] || chat.memberNames?.[m.senderId] || "Someone";
   const reactions = groupReactions(m.reactions);
   const sent = tsMillis(m.createdAt); // 0 while the write is still in flight
@@ -86,7 +89,16 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
         )}
 
         <div className={`flex items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
-          {m.voice ? (
+          {withLink ? (
+            // A bubble holding a link can't itself be a button (a link inside
+            // a button can't be followed), so its actions get their own button.
+            <div onClick={(e) => { if (!e.target.closest("a")) setMenu(true); }} onDoubleClick={() => react("❤️")}
+              onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} title={sent ? fullTime(sent) : "Sending…"}
+              className={`min-w-0 cursor-pointer text-body ${shape} px-4 py-2 ${mine ? `text-white ${theme.bubble}` : "bg-surface-3 text-fg"}`}>
+              <LinkedText text={m.text} className="block" />
+              {m.editedAt && <span className="block text-right text-label opacity-75">Edited</span>}
+            </div>
+          ) : m.voice ? (
             // The player has its own buttons, so this bubble can't itself be one.
             <div onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}
               className={`${shape} px-3 py-2 ${mine ? `text-white ${theme.bubble}` : "bg-surface-3 text-fg"}`}>
@@ -107,7 +119,7 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
             {m.editedAt && <span className="block text-right text-label opacity-75">Edited</span>}
           </button>
           )}
-          {m.voice && <IconButton icon={Ellipsis} label="Message actions" size={16} className="shrink-0" onClick={() => setMenu(true)} />}
+          {(m.voice || withLink) && <IconButton icon={Ellipsis} label="Message actions" size={16} className="shrink-0" onClick={() => setMenu(true)} />}
           {/* Quick actions appear beside the bubble on hover or keyboard focus. */}
           <span className="hidden shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:inline-flex">
             <IconButton icon={Reply} label="Reply" size={16} onClick={() => onReply(m)} />

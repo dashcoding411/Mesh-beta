@@ -359,10 +359,11 @@ service cloud.firestore {
         && x.slots is map && x.slots.keys().hasOnly(['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'])
         && x.caps is map && x.caps.keys().hasOnly(['feed', 'flicks', 'news'])
         && x.until is timestamp && x.until <= request.time + duration.value(8, 'd')
+        && x.get('since', timestamp.value(0)) is timestamp
         && x.get('windows', []).size() <= 21;
     }
     function validLayer(x) {
-      return validLayerBody(x) && x.keys().hasOnly(['slots', 'caps', 'until', 'windows']);
+      return validLayerBody(x) && x.keys().hasOnly(['slots', 'caps', 'until', 'since', 'windows']);
     }
     function capNoLooser(a, b) {
       return a == b || (a > 0 && (b == 0 || a < b));
@@ -383,7 +384,7 @@ service cloud.firestore {
         && (a.until >= b.until || b.until <= request.time);
     }
     function validLock(d) {
-      return d.keys().hasOnly(['tzOffset', 'tzName', 'tzChangedAt', 'self', 'pending', 'parent', 'parentRequest', 'updatedAt'])
+      return d.keys().hasOnly(['tzOffset', 'tzName', 'tzChangedAt', 'slotsChangedAt', 'self', 'pending', 'parent', 'parentRequest', 'updatedAt'])
         && d.tzOffset is int && d.tzOffset >= -720 && d.tzOffset <= 840
         && d.tzName is string && d.tzName.size() <= 64
         && d.tzChangedAt is timestamp
@@ -433,12 +434,30 @@ service cloud.firestore {
             && o.tzChangedAt < request.time - duration.value(20, 'd')
             && n.tzChangedAt == request.time);
     }
+    // An instant brick records when it began, so the time it ran can be
+    // counted exactly (brick stats). A new one begins now; extending one
+    // that's still running keeps its start.
+    function sinceOk(n, o) {
+      let ns = n.self.get('since', timestamp.value(0));
+      let os = o.self.get('since', timestamp.value(0));
+      return (n.self.until <= o.self.until && ns == os)
+        || (n.self.until > o.self.until && o.self.until > request.time && ns == os)
+        || (n.self.until > o.self.until && o.self.until <= request.time && ns == request.time);
+    }
+    // When the weekly schedule last changed, so a day's scheduled time is
+    // only ever counted against the schedule it really had.
+    function slotsStampOk(n, o) {
+      return n.self.slots == o.self.slots
+        ? n.get('slotsChangedAt', null) == o.get('slotsChangedAt', null)
+        : n.get('slotsChangedAt', null) == request.time;
+    }
     function applyingPending(n, o) {
       let op = o.get('pending', null);
       return op != null
         && request.time >= op.requestedAt + duration.value(24, 'h')
         && n.self == op.self
         && n.get('pending', null) == null
+        && slotsStampOk(n, o)
         && n.tzOffset == op.get('tzOffset', o.tzOffset)
         && (n.tzChangedAt == o.tzChangedAt || n.tzChangedAt == request.time);
     }
@@ -860,6 +879,8 @@ service cloud.firestore {
           && incomingData().get('pending', null) == null
           && incomingData().get('parentRequest', null) == null
           && incomingData().tzChangedAt == request.time
+          && incomingData().get('slotsChangedAt', null) == request.time
+          && (incomingData().self.until <= request.time || incomingData().self.get('since', null) == request.time)
           && incomingData().updatedAt == request.time)
         // A parent setting limits before the teen has set any of their own.
         || (isParentOf(uid)
@@ -878,7 +899,9 @@ service cloud.firestore {
           && parentRequestOk(incomingData(), resource.data)
           && ((tighterOrSame(incomingData().self, resource.data.self)
                 && pendingOk(incomingData(), resource.data)
-                && tzOk(incomingData(), resource.data))
+                && tzOk(incomingData(), resource.data)
+                && sinceOk(incomingData(), resource.data)
+                && slotsStampOk(incomingData(), resource.data))
               || applyingPending(incomingData(), resource.data)))
         // The parent changes only their own layer, and answers requests.
         || (isParentOf(uid)
@@ -954,6 +977,80 @@ service cloud.firestore {
                 && (resource.data.status == 'invited'
                     || !existsAfter(/databases/$(database)/documents/users/$(childUid))
                     || request.time >= timestamp.date(myProfile().birthYear + 18, 1, 1))));
+    }
+
+    // ---------- brick stats: the bricked leaderboard ----------
+    // How long someone has kept Mesh bricked, counted only from what the
+    // server itself enforced: finished instant bricks (the lock records when
+    // each began and ended) and whole past days of scheduled time (counted
+    // against the schedule as it stood all that day). Private unless the
+    // person opts in, and only ever counts up.
+    function statsLock() {
+      return get(/databases/$(database)/documents/locks/$(request.auth.uid)).data;
+    }
+    function weekKeyOf(l) {
+      let t = localTime(l);
+      let monday = t - duration.value(t.dayOfWeek() - 1, 'd');
+      return string(monday.year()) + '-' + string(monday.dayOfYear());
+    }
+    function statsShapeOk(d) {
+      return d.keys().hasOnly(['username', 'name', 'photoURL', 'public', 'totalSeconds', 'weekSeconds', 'weekKey',
+                               'streakDays', 'instantUntil', 'scheduleDay', 'updatedAt'])
+        && isMyName(d.username)
+        && d.name == myProfile().get('name', '')
+        && d.photoURL == myProfile().get('photoURL', '')
+        && d.public is bool
+        && d.totalSeconds is int && d.weekSeconds is int && d.streakDays is int
+        && d.instantUntil is timestamp && d.scheduleDay is timestamp
+        && d.updatedAt == request.time;
+    }
+    function weekBase(n, o) {
+      return n.weekKey == o.weekKey ? o.weekSeconds : 0;
+    }
+    // Nothing counted: a name or photo refresh, opting in or out, a new week.
+    function statsRefresh(n, o) {
+      return n.totalSeconds == o.totalSeconds && n.weekSeconds == weekBase(n, o)
+        && n.streakDays == o.streakDays && n.instantUntil == o.instantUntil && n.scheduleDay == o.scheduleDay;
+    }
+    // A finished instant brick, counted once, for exactly as long as it ran.
+    function instantClaim(n, o, l) {
+      let delta = n.totalSeconds - o.totalSeconds;
+      return l.self.until > o.instantUntil && l.self.until <= request.time
+        && n.instantUntil == l.self.until && n.scheduleDay == o.scheduleDay && n.streakDays == o.streakDays
+        && delta == (l.self.until - l.self.get('since', l.self.until)).seconds()
+        && n.weekSeconds == weekBase(n, o) + delta;
+    }
+    // A whole past day of scheduled time, on a day the schedule didn't change.
+    function dayClaim(n, o, l) {
+      let lt = n.scheduleDay + duration.value(l.tzOffset, 'm');
+      let delta = n.totalSeconds - o.totalSeconds;
+      return n.scheduleDay > o.scheduleDay
+        && lt.hours() == 0 && lt.minutes() == 0 && lt.seconds() == 0
+        && n.scheduleDay + duration.value(1, 'd') <= request.time
+        && n.scheduleDay >= l.get('slotsChangedAt', request.time)
+        && n.instantUntil == o.instantUntil
+        && delta == l.self.slots.get('d' + string(lt.dayOfWeek()), []).size() * 1800
+        && delta > 0
+        && n.weekSeconds == weekBase(n, o) + delta
+        && n.streakDays == (n.scheduleDay == o.scheduleDay + duration.value(1, 'd') ? o.streakDays + 1 : 1);
+    }
+    match /brickStats/{uid} {
+      allow get: if signedIn() && (isUser(uid) || resource.data.public == true);
+      allow list: if signedIn() && resource.data.public == true;
+      // Counting starts today: nothing from before joining, nor a brick
+      // already running.
+      allow create: if isUser(uid) && statsShapeOk(incomingData())
+        && incomingData().totalSeconds == 0 && incomingData().weekSeconds == 0 && incomingData().streakDays == 0
+        && incomingData().weekKey == weekKeyOf(statsLock())
+        && incomingData().instantUntil == statsLock().self.until
+        && incomingData().scheduleDay <= request.time
+        && incomingData().scheduleDay > request.time - duration.value(1, 'd');
+      allow update: if isUser(uid) && statsShapeOk(incomingData())
+        && incomingData().weekKey == weekKeyOf(statsLock())
+        && (statsRefresh(incomingData(), resource.data)
+            || instantClaim(incomingData(), resource.data, statsLock())
+            || dayClaim(incomingData(), resource.data, statsLock()));
+      allow delete: if isUser(uid);
     }
 
     // ---------- posts ----------
@@ -1277,64 +1374,208 @@ service cloud.firestore {
     }
 
     // ---------- news (must cite sources; admin-reviewed) ----------
+    // ---------- news: the newsroom ----------
+    // Only writers an admin has approved can write. A story starts as a
+    // private draft for its authors (a lead and up to three co-authors, all
+    // writers), is saved as numbered versions (each save moves the version
+    // by exactly one, so two people saving at once can't silently overwrite
+    // each other: the app merges and tries again), goes to review, and is
+    // published only by a reviewer, never while a legal hold is on.
+    //
+    // The body is a structured document: parallel lists of block ids,
+    // types, texts, images and image descriptions, so the server can check
+    // every word of it. `script` is the texts joined, checked here to match.
+    function isNewsWriter() {
+      return signedIn() && exists(/databases/$(database)/documents/newsWriters/$(request.auth.uid));
+    }
+    function writerExists(list, i) {
+      return list.size() <= i || exists(/databases/$(database)/documents/newsWriters/$(list[i]));
+    }
+    function storyBlocksOk(d) {
+      let ids = d.get('blockIds', []);
+      return ids is list && ids.size() <= 150
+        && d.get('blockTypes', []).size() == ids.size()
+        && d.get('blockTexts', []).size() == ids.size()
+        && d.get('blockMedia', []).size() == ids.size()
+        && d.get('blockAlts', []).size() == ids.size()
+        && d.get('blockTypes', []).hasOnly(['p', 'h2', 'h3', 'quote', 'list', 'image', 'divider'])
+        && d.get('blockMedia', []).join(' ').matches('^((https://firebasestorage[.]googleapis[.]com/[^ ]+|mesh-media:[A-Za-z0-9_-]+)? ?)*$')
+        && d.get('blockAlts', []).join(' ').size() <= 5000
+        && d.script == d.get('blockTexts', []).join('\n\n');
+    }
+    function storyContentOk(d) {
+      return d.title is string && d.title.size() <= 200
+        && d.get('standfirst', '') is string && d.get('standfirst', '').size() <= 300
+        && d.get('topic', 'world') in newsTopicIds()
+        && d.get('location', '') is string && d.get('location', '').size() <= 80
+        && d.get('keyPoints', []) is list && d.get('keyPoints', []).size() <= 3
+        && keyPointOk(d.get('keyPoints', []), 0) && keyPointOk(d.get('keyPoints', []), 1) && keyPointOk(d.get('keyPoints', []), 2)
+        && (d.get('coverUrl', '') == ''
+            || d.coverUrl.matches('^(https://firebasestorage[.]googleapis[.]com/.*|mesh-media:[A-Za-z0-9_-]+)$'))
+        && d.script is string && d.script.size() <= 40000
+        && d.sources is list && d.sources.size() <= 10 && newsSourcesOk(d.sources)
+        && d.get('format', 'story') in ['story', 'live']
+        && d.get('legalHold', false) is bool
+        && d.get('legalNote', '') is string && d.get('legalNote', '').size() <= 300
+        && storyBlocksOk(d)
+        && hateFree(d.title + ' ' + d.get('standfirst', '') + ' ' + d.script + ' '
+                    + d.get('keyPoints', []).join(' ') + ' ' + d.get('blockAlts', []).join(' '));
+    }
+    // Ready for a reviewer: a real headline, a real body, at least two
+    // sources, and the author's accuracy declaration, stamped now.
+    function readyForReview(d) {
+      return d.title.size() >= 10 && d.script.size() >= 100 && d.sources.size() >= 2
+        && d.attestedAt == request.time && d.submittedAt == request.time;
+    }
+    function isStoryAuthor(d) {
+      return d.authorId == request.auth.uid || request.auth.uid in d.get('authors', []);
+    }
+
+    match /newsWriters/{uid} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && incomingData().keys().hasOnly(['username', 'addedBy', 'addedAt'])
+        && incomingData().username == profileOf(uid).username
+        && incomingData().addedBy == request.auth.uid
+        && incomingData().addedAt == request.time;
+      allow delete: if isAdmin() || isUser(uid);
+    }
+
     match /news/{newsId} {
+      // Published stories for everyone (unless News is bricked for you);
+      // drafts only for their authors; submissions for reviewers too.
       allow read: if signedIn()
-        && (resource.data.status == 'approved'
+        && ((resource.data.status == 'approved' && !lockedFor('news'))
             || resource.data.authorId == request.auth.uid
-            || isAdmin())
-        && !lockedFor('news');
-      allow create: if signedIn()
+            || request.auth.uid in resource.data.authors
+            || (resource.data.status != 'draft' && isAdmin()));
+      allow create: if isNewsWriter()
         && incomingData().keys().hasOnly([
-          'authorId', 'authorName', 'title', 'script', 'sources',
-          'topic', 'keyPoints', 'location', 'coverUrl', 'corrections',
-          'status', 'reviewNote', 'likeCount', 'commentCount', 'createdAt', 'attestedAt'
+          'authorId', 'authorName', 'authors', 'authorNames', 'title', 'standfirst', 'script', 'sources',
+          'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'live', 'legalHold', 'legalNote',
+          'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
+          'corrections', 'status', 'reviewNote', 'likeCount', 'commentCount', 'version', 'createdAt', 'updatedAt'
         ])
-        && incomingData().get('topic', 'world') in newsTopicIds()
-        && incomingData().get('keyPoints', []) is list
-        && incomingData().get('keyPoints', []).size() <= 3
-        && keyPointOk(incomingData().get('keyPoints', []), 0)
-        && keyPointOk(incomingData().get('keyPoints', []), 1)
-        && keyPointOk(incomingData().get('keyPoints', []), 2)
-        && incomingData().get('location', '') is string
-        && incomingData().get('location', '').size() <= 80
-        && incomingData().get('corrections', []) == []
-        && (incomingData().get('coverUrl', '') == ''
-            || incomingData().coverUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
-            || ownInlineImage(incomingData().coverUrl))
         && incomingData().authorId == request.auth.uid
         && isMyName(incomingData().authorName)
+        && incomingData().authors == [request.auth.uid]
+        && incomingData().authorNames == [incomingData().authorName]
+        && incomingData().status == 'draft'
+        && incomingData().version == 1
+        && incomingData().live == false
         && incomingData().createdAt == request.time
-        && incomingData().get('likeCount', 0) == 0
-        && incomingData().get('commentCount', 0) == 0
+        && incomingData().updatedAt == request.time
+        && incomingData().corrections == []
         && incomingData().reviewNote == ''
-        // The author's declaration that the story is accurate and contains no
-        // AI-fabricated evidence, stamped by the server clock.
-        && incomingData().attestedAt == request.time
-        && incomingData().status == 'pending'
-        && incomingData().title is string
-        && incomingData().title.size() >= 10
-        && incomingData().title.size() <= 200
-        && incomingData().script is string
-        && incomingData().script.size() >= 100
-        && incomingData().script.size() <= 20000
-        && incomingData().sources is list
-        && incomingData().sources.size() >= 2
-        && incomingData().sources.size() <= 10
-        && newsSourcesOk(incomingData().sources)
-        && hateFree(incomingData().title + ' ' + incomingData().script + ' ' + incomingData().get('keyPoints', []).join(' '))
+        && incomingData().likeCount == 0 && incomingData().commentCount == 0
+        && storyContentOk(incomingData())
         && notSuspended()
         && isAdult();
-      // only admins change status (approve/reject); authors may not self-approve
-      // Reviewers approve or reject (recording who and when), and append
-      // public corrections to published stories.
-      allow update: if (isAdmin()
+      allow update: if
+        // Authors: saving a draft (or a story sent back), and submitting it.
+        (isNewsWriter()
+          && isStoryAuthor(resource.data)
+          && resource.data.status in ['draft', 'rejected']
+          && incomingData().diff(resource.data).affectedKeys().hasOnly([
+               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'format',
+               'legalHold', 'legalNote', 'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
+               'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'version', 'updatedAt'])
+          && incomingData().version == resource.data.version + 1
+          && incomingData().updatedAt == request.time
+          // The lead stays the lead; only the lead changes the co-authors,
+          // and every co-author must be a writer too.
+          && incomingData().authors[0] == resource.data.authorId
+          && (incomingData().authors == resource.data.authors
+              || (request.auth.uid == resource.data.authorId
+                  && incomingData().authors.size() <= 4
+                  && incomingData().authorNames.size() == incomingData().authors.size()
+                  && writerExists(incomingData().authors, 1) && writerExists(incomingData().authors, 2)
+                  && writerExists(incomingData().authors, 3)))
+          && storyContentOk(incomingData())
+          && notSuspended()
+          && (incomingData().status == resource.data.status
+              || (resource.data.status == 'rejected' && incomingData().status == 'draft')
+              || (incomingData().status == 'pending' && readyForReview(incomingData()))))
+        // Reviewers publish, turn down, or send a story back with a note.
+        // Nothing is published while it's on legal hold.
+        || (isAdmin()
+          && resource.data.status == 'pending'
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt'])
-          && incomingData().status in ['approved', 'rejected'])
+          && incomingData().status in ['approved', 'rejected', 'draft']
+          && (incomingData().status != 'approved' || resource.data.get('legalHold', false) != true))
+        // A reviewer clears a legal hold once the story has had its legal read.
+        || (isAdmin()
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['legalHold', 'legalNote'])
+          && incomingData().legalHold == false)
+        // Public corrections are appended to published stories, never edited away.
         || (isAdmin()
           && resource.data.status == 'approved'
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['corrections'])
-          && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1);
+          && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1)
+        // A live blog's authors start and stop its live coverage.
+        || (isStoryAuthor(resource.data)
+          && resource.data.status == 'approved'
+          && resource.data.get('format', 'story') == 'live'
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['live', 'updatedAt'])
+          && incomingData().live is bool
+          && incomingData().updatedAt == request.time);
       allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+
+      // Which block each author is typing in, so co-authors don't write over
+      // one another: "@sam is editing this".
+      match /presence/{uid} {
+        allow read: if signedIn() && isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data);
+        allow create, update: if isUser(uid)
+          && isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data)
+          && incomingData().keys().hasOnly(['blockId', 'username', 'at'])
+          && incomingData().blockId is string && incomingData().blockId.size() <= 40
+          && isMyName(incomingData().username)
+          && incomingData().at == request.time;
+        allow delete: if isUser(uid) || (signedIn() && !existsAfter(/databases/$(database)/documents/news/$(newsId))
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isAdmin()));
+      }
+
+      // Saved versions: at submission, and whenever an author chooses to.
+      // Never changed afterwards, so the history can be trusted.
+      match /revisions/{revisionId} {
+        allow read: if signedIn()
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isAdmin());
+        allow create: if isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data)
+          && incomingData().keys().hasOnly(['title', 'standfirst', 'script', 'blockIds', 'blockTypes', 'blockTexts',
+                                            'blockMedia', 'blockAlts', 'sources', 'version', 'note', 'by', 'byName', 'at'])
+          && incomingData().by == request.auth.uid
+          && isMyName(incomingData().byName)
+          && incomingData().at == request.time
+          && incomingData().note is string && incomingData().note.size() <= 200
+          && incomingData().script is string && incomingData().script.size() <= 40000
+          && incomingData().blockIds is list && incomingData().blockIds.size() <= 150;
+        allow update: if false;
+        // Only together with the story itself.
+        allow delete: if signedIn() && !existsAfter(/databases/$(database)/documents/news/$(newsId))
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isAdmin());
+      }
+
+      // A live blog's updates, newest first on the story. Posted by its
+      // authors while it's live; read by anyone who can read the story.
+      match /updates/{updateId} {
+        allow read: if signedIn()
+          && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
+          && !lockedFor('news');
+        allow create: if isNewsWriter()
+          && isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data)
+          && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
+          && get(/databases/$(database)/documents/news/$(newsId)).data.get('format', 'story') == 'live'
+          && get(/databases/$(database)/documents/news/$(newsId)).data.get('live', false) == true
+          && incomingData().keys().hasOnly(['text', 'by', 'byName', 'at', 'key'])
+          && incomingData().by == request.auth.uid
+          && isMyName(incomingData().byName)
+          && incomingData().at == request.time
+          && incomingData().text is string && incomingData().text.size() >= 1 && incomingData().text.size() <= 1500
+          && incomingData().key is bool
+          && hateFree(incomingData().text)
+          && notSuspended();
+        allow delete: if isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isAdmin();
+      }
 
       // Readers flag possible errors; only reviewers read the flags.
       match /correctionRequests/{requestId} {

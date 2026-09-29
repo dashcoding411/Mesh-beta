@@ -1,6 +1,6 @@
 // One story's page, with its corrections and the ways to report an error.
 import {
-  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, ShieldCheck, X,
+  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, ShieldCheck, X, Radio,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import { usePageTitle } from "../../lib/usePageTitle";
 import { validateText } from "../../lib/validate";
 import HomeHeader from "../shell/HomeHeader";
 import { StoryBody } from "./StoryBody";
+import { LiveUpdates } from "./LiveUpdates";
 import { TopicLabel } from "./parts";
 import { readMinutes, storyUrl } from "./text";
 import Badge from "../ui/Badge";
@@ -74,12 +75,21 @@ export function NewsStory({ id }) {
             <article aria-labelledby="story-title" className="mt-3">
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label">
                 <TopicLabel id={story.topic} />
+                {story.live && <Badge tone="danger" icon={Radio}>Live</Badge>}
                 {story.location && <span className="inline-flex items-center gap-1 text-fg-subtle"><MapPin size={12} aria-hidden="true" />{story.location}</span>}
               </p>
               <h1 id="story-title" className="mt-2 font-display text-title-1 leading-tight md:text-[2.25rem]">{story.title}</h1>
+              {story.standfirst && <p className="mt-2 text-title-3 font-normal leading-snug text-fg-muted">{story.standfirst}</p>}
               <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-subtle">
                 <span>By{" "}
-                  <button type="button" onClick={() => openUserProfile(story.authorId)} className="font-semibold text-fg-muted hover:underline">@{story.authorName}</button>
+                  {(story.authors || [story.authorId]).map((uid, i, all) => (
+                    <span key={uid}>
+                      <button type="button" onClick={() => openUserProfile(uid)} className="font-semibold text-fg-muted hover:underline">
+                        @{(story.authorNames || [story.authorName])[i]}
+                      </button>
+                      {i < all.length - 2 ? ", " : i === all.length - 2 ? " and " : ""}
+                    </span>
+                  ))}
                 </span>
                 <span aria-hidden="true">·</span>
                 <time dateTime={isoTime(story.createdAt)} title={fullTime(story.createdAt)}>{fullTime(story.createdAt)}</time>
@@ -107,11 +117,19 @@ export function NewsStory({ id }) {
 
               <StoryBody story={story} />
 
+              {story.format === "live" && story.status === "approved" && (
+                <LiveUpdates story={story} isAuthor={(story.authors || [story.authorId]).includes(me())}
+                  onLiveChange={(live) => setStory((s) => ({ ...s, live }))} />
+              )}
+
               <div className="mt-8 flex flex-wrap gap-2 border-t border-line pt-5">
                 <Button icon={Share2} onClick={share}>Share</Button>
                 <Button icon={Link2} onClick={copy}>Copy link</Button>
                 {story.status === "approved" && (
                   <Button icon={Flag} onClick={() => setDialog("suggest")}>Suggest a correction</Button>
+                )}
+                {story.status !== "approved" && (story.authors || [story.authorId]).includes(me()) && (
+                  <Button icon={PenLine} onClick={() => navigate(`/news/write/${story.id}`)}>Open in the newsroom</Button>
                 )}
                 {story.status !== "approved" && story.authorId === me() && (
                   <Button variant="danger" icon={X} onClick={() => setDialog("withdraw")}>Withdraw submission</Button>
@@ -147,7 +165,7 @@ export function NewsStory({ id }) {
       {dialog === "suggest" && <SuggestCorrectionDialog story={story} onClose={() => setDialog(null)} />}
       {dialog === "withdraw" && (
         <ConfirmDialog title="Withdraw this submission?" confirmLabel="Withdraw and delete"
-          body="It's deleted, and reviewers won't see it. You can submit a new version any time."
+          body="It's deleted, with its history, and reviewers won't see it. To keep working on it instead, open it in the Newsroom."
           onClose={() => setDialog(null)}
           onConfirm={async () => {
             try { await deleteNews(story.id); toast({ title: "Submission withdrawn" }); navigate("/news", { replace: true }); }

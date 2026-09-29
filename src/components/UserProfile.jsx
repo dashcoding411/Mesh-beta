@@ -19,6 +19,7 @@ import { useToast } from "./ui/toast-context";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
+import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
 /* Someone else's profile, opened over whatever you were doing. It has its
@@ -174,6 +175,7 @@ export default function UserProfile({ uid }) {
                 </>
               )} />
 
+            {!isBlocked && <BrickHighlight uid={uid} />}
             {isMuted && !isBlocked && (
               <p role="status" className="mx-4 mb-3 flex items-center gap-3 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted md:mx-6">
                 <VolumeX size={16} className="shrink-0" aria-hidden="true" />

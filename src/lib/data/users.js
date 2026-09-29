@@ -19,7 +19,7 @@ export async function fetchProfile(uid) {
 /* Bump this when the terms or privacy policy change materially. Existing
    accounts keep the version they accepted, which is what lets you tell who
    still needs to see a change notice. */
-export const POLICY_VERSION = "2026-09-29.2";
+export const POLICY_VERSION = "2026-09-29.3";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -109,6 +109,13 @@ export async function changeUsername(profile, nextUsername) {
 export function isMinor(profile) {
   const y = profile?.birthYear || 0;
   return y > 0 && new Date().getFullYear() - y < 16;
+}
+
+/** Back to initials: clears the photo and deletes the stored copy. */
+export async function removeAvatar() {
+  const previous = (await fetchProfile(me()).catch(() => null))?.photoURL;
+  await updateDoc(doc(db, "users", me()), { photoURL: "" });
+  await deleteInline(previous);
 }
 
 export async function uploadAvatar(file, onProgress) {

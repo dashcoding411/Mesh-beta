@@ -1,12 +1,11 @@
 // The News front page: topics, the review queue, your submissions and the stories.
-import { ChevronDown, Clock, MapPin, Newspaper, PenLine, ShieldCheck, XCircle } from "lucide-react";
+import { ChevronDown, MapPin, Newspaper, PenLine, ShieldCheck, Radio } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchMyNews, fetchNews, isAdmin, reviewNews } from "../../lib/db";
+import { clearLegalHold, fetchNews, isAdmin, isNewsWriter, reviewNews } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
 import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { ReviewCard } from "./Review";
-import { SubmitDialog } from "./SubmitDialog";
 import { Meta, TopicLabel } from "./parts";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
@@ -19,23 +18,22 @@ export function NewsHome() {
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [error, setError] = useState(false);
-  const [mine, setMine] = useState([]);
   const [pending, setPending] = useState([]);
   const [admin, setAdmin] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [writer, setWriter] = useState(false);
   const [topic, setTopic] = useState("all");
 
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [approved, myItems, amAdmin] = await Promise.all([
+      const [approved, amAdmin, amWriter] = await Promise.all([
         fetchNews("approved"),
-        fetchMyNews().catch(() => []),
         isAdmin().catch(() => false),
+        isNewsWriter().catch(() => false),
       ]);
       setItems(approved);
-      setMine(myItems);
       setAdmin(amAdmin);
+      setWriter(amWriter);
       if (amAdmin) setPending(await fetchNews("pending").catch(() => []));
     } catch (err) {
       console.error(err);
@@ -47,16 +45,21 @@ export function NewsHome() {
 
   const review = async (item, status, note = "") => {
     try {
+      if (status === "hold-cleared") {
+        await clearLegalHold(item.id);
+        setPending((prev) => prev.map((n) => (n.id === item.id ? { ...n, legalHold: false, legalNote: "" } : n)));
+        toast({ title: "Legal hold cleared" });
+        return;
+      }
       await reviewNews(item.id, status, note);
       setPending((prev) => prev.filter((n) => n.id !== item.id));
-      toast({ title: status === "approved" ? "Published" : "Returned to the author" });
+      toast({ title: status === "approved" ? "Published" : status === "draft" ? "Sent back with your notes" : "Returned to the author" });
       if (status === "approved") load();
     } catch {
       toast({ tone: "error", title: "Couldn't save that review" });
     }
   };
 
-  const unpublished = mine.filter((n) => n.status !== "approved");
   const shown = useMemo(() => (items || []).filter((n) => topic === "all" || (n.topic || "world") === topic), [items, topic]);
   // Only offer topics that have something in them, plus whatever is selected.
   const liveTopics = useMemo(() => {
@@ -68,7 +71,7 @@ export function NewsHome() {
   return (
     <>
       <HomeHeader section="news"
-        actions={<Button size="sm" variant="primary" icon={PenLine} className="hidden md:inline-flex" onClick={() => setSubmitting(true)}>Submit a story</Button>} />
+        actions={writer ? <Button size="sm" variant="primary" icon={PenLine} className="hidden md:inline-flex" onClick={() => navigate("/news/desk")}>Newsroom</Button> : null} />
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-4 pb-16 pt-4 md:px-6">
@@ -88,7 +91,7 @@ export function NewsHome() {
             </div>
           )}
 
-          <HowItWorks onSubmit={() => setSubmitting(true)} />
+          <HowItWorks writer={writer} />
 
           {admin && pending.length > 0 && (
             <section aria-labelledby="queue-h" className="mt-6">
@@ -98,31 +101,6 @@ export function NewsHome() {
               <div className="space-y-4">
                 {pending.map((n) => <ReviewCard key={n.id} item={n} onReview={review} />)}
               </div>
-            </section>
-          )}
-
-          {unpublished.length > 0 && (
-            <section aria-labelledby="mine-h" className="mt-6">
-              <h2 id="mine-h" className="mb-3 text-title-3">Your submissions</h2>
-              <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
-                {unpublished.map((n) => (
-                  <li key={n.id}>
-                    <button type="button" onClick={() => navigate(`/news/${n.id}`)}
-                      className="press block w-full p-4 text-left transition-colors hover:bg-surface-2">
-                      <span className="flex items-start justify-between gap-3">
-                        <span className="min-w-0 text-callout font-medium">{n.title}</span>
-                        {n.status === "pending"
-                          ? <Badge tone="warning" icon={Clock}>In review</Badge>
-                          : <Badge tone="danger" icon={XCircle}>Not published</Badge>}
-                      </span>
-                      {n.status === "rejected" && n.reviewNote && (
-                        <span className="mt-2 block text-caption text-fg-muted">Reviewer's note: {n.reviewNote}</span>
-                      )}
-                      <span className="mt-1 block text-caption text-accent-text">Preview how it will look</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
             </section>
           )}
 
@@ -138,11 +116,11 @@ export function NewsHome() {
             {items?.length === 0 && (
               <EmptyState icon={Newspaper} title="No stories published yet"
                 body="Stories appear here once a reviewer has checked them against their sources."
-                action={<Button variant="primary" icon={PenLine} onClick={() => setSubmitting(true)}>Submit the first story</Button>} />
+                action={writer ? <Button variant="primary" icon={PenLine} onClick={() => navigate("/news/desk")}>Write the first story</Button> : null} />
             )}
             {items?.length > 0 && shown.length === 0 && (
               <EmptyState compact icon={Newspaper} title={`No ${newsTopicById(topic)?.label.toLowerCase()} stories yet`}
-                body="Pick another topic, or submit one yourself."
+                body="Pick another topic."
                 action={<Button onClick={() => setTopic("all")}>Show all stories</Button>} />
             )}
             {lead && <LeadStory item={lead} />}
@@ -155,10 +133,6 @@ export function NewsHome() {
         </div>
       </div>
 
-      {submitting && (
-        <SubmitDialog onClose={() => setSubmitting(false)}
-          onSubmitted={() => { setSubmitting(false); load(); toast({ title: "Sent for review", body: "You'll see its status under Your submissions." }); }} />
-      )}
     </>
   );
 }
@@ -176,6 +150,7 @@ function LeadStory({ item }) {
         <span className="block p-5">
           <span className="flex flex-wrap items-center gap-2 text-label">
             <TopicLabel id={item.topic} />
+            {item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}
             {item.location && <span className="inline-flex items-center gap-1 text-fg-subtle"><MapPin size={12} aria-hidden="true" />{item.location}</span>}
           </span>
           <h3 id={`lead-${item.id}`} className="mt-2 font-display text-title-1 leading-tight group-hover:underline decoration-fg-subtle underline-offset-4">{item.title}</h3>
@@ -193,7 +168,7 @@ function StoryRow({ item }) {
       <button type="button" onClick={() => navigate(`/news/${item.id}`)}
         className="press group flex w-full gap-4 py-4 text-left">
         <span className="min-w-0 flex-1">
-          <span className="text-label"><TopicLabel id={item.topic} /></span>
+          <span className="flex items-center gap-2 text-label"><TopicLabel id={item.topic} />{item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}</span>
           <h3 id={`row-${item.id}`} className="mt-1 line-clamp-2 text-title-3 group-hover:underline decoration-fg-subtle underline-offset-2">{item.title}</h3>
           <span className="mt-1 line-clamp-2 block text-callout text-fg-muted">{summaryOf(item)}</span>
           <span className="mt-2 block"><Meta item={item} /></span>
@@ -207,7 +182,7 @@ function StoryRow({ item }) {
   );
 }
 
-function HowItWorks({ onSubmit }) {
+function HowItWorks({ writer }) {
   return (
     <details className="group rounded-card border border-line bg-surface">
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -219,12 +194,12 @@ function HowItWorks({ onSubmit }) {
         <ChevronDown size={18} className="shrink-0 text-fg-subtle transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="space-y-2 border-t border-line px-4 py-4 text-callout text-fg-muted">
-        <p>Anyone 16 or over can submit a story. Nobody can publish their own.</p>
-        <p>Each submission needs its full script and at least two sources, cited by number in the text. A reviewer checks the story against those sources before it goes up.</p>
+        <p>Stories are written by writers the Mesh team has approved, each named on what they write. Nobody can publish their own.</p>
+        <p>Every story needs at least two sources, cited by number in the text. A reviewer checks it against those sources before it goes up, and anything marked for a legal read waits until it's had one.</p>
         <p>AI can't be used to fabricate evidence: no generated photos, footage, audio or quotes presented as real.</p>
         <p>Spot a mistake? Every story has "Suggest a correction". Corrections are added publicly and never quietly edited away.</p>
         <p className="text-fg">Review isn't a guarantee of truth. Read the sources and make up your own mind.</p>
-        <Button size="sm" variant="primary" icon={PenLine} className="mt-2 md:hidden" onClick={onSubmit}>Submit a story</Button>
+        {writer && <Button size="sm" variant="primary" icon={PenLine} className="mt-2 md:hidden" onClick={() => navigate("/news/desk")}>Open the newsroom</Button>}
       </div>
     </details>
   );

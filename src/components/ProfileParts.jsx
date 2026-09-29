@@ -9,6 +9,7 @@ import { LIMITS, validateText, validateUsername } from "../lib/validate";
 import { compact } from "../lib/format";
 import { checkContent } from "../lib/moderation";
 import Avatar from "./ui/Avatar";
+import { PhotoField } from "./ProfilePhoto";
 import Button from "./ui/Button";
 import Dialog from "./ui/Dialog";
 import RichText from "./ui/RichText";
@@ -36,14 +37,14 @@ function useVerifiedSpouse(profile) {
 /* The public face of an account, the same layout whether it's yours or
    someone else's, so what you see of yourself is what others see of you.
    Only the buttons differ. */
-export function ProfileHeader({ profile, postCount, actions, onShowFollows }) {
+export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar }) {
   const joined = tsMillis(profile.createdAt);
   const spouse = useVerifiedSpouse(profile);
 
   return (
     <section aria-label="Profile" className="px-4 pb-4 pt-5 md:px-6">
       <div className="flex items-start gap-4 md:gap-6">
-        <Avatar profile={profile} size={88} />
+        {avatar || <Avatar profile={profile} size={88} />}
         <div className="min-w-0 flex-1 pt-1">
           <h1 className="flex min-w-0 items-center gap-2 text-title-1">
             <span className="truncate">{profile.name || profile.username}</span>
@@ -237,6 +238,10 @@ export function EditProfileDialog({ profile, onClose, onSaved }) {
         </div>
       }>
       <form id="edit-profile" onSubmit={save} className="space-y-5" noValidate>
+        <div>
+          <p className="mb-2 text-callout font-medium text-fg">Profile photo</p>
+          <PhotoField />
+        </div>
         <Field label="Name" hint="Shown on everything you post. Names can repeat." error={errors.name} count={name.length} max={50}>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} autoComplete="name" />
         </Field>

@@ -5,6 +5,7 @@ import {
 import {
   isAdmin, fetchReports, resolveReports, clearPost, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
+  fetchWriters, addWriter, removeWriter,
 } from "../lib/db";
 import { assessText } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -41,7 +42,7 @@ export default function Moderation() {
     setError(false);
     setReports(null);
     try {
-      setReports(tab === "suspended" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
+      setReports(tab === "suspended" || tab === "writers" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
         .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
     } catch (err) {
       console.error(err);
@@ -87,9 +88,9 @@ export default function Moderation() {
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open" }, { id: "closed", label: "Decided" }, { id: "suspended", label: "Suspended accounts" }]} />
+                tabs={[{ id: "open", label: "Open" }, { id: "closed", label: "Decided" }, { id: "suspended", label: "Suspended accounts" }, { id: "writers", label: "News writers" }]} />
 
-              {tab === "suspended" ? <Suspensions /> : (
+              {tab === "writers" ? <Writers /> : tab === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Couldn't load reports" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
@@ -334,5 +335,62 @@ function Suspensions() {
         </li>
       ))}
     </ul>
+  );
+}
+
+/* Who can write for Mesh News. Writers are named on everything they write
+   and their stories still go through review; this only decides who may
+   start one. */
+function Writers() {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const [handle, setHandle] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetchWriters().then((l) => setList(l.sort((a, b) => a.username.localeCompare(b.username)))).catch(() => setList([]));
+  useEffect(() => { load(); }, []);
+  const add = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const w = await addWriter(handle.trim().replace(/^@/, "").toLowerCase());
+      toast({ title: `@${w.username} can now write for Mesh News` });
+      setHandle("");
+      load();
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins can add writers." : err.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="space-y-4">
+      <p className="text-caption text-fg-muted">
+        Writers can start, co-write and send stories for review. Every story still needs a reviewer to check it against its sources before it's published.
+      </p>
+      <form onSubmit={add} className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <label htmlFor="writer-handle" className="sr-only">Handle</label>
+          <input id="writer-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+          <InlineMessage>{error}</InlineMessage>
+        </div>
+        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add writer</Button>
+      </form>
+      {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
+        <EmptyState compact icon={ShieldCheck} title="No writers yet" body="Add someone by their handle." />
+      ) : (
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+          {list.map((w) => (
+            <li key={w.id} className="flex min-h-12 items-center gap-3 px-4">
+              <span className="min-w-0 flex-1 truncate text-callout">@{w.username}</span>
+              <span className="text-caption text-fg-subtle">since {shortTime(w.addedAt)}</span>
+              <Button size="sm" variant="ghost" onClick={async () => {
+                try { await removeWriter(w.id); setList((l) => l.filter((x) => x.id !== w.id)); toast({ title: `@${w.username} is no longer a writer` }); }
+                catch { toast({ tone: "error", title: "Couldn't remove them" }); }
+              }}>Remove</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

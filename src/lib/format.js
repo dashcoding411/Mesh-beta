@@ -104,3 +104,13 @@ export function spanLabel(ms) {
   if (h >= 48) return `${Math.round(h / 24)} days`;
   return h ? `${h}h ${m % 60}m` : `${m}m`;
 }
+
+/** Bricked time: "45m", "14h 30m", "3d 2h". */
+export function durationLabel(seconds) {
+  const m = Math.floor((seconds || 0) / 60);
+  if (m < 1) return seconds > 0 ? "under 1m" : "0m";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${Math.floor(h / 24)}d`;
+}

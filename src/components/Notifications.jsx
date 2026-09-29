@@ -9,7 +9,7 @@ import { navigate } from "../lib/router";
 import { shortTime, fullTime, plural, whenLabel, spanLabel } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
-import Avatar from "./ui/Avatar";
+import LiveAvatar from "./ui/LiveAvatar";
 import Button from "./ui/Button";
 import { EmptyState, Skeleton, Loading } from "./ui/States";
 import { useToast } from "./ui/toast-context";
@@ -214,7 +214,7 @@ function NoticeRow({ group, fresh, following }) {
     <li className={`relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface ${fresh ? "bg-accent-soft/40" : ""}`}>
       <button type="button" onClick={open} className="absolute inset-0" aria-label={`${n.actorName}: open`} tabIndex={-1} />
       <span className="relative shrink-0">
-        <Avatar profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={44} />
+        <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={44} />
         <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
           <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" ? "currentColor" : "none"} />
         </span>

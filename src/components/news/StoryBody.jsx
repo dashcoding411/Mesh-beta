@@ -1,6 +1,8 @@
 // A story's key points, text with numbered citations, and its sources.
 import { ExternalLink, ListChecks } from "lucide-react";
 import { CITE, hostOf } from "./text";
+import { blocksFromDoc } from "../../lib/storyDoc";
+import MediaImg from "../ui/MediaImg";
 
 /* Key points, the script with its numbered citations, and the source list
    they point to. Shared by the story page and the review queue. */
@@ -13,7 +15,23 @@ export function StoryBody({ story }) {
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
     el?.querySelector("a")?.focus({ preventScroll: true });
   };
-  const paragraphs = String(story.script || "").split(/\n{2,}|\n/).filter((p) => p.trim());
+  // Stories written in the newsroom are blocks; older ones are a script.
+  const blocks = story.blocks || blocksFromDoc(story);
+  // "morning [1]." reads as "morning¹." with no gap before the number.
+  const cite = (text) => String(text || "").split(CITE).map((part, j, all) => {
+    if (j % 2 === 0) return j + 1 < all.length ? part.replace(/\s+$/, "") : part;
+    const n = Number(part);
+    if (!n || n > sources.length) return `[${part}]`;
+    return (
+      <sup key={j}>
+        <a href={`#${uid}-src-${n}`} onClick={(e) => jump(e, n)}
+          aria-label={`Source ${n}, ${hostOf(sources[n - 1])}`}
+          className="ml-0.5 rounded px-0.5 text-label font-semibold text-accent-text hover:underline">
+          [{n}]
+        </a>
+      </sup>
+    );
+  });
 
   return (
     <>
@@ -33,25 +51,35 @@ export function StoryBody({ story }) {
       )}
 
       <div className="mt-6 max-w-[68ch] space-y-4 text-body leading-relaxed text-fg">
-        {paragraphs.map((p, i) => (
-          <p key={i} className="whitespace-pre-wrap break-words">
-            {p.split(CITE).map((part, j, all) => {
-              // "morning [1]." reads as "morning¹." with no gap before the number.
-              if (j % 2 === 0) return j + 1 < all.length ? part.replace(/\s+$/, "") : part;
-              const n = Number(part);
-              if (!n || n > sources.length) return `[${part}]`;
-              return (
-                <sup key={j}>
-                  <a href={`#${uid}-src-${n}`} onClick={(e) => jump(e, n)}
-                    aria-label={`Source ${n}, ${hostOf(sources[n - 1])}`}
-                    className="ml-0.5 rounded px-0.5 text-label font-semibold text-accent-text hover:underline">
-                    [{n}]
-                  </a>
-                </sup>
-              );
-            })}
-          </p>
-        ))}
+        {blocks.map((b) => {
+          if (b.type === "h2") return <h2 key={b.id} className="pt-2 text-title-2">{cite(b.text)}</h2>;
+          if (b.type === "h3") return <h3 key={b.id} className="pt-1 text-title-3">{cite(b.text)}</h3>;
+          if (b.type === "quote") {
+            return (
+              <blockquote key={b.id} className="border-l-4 border-accent-text py-1 pl-4 font-display text-title-3 font-semibold leading-snug">
+                {cite(b.text)}
+              </blockquote>
+            );
+          }
+          if (b.type === "list") {
+            return (
+              <ul key={b.id} className="list-disc space-y-1 pl-6">
+                {b.text.split("\n").filter((l) => l.trim()).map((l, i) => <li key={i}>{cite(l)}</li>)}
+              </ul>
+            );
+          }
+          if (b.type === "image") {
+            return b.media ? (
+              <figure key={b.id} className="my-2">
+                <MediaImg src={b.media} alt={b.alt || ""} loading="lazy" className="w-full rounded-card object-cover"
+                  placeholderClass="aspect-[16/9] w-full rounded-card" />
+                {b.text && <figcaption className="mt-2 text-caption text-fg-subtle">{cite(b.text)}</figcaption>}
+              </figure>
+            ) : null;
+          }
+          if (b.type === "divider") return <hr key={b.id} className="my-6 border-line" />;
+          return b.text.trim() ? <p key={b.id} className="whitespace-pre-wrap break-words">{cite(b.text)}</p> : null;
+        })}
       </div>
 
       <section aria-labelledby={`${uid}-src-h`} className="mt-8 border-t border-line pt-5">

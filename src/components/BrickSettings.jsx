@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus,
+  BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus, Trophy, Flame, Share2,
 } from "lucide-react";
 import {
   SECTIONS, DAYS, DAY_NAMES, COOL_OFF_MS, emptyLayer, windowsToSlots, windowLabel, clockLabel, isTighterOrSame,
@@ -10,7 +10,11 @@ import {
   saveOwnLimits, cancelPending, brickUntil, requestTimeZoneChange, fetchMyFamilyLink, fetchMyTeens, inviteTeen,
   acceptFamilyInvite, declineFamilyInvite, removeFamilyLink, saveParentLimits, answerParentRequest,
   requestParentChange, withdrawParentRequest, listenLock, fetchProfile, fetchUsageFor, deleteNotices,
+  fetchBrickStats, setStatsPublic, weekKeyFor,
 } from "../lib/db";
+import { durationLabel } from "../lib/format";
+import { navigate } from "../lib/router";
+import Switch from "./ui/Switch";
 import { useBrick } from "../lib/useBrick";
 import { useShell } from "./shell/ShellContext";
 import TopBar from "./shell/TopBar";
@@ -216,6 +220,8 @@ export default function BrickSettings() {
               </span>
             </p>
           )}
+
+          <BrickedTime policy={policy} />
 
           <FamilySection profile={profile} policy={policy} />
         </div>
@@ -616,3 +622,63 @@ function LayerSummary({ layer, now }) {
   );
 }
 
+/* What you've got to show for it: time bricked this week and in total, and
+   a streak of days, counted only from bricks the server enforced. Private
+   until you choose to show it on your profile and the leaderboard. */
+function BrickedTime({ policy }) {
+  const toast = useToast();
+  const { openComposer } = useShell();
+  const [stats, setStats] = useState(undefined);
+  const [busy, setBusy] = useState(false);
+  const [week] = useState(() => weekKeyFor(Date.now(), policy?.tzOffset ?? deviceOffset()));
+  useEffect(() => { fetchBrickStats().then(setStats).catch(() => setStats(null)); }, [policy?.self?.until]);
+  if (!policy || stats === undefined) return null;
+  const thisWeek = stats && stats.weekKey === week ? stats.weekSeconds : 0;
+
+  const toggle = async (on) => {
+    setBusy(true);
+    try {
+      await setStatsPublic(policy, on);
+      setStats((s) => ({ ...s, public: on }));
+      toast({ title: on ? "Showing your bricked time" : "Your bricked time is private again",
+        body: on ? "It's on your profile and the leaderboard." : undefined });
+    } catch { toast({ tone: "error", title: "Couldn't change that" }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Group icon={Trophy} title="Bricked time" help="Counted from bricks Mesh enforced: finished instant bricks and whole days of scheduled time.">
+      {!stats ? (
+        <p className="px-4 py-3 text-callout text-fg-subtle">Counting starts today.</p>
+      ) : (
+        <>
+          <dl className="grid grid-cols-3 divide-x divide-line">
+            {[["This week", durationLabel(thisWeek)], ["In total", durationLabel(stats.totalSeconds)], ["Streak", stats.streakDays ? `${stats.streakDays} day${stats.streakDays === 1 ? "" : "s"}` : "None yet"]].map(([k, v]) => (
+              <div key={k} className="px-3 py-3 text-center">
+                <dt className="text-label font-semibold uppercase tracking-wider text-fg-subtle">{k}</dt>
+                <dd className="mt-1 text-title-3 tabular">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex items-start gap-3 border-t border-line px-4 py-3">
+            <span className="min-w-0 flex-1">
+              <label htmlFor="stats-public" className="block text-callout font-medium text-fg">Show on my profile and the leaderboard</label>
+              <span className="mt-0.5 block text-caption text-fg-subtle">Only your bricked time, never your limits or what you use.</span>
+            </span>
+            <Switch id="stats-public" checked={!!stats.public} disabled={busy} onChange={toggle} />
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-line px-4 py-3">
+            <Button size="sm" icon={Trophy} onClick={() => navigate("/leaderboard")}>Leaderboard</Button>
+            {stats.totalSeconds > 0 && (
+              <Button size="sm" icon={Share2} onClick={() => openComposer({
+                kind: "text",
+                text: `I've kept Mesh bricked for ${durationLabel(thisWeek || stats.totalSeconds)} ${thisWeek ? "this week" : "so far"}${stats.streakDays > 1 ? `, ${stats.streakDays} days in a row` : ""}. #brickmode`,
+              })}>Share</Button>
+            )}
+            {stats.streakDays > 1 && <span className="inline-flex items-center gap-1 text-caption text-fg-subtle"><Flame size={14} aria-hidden="true" /> Keep the streak going</span>}
+          </div>
+        </>
+      )}
+    </Group>
+  );
+}

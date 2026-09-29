@@ -9,7 +9,7 @@ import { LIMITS, validateText } from "../lib/validate";
 import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
 import { shortTime, fullTime, isoTime } from "../lib/format";
 import Dialog from "./ui/Dialog";
-import Avatar from "./ui/Avatar";
+import LiveAvatar from "./ui/LiveAvatar";
 import IconButton from "./ui/IconButton";
 import RichText from "./ui/RichText";
 import { Textarea } from "./ui/Field";
@@ -179,7 +179,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
             <li key={c.id} className="group flex gap-3 px-5 py-3">
               <button type="button" onClick={() => c.authorId && openUserProfile(c.authorId)} className="h-fit shrink-0"
                 aria-label={`@${c.authorName}'s profile`}>
-                <Avatar profile={{ name: c.authorDisplayName, username: c.authorName, photoURL: c.authorPhoto }} size={32} />
+                <LiveAvatar uid={c.authorId} profile={{ name: c.authorDisplayName, username: c.authorName, photoURL: c.authorPhoto }} size={32} />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="flex items-baseline gap-1.5">

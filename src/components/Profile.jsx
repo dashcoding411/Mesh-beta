@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { Settings, Link2, Camera, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake } from "lucide-react";
 import {
-  fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, uploadAvatar, fetchIncomingSpouseRequests,
-  respondSpouseRequest, isMinor, me, StorageUnavailableError, fetchMySpouseRequestStatus, updateProfileFields,
+  fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, fetchIncomingSpouseRequests,
+  respondSpouseRequest, isMinor, me, fetchMySpouseRequestStatus, updateProfileFields,
 } from "../lib/db";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
+import { EditableAvatar } from "./ProfilePhoto";
+import BrickHighlight from "./BrickHighlight";
 import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import TopBar from "./shell/TopBar";
@@ -29,8 +31,6 @@ export default function Profile() {
   const [editing, setEditing] = useState(false);
   const [follows, setFollows] = useState(null);
   const [spouseRequests, setSpouseRequests] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef(null);
 
   useEffect(() => {
     fetchPostsByAuthor(me()).then((l) => setPosts(l.filter((p) => !p.groupId))).catch(() => setPosts([]));
@@ -57,25 +57,6 @@ export default function Profile() {
     if (tab === "reposts" && reposts === null) fetchRepostedPosts(me()).then(setReposts).catch(() => setReposts([]));
     if (tab === "saved" && saved === null) fetchSavedPosts().then(setSaved).catch(() => setSaved([]));
   }, [tab, reposts, saved]);
-
-  const changeAvatar = async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return toast({ tone: "error", title: "Choose an image for your profile picture" });
-    setUploading(true);
-    try {
-      const url = await uploadAvatar(file);
-      setProfile({ ...profile, photoURL: url });
-      toast({ title: "Profile picture updated" });
-    } catch (err) {
-      toast({
-        tone: "error",
-        title: err instanceof StorageUnavailableError ? "Photo uploads aren't switched on yet" : "Couldn't update your picture",
-        body: err instanceof StorageUnavailableError ? "They need Firebase Cloud Storage (Blaze plan)." : "Try again in a moment.",
-      });
-    } finally { setUploading(false); }
-  };
 
   const shareProfile = async () => {
     const url = `${window.location.origin}/u/${me()}`;
@@ -118,21 +99,16 @@ export default function Profile() {
 
           <div className="relative">
             <ProfileHeader profile={profile} postCount={posts?.length ?? null}
-              onShowFollows={(kind) => setFollows(kind)}
+              onShowFollows={(kind) => setFollows(kind)} avatar={<EditableAvatar size={88} />}
               actions={
                 <>
                   <Button className="flex-1" onClick={() => setEditing(true)}>Edit profile</Button>
                   <Button className="flex-1" icon={Link2} onClick={shareProfile}>Share profile</Button>
                 </>
               } />
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-              aria-label="Change profile picture"
-              className="press absolute left-[76px] top-[84px] flex h-9 w-9 items-center justify-center rounded-full border-2 border-canvas bg-surface-3 text-fg hover:bg-accent md:left-[84px]">
-              <Camera size={16} aria-hidden="true" />
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={changeAvatar} tabIndex={-1} aria-hidden="true" />
           </div>
 
+          <BrickHighlight uid={profile.id} own />
           {isMinor(profile) && (
             <p className="mx-4 mb-3 flex items-start gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted md:mx-6">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />

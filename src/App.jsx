@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
+import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported } from "./lib/calls";
 
 import { useToast } from "./components/ui/toast-context";
@@ -20,6 +21,7 @@ import StorageNotice from "./components/StorageNotice";
 import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
 import Shortcuts from "./components/Shortcuts";
+import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
 import { DOCUMENTS } from "./legal/content.js";
@@ -40,6 +42,7 @@ const Profile = lazy(() => import("./components/Profile"));
 const Settings = lazy(() => import("./components/Settings"));
 const BrickSettings = lazy(() => import("./components/BrickSettings"));
 const Notifications = lazy(() => import("./components/Notifications"));
+const Leaderboard = lazy(() => import("./components/Leaderboard"));
 const PublicGathering = lazy(() => import("./components/PublicGathering"));
 const Legal = lazy(() => import("./components/Legal"));
 const Moderation = lazy(() => import("./components/Moderation"));
@@ -54,7 +57,7 @@ const InterestsDialog = named(() => import("./components/Interests"), "Interests
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search", saved: "Saved",
-  notifications: "Notifications",
+  notifications: "Notifications", leaderboard: "Leaderboard",
 };
 
 /* Which brick-mode section a page belongs to. Messages, calls, your
@@ -62,6 +65,8 @@ const SECTION_TITLES = {
    those are for getting somewhere, not for scrolling. */
 function lockSectionOf(page) {
   if (page.tab !== "home" || page.gatheringId || page.notFound) return null;
+  // Writing isn't reading: the newsroom stays open during a News limit.
+  if (page.section === "news" && page.view) return null;
   return { foryou: "feed", following: "feed", search: "feed", circles: "feed", saved: "feed", flicks: "flicks", news: "news" }[page.section] || null;
 }
 
@@ -129,6 +134,8 @@ export default function App() {
   }, []);
 
   const signedIn = !!(user && profile);
+  // Your own current name and photo, for every card that shows you.
+  useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
   const brick = useBrickEngine(signedIn);
 
@@ -258,7 +265,7 @@ export default function App() {
     switch (page.section) {
       case "following": content = <HomeFeed key={`following-${feedKey}`} mode="following" />; break;
       case "flicks": content = <Flicks key={`flicks-${feedKey}`} startId={page.id} />; break;
-      case "news": content = <News storyId={page.id} />; break;
+      case "news": content = <News storyId={page.id} view={page.view} />; break;
       case "circles":
         content = page.gatheringId
           ? <GatheringPage key={`g-${page.gatheringId}-${feedKey}`} eventId={page.gatheringId} />
@@ -267,6 +274,7 @@ export default function App() {
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
       case "saved": content = <Saved />; break;
       case "notifications": content = <Notifications />; break;
+      case "leaderboard": content = <Leaderboard />; break;
       default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
@@ -345,6 +353,7 @@ export default function App() {
 
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
         <Shortcuts onCreate={openComposer} />
+        <ExternalLinkDialog />
 
         {interestsDialog && (
           <InterestsDialog initial={interests} firstRun={interestsDialog === "first"}

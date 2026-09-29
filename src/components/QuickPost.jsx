@@ -5,6 +5,7 @@ import { createPost, isMinor, STRAND_MAX } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import { readDraft, useDraft } from "../lib/drafts";
+import { suggestTopics } from "../lib/interests";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
@@ -41,7 +42,8 @@ export default function QuickPost({ onPosted }) {
     setBusy(true);
     setError("");
     try {
-      const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive });
+      // Topics come from the words themselves; nobody has to pick them.
+      const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive, topics: suggestTopics(v.text) });
       markPosted("post", v.text);
       finishDraft();
       setText("");

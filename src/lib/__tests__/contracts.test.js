@@ -53,3 +53,19 @@ describe("app and security rules agree", () => {
     expect(rules).toContain("([0-9][ ().-]{0,2}){9,}[0-9]");
   });
 });
+
+describe("the data layer's single entry point", () => {
+  it("has no two modules exporting the same name (one would be silently dropped)", () => {
+    const dir = new URL("../data/", import.meta.url);
+    const seen = new Map();
+    const clashes = [];
+    for (const f of readdirSync(dir)) {
+      const src = readFileSync(new URL(f, dir), "utf8");
+      for (const m of src.matchAll(/^export (?:async )?(?:function|const|class) ([A-Za-z0-9_]+)/gm)) {
+        if (seen.has(m[1])) clashes.push(`${m[1]} (${seen.get(m[1])} and ${f})`);
+        seen.set(m[1], f);
+      }
+    }
+    expect(clashes).toEqual([]);
+  });
+});

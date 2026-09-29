@@ -1,0 +1,579 @@
+// Writing a story: the newsroom's editor.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft, ArrowDown, ArrowUp, Trash2, Plus, ImagePlus, History, Eye, Send, Scale, Radio, Users, X, Check, Info,
+  Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, ListChecks,
+} from "lucide-react";
+import {
+  listenStory, saveStory, submitStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
+  clearStoryPresence, coAuthorFor, uploadMedia, me,
+} from "../../lib/db";
+import { mergeStory, newBlock, storyStats, reviewProblems, MAX_BLOCKS } from "../../lib/storyDoc";
+import { NEWS_TOPICS } from "../../lib/interests";
+import { checkContent } from "../../lib/moderation";
+import { goBack, navigate } from "../../lib/router";
+import { relativeTime } from "../../lib/format";
+import { useShell } from "../shell/ShellContext";
+import { StoryBody } from "./StoryBody";
+import { TopicLabel } from "./parts";
+import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
+import Badge from "../ui/Badge";
+import Dialog from "../ui/Dialog";
+import Segmented from "../ui/Segmented";
+import Switch from "../ui/Switch";
+import MediaImg from "../ui/MediaImg";
+import { Checkbox, Field, Input, Select, Textarea } from "../ui/Field";
+import { EmptyState, InlineMessage, Skeleton, Spinner } from "../ui/States";
+import { useToast } from "../ui/toast-context";
+import { usePageTitle } from "../../lib/usePageTitle";
+
+const TYPE_ICONS = { p: Pilcrow, h2: Heading2, h3: Heading3, quote: Quote, list: List, image: ImageIcon, divider: Minus };
+const TEXT_TYPES = [["p", "Paragraph"], ["h2", "Heading"], ["h3", "Subheading"], ["quote", "Quote"], ["list", "List"]];
+const ADDABLE = [["p", "Paragraph"], ["h2", "Heading"], ["quote", "Quote"], ["list", "List"], ["image", "Image"], ["divider", "Divider"]];
+const PRESENCE_MS = 2 * 60 * 1000;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/* The editor. Everything is saved as you go, as numbered versions. Co-
+   authors see each other's changes appear, see who's typing in which block
+   (and can't type over them), and if two people save at the same moment
+   the changes are merged block by block. Nothing is published from here:
+   it goes to a reviewer. */
+export default function StoryEditor({ id }) {
+  const toast = useToast();
+  const { profile } = useShell();
+  const [base, setBase] = useState(null); // the story as last saved
+  const [local, setLocal] = useState(null); // the story as you're editing it
+  const [missing, setMissing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(0);
+  const [saveError, setSaveError] = useState("");
+  const [presence, setPresenceList] = useState([]);
+  const [now, setNow] = useState(() => Date.now());
+  const [dialog, setDialog] = useState(null); // submit | history | preview
+  const baseRef = useRef(null);
+  const localRef = useRef(null);
+  useEffect(() => { baseRef.current = base; }, [base]);
+  useEffect(() => { localRef.current = local; }, [local]);
+  usePageTitle(local?.title ? `Editing: ${local.title}` : "New story", 2);
+
+  // The story, live: a co-author's saved changes merge into what you're
+  // writing, block by block, without touching the blocks you're working on.
+  useEffect(() => listenStory(id, (server) => {
+    if (!server) { setMissing(true); return; }
+    const b = baseRef.current;
+    if (!b) { setBase(server); setLocal(server); return; }
+    if (server.version <= b.version) return;
+    setLocal((cur) => (cur && !same(cur, b) ? mergeStory(b, server, cur) : server));
+    setBase(server);
+  }, () => setMissing(true)), [id]);
+
+  useEffect(() => listenStoryPresence(id, setPresenceList), [id]);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15000);
+    return () => { clearInterval(t); clearStoryPresence(id); };
+  }, [id]);
+
+  const editable = local && ["draft", "rejected"].includes(local.status);
+  const dirty = !!local && !!base && !same(local, base);
+  const lead = local?.authorId === me();
+
+  // Save a moment after you stop typing. Edits made while a save is on its
+  // way are rebased onto the result, so none are lost.
+  const save = useCallback(async () => {
+    const b = baseRef.current;
+    const mine = localRef.current;
+    if (!b || !mine || same(b, mine) || saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const { story, merged } = await saveStory(id, b, mine);
+      setBase(story);
+      setLocal((cur) => (same(cur, mine) ? story : mergeStory(mine, story, cur)));
+      setSavedAt(Date.now());
+      if (merged) toast({ title: "Merged with a co-author's changes" });
+    } catch (err) {
+      console.error(err);
+      setSaveError(err?.code === "permission-denied"
+        ? "Couldn't save: something in the story isn't allowed (check the sources and images), or you're no longer a writer."
+        : "Couldn't save. Check your connection. Your changes are still here.");
+    } finally { setSaving(false); }
+  }, [id, saving, toast]);
+
+  useEffect(() => {
+    if (!dirty || !editable) return undefined;
+    const t = setTimeout(save, 1500);
+    return () => clearTimeout(t);
+  }, [local, dirty, editable, save]);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  // Who else is where.
+  const lockedBy = useMemo(() => {
+    const map = {};
+    for (const p of presence) {
+      const at = p.at?.toMillis?.() || 0;
+      if (p.uid !== me() && now - at < PRESENCE_MS) map[p.blockId] = p.username;
+    }
+    return map;
+  }, [presence, now]);
+  const lastPing = useRef({ block: "", at: 0 });
+  const focusBlock = (blockId) => {
+    const t = Date.now();
+    if (lastPing.current.block === blockId && t - lastPing.current.at < 45000) return;
+    lastPing.current = { block: blockId, at: t };
+    setStoryPresence(id, blockId, profile.username).catch(() => {});
+  };
+
+  const update = (patch) => setLocal((s) => ({ ...s, ...patch }));
+  const updateBlock = (blockId, patch) => setLocal((s) => ({ ...s, blocks: s.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)) }));
+  const insertBlock = (index, type) => setLocal((s) => {
+    if (s.blocks.length >= MAX_BLOCKS) return s;
+    const blocks = [...s.blocks];
+    blocks.splice(index, 0, newBlock(type));
+    return { ...s, blocks };
+  });
+  const moveBlock = (i, d) => setLocal((s) => {
+    const blocks = [...s.blocks];
+    [blocks[i], blocks[i + d]] = [blocks[i + d], blocks[i]];
+    return { ...s, blocks };
+  });
+  const removeBlock = (blockId) => setLocal((s) => ({ ...s, blocks: s.blocks.length > 1 ? s.blocks.filter((b) => b.id !== blockId) : s.blocks }));
+
+  if (missing) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <EmptyState icon={Info} title="This story isn't available" body="It may have been deleted, or you're not one of its authors."
+          action={<Button onClick={() => navigate("/news/desk")}>Back to the newsroom</Button>} />
+      </div>
+    );
+  }
+  if (!local) {
+    return <div className="mx-auto w-full max-w-5xl space-y-3 p-6" role="status" aria-label="Loading story"><Skeleton className="h-10 w-2/3" /><Skeleton className="h-6 w-1/2" /><Skeleton className="h-40" /></div>;
+  }
+
+  const stats = storyStats(local);
+  const status = saving ? "Saving…" : saveError ? "Not saved" : dirty ? "Unsaved changes" : savedAt ? `Saved ${relativeTime(savedAt)}` : `Version ${local.version}`;
+
+  return (
+    <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
+      <header className="sticky top-0 z-nav flex min-h-14 flex-wrap items-center gap-2 border-b border-line bg-canvas/90 px-2 py-2 pt-safe backdrop-blur md:px-4">
+        <IconButton icon={ArrowLeft} label="Back to the newsroom" onClick={() => goBack("/news/desk")} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-callout font-semibold">{local.title || "Untitled story"}</p>
+          <p className="flex items-center gap-1.5 text-caption text-fg-subtle" aria-live="polite">
+            {saving && <Spinner size={12} />} {status}
+            {local.format === "live" && <Badge tone="danger" icon={Radio}>Live blog</Badge>}
+          </p>
+        </div>
+        <AuthorsStrip names={local.authorNames} uids={local.authors} presence={presence} now={now} />
+        <Button size="sm" variant="ghost" icon={History} onClick={() => setDialog("history")}>History</Button>
+        <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDialog("preview")}>Preview</Button>
+        {editable && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("submit")}>Send for review</Button>}
+      </header>
+
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-24 pt-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <main className="min-w-0">
+          {!editable && (
+            <p role="status" className="mb-4 flex items-start gap-2 rounded-card border border-line bg-surface-2 p-3 text-callout text-fg-muted">
+              <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {local.status === "pending" ? "With the reviewers. Editing is paused until it's published or sent back."
+                : "Published. Changes now go through public corrections, which reviewers add."}
+            </p>
+          )}
+          {local.status === "draft" && local.reviewNote && (
+            <p role="status" className="mb-4 rounded-card border border-warning-text/30 bg-warning-text/10 p-3 text-callout text-warning-text">
+              <strong>Sent back by a reviewer:</strong> {local.reviewNote}
+            </p>
+          )}
+          {local.status === "rejected" && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-card border border-danger-text/30 bg-danger/10 p-3">
+              <p className="min-w-0 flex-1 text-callout text-danger-text">Not published.{local.reviewNote ? ` ${local.reviewNote}` : ""}</p>
+              <Button size="sm" onClick={async () => {
+                try { const { story } = await reopenStory(id, base, local); setBase(story); setLocal(story); } catch { toast({ tone: "error", title: "Couldn't reopen it" }); }
+              }}>Work on it again</Button>
+            </div>
+          )}
+          {saveError && <InlineMessage>{saveError}</InlineMessage>}
+
+          <LockNote who={lockedBy.title} />
+          <label htmlFor="story-title" className="sr-only">Headline</label>
+          <Textarea id="story-title" autoGrow rows={1} maxRows={4} value={local.title} maxLength={200} readOnly={!editable || !!lockedBy.title}
+            placeholder="Headline" onFocus={() => focusBlock("title")} onChange={(e) => update({ title: e.target.value.replace(/\n/g, " ") })}
+            className="!border-transparent !bg-transparent !px-0 font-display !text-[2rem] !font-extrabold !leading-tight hover:!border-transparent focus:!ring-0" />
+          <LockNote who={lockedBy.standfirst} />
+          <label htmlFor="story-standfirst" className="sr-only">Standfirst</label>
+          <Textarea id="story-standfirst" autoGrow rows={1} maxRows={5} value={local.standfirst} maxLength={300} readOnly={!editable || !!lockedBy.standfirst}
+            placeholder="Standfirst: the story in a sentence or two" onFocus={() => focusBlock("standfirst")}
+            onChange={(e) => update({ standfirst: e.target.value })}
+            className="!border-transparent !bg-transparent !px-0 !text-title-3 !font-normal !text-fg-muted hover:!border-transparent focus:!ring-0" />
+
+          <div className="mt-4 space-y-1">
+            {local.blocks.map((b, i) => (
+              <div key={b.id}>
+                <BlockEditor block={b} index={i} count={local.blocks.length} editable={editable} lockedBy={lockedBy[b.id]}
+                  onFocus={() => focusBlock(b.id)} onChange={(patch) => updateBlock(b.id, patch)}
+                  onMove={(d) => moveBlock(i, d)} onRemove={() => removeBlock(b.id)} />
+                {editable && <AddBlock onAdd={(type) => insertBlock(i + 1, type)} />}
+              </div>
+            ))}
+          </div>
+        </main>
+
+        <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          <DetailsPanel story={local} editable={editable} lead={lead} update={update} stats={stats} onSaveVersion={async () => {
+            try { await saveRevision(id, local, "Saved by hand"); toast({ title: "Version saved", body: "Find it in History." }); }
+            catch { toast({ tone: "error", title: "Couldn't save that version" }); }
+          }} />
+        </aside>
+      </div>
+
+      {dialog === "submit" && (
+        <SubmitDialog story={local} onClose={() => setDialog(null)} onSubmit={async () => {
+          await save();
+          const { story } = await submitStory(id, baseRef.current, localRef.current);
+          setBase(story); setLocal(story);
+          setDialog(null);
+          toast({ title: "Sent for review", body: "A reviewer checks it against its sources before it's published." });
+        }} />
+      )}
+      {dialog === "history" && (
+        <HistoryDialog id={id} onClose={() => setDialog(null)} canRestore={editable}
+          onRestore={(rev) => { update({ title: rev.title, standfirst: rev.standfirst, blocks: rev.blocks, sources: rev.sources }); setDialog(null); toast({ title: "Restored", body: "It saves in a moment, as the next version." }); }} />
+      )}
+      {dialog === "preview" && <PreviewDialog story={local} onClose={() => setDialog(null)} />}
+    </div>
+  );
+}
+
+function LockNote({ who }) {
+  if (!who) return null;
+  return <p className="mb-1 flex items-center gap-1.5 text-label font-semibold text-warning-text"><span className="h-2 w-2 animate-pulse rounded-full bg-warning-text" aria-hidden="true" />@{who} is editing this</p>;
+}
+
+function AuthorsStrip({ names, uids, presence, now }) {
+  const active = new Set(presence.filter((p) => now - (p.at?.toMillis?.() || 0) < PRESENCE_MS).map((p) => p.uid));
+  return (
+    <ul className="hidden items-center -space-x-1.5 sm:flex" aria-label="Authors">
+      {uids.map((u, i) => (
+        <li key={u} title={`@${names[i]}${active.has(u) ? " (here now)" : ""}`}
+          className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-label font-bold text-white ${active.has(u) ? "border-success-text" : "border-canvas"} bg-violet-700`}>
+          {(names[i] || "?").slice(0, 2).toUpperCase()}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* One block: its text (or image), and, when it has focus, the controls to
+   change its type, move it or remove it. */
+function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChange, onMove, onRemove }) {
+  const toast = useToast();
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+  const readOnly = !editable || !!lockedBy;
+  const Icon = TYPE_ICONS[block.type] || Pilcrow;
+  const textClass = {
+    p: "!text-body", h2: "!text-title-2 !font-bold", h3: "!text-title-3 !font-semibold",
+    quote: "!text-title-3 !font-semibold font-display border-l-4 border-accent-text !pl-4", list: "!text-body",
+  }[block.type] || "";
+
+  const upload = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast({ tone: "error", title: "Choose an image" });
+    setUploading(true);
+    try { const { url } = await uploadMedia(file, undefined, "news"); onChange({ media: url }); }
+    catch { toast({ tone: "error", title: "Couldn't upload that image" }); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <div className={`group relative rounded-control px-2 py-1 transition-colors ${lockedBy ? "bg-warning-text/5 ring-1 ring-warning-text/40" : "focus-within:bg-surface"}`}
+      onFocusCapture={onFocus}>
+      <LockNote who={lockedBy} />
+      {editable && !lockedBy && (
+        <div className="absolute -top-3 right-2 z-10 hidden items-center gap-0.5 rounded-full border border-line bg-surface-2 px-1 py-0.5 shadow-raised group-focus-within:flex group-hover:flex">
+          {block.type !== "image" && block.type !== "divider" && (
+            <Select aria-label="Block type" value={block.type} onChange={(e) => onChange({ type: e.target.value })}
+              className="!min-h-7 !w-auto !rounded-full !border-0 !bg-transparent !py-0 !text-label">
+              {TEXT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+          )}
+          <IconButton icon={ArrowUp} label="Move up" size={14} disabled={index === 0} onClick={() => onMove(-1)} />
+          <IconButton icon={ArrowDown} label="Move down" size={14} disabled={index === count - 1} onClick={() => onMove(1)} />
+          <IconButton icon={Trash2} label="Remove block" size={14} disabled={count === 1} onClick={onRemove} />
+        </div>
+      )}
+      <span className="sr-only">{TEXT_TYPES.find(([v]) => v === block.type)?.[1] || block.type}</span>
+      {block.type === "divider" ? (
+        <hr className="my-4 border-line" aria-label="Divider" />
+      ) : block.type === "image" ? (
+        <div className="space-y-2 py-2">
+          {block.media ? (
+            <MediaImg src={block.media} alt={block.alt || ""} className="w-full rounded-card object-cover" placeholderClass="aspect-[16/9] w-full rounded-card" />
+          ) : (
+            <button type="button" disabled={readOnly || uploading} onClick={() => fileRef.current?.click()}
+              className="press flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-field text-callout font-semibold text-fg-muted hover:text-fg">
+              {uploading ? <Spinner /> : <ImagePlus size={28} aria-hidden="true" />} Add an image
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true"
+            onChange={(e) => { upload(e.target.files[0]); e.target.value = ""; }} />
+          {block.media && editable && !lockedBy && <Button size="sm" variant="ghost" icon={ImagePlus} onClick={() => fileRef.current?.click()}>Replace image</Button>}
+          <Input aria-label="Caption" value={block.text} readOnly={readOnly} maxLength={400} placeholder="Caption, with its credit or source [1]"
+            onChange={(e) => onChange({ text: e.target.value })} />
+          <Input aria-label="Image description (alt text)" value={block.alt} readOnly={readOnly} maxLength={400}
+            placeholder="Describe the image for people who can't see it" onChange={(e) => onChange({ alt: e.target.value })} />
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Icon size={14} className="mt-3 shrink-0 text-fg-subtle opacity-0 group-focus-within:opacity-100" aria-hidden="true" />
+          <Textarea aria-label={TEXT_TYPES.find(([v]) => v === block.type)?.[1]} autoGrow rows={1} maxRows={40} value={block.text} readOnly={readOnly}
+            maxLength={8000} onChange={(e) => onChange({ text: e.target.value })}
+            placeholder={{ p: "Write, and cite sources by number like [1]", h2: "Heading", h3: "Subheading", quote: "A quote worth pulling out", list: "One item per line" }[block.type]}
+            className={`!border-transparent !bg-transparent !px-0 !py-1 hover:!border-transparent focus:!ring-0 ${textClass}`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddBlock({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative flex h-6 items-center justify-center opacity-40 transition-opacity focus-within:opacity-100 hover:opacity-100">
+      <span className="h-px flex-1 bg-line" aria-hidden="true" />
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Add a block here"
+        className="press mx-2 flex h-6 w-6 items-center justify-center rounded-full border border-line-strong bg-surface text-fg-muted hover:text-fg">
+        <Plus size={14} aria-hidden="true" />
+      </button>
+      <span className="h-px flex-1 bg-line" aria-hidden="true" />
+      {open && (
+        <div className="absolute top-7 z-sheet flex flex-wrap gap-1 rounded-card border border-line bg-surface p-1.5 shadow-overlay">
+          {ADDABLE.map(([type, label]) => {
+            const I = TYPE_ICONS[type];
+            return (
+              <button key={type} type="button" onClick={() => { onAdd(type); setOpen(false); }}
+                className="press flex min-h-9 items-center gap-1.5 rounded-control px-2.5 text-callout text-fg hover:bg-surface-2">
+                <I size={15} aria-hidden="true" /> {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
+  const toast = useToast();
+  const [handle, setHandle] = useState("");
+  const [adding, setAdding] = useState(false);
+  const coverRef = useRef(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const sourcesText = story.sources.join("\n");
+  const cls = "rounded-card border border-line bg-surface p-4";
+
+  const addAuthor = async (e) => {
+    e.preventDefault();
+    setAdding(true);
+    try {
+      const a = await coAuthorFor(handle.trim().replace(/^@/, "").toLowerCase());
+      if (story.authors.includes(a.id)) throw new Error("Already an author.");
+      if (story.authors.length >= 4) throw new Error("A story can have up to three co-authors.");
+      update({ authors: [...story.authors, a.id], authorNames: [...story.authorNames, a.username] });
+      setHandle("");
+    } catch (err) { toast({ tone: "error", title: err.message }); }
+    finally { setAdding(false); }
+  };
+
+  return (
+    <>
+      <section className={cls} aria-label="Story details">
+        <Segmented label="Format" value={story.format} onChange={(v) => editable && update({ format: v })} className="mb-4"
+          options={[{ id: "story", label: "Story" }, { id: "live", label: "Live blog" }]} />
+        <div className="space-y-3">
+          <Field label="Topic">
+            <Select value={story.topic} disabled={!editable} onChange={(e) => update({ topic: e.target.value })}>
+              {NEWS_TOPICS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Where" optional>
+            <Input value={story.location} readOnly={!editable} maxLength={80} placeholder="Melbourne" onChange={(e) => update({ location: e.target.value })} />
+          </Field>
+          <div>
+            <p className="mb-1.5 text-callout font-medium">Cover</p>
+            {story.coverUrl ? (
+              <MediaImg src={story.coverUrl} alt="Cover" className="aspect-[16/9] w-full rounded-control object-cover" placeholderClass="aspect-[16/9] w-full rounded-control" />
+            ) : null}
+            {editable && (
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" icon={ImagePlus} loading={coverBusy} onClick={() => coverRef.current?.click()}>{story.coverUrl ? "Change" : "Add a cover"}</Button>
+                {story.coverUrl && <Button size="sm" variant="ghost" onClick={() => update({ coverUrl: "" })}>Remove</Button>}
+              </div>
+            )}
+            <input ref={coverRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" onChange={async (e) => {
+              const f = e.target.files[0]; e.target.value = "";
+              if (!f) return;
+              setCoverBusy(true);
+              try { const { url } = await uploadMedia(f, undefined, "news"); update({ coverUrl: url }); }
+              catch { toast({ tone: "error", title: "Couldn't upload the cover" }); }
+              finally { setCoverBusy(false); }
+            }} />
+          </div>
+        </div>
+      </section>
+
+      <section className={cls} aria-label="Key points and sources">
+        <p className="mb-2 flex items-center gap-1.5 text-callout font-semibold"><ListChecks size={16} aria-hidden="true" /> Key points <span className="font-normal text-fg-subtle">Up to 3</span></p>
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <Input key={i} aria-label={`Key point ${i + 1}`} value={story.keyPoints[i]} readOnly={!editable} maxLength={200} placeholder={`Point ${i + 1}`}
+              onChange={(e) => { const k = [...story.keyPoints]; k[i] = e.target.value; update({ keyPoints: k }); }} />
+          ))}
+        </div>
+        <Field label="Sources" className="mt-4" hint="One link per line. Cite them in the text as [1], [2]…">
+          <Textarea autoGrow rows={3} maxRows={10} value={sourcesText} readOnly={!editable} placeholder={"https://…\nhttps://…"}
+            onChange={(e) => update({ sources: e.target.value.split("\n") })} />
+        </Field>
+        <p className="mt-2 text-caption text-fg-subtle">
+          {story.sources.filter((s) => s.trim()).length} listed · cited: {stats.cited.length ? stats.cited.map((n) => `[${n}]`).join(" ") : "none yet"}
+        </p>
+      </section>
+
+      <section className={cls} aria-label="Authors">
+        <p className="mb-2 flex items-center gap-1.5 text-callout font-semibold"><Users size={16} aria-hidden="true" /> Authors</p>
+        <ul className="space-y-1">
+          {story.authors.map((u, i) => (
+            <li key={u} className="flex min-h-9 items-center gap-2 text-callout">
+              <span className="min-w-0 flex-1 truncate">@{story.authorNames[i]}</span>
+              {i === 0 ? <Badge>Lead</Badge> : lead && editable && (
+                <IconButton icon={X} label={`Remove @${story.authorNames[i]}`} size={14}
+                  onClick={() => update({ authors: story.authors.filter((x) => x !== u), authorNames: story.authorNames.filter((_, j) => j !== i) })} />
+              )}
+            </li>
+          ))}
+        </ul>
+        {lead && editable && story.authors.length < 4 && (
+          <form onSubmit={addAuthor} className="mt-2 flex gap-2">
+            <Input aria-label="Co-author's handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@writer" />
+            <Button type="submit" size="sm" loading={adding} disabled={handle.trim().length < 3}>Add</Button>
+          </form>
+        )}
+        <p className="mt-2 text-caption text-fg-subtle">Co-authors must be Mesh News writers. They see and edit the draft with you.</p>
+      </section>
+
+      <section className={cls} aria-label="Legal">
+        <div className="flex items-start gap-3">
+          <Scale size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <label htmlFor="legal-hold" className="block text-callout font-medium">Needs a legal read</label>
+            <span className="block text-caption text-fg-subtle">Reviewers can't publish until someone clears it.</span>
+          </span>
+          <Switch id="legal-hold" checked={story.legalHold} disabled={!editable} onChange={(v) => update({ legalHold: v })} />
+        </div>
+        {story.legalHold && (
+          <Textarea className="mt-3" aria-label="What needs checking" autoGrow rows={2} value={story.legalNote} readOnly={!editable} maxLength={300}
+            placeholder="What needs checking, and why" onChange={(e) => update({ legalNote: e.target.value })} />
+        )}
+      </section>
+
+      <section className={cls} aria-label="At a glance">
+        <p className="text-caption text-fg-subtle">{stats.words} words · {stats.minutes} min read · {story.blocks.length} blocks</p>
+        <div className="mt-3 rounded-control border border-line bg-surface-2 p-3" aria-label="How it looks when shared">
+          <p className="text-label font-semibold uppercase tracking-wider text-fg-subtle">When shared</p>
+          <p className="mt-1 line-clamp-2 text-callout font-semibold text-fg">{story.title || "Your headline"}</p>
+          <p className="line-clamp-2 text-caption text-fg-muted">{story.standfirst || "Your standfirst appears here."}</p>
+          {story.title.length > 70 && <p className="mt-1 text-label text-warning-text">Long headlines get cut off in link previews ({story.title.length}/70).</p>}
+        </div>
+        <Button size="sm" variant="ghost" icon={BookmarkPlus} className="mt-3" onClick={onSaveVersion}>Save this version</Button>
+      </section>
+    </>
+  );
+}
+
+function SubmitDialog({ story, onClose, onSubmit }) {
+  const [attest, setAttest] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const problems = reviewProblems(story);
+  const words = checkContent(`${story.title}\n${story.standfirst}\n${story.blocks.map((b) => b.text).join("\n")}`, { key: "news", skipCooldown: true, allowQuoted: true });
+  const all = words.error ? [...problems, words.error] : problems;
+  return (
+    <Dialog title="Send for review" onClose={busy ? undefined : onClose} size="md"
+      footer={
+        <div className="space-y-2">
+          <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
+          <div className="flex justify-end gap-2">
+            <Button onClick={onClose} disabled={busy}>Keep editing</Button>
+            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest} onClick={async () => {
+              setBusy(true); setError("");
+              try { await onSubmit(); } catch (err) { console.error(err); setBusy(false); setError("Couldn't send it. Check your connection, and that the story is saved."); }
+            }}>Send for review</Button>
+          </div>
+        </div>
+      }>
+      {all.length > 0 ? (
+        <>
+          <p className="text-callout text-fg-muted">A couple of things first:</p>
+          <ul className="mt-2 space-y-1.5">{all.map((p) => <li key={p} className="flex gap-2 text-callout"><X size={16} className="mt-0.5 shrink-0 text-danger-text" aria-hidden="true" />{p}</li>)}</ul>
+        </>
+      ) : (
+        <p className="flex items-center gap-2 text-callout text-success-text"><Check size={16} aria-hidden="true" /> Headline, body, sources and citations are all there.</p>
+      )}
+      {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">It's marked as needing a legal read, so it can't be published until a reviewer clears that.</p>}
+      <div className="mt-4 rounded-card border border-line bg-surface p-3">
+        <Checkbox checked={attest} onChange={setAttest} description="Your confirmation is recorded with the submission.">
+          This story is accurate to the best of my knowledge, and nothing in it (images, footage, audio or quotes) was generated or altered by AI to look real.
+        </Checkbox>
+      </div>
+    </Dialog>
+  );
+}
+
+function HistoryDialog({ id, onClose, onRestore, canRestore }) {
+  const [list, setList] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  useEffect(() => { fetchRevisions(id).then(setList).catch(() => setList([])); }, [id]);
+  if (viewing) return <PreviewDialog story={{ ...viewing, keyPoints: [], coverUrl: "" }} onClose={() => setViewing(null)} title={`Version ${viewing.version}`} />;
+  return (
+    <Dialog title="History" onClose={onClose}>
+      <p className="mb-3 text-caption text-fg-subtle">Saved versions can't be changed or deleted, so this is a true record.</p>
+      {list === null ? <Skeleton className="h-20" /> : list.length === 0 ? (
+        <p className="text-callout text-fg-subtle">No saved versions yet. One is kept when you send it for review, and whenever you choose "Save this version".</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {list.map((r) => (
+            <li key={r.id} className="flex items-center gap-3 py-2.5">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-callout font-medium">{r.note || `Version ${r.version}`}</span>
+                <span className="block text-caption text-fg-subtle">@{r.byName} · {r.at?.toMillis ? relativeTime(r.at.toMillis()) : "just now"} · version {r.version}</span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setViewing(r)}>View</Button>
+              {canRestore && <Button size="sm" onClick={() => onRestore(r)}>Restore</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
+}
+
+function PreviewDialog({ story, onClose, title = "Preview" }) {
+  return (
+    <Dialog title={title} onClose={onClose} variant="full" size="xl">
+      <article>
+        <p className="flex items-center gap-2 text-label"><TopicLabel id={story.topic} />{story.format === "live" && <Badge tone="danger" icon={Radio}>Live</Badge>}</p>
+        <h1 className="mt-2 font-display text-title-1">{story.title || "Untitled story"}</h1>
+        {story.standfirst && <p className="mt-2 text-title-3 font-normal text-fg-muted">{story.standfirst}</p>}
+        {story.coverUrl && <MediaImg src={story.coverUrl} alt="" className="mt-4 aspect-[16/9] w-full rounded-card object-cover" placeholderClass="mt-4 aspect-[16/9] w-full rounded-card" />}
+        <StoryBody story={{ id: story.id || "preview", blocks: story.blocks, sources: story.sources.filter((s) => s.trim()), keyPoints: story.keyPoints }} />
+      </article>
+    </Dialog>
+  );
+}
