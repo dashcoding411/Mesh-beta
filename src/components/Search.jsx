@@ -22,7 +22,7 @@ import IconButton from "./ui/IconButton";
 import { Highlight } from "./ui/RichText";
 import { ErrorState, Skeleton, Spinner, Loading } from "./ui/States";
 import { useToast } from "./ui/toast-context";
-import PostCard from "./PostCard";
+import PostCard, { POST_LIST } from "./PostCard";
 
 const FILTERS = [
   { id: "top", label: "Top" },
@@ -434,7 +434,7 @@ function Section({ section, q, limit, full = false, onSeeAll }) {
           {items.map((p) => <Tile key={p.id} post={p} />)}
         </ul>
       ) : isPosts ? (
-        <div>
+        <div className={POST_LIST}>
           {items.filter((p) => !removed.has(p.id)).map((p) => (
             <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} highlight={q} compact
               onRemoved={(id) => setRemoved((s) => new Set(s).add(id))} />
@@ -507,7 +507,7 @@ function ResultRow({ section, item, q, big = false }) {
 function PostHit({ post, q }) {
   const [viewer, setViewer] = usePostStates(useMemo(() => [post], [post]));
   return (
-    <div className="-mx-4 overflow-hidden rounded-card md:mx-0 md:border md:border-line">
+    <div className="-mx-4 md:mx-0">
       <PostCard post={post} viewer={viewer} onViewerChange={setViewer} highlight={q} compact />
     </div>
   );

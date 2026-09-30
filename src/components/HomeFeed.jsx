@@ -4,7 +4,6 @@ import {
   fetchFeed, fetchAffinity, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
-import { InterestChips } from "./Interests";
 import { rankFeed, screenForViewer } from "../lib/algorithm";
 import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
@@ -15,9 +14,8 @@ import FeedTabs from "./shell/FeedTabs";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState, Skeleton, Loading, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
-import PostCard from "./PostCard";
+import PostCard, { POST_LIST } from "./PostCard";
 import StoryRail from "./StoryRail";
-import QuickPost from "./QuickPost";
 import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
@@ -155,15 +153,14 @@ export default function HomeFeed({ mode }) {
   return (
     <>
       <HomeHeader section={mode}>
-        {!guest && <FeedTabs value={mode} />}
-        {mode === "foryou" && (
-          <InterestChips interests={interests} value={topic} onEdit={guest ? undefined : openInterests}
-            onChange={setTopic} />
-        )}
+        <div className="mx-auto w-full max-w-[520px]">
+          <FeedTabs mode={mode} topic={topic} interests={interests} onTopic={setTopic}
+            onEdit={guest ? undefined : openInterests} guest={guest} />
+        </div>
       </HomeHeader>
 
       <div ref={feedScroll} data-scroll className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[640px] md:border-x md:border-line md:min-h-full">
+        <div className="mx-auto w-full max-w-[520px] pb-4">
           {refreshing && (
             <p role="status" className="flex items-center justify-center gap-2 border-b border-line py-2.5 text-caption text-fg-subtle anim-fade">
               <Spinner size={14} /> Checking for new posts
@@ -173,7 +170,6 @@ export default function HomeFeed({ mode }) {
             <>
               <StoryRail />
               <PhotoNudge dismissible className="mx-4 mt-3" />
-              <QuickPost onPosted={(p) => setPosts((prev) => [p, ...(prev || [])])} />
             </>
           )}
 
@@ -201,7 +197,7 @@ export default function HomeFeed({ mode }) {
           ))}
 
           {page?.length > 0 && (
-            <div className="stagger">
+            <div className={`stagger ${POST_LIST}`}>
               {page.map((p) => (
                 <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove}
                   onChanged={(id, changes) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, ...changes } : x)))} />
@@ -241,17 +237,23 @@ export default function HomeFeed({ mode }) {
 export function FeedSkeleton({ count = 3 }) {
   return (
     <Loading label="Loading posts">
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="flex gap-3 border-b border-line px-4 py-4">
-          <Skeleton className="h-10 w-10 shrink-0 !rounded-full" />
-          <div className="flex-1 space-y-2.5 pt-1">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-3 w-11/12" />
-            <Skeleton className="h-3 w-2/3" />
-            {i !== 1 && <Skeleton className="mt-3 aspect-[4/3] w-full !rounded-card" />}
+      <div className={POST_LIST}>
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="py-3.5 md:rounded-card md:border md:border-line md:bg-surface">
+            <div className="flex items-center gap-3 px-4">
+              <Skeleton className="h-[38px] w-[38px] shrink-0 !rounded-full" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            {i === 1
+              ? <Skeleton className="mx-4 mt-3 h-24 !rounded-card" />
+              : <Skeleton className="mt-3 aspect-[4/5] w-full !rounded-none" />}
+            <div className="mt-3 space-y-2 px-4">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </Loading>
   );
 }

@@ -14,11 +14,16 @@ import { PollCard } from "../Poll";
 export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged }) {
   const short = post.kind === "text" && post.text.length <= 140 && !post.text.includes("\n");
 
+  // Strands sit on their own panel so they read as a post, not a line of a timeline.
   if (post.kind === "text") {
     return (
-      <div className="px-4 pt-2">
-        {post.text && <RichText text={post.text} highlight={highlight}
-          className={`text-fg ${short && !post.poll ? "text-title-2 font-normal leading-snug" : "text-body"}`} />}
+      <div className="px-4 pt-3">
+        {post.text && (
+          <div className="rounded-card bg-surface-2 px-4 py-4">
+            <RichText text={post.text} highlight={highlight}
+              className={`text-fg ${short && !post.poll ? "text-title-2 font-normal leading-snug" : "text-body"}`} />
+          </div>
+        )}
         {post.gif && <GifView gif={post.gif} className="mt-3" />}
         {post.poll && <PollCard post={post} />}
       </div>

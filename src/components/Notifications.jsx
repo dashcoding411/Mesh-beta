@@ -80,7 +80,7 @@ export default function Notifications() {
     <>
       <HomeHeader section="notifications" />
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[640px] pb-16 md:border-x md:border-line md:min-h-full">
+        <div className="mx-auto max-w-[640px] pb-16">
           {notices === null && (
             <Loading label="Loading notifications">
               {[0, 1, 2, 3].map((i) => (

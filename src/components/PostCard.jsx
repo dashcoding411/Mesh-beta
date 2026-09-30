@@ -19,6 +19,10 @@ import EditPostDialog from "./EditPost";
 import { PostBody, Dots } from "./post/PostMedia";
 import { Action, Caption, SocialProof, QuickComment } from "./post/PostFooter";
 
+// Lists of posts space them apart rather than ruling lines between them; on
+// wider screens each post is its own card.
+export const POST_LIST = "flex flex-col gap-4 pt-3 md:gap-6 md:pt-5";
+
 export default function PostCard({
   post: original, viewer, onViewerChange, onRemoved, onChanged, canModerate = false, highlight, compact = false,
 }) {
@@ -118,7 +122,7 @@ export default function PostCard({
 
   return (
     <article aria-labelledby={titleId} ref={cardRef} tabIndex={-1} onClickCapture={() => { engaged.current = true; }}
-      className={`relative border-b border-line ${compact ? "pb-2 pt-3" : "pb-3 pt-3.5"} transition-colors [container-type:inline-size]`}>
+      className={`relative ${compact ? "pb-2 pt-3" : "pb-3 pt-3.5"} md:rounded-card md:border md:border-line md:bg-surface [container-type:inline-size]`}>
       {post.repostedBy?.length > 0 && (
         <p className="mb-2 flex items-center gap-1.5 px-4 text-caption font-medium text-fg-subtle">
           <Repeat2 size={14} aria-hidden="true" />

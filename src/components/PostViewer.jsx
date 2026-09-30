@@ -6,7 +6,7 @@ import { usePostStates } from "../lib/usePostStates";
 import IconButton from "./ui/IconButton";
 import Button from "./ui/Button";
 import { EmptyState } from "./ui/States";
-import PostCard from "./PostCard";
+import PostCard, { POST_LIST } from "./PostCard";
 import { usePageTitle } from "../lib/usePageTitle";
 import { FeedSkeleton } from "./HomeFeed";
 
@@ -35,14 +35,18 @@ export default function PostViewer({ postId }) {
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <h1 className="text-title-3">Post</h1>
       </header>
-      <div className="mx-auto max-w-[640px] pb-16 md:border-x md:border-line md:min-h-[calc(100%-56px)]">
+      <div className="mx-auto w-full max-w-[520px] pb-16">
         {post === undefined && <FeedSkeleton count={1} />}
         {post === null && (
           <EmptyState icon={FileX} title="This post isn't available"
             body="It may have been deleted, or it's followers-only and you don't follow the author."
             action={<Button onClick={() => goBack("/")}>Go back</Button>} />
         )}
-        {post && <PostCard post={post} viewer={viewer} onViewerChange={setViewer} onRemoved={() => goBack("/")} />}
+        {post && (
+          <div className={POST_LIST}>
+            <PostCard post={post} viewer={viewer} onViewerChange={setViewer} onRemoved={() => goBack("/")} />
+          </div>
+        )}
       </div>
     </div>
   );

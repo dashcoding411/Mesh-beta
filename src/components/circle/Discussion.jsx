@@ -171,19 +171,19 @@ export function Discussion({ group, membership, onChanged, onReview, onPosted })
   const rest = shown.filter((p) => !top.includes(p));
 
   const row = (p, isFeatured) => (
-    <div key={p.id} className="border-b border-line last:border-0">
+    <div key={p.id}>
       {isFeatured && (
-        <p className="flex items-center gap-1.5 px-4 pt-3 text-label font-semibold uppercase tracking-wider text-accent-text">
+        <p className="flex items-center gap-1.5 px-4 pb-1.5 text-label font-semibold uppercase tracking-wider text-accent-text">
           <Pin size={12} aria-hidden="true" /> Featured
         </p>
       )}
       {p.circleTopic && !isFeatured && (
-        <p className="px-4 pt-3 text-label font-semibold text-fg-subtle">{p.circleTopic}</p>
+        <p className="px-4 pb-1.5 text-label font-semibold text-fg-subtle">{p.circleTopic}</p>
       )}
       <PostCard post={p} viewer={viewer} onViewerChange={setViewer} canModerate={moderator} highlight={term || undefined}
         onRemoved={removed} />
       {moderator && (
-        <div className="-mt-2 flex flex-wrap items-center gap-1 px-4 pb-3 pl-[60px]">
+        <div className="mt-1 flex flex-wrap items-center gap-1 px-2">
           <Button size="sm" variant="ghost" icon={featured.includes(p.id) ? PinOff : Pin} onClick={() => feature(p)}>
             {featured.includes(p.id) ? "Unfeature" : "Feature"}
           </Button>
@@ -257,7 +257,7 @@ export function Discussion({ group, membership, onChanged, onReview, onPosted })
           action={<Button onClick={() => { setTerm(""); setTopic(""); }}>Show everything</Button>} />
       )}
       {(top.length > 0 || rest.length > 0) && (
-        <div className="overflow-hidden rounded-card border border-line">
+        <div className="flex flex-col gap-4 md:gap-6">
           {top.map((p) => row(p, true))}
           {rest.map((p) => row(p, false))}
         </div>

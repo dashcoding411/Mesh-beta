@@ -6,7 +6,7 @@ import { navigate } from "../lib/router";
 import HomeHeader from "./shell/HomeHeader";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState } from "./ui/States";
-import PostCard from "./PostCard";
+import PostCard, { POST_LIST } from "./PostCard";
 import { FeedSkeleton } from "./HomeFeed";
 
 export default function Saved() {
@@ -29,8 +29,8 @@ export default function Saved() {
     <>
       <HomeHeader section="saved" />
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[640px] md:border-x md:border-line md:min-h-full">
-          <p className="flex items-center gap-2 border-b border-line px-4 py-3 text-caption text-fg-subtle">
+        <div className="mx-auto w-full max-w-[520px] pb-4">
+          <p className="flex items-center gap-2 px-4 pt-3 text-caption text-fg-subtle">
             <Lock size={14} aria-hidden="true" /> Only you can see what you've saved.
           </p>
           {error && <ErrorState title="Couldn't load your saved posts" onRetry={() => { setError(false); setPosts(null); load(); }} />}
@@ -40,10 +40,14 @@ export default function Saved() {
               body="Tap the bookmark on any post to keep it here for later."
               action={<Button onClick={() => navigate("/")}>Browse For you</Button>} />
           )}
-          {posts?.map((p) => (
-            <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={onViewerChange}
-              onRemoved={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))} />
-          ))}
+          {posts?.length > 0 && (
+            <div className={POST_LIST}>
+              {posts.map((p) => (
+                <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={onViewerChange}
+                  onRemoved={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>

@@ -39,7 +39,7 @@ export default function Leaderboard() {
           tabs={[{ id: "week", label: "This week" }, { id: "all", label: "All time" }]} />
       </HomeHeader>
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[640px] px-4 pb-16 pt-4 md:border-x md:border-line md:min-h-full">
+        <div className="mx-auto max-w-[640px] px-4 pb-16 pt-4">
           {!guest && (
             <Segmented label="Whose time" value={who} onChange={setWho} className="mb-4"
               options={[{ id: "everyone", label: "Everyone" }, { id: "following", label: "People you follow" }]} />

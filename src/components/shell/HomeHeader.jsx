@@ -16,7 +16,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
     <header className={`top-0 z-nav shrink-0 ${
       transparent
         ? "absolute inset-x-0 bg-gradient-to-b from-black/70 via-black/30 to-transparent text-white md:sticky md:bg-canvas/90 md:bg-none md:text-fg md:backdrop-blur md:border-b md:border-line"
-        : "sticky border-b border-line bg-canvas/90 backdrop-blur"
+        : `sticky bg-canvas/90 backdrop-blur ${isFeed ? "" : "border-b border-line"}`
     }`}>
       <div className="flex h-14 items-center gap-1 px-2 pt-safe md:hidden">
         <IconButton icon={Menu} label="Open Home sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />
@@ -54,13 +54,17 @@ export default function HomeHeader({ section, children, actions, transparent = f
         {!guest && <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
       </div>
 
-      <div className="hidden md:flex min-h-16 items-center gap-4 px-6">
-        <div className="min-w-0 flex-1 py-3">
-          <h1 className="text-title-2">{isFeed ? "Home" : meta.label}</h1>
-          <p className="text-caption text-fg-subtle">{meta.blurb}</p>
+      {isFeed ? (
+        <div className="hidden md:block"><h1 className="sr-only">Home</h1></div>
+      ) : (
+        <div className="hidden md:flex min-h-16 items-center gap-4 px-6">
+          <div className="min-w-0 flex-1 py-3">
+            <h1 className="text-title-2">{meta.label}</h1>
+            <p className="text-caption text-fg-subtle">{meta.blurb}</p>
+          </div>
+          {actions}
         </div>
-        {actions}
-      </div>
+      )}
 
       {children}
     </header>
