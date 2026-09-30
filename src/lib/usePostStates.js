@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchMyLikes, fetchMySaves, fetchMyReposts } from "./db";
+import { fetchMyLikes, fetchMySaves, fetchMyReposts, me } from "./db";
 
 // Per-feed cache so a remounted feed doesn't refetch or flash empty states.
 const kept = new Map(); // keepKey -> { state, fetched }
@@ -18,7 +18,7 @@ export function usePostStates(posts, keepKey) {
   useEffect(() => {
     // Only ids not fetched yet.
     const list = key ? key.split(",").filter((id) => !fetched.current.has(id)) : [];
-    if (!list.length) return;
+    if (!list.length || !me()) return;
     list.forEach((id) => fetched.current.add(id));
     // Deliberately not cancelled: ids are already marked fetched, so dropping
     // a late result (e.g. StrictMode double-run) would lose it permanently.

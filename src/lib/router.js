@@ -79,6 +79,7 @@ const PAGES = [
   [/^\/account\/brick$/, () => ({ tab: "account", view: "brick" })],
   [/^\/account\/moderation$/, () => ({ tab: "account", view: "moderation" })],
   [/^\/legal(?:\/([a-z]+))?$/, (m) => ({ tab: "account", view: "legal", doc: m[1] || "privacy" })],
+  [/^\/(login|signup)$/, (m) => ({ tab: "auth", mode: m[1] })],
 ];
 
 export function matchPage(path) {
@@ -102,6 +103,22 @@ export function resolve(loc) {
   if (!overlay) return { page: matchPage(loc.path), overlay: null };
   const bgPath = (loc.bg || "/").split("?")[0];
   return { page: matchPage(bgPath), overlay, bgQuery: new URLSearchParams((loc.bg || "").split("?")[1] || "") };
+}
+
+/** Log-in or sign-up URL that returns to the current page. */
+export function authPath(mode) {
+  const { pathname, search } = window.location;
+  if (/^\/(login|signup)$/.test(pathname)) return `/${mode}${search}`;
+  const here = pathname + search;
+  return here === "/" ? `/${mode}` : `/${mode}?next=${encodeURIComponent(here)}`;
+}
+
+/** Where to land after signing in: `next` if it's a local path, else the current page. */
+export function afterAuthPath() {
+  const { pathname, search } = window.location;
+  if (!/^\/(login|signup)$/.test(pathname)) return pathname + search;
+  const next = new URLSearchParams(search).get("next") || "/";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
 }
 
 export function postUrl(post) {

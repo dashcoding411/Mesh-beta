@@ -1,12 +1,13 @@
-import { Plus } from "lucide-react";
+import { LogIn, Plus, UserPlus } from "lucide-react";
 import Dialog from "../ui/Dialog";
 import Avatar from "../ui/Avatar";
-import { navigate } from "../../lib/router";
+import { authPath, navigate } from "../../lib/router";
 import { LogoMark } from "./Sidebar";
-import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
+import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 
 // Mobile counterpart of Sidebar, driven by the same nav items.
 export default function HomeDrawer({ page, profile, unread = 0, notifications = 0, onCreate, onClose }) {
+  const guest = !profile;
   const current = activeNavId(page);
   const counts = { unread, notifications };
   const go = (path) => { onClose(); navigate(path); };
@@ -22,27 +23,36 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center py-4">
         <ul className="space-y-1">
-          {MAIN_NAV.map((s) => (
+          {navFor(MAIN_NAV, guest).map((s) => (
             <li key={s.id}>
               <Row icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
             </li>
           ))}
-          <li><Row icon={Plus} label="Create" onClick={() => { onClose(); onCreate(); }} /></li>
-          <li>
-            <button type="button" onClick={() => go("/account")} aria-current={current === "profile" ? "page" : undefined}
-              className={`press flex min-h-12 w-full items-center gap-4 rounded-control px-3 text-left text-body transition-colors ${
-                current === "profile" ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"
-              }`}>
-              <Avatar profile={profile} size={26} ring={current === "profile"} />
-              <span className="min-w-0 flex-1 truncate">Profile <span className="text-caption text-fg-subtle">@{profile.username}</span></span>
-            </button>
-          </li>
+          {guest ? (
+            <>
+              <li><Row icon={LogIn} label="Log in" onClick={() => go(authPath("login"))} /></li>
+              <li><Row icon={UserPlus} label="Sign up" onClick={() => go(authPath("signup"))} /></li>
+            </>
+          ) : (
+            <>
+              <li><Row icon={Plus} label="Create" onClick={() => { onClose(); onCreate(); }} /></li>
+              <li>
+                <button type="button" onClick={() => go("/account")} aria-current={current === "profile" ? "page" : undefined}
+                  className={`press flex min-h-12 w-full items-center gap-4 rounded-control px-3 text-left text-body transition-colors ${
+                    current === "profile" ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"
+                  }`}>
+                  <Avatar profile={profile} size={26} ring={current === "profile"} />
+                  <span className="min-w-0 flex-1 truncate">Profile <span className="text-caption text-fg-subtle">@{profile.username}</span></span>
+                </button>
+              </li>
+            </>
+          )}
         </ul>
       </nav>
 
       <nav aria-label="More" className="shrink-0 border-t border-line pt-2">
-        <ul className="grid grid-cols-4 gap-1">
-          {MORE_NAV.map(({ id, label, icon: Icon, path }) => (
+        <ul className="grid grid-cols-3 gap-1">
+          {navFor(MORE_NAV, guest).map(({ id, label, icon: Icon, path }) => (
             <li key={id}>
               <button type="button" onClick={() => go(path)} aria-current={current === id ? "page" : undefined}
                 className={`press flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-control text-label font-medium transition-colors ${

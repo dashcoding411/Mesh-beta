@@ -1,13 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
+import { restoreSession } from "./lib/auth";
+import { fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
 
 import { useToast } from "./components/ui/toast-context";
-import { useLocation, resolve, navigate, goBack } from "./lib/router";
+import { useLocation, resolve, navigate, goBack, afterAuthPath } from "./lib/router";
 import { ArrowLeft } from "lucide-react";
 import IconButton from "./components/ui/IconButton";
 import { useInbox } from "./lib/inbox";
@@ -16,6 +17,7 @@ import Sidebar, { LogoMark } from "./components/shell/Sidebar";
 import BottomNav from "./components/shell/BottomNav";
 import HomeDrawer from "./components/shell/HomeDrawer";
 import AuthPage from "./components/AuthPage";
+import { JoinDialog, JoinPage } from "./components/JoinPrompt";
 import HomeFeed from "./components/HomeFeed";
 import StorageNotice from "./components/StorageNotice";
 import SuspensionBanner from "./components/SuspensionBanner";
@@ -70,9 +72,22 @@ function lockSectionOf(page) {
   return { foryou: "feed", following: "feed", search: "feed", circles: "feed", saved: "feed", flicks: "flicks", news: "news" }[page.section] || null;
 }
 
-function sectionTitle(page, signedIn, query) {
+// Pages that belong to an account, and what to tell a signed-out visitor.
+function accountOnly(page) {
+  if (page.tab === "messages") return { title: "Messages", body: "Log in to message people and join group chats." };
+  if (page.tab === "account" && page.view !== "legal") return { title: "Your account", body: "Log in to see your profile and settings." };
+  if (page.tab !== "home") return null;
+  if (page.section === "news" && page.view) return { title: "Newsroom", body: "Log in to write and review stories." };
+  return {
+    following: { title: "Following", body: "Log in to see posts from people you follow." },
+    saved: { title: "Saved", body: "Log in to save posts and find them here later." },
+    notifications: { title: "Notifications", body: "Log in to see likes, replies and follows." },
+  }[page.section] || null;
+}
+
+function sectionTitle(page, query) {
   if (page.view === "legal") return DOCUMENT_TITLES[page.doc] || "Policies";
-  if (!signedIn) return null;
+  if (page.tab === "auth") return page.mode === "signup" ? "Sign up" : "Log in";
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
   if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode" }[page.view] || "Your profile";
@@ -100,38 +115,57 @@ export default function App() {
   const loc = useLocation();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const [p, f, b, prefs] = await Promise.all([
-          fetchProfile(u.uid).catch(() => null),
-          fetchMyFollowingSet().catch(() => new Set()),
-          fetchBlocked().then((l) => new Set(l.map((x) => x.id))).catch(() => new Set()),
-          fetchMyPrefs().catch(() => ({ interests: [] })),
-        ]);
-        setProfile(p);
-        setFollowing(f);
-        setBlocked(b);
-        setInterests(prefs.interests || []);
-        setHiddenWords(prefs.hiddenWords || []);
-        setMutedSet(new Set(prefs.muted || []));
-        // Prompt once per account per device.
-        let asked = true;
-        try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
-        if (p && !(prefs.interests || []).length && !asked) setInterestsDialog("first");
-      } else {
-        setProfile(null);
-        setFollowing(new Set());
-        setBlocked(new Set());
-        setHiddenWords([]);
-        setMutedSet(new Set());
-      }
-      setAuthReady(true);
+    let unsub = () => {};
+    let cancelled = false;
+    let initial = true;
+    restoreSession().catch(() => {}).then(() => {
+      if (cancelled) return;
+      unsub = onAuthStateChanged(auth, async (u) => {
+        // Signing in or out after load starts a fresh page, so no feed,
+        // cache or listener carries over between visitor and account.
+        if (!initial) {
+          if (!u) return window.location.replace("/");
+          if (await fetchOwnProfile(u.uid).catch(() => null)) return window.location.replace(afterAuthPath());
+          // Signed in without a profile: sign-up continues.
+          setProfile(null);
+          setUser(u);
+          return;
+        }
+        initial = false;
+        setUser(u);
+        if (u) {
+          const [p, f, b, prefs] = await Promise.all([
+            fetchOwnProfile(u.uid).catch(() => null),
+            fetchMyFollowingSet().catch(() => new Set()),
+            fetchBlocked().then((l) => new Set(l.map((x) => x.id))).catch(() => new Set()),
+            fetchMyPrefs().catch(() => ({ interests: [] })),
+          ]);
+          setProfile(p);
+          setFollowing(f);
+          setBlocked(b);
+          setInterests(prefs.interests || []);
+          setHiddenWords(prefs.hiddenWords || []);
+          setMutedSet(new Set(prefs.muted || []));
+          // Prompt once per account per device.
+          let asked = true;
+          try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
+          if (p && !(prefs.interests || []).length && !asked) setInterestsDialog("first");
+        }
+        setAuthReady(true);
+      });
     });
-    return unsub;
+    return () => { cancelled = true; unsub(); };
   }, []);
 
   const signedIn = !!(user && profile);
+  const guest = authReady && !user;
+  const [joinReason, setJoinReason] = useState(null);
+  /** For signed-out visitors: explains that `reason` needs an account and returns true. */
+  const needsAccount = useCallback((reason) => {
+    if (!guest) return false;
+    setJoinReason(reason);
+    return true;
+  }, [guest]);
   // Keep the viewer's own card current in the profile cache.
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
@@ -214,7 +248,7 @@ export default function App() {
     setIncoming((l) => l.filter((c) => c.id !== inc.id));
     await refuseCall(inc.id, "declined");
   };
-  const openComposer = useCallback((opts = {}) => setComposer(opts), []);
+  const openComposer = useCallback((opts = {}) => { if (!needsAccount("post")) setComposer(opts); }, [needsAccount]);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const openInterests = useCallback(() => setInterestsDialog("edit"), []);
@@ -237,12 +271,15 @@ export default function App() {
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords,
-    muted, toggleMute, hiddenAuthors, notices, noticesUnread,
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount,
   }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords,
-    muted, toggleMute, hiddenAuthors, notices, noticesUnread]);
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount]);
 
   const { page, overlay, bgQuery } = resolve(loc);
-  usePageTitle(sectionTitle(page, signedIn, overlay ? bgQuery : loc.query), 0);
+  usePageTitle(sectionTitle(page, overlay ? bgQuery : loc.query), 0);
+  // Already signed in on /login or /signup.
+  const onAuthPage = page.tab === "auth";
+  useEffect(() => { if (signedIn && onAuthPage) navigate(afterAuthPath(), { replace: true }); }, [signedIn, onAuthPage]);
   const lockSection = lockSectionOf(page);
   // Meter usage for capped sections (the player counts as Flicks).
   useUsageMeter(brick, overlay ? (overlay.overlay === "watch" ? "flicks" : overlay.overlay === "post" ? "feed" : null) : lockSection);
@@ -255,39 +292,28 @@ export default function App() {
     );
   }
 
-  // Public routes, available signed out.
-  if (!signedIn) {
-    if (page.view === "legal") {
-      return (
-        <div className="h-dvh overflow-y-auto" data-scroll>
-          <Suspense fallback={<Loading label="Loading" />}>
-            <Legal key={page.doc} doc={page.doc} standalone />
-          </Suspense>
-        </div>
-      );
-    }
-    if (page.gatheringId) {
-      return (
-        <Suspense fallback={<Loading label="Loading" />}>
-          <PublicGathering eventId={page.gatheringId} />
-        </Suspense>
-      );
-    }
-    return <AuthPage />;
-  }
+  // Both are the same element, so an email sign-up keeps its state when the
+  // account is created and the profile is still to come.
+  const enter = () => window.location.replace(afterAuthPath());
+  if (user && !profile) return <AuthPage pendingUser={user} onCreated={enter} />;
+  if (guest && onAuthPage) return <AuthPage initialMode={page.mode} onCreated={enter} />;
+  if (onAuthPage) return null;
 
   const query = overlay ? bgQuery : loc.query;
   const immersive = page.tab === "home" && page.section === "flicks" && !overlay;
 
   let content;
-  if (page.tab === "home") {
+  const joinFor = guest ? accountOnly(page) : null;
+  if (joinFor) {
+    content = <JoinPage {...joinFor} />;
+  } else if (page.tab === "home") {
     switch (page.section) {
       case "following": content = <HomeFeed key={`following-${feedKey}`} mode="following" />; break;
       case "flicks": content = <Flicks key={`flicks-${feedKey}`} startId={page.id} />; break;
       case "news": content = <News storyId={page.id} view={page.view} />; break;
       case "circles":
         content = page.gatheringId
-          ? <GatheringPage key={`g-${page.gatheringId}-${feedKey}`} eventId={page.gatheringId} />
+          ? guest ? <PublicGathering eventId={page.gatheringId} /> : <GatheringPage key={`g-${page.gatheringId}-${feedKey}`} eventId={page.gatheringId} />
           : <Circles key={`circles-${feedKey}`} circleId={page.id} view={query.get("view")} />;
         break;
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
@@ -368,6 +394,7 @@ export default function App() {
             }} />
         )}
 
+        {joinReason && <JoinDialog reason={joinReason} onClose={() => setJoinReason(null)} />}
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
         <Shortcuts onCreate={openComposer} />
         <ExternalLinkDialog />

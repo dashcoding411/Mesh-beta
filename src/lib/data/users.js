@@ -1,6 +1,6 @@
 // Profiles, handles, private preferences, follows, blocking and privacy.
 import {
-  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, endAt, getDoc, getDocs, increment, limit,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, documentId, endAt, getDoc, getDocs, increment, limit,
   onSnapshot, orderBy, query, serverTimestamp, setDoc, startAt, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -12,6 +12,33 @@ import { notify, unnotify } from "./notifications.js";
 export async function fetchProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+// Birth year is owner-only so profiles can be read without an account.
+const ageRef = (uid) => doc(db, "users", uid, "private", "age");
+
+export async function fetchMyBirthYear() {
+  const snap = await getDoc(ageRef(me()));
+  if (snap.exists()) return snap.data().birthYear;
+  return (await myProfile())?.birthYear || 0;
+}
+
+export async function setMyBirthYear(year) {
+  await setDoc(ageRef(me()), { birthYear: year });
+}
+
+/** Own profile with the birth year merged in. Moves a profile birth year to private/age. */
+export async function fetchOwnProfile(uid) {
+  const [profile, age] = await Promise.all([fetchProfile(uid), getDoc(ageRef(uid)).catch(() => null)]);
+  if (!profile) return null;
+  const stored = age?.exists() ? age.data().birthYear : 0;
+  if (profile.birthYear > 0) {
+    const batch = writeBatch(db);
+    if (!stored) batch.set(ageRef(uid), { birthYear: profile.birthYear });
+    batch.update(doc(db, "users", uid), { birthYear: deleteField() });
+    await batch.commit().catch(() => {});
+  }
+  return { ...profile, birthYear: stored || profile.birthYear || 0 };
 }
 
 // Most writes denormalise the author's name and photo, so the signed-in
@@ -39,21 +66,21 @@ export function myProfile() {
 }
 
 // Bump on material policy changes. Profiles keep the version they accepted.
-export const POLICY_VERSION = "2026-09-30.3";
+export const POLICY_VERSION = "2026-10-01.1";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
   batch.set(doc(db, "usernames", username), { uid: user.uid });
+  batch.set(ageRef(user.uid), { birthYear });
   batch.set(doc(db, "users", user.uid), {
     username,
     name: displayName || username,
     usernameChangedAt: null,
-    // No email or phone: user docs are readable by any signed-in user.
+    // No email, phone or birth year: profiles are public.
     bio: "",
     pronouns: "",
     town: "",
     spouseUsername: "",
-    birthYear: birthYear || 0,
     photoURL: user.photoURL || "",
     followerCount: 0,
     followingCount: 0,

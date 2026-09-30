@@ -316,11 +316,10 @@ export class CallSession {
     if (this.state === "ended") return pc.close();
     const stream = this.localStream;
     pc.addTransceiver(stream.getAudioTracks()[0], { direction: "sendrecv", streams: [stream] });
-    // Always negotiate video on video calls, even without a local camera.
-    if (this.video) {
-      const cam = stream.getVideoTracks()[0];
-      pc.addTransceiver(cam || "video", { direction: cam ? "sendrecv" : "recvonly", streams: [stream] });
-    }
+    // Always negotiate a sendrecv video line, even for voice calls, so either
+    // side can turn a camera on later with replaceTrack and no renegotiation.
+    const cam = stream.getVideoTracks()[0];
+    pc.addTransceiver(cam || "video", { direction: "sendrecv", streams: [stream] });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     if (this.state === "ended") return; // hung up while the camera was starting
@@ -378,6 +377,12 @@ export class CallSession {
     await this.setRemote(this.incoming.offer);
     // addTrack reuses the transceivers created by the offer.
     this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream));
+    // Keep the video line sendrecv without a camera, for a later upgrade.
+    const video = this.videoTransceiver();
+    if (video && video.direction !== "sendrecv") {
+      video.direction = "sendrecv";
+      video.sender.setStreams?.(this.localStream);
+    }
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     await this.signal.update({ answer: { type: answer.type, sdp: answer.sdp }, answerRev: this.offerRev, status: "active" }, "answeredAt");
@@ -419,11 +424,35 @@ export class CallSession {
     this.sendState();
   }
 
-  toggleCamera() {
-    if (this.noCamera) return;
-    this.localStream?.getVideoTracks().forEach((t) => { t.enabled = this.cameraOff; });
-    this.set({ cameraOff: !this.cameraOff });
+  videoTransceiver() {
+    return this.pc?.getTransceivers().find((t) => t.receiver.track?.kind === "video") || null;
+  }
+
+  get hasCamera() {
+    return this.localStream?.getVideoTracks().some((t) => t.readyState === "live") || false;
+  }
+
+  /** Toggles the camera; on a voice call (or without a camera yet) it opens one. Resolves to false on failure. */
+  async toggleCamera() {
+    if (this.hasCamera) {
+      this.localStream.getVideoTracks().forEach((t) => { t.enabled = this.cameraOff; });
+      this.set({ cameraOff: !this.cameraOff });
+      this.sendState();
+      return true;
+    }
+    const sender = this.videoTransceiver()?.sender;
+    if (!sender || this.opening) return false;
+    this.opening = true;
+    const track = await navigator.mediaDevices.getUserMedia({ video: await cameraFor(this.facing) })
+      .then((s) => s.getVideoTracks()[0]).catch(() => null);
+    this.opening = false;
+    if (!track || this.state === "ended") { track?.stop(); return false; }
+    await sender.replaceTrack(track).catch(() => {});
+    this.localStream = new MediaStream([...this.localStream.getAudioTracks(), track]);
+    const cams = await navigator.mediaDevices.enumerateDevices().then((ds) => ds.filter((d) => d.kind === "videoinput")).catch(() => []);
+    this.set({ cameraOff: false, noCamera: false, usedVideo: true, canFlip: cams.length > 1 });
     this.sendState();
+    return true;
   }
 
   /** Switches front/back camera via replaceTrack (no renegotiation). */
@@ -432,7 +461,7 @@ export class CallSession {
     this.flipping = true;
     const from = this.facing;
     const to = from === "user" ? "environment" : "user";
-    const sender = this.pc?.getTransceivers().find((t) => t.receiver.track?.kind === "video")?.sender;
+    const sender = this.videoTransceiver()?.sender;
     // Release first: many phones can't open two cameras at once.
     this.localStream.getVideoTracks().forEach((t) => { t.stop(); this.localStream.removeTrack(t); });
     const open = async (facing) => navigator.mediaDevices.getUserMedia({ video: await cameraFor(facing) }).then((s) => s.getVideoTracks()[0]).catch(() => null);
@@ -470,7 +499,7 @@ export class CallSession {
       await this.signal.update({ status }, "endedAt").catch(() => {});
     }
     if (this.isCaller) {
-      const kind = this.video ? "Video call" : "Voice call";
+      const kind = this.video || this.usedVideo ? "Video call" : "Voice call";
       const summary = length > 0 ? `${kind} · ${formatDuration(length)}`
         : reason === "declined" ? `${kind} declined`
         : reason === "busy" ? `${kind} · busy`

@@ -3,13 +3,13 @@ import { auth } from "../firebase";
 import { signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
 import {
   signInEmail, signUpEmail, signInGoogle, signInApple,
-  resetPassword, applyPersistence, authMessage, isCancellation,
+  resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
 } from "../lib/auth";
 import { validateUsername, validBirthYear } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../lib/db";
-import { Eye, EyeOff, AlertTriangle, Check } from "lucide-react";
-import { navigate } from "../lib/router";
+import { Eye, EyeOff, AlertTriangle, Check, ArrowLeft } from "lucide-react";
+import { authPath, goBack, navigate } from "../lib/router";
 import { LogoMark } from "./shell/Sidebar";
 import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
@@ -46,14 +46,16 @@ function AppleMark() {
   );
 }
 
-export default function AuthPage() {
-  const [mode, setMode] = useState("login"); // 'login' | 'signup'
+// `pendingUser` is signed in without a profile; `onCreated` runs once the profile exists.
+export default function AuthPage({ initialMode = "login", pendingUser: signedInUser = null, onCreated }) {
+  const [mode, setMode] = useState(initialMode); // 'login' | 'signup'
   const [method, setMethod] = useState("email"); // 'email' | 'phone'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [capsOn, setCapsOn] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [noStorage] = useState(storageBlocked);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [birthYear, setBirthYear] = useState("");
@@ -64,7 +66,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
-  const [pendingUser, setPendingUser] = useState(null); // signed in via OAuth/phone, no profile yet
+  const [pendingUser, setPendingUser] = useState(signedInUser); // signed in via OAuth/phone, no profile yet
   const [consent, setConsent] = useState(false);
 
   const recaptchaRef = useRef(null);
@@ -111,6 +113,7 @@ export default function AuthPage() {
         const uname = await validateNewUsername(username);
         const cred = await signUpEmail(email, password, remember);
         await claimUsernameAndCreateProfile(cred.user, uname, vYear.year, displayName.trim());
+        onCreated();
       } else {
         await signInEmail(email, password, remember);
       }
@@ -158,7 +161,7 @@ export default function AuthPage() {
       if (vYear.error) throw new Error(vYear.error);
       const uname = await validateNewUsername(username);
       await claimUsernameAndCreateProfile(pendingUser, uname, vYear.year, displayName.trim());
-      window.location.reload();
+      onCreated();
     } catch (err) { fail(err); setBusy(false); }
   };
 
@@ -195,7 +198,7 @@ export default function AuthPage() {
   // Profile completion for OAuth/phone sign-ups
   if (pendingUser) {
     return (
-      <Shell>
+      <Shell finishing>
         <form onSubmit={finishProfile} className="space-y-4 anim-rise" noValidate>
           <div>
             <h2 className="text-title-1 font-display">Finish setting up</h2>
@@ -325,6 +328,12 @@ export default function AuthPage() {
                 className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
               <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
             </label>
+            {noStorage && (
+              <p role="note" className="rounded-control bg-warning-text/10 px-3 py-2 text-caption text-warning-text">
+                This browser is blocking storage for Mesh, so you&apos;ll be signed out when you reload or open another tab.
+                In Brave, open Shields for this site and allow cookies.
+              </p>
+            )}
 
             {signup && consentBox}
 
@@ -368,7 +377,11 @@ export default function AuthPage() {
 
         <p className="mt-6 text-center text-callout text-fg-muted">
           {signup ? "Already have an account? " : "New to Mesh? "}
-          <button type="button" onClick={() => { setMode(signup ? "login" : "signup"); setError(""); setNotice(""); }}
+          <button type="button" onClick={() => {
+            const next = signup ? "login" : "signup";
+            setMode(next); setError(""); setNotice("");
+            navigate(authPath(next), { replace: true });
+          }}
             className="inline-flex min-h-11 items-center font-semibold text-accent-text hover:underline underline-offset-2">
             {signup ? "Log in" : "Create an account"}
           </button>
@@ -398,7 +411,7 @@ export default function AuthPage() {
   );
 }
 
-function Shell({ children }) {
+function Shell({ finishing = false, children }) {
   return (
     <div className="flex min-h-dvh bg-canvas">
       <div className="relative hidden flex-1 items-center justify-center overflow-hidden border-r border-line bg-surface lg:flex" style={LATTICE}>
@@ -417,7 +430,13 @@ function Shell({ children }) {
           </dl>
         </div>
       </div>
-      <main className="flex flex-1 items-center justify-center overflow-y-auto p-6">
+      <main className="relative flex flex-1 items-center justify-center overflow-y-auto p-6">
+        {!finishing && (
+          <button type="button" onClick={() => goBack("/")}
+            className="press absolute left-3 top-3 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 pt-safe text-callout font-medium text-fg-muted hover:text-fg">
+            <ArrowLeft size={18} aria-hidden="true" /> Keep browsing
+          </button>
+        )}
         <div className="w-full max-w-sm py-8">
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
             <LogoMark size={52} />

@@ -1,12 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Plus, Menu, Keyboard } from "lucide-react";
-import { navigate } from "../../lib/router";
-import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
+import { Plus, Menu, Keyboard, LogIn, UserPlus } from "lucide-react";
+import { authPath, navigate } from "../../lib/router";
+import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
 // Desktop nav: icon rail at md, labelled column at xl.
 export default function Sidebar({ page, profile, unread, notifications, onCreate }) {
+  const guest = !profile;
   const current = activeNavId(page);
   const counts = { unread, notifications };
   const go = (path) => (window.location.pathname === path ? scrollOrRefresh() : navigate(path));
@@ -20,22 +21,31 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
       </button>
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-y-auto py-4 no-scrollbar">
-        {MAIN_NAV.map((s) => (
+        {navFor(MAIN_NAV, guest).map((s) => (
           <NavRow key={s.id} icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
         ))}
-        <NavRow icon={Plus} label="Create" onClick={onCreate} />
-        <button type="button" onClick={() => navigate("/account")} title="Profile"
-          aria-current={page.tab === "account" && page.view === "profile" ? "page" : undefined}
-          className={`press flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors justify-center xl:justify-start ${
-            page.tab === "account" && page.view === "profile" ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
-          }`}>
-          <Avatar profile={profile} size={26} ring={page.tab === "account" && page.view === "profile"} />
-          <span className="hidden xl:inline">Profile</span>
-          <span className="sr-only xl:hidden">Profile</span>
-        </button>
+        {guest ? (
+          <>
+            <NavRow icon={LogIn} label="Log in" onClick={() => navigate(authPath("login"))} />
+            <NavRow icon={UserPlus} label="Sign up" onClick={() => navigate(authPath("signup"))} />
+          </>
+        ) : (
+          <>
+            <NavRow icon={Plus} label="Create" onClick={onCreate} />
+            <button type="button" onClick={() => navigate("/account")} title="Profile"
+              aria-current={page.tab === "account" && page.view === "profile" ? "page" : undefined}
+              className={`press flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors justify-center xl:justify-start ${
+                page.tab === "account" && page.view === "profile" ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
+              }`}>
+              <Avatar profile={profile} size={26} ring={page.tab === "account" && page.view === "profile"} />
+              <span className="hidden xl:inline">Profile</span>
+              <span className="sr-only xl:hidden">Profile</span>
+            </button>
+          </>
+        )}
       </nav>
 
-      <MoreMenu page={page} />
+      <MoreMenu page={page} guest={guest} />
     </aside>
   );
 }
@@ -60,12 +70,12 @@ function NavRow({ icon: Icon, label, active = false, onClick, badge = 0 }) {
   );
 }
 
-function MoreMenu({ page }) {
+function MoreMenu({ page, guest }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef(null);
   const button = useRef(null);
   const entries = [
-    ...MORE_NAV.map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) })),
+    ...navFor(MORE_NAV, guest).map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) })),
     { label: "Keyboard shortcuts", icon: Keyboard, run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })) },
   ];
 

@@ -13,6 +13,7 @@ export async function fetchNews(status = "approved") {
 }
 
 export async function isAdmin() {
+  if (!me()) return false;
   const snap = await getDoc(doc(db, "admins", me()));
   return snap.exists();
 }

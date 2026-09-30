@@ -21,7 +21,7 @@ import { ShareSheet } from "./PostActions";
 
 // Native controls for keyboard, captions, fullscreen and PiP support.
 export default function Watch({ postId }) {
-  const { following, setFollowing } = useShell();
+  const { following, setFollowing, needsAccount } = useShell();
   const toast = useToast();
   const [post, setPost] = useState(undefined);
   usePageTitle(post ? post.title || `Video by @${post.authorName}` : null, 2);
@@ -77,6 +77,7 @@ export default function Watch({ postId }) {
   const mine = post?.authorId === me();
 
   const act = async (field, current, write, countKey) => {
+    if (needsAccount({ liked: "like posts", saved: "save posts", reposted: "repost" }[field])) return;
     setViewer(post.id, field, !current);
     if (countKey) setCounts((c) => ({ ...c, [countKey]: Math.max(0, c[countKey] + (current ? -1 : 1)) }));
     try { await write(); }
@@ -88,6 +89,7 @@ export default function Watch({ postId }) {
   };
 
   const follow = async () => {
+    if (needsAccount("follow people")) return;
     try {
       await toggleFollow({ id: post.authorId, username: post.authorName }, followsAuthor);
       setFollowing((prev) => {

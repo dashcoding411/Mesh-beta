@@ -1,14 +1,14 @@
 import { Bell, Menu, Plus, Search } from "lucide-react";
 import IconButton from "../ui/IconButton";
 import { sectionById } from "../../lib/surfaces";
-import { navigate } from "../../lib/router";
+import { authPath, navigate } from "../../lib/router";
 import { useShell } from "./ShellContext";
 import { LogoMark } from "./Sidebar";
 
 // Home section header. Mobile adds drawer, search and create buttons;
 // `children` renders below on both (e.g. feed tabs).
 export default function HomeHeader({ section, children, actions, transparent = false }) {
-  const { openDrawer, openComposer, noticesUnread } = useShell();
+  const { openDrawer, openComposer, noticesUnread, guest } = useShell();
   const meta = sectionById(section);
   const isFeed = section === "foryou" || section === "following";
 
@@ -34,7 +34,14 @@ export default function HomeHeader({ section, children, actions, transparent = f
         {section !== "search" && (
           <IconButton icon={Search} label="Search" onClick={() => navigate("/search")} tone={transparent ? "overlay" : "ghost"} />
         )}
-        {section !== "notifications" && (
+        {guest ? (
+          <button type="button" onClick={() => navigate(authPath("login"))}
+            className={`press ml-1 mr-1 min-h-9 shrink-0 rounded-full px-3.5 text-callout font-semibold ${
+              transparent ? "bg-white/15 text-white" : "bg-surface-2 text-fg"
+            }`}>
+            Log in
+          </button>
+        ) : section !== "notifications" && (
           <span className="relative">
             <IconButton icon={Bell} label={noticesUnread > 0 ? `Notifications, ${noticesUnread} new` : "Notifications"}
               onClick={() => navigate("/notifications")} tone={transparent ? "overlay" : "ghost"} />
@@ -44,7 +51,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
           </span>
         )}
         {actions}
-        <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />
+        {!guest && <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
       </div>
 
       <div className="hidden md:flex min-h-16 items-center gap-4 px-6">

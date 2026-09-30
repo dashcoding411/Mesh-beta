@@ -10,7 +10,7 @@
 
 import {
   fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers,
-  fetchAffinity, tsMillis, isHeld,
+  fetchAffinity, tsMillis, isHeld, me,
 } from "./db";
 import { db } from "../firebase";
 import { collection, getDocs, limit, query } from "firebase/firestore";
@@ -101,7 +101,9 @@ let pool = null;
 let poolAt = 0;
 const POOL_TTL = 2 * 60_000;
 
+// People search needs an account, so profiles can't be listed anonymously.
 async function fetchPeoplePool() {
+  if (!me()) return [];
   const snap = await getDocs(query(collection(db, "users"), limit(300)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
@@ -147,7 +149,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   const [data, handleHits] = await Promise.all([
     loadPool(),
     // Exact handle lookup reaches accounts outside the pool.
-    searchUsers(q.replace(/\s/g, "")).catch(() => []),
+    me() ? searchUsers(q.replace(/\s/g, "")).catch(() => []) : [],
   ]);
   const { posts, people, circles, gatherings, news, affinity } = data;
   const results = [];

@@ -18,7 +18,7 @@ export const BUSINESS = {
   copyrightEmail: "TODO: copyright@yourdomain",
 
   website: "TODO: https://yourdomain",
-  lastUpdated: "30 September 2026",
+  lastUpdated: "1 October 2026",
 };
 
 export function missingFields() {

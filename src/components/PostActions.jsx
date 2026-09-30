@@ -26,7 +26,7 @@ async function copyLink(post, toast) {
 
 // External share (Web Share API or copy link) and send-to-chat.
 export function ShareSheet({ post, onClose }) {
-  const { inbox } = useShell();
+  const { inbox, guest } = useShell();
   const toast = useToast();
   const [sent, setSent] = useState(new Set());
   const [busy, setBusy] = useState("");
@@ -69,39 +69,41 @@ export function ShareSheet({ post, onClose }) {
         </Button>
       </div>
 
-      <p className="mb-2 mt-6 text-label font-semibold uppercase tracking-wider text-fg-subtle">Send in Messages</p>
-      {membersOnly ? (
-        <p className="flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
-          <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          This is only for members of its circle, so it can't be sent into a conversation. The link works for members.
-        </p>
-      ) : (<>
-      {chats === null && <p className="py-4 text-callout text-fg-muted">Loading conversations…</p>}
-      {post.visibility === "followers" && (
-        <p className="mb-2 flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
-          <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          This is followers-only. People in the chat who don't follow the author will see that it's unavailable.
-        </p>
-      )}
-      {chats?.length === 0 && (
-        <EmptyState compact icon={Send} title="No conversations yet"
-          body="Start one from Messages or someone's profile, then share straight into it." />
-      )}
-      <ul className="space-y-1">
-        {chats?.map((c) => {
-          const done = sent.has(c.id);
-          return (
-            <li key={c.id} className="flex min-h-14 items-center gap-3 rounded-control px-2">
-              <Avatar profile={{ username: titleOf(c) }} size={40} />
-              <span className="min-w-0 flex-1 truncate text-callout font-medium">{titleOf(c)}</span>
-              <Button size="sm" variant={done ? "ghost" : "primary"} loading={busy === c.id}
-                disabled={done} icon={done ? Check : undefined} onClick={() => send(c)}>
-                {done ? "Sent" : "Send"}
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
+      {!guest && (<>
+        <p className="mb-2 mt-6 text-label font-semibold uppercase tracking-wider text-fg-subtle">Send in Messages</p>
+        {membersOnly ? (
+          <p className="flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            This is only for members of its circle, so it can't be sent into a conversation. The link works for members.
+          </p>
+        ) : (<>
+        {chats === null && <p className="py-4 text-callout text-fg-muted">Loading conversations…</p>}
+        {post.visibility === "followers" && (
+          <p className="mb-2 flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            This is followers-only. People in the chat who don't follow the author will see that it's unavailable.
+          </p>
+        )}
+        {chats?.length === 0 && (
+          <EmptyState compact icon={Send} title="No conversations yet"
+            body="Start one from Messages or someone's profile, then share straight into it." />
+        )}
+        <ul className="space-y-1">
+          {chats?.map((c) => {
+            const done = sent.has(c.id);
+            return (
+              <li key={c.id} className="flex min-h-14 items-center gap-3 rounded-control px-2">
+                <Avatar profile={{ username: titleOf(c) }} size={40} />
+                <span className="min-w-0 flex-1 truncate text-callout font-medium">{titleOf(c)}</span>
+                <Button size="sm" variant={done ? "ghost" : "primary"} loading={busy === c.id}
+                  disabled={done} icon={done ? Check : undefined} onClick={() => send(c)}>
+                  {done ? "Sent" : "Send"}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+        </>)}
       </>)}
     </Dialog>
   );
@@ -109,7 +111,7 @@ export function ShareSheet({ post, onClose }) {
 
 export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }) {
   const toast = useToast();
-  const { toggleMute } = useShell();
+  const { toggleMute, guest, needsAccount } = useShell();
   const [mode, setMode] = useState("menu"); // menu | report | delete
   const [busy, setBusy] = useState(false);
   const label = kindLabel(post);
@@ -170,18 +172,20 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
             View @{post.authorName}'s profile
           </MenuItem>
         )}
-        {!mine && (
+        {!mine && !guest && (
           <MenuItem icon={EyeOff} onClick={hide} disabled={busy} description="Hide it and show fewer posts like it">
             Not interested
           </MenuItem>
         )}
-        {!mine && (
+        {!mine && !guest && (
           <MenuItem icon={VolumeX} description="Stop seeing their posts without unfollowing. They won't know"
             onClick={() => { onClose(); toggleMute({ id: post.authorId, username: post.authorName }, true); }}>
             Mute @{post.authorName}
           </MenuItem>
         )}
-        {!mine && <MenuItem icon={Flag} danger onClick={() => setMode("report")}>Report post</MenuItem>}
+        {!mine && (
+          <MenuItem icon={Flag} danger onClick={() => { if (needsAccount("report posts")) onClose(); else setMode("report"); }}>Report post</MenuItem>
+        )}
         {(mine || canModerate) && (
           <MenuItem icon={Trash2} danger onClick={() => setMode("delete")}>
             {mine ? `Delete ${label.toLowerCase()}` : "Remove from circle"}

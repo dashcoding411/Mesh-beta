@@ -15,7 +15,7 @@ import { EmptyState, Skeleton, Loading } from "./ui/States";
 const MEDALS = ["bg-amber-400 text-amber-950", "bg-zinc-300 text-zinc-900", "bg-orange-400 text-orange-950"];
 
 export default function Leaderboard() {
-  const { following } = useShell();
+  const { following, guest } = useShell();
   const [scope, setScope] = useState("week");
   const [who, setWho] = useState("everyone");
   const [list, setList] = useState(null);
@@ -27,7 +27,7 @@ export default function Leaderboard() {
     fetchLeaderboard(scope, week).then((l) => { if (live) setList(l); }).catch(() => { if (live) setList([]); });
     return () => { live = false; };
   }, [scope, week]);
-  useEffect(() => { fetchBrickStats().then(setMine).catch(() => setMine(null)); }, []);
+  useEffect(() => { if (!guest) fetchBrickStats().then(setMine).catch(() => setMine(null)); }, [guest]);
 
   const rows = useMemo(() => (list || []).filter((s) => who === "everyone" || following.has(s.id) || s.id === me()), [list, who, following]);
   const valueOf = (s) => (scope === "week" ? s.weekSeconds : s.totalSeconds);
@@ -40,8 +40,10 @@ export default function Leaderboard() {
       </HomeHeader>
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[640px] px-4 pb-16 pt-4 md:border-x md:border-line md:min-h-full">
-          <Segmented label="Whose time" value={who} onChange={setWho} className="mb-4"
-            options={[{ id: "everyone", label: "Everyone" }, { id: "following", label: "People you follow" }]} />
+          {!guest && (
+            <Segmented label="Whose time" value={who} onChange={setWho} className="mb-4"
+              options={[{ id: "everyone", label: "Everyone" }, { id: "following", label: "People you follow" }]} />
+          )}
 
           {mine !== undefined && !mine?.public && (
             <div className="mb-4 flex items-center gap-3 rounded-card border border-accent-text/30 bg-accent-soft p-3">

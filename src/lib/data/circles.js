@@ -273,6 +273,7 @@ export async function declineJoinRequest(groupId, uid) {
 }
 
 export async function myJoinRequest(groupId) {
+  if (!me()) return null;
   const snap = await getDoc(doc(db, "groups", groupId, "joinRequests", me()));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
@@ -395,6 +396,7 @@ export async function countPostsByMember(group, member) {
 }
 
 export async function fetchMembership(groupId) {
+  if (!me()) return null;
   const snap = await getDoc(doc(db, "groups", groupId, "members", me()));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }

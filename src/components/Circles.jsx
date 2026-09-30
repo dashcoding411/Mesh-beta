@@ -20,8 +20,10 @@ import CirclePage from "./CirclePage";
 import { GatheringCard, NewGatheringDialog } from "./Events";
 
 export default function Circles({ circleId, view }) {
+  const { needsAccount } = useShell();
   const [creating, setCreating] = useState(null); // "circle" | "gathering"
   const tab = view === "gatherings" ? "gatherings" : "circles";
+  const create = (what) => { if (!needsAccount(what === "circle" ? "start a circle" : "plan a gathering")) setCreating(what); };
 
   if (circleId) return <CirclePage circleId={circleId} />;
 
@@ -30,7 +32,7 @@ export default function Circles({ circleId, view }) {
       <HomeHeader section="circles"
         actions={
           <Button size="sm" variant="primary" icon={tab === "circles" ? Plus : CalendarPlus} className="hidden md:inline-flex"
-            onClick={() => setCreating(tab === "circles" ? "circle" : "gathering")}>
+            onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
             {tab === "circles" ? "New circle" : "New gathering"}
           </Button>
         }>
@@ -42,10 +44,10 @@ export default function Circles({ circleId, view }) {
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[720px] px-4 pb-16 pt-5 md:px-6">
           <Button full variant="secondary" icon={tab === "circles" ? Plus : CalendarPlus} className="mb-5 md:hidden"
-            onClick={() => setCreating(tab === "circles" ? "circle" : "gathering")}>
+            onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
             {tab === "circles" ? "Start a circle" : "Plan a gathering"}
           </Button>
-          {tab === "circles" ? <CircleList onCreate={() => setCreating("circle")} /> : <GatheringList onCreate={() => setCreating("gathering")} />}
+          {tab === "circles" ? <CircleList onCreate={() => create("circle")} /> : <GatheringList onCreate={() => create("gathering")} />}
         </div>
       </div>
 
@@ -72,7 +74,7 @@ export function PrivacyBadge({ privacy }) {
 }
 
 function CircleList({ onCreate }) {
-  const { interests, openInterests } = useShell();
+  const { interests, openInterests, guest } = useShell();
   const [groups, setGroups] = useState(null);
   const [mine, setMine] = useState(new Set());
   const [error, setError] = useState(false);
@@ -155,7 +157,7 @@ function CircleList({ onCreate }) {
             {allChips ? "Fewer" : "More interests"}
           </button>
         </div>
-        {!(interests || []).length && (
+        {!(interests || []).length && !guest && (
           <button type="button" onClick={openInterests}
             className="press inline-flex min-h-9 items-center gap-1.5 rounded-full bg-accent-soft px-3.5 text-caption font-semibold text-accent-ring">
             <Sparkles size={14} aria-hidden="true" /> Pick your interests to see circles for you

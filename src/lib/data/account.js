@@ -7,12 +7,13 @@ import { fetchEvents } from "./events.js";
 import { deleteNews } from "./news.js";
 import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
-import { fetchFollowList, fetchMyPrefs, myProfile } from "./users.js";
+import { fetchFollowList, fetchMyBirthYear, fetchMyPrefs, myProfile } from "./users.js";
 
 export async function exportMyData() {
   const uid = me();
-  const [profile, posts, groups, events, following, followers] = await Promise.all([
+  const [profile, birthYear, posts, groups, events, following, followers] = await Promise.all([
     myProfile(),
+    fetchMyBirthYear().catch(() => 0),
     fetchPostsByAuthor(uid),
     fetchGroups().then((gs) => gs.filter((g) => g.ownerId === uid)),
     fetchEvents().then((es) => es.filter((e) => e.hostId === uid)),
@@ -35,7 +36,7 @@ export async function exportMyData() {
   return {
     exportedAt: new Date().toISOString(),
     account: { uid, email: auth.currentUser?.email || "", phone: auth.currentUser?.phoneNumber || "" },
-    profile,
+    profile: { ...profile, birthYear },
     interests: prefs?.interests || [],
     posts,
     comments,
@@ -98,6 +99,7 @@ export async function deleteMyAccountData() {
     await deleteDoc(d.ref).catch(() => {});
   }
   await last.commit().catch(() => deleteDoc(doc(db, "users", uid)).catch(() => {}));
+  await deleteDoc(doc(db, "users", uid, "private", "age")).catch(() => {});
   await deleteDoc(doc(db, "rateLimits", uid)).catch(() => {});
   await deleteDoc(doc(db, "brickStats", uid)).catch(() => {});
   await deleteDoc(doc(db, "newsWriters", uid)).catch(() => {});

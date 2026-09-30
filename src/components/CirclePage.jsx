@@ -60,7 +60,7 @@ export default function CirclePage({ circleId }) {
     myJoinRequest(circleId).then(setPendingRequest).catch(() => {});
   }, [circleId, load]);
 
-  const { profile, inbox } = useShell();
+  const { profile, inbox, guest, needsAccount } = useShell();
   const [chatBusy, setChatBusy] = useState(false);
 
   if (group === undefined) {
@@ -89,6 +89,7 @@ export default function CirclePage({ circleId }) {
   const limits = activeLimits(group);
 
   const join = async () => {
+    if (needsAccount("join circles")) return;
     if (!oldEnough) {
       return toast({ tone: "info", title: `This circle is for people ${group.ageLimit} and over` });
     }
@@ -191,7 +192,8 @@ export default function CirclePage({ circleId }) {
 
         {canRead && <Featured group={group} member={!!membership} onTab={setTab} />}
 
-        <Tabs variant="underline" label="Circle sections" value={tab} onChange={setTab} className="mt-5" tabs={TABS} />
+        <Tabs variant="underline" label="Circle sections" value={tab} onChange={setTab} className="mt-5"
+          tabs={guest ? TABS.filter((t) => t.id !== "members") : TABS} />
 
         <div role="tabpanel" className="pt-5">
           {tab === "about" ? (

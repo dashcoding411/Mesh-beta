@@ -6,6 +6,7 @@ import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import { Input } from "./ui/Field";
 import { useToast } from "./ui/toast-context";
+import { useShell } from "./shell/ShellContext";
 
 function timeLeft(endsAt) {
   const ms = tsMillis(endsAt) - Date.now();
@@ -19,6 +20,7 @@ function timeLeft(endsAt) {
 // Options until voted or closed, then results. Votes are anonymous and final.
 export function PollCard({ post }) {
   const toast = useToast();
+  const { needsAccount } = useShell();
   const options = post.poll.options;
   const [counts, setCounts] = useState(options.map((_, i) => post[`pollVotes${i}`] || 0));
   const [mine, setMine] = useState(undefined);
@@ -30,7 +32,7 @@ export function PollCard({ post }) {
   useEffect(() => { fetchMyVote(post.id).then(setMine).catch(() => setMine(null)); }, [post.id]);
 
   const vote = async (i) => {
-    if (busy || closed) return;
+    if (busy || closed || needsAccount("vote in polls")) return;
     setBusy(true);
     setMine(i);
     setCounts((c) => c.map((n, j) => (j === i ? n + 1 : n)));

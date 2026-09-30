@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList } from "./core.js";
-import { fetchProfile, myProfile, uidForUsername } from "./users.js";
+import { fetchMyBirthYear, fetchProfile, myProfile, uidForUsername } from "./users.js";
 import { notify } from "./notifications.js";
 import {
   COOL_OFF_MS, applyChange, carryTightening, dayKey, deviceOffset, deviceZone, emptyLayer, isTighterOrSame, layerToDoc, policyFromDoc,
@@ -154,24 +154,31 @@ export async function inviteTeen(handle) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
   if (uid === me()) throw new Error("That's your own account.");
-  const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(uid)]);
-  const thisYear = new Date().getFullYear();
-  if (!(mine?.birthYear > 0) || thisYear - mine.birthYear < 19) throw new Error("Parental controls are for adults. Set your birth year in Settings first.");
-  if (!(theirs?.birthYear > 0) || thisYear - theirs.birthYear >= 18) throw new Error(`@${theirs?.username || handle} isn't an under-18 account, so there's nothing to supervise.`);
+  const [mine, myYear, theirs] = await Promise.all([myProfile(), fetchMyBirthYear(), fetchProfile(uid)]);
+  if (!(myYear > 0) || new Date().getFullYear() - myYear < 19) throw new Error("Parental controls are for adults. Set your birth year in Settings first.");
+  // Their age is private, so the rules decide.
   await setDoc(doc(db, "familyLinks", uid), {
     parentId: me(),
     parentName: mine.username,
     childName: theirs.username,
     status: "invited",
     createdAt: serverTimestamp(),
+  }).catch((err) => {
+    if (err?.code !== "permission-denied") throw err;
+    throw new Error(`@${theirs.username} can't be supervised. Parental controls are for under-18 accounts.`);
   });
   notify(uid, "family");
   return theirs;
 }
 
-export async function acceptFamilyInvite(link) {
-  await updateDoc(doc(db, "familyLinks", me()), { status: "active" });
+export async function acceptFamilyInvite(link, birthYear) {
+  await updateDoc(doc(db, "familyLinks", me()), { status: "active", untilYear: birthYear + 18 });
   notify(link.parentId, "familyok");
+}
+
+// Links accepted before untilYear was recorded.
+export async function recordFamilyLinkEnd(birthYear) {
+  await updateDoc(doc(db, "familyLinks", me()), { status: "active", untilYear: birthYear + 18 });
 }
 
 export async function declineFamilyInvite() {
@@ -184,11 +191,11 @@ export async function removeFamilyLink(childUid) {
   await deleteDoc(doc(db, "familyLinks", childUid));
 }
 
-export async function saveParentLimits(child, policy, layer) {
+export async function saveParentLimits(link, policy, layer) {
   const mine = await myProfile();
-  const parent = { ...layerToDoc(layer), parentId: me(), parentName: mine.username, untilYear: child.birthYear + 18 };
+  const parent = { ...layerToDoc(layer), parentId: me(), parentName: mine.username, untilYear: link.untilYear };
   if (!policy) {
-    await setDoc(lockRef(child.id), {
+    await setDoc(lockRef(link.id), {
       tzOffset: deviceOffset(),
       tzName: deviceZone().slice(0, 64),
       tzChangedAt: serverTimestamp(),
@@ -199,22 +206,22 @@ export async function saveParentLimits(child, policy, layer) {
       updatedAt: serverTimestamp(),
     });
   } else {
-    await updateDoc(lockRef(child.id), { parent, updatedAt: serverTimestamp() });
+    await updateDoc(lockRef(link.id), { parent, updatedAt: serverTimestamp() });
   }
 }
 
-export async function answerParentRequest(child, policy, approve) {
+export async function answerParentRequest(link, policy, approve) {
   const req = policy.parentRequest;
-  if (approve && req.unlink) return removeFamilyLink(child.id);
+  if (approve && req.unlink) return removeFamilyLink(link.id);
   if (approve) {
     const mine = await myProfile();
-    await updateDoc(lockRef(child.id), {
-      parent: { ...layerToDoc(req.self), parentId: me(), parentName: mine.username, untilYear: child.birthYear + 18 },
+    await updateDoc(lockRef(link.id), {
+      parent: { ...layerToDoc(req.self), parentId: me(), parentName: mine.username, untilYear: link.untilYear },
       parentRequest: null,
       updatedAt: serverTimestamp(),
     });
   } else {
-    await updateDoc(lockRef(child.id), { parentRequest: null, updatedAt: serverTimestamp() });
+    await updateDoc(lockRef(link.id), { parentRequest: null, updatedAt: serverTimestamp() });
   }
 }
 

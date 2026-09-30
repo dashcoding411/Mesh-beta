@@ -147,6 +147,7 @@ export async function votePostPoll(post, option) {
 }
 
 export async function fetchMyVote(postId) {
+  if (!me()) return null;
   const snap = await getDoc(doc(db, "posts", postId, "votes", me())).catch(() => null);
   return snap?.exists() ? snap.data().option : null;
 }
@@ -268,7 +269,7 @@ export async function recordSignal(post, kind) {
 }
 
 export async function bumpAffinity(authorId, amount) {
-  if (!authorId || authorId === me()) return;
+  if (!me() || !authorId || authorId === me()) return;
   await setDoc(
     doc(db, "users", me(), "affinity", authorId),
     { score: increment(amount), updatedAt: serverTimestamp() },
@@ -307,6 +308,7 @@ export async function fetchLikers(postId, n = 2) {
 }
 
 export async function fetchAffinity() {
+  if (!me()) return new Map();
   const q = query(collection(db, "users", me(), "affinity"), limit(200));
   const map = new Map();
   (await getDocs(q)).docs.forEach((d) => map.set(d.id, d.data().score || 0));
@@ -484,6 +486,7 @@ export async function hidePost(post, reason = "not_interested") {
 }
 
 export async function fetchHiddenPostIds() {
+  if (!me()) return new Set();
   const q = query(collection(db, "users", me(), "hidden"), limit(500));
   const set = new Set();
   (await getDocs(q)).docs.forEach((d) => set.add(d.id));

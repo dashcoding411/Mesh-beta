@@ -15,6 +15,7 @@ const storyRef = (id) => doc(db, "news", id);
 // Writers
 
 export async function isNewsWriter(uid = me()) {
+  if (!uid) return false;
   const snap = await getDoc(doc(db, "newsWriters", uid)).catch(() => null);
   return !!snap?.exists();
 }

@@ -38,7 +38,7 @@ const FILTERS = [
 // Empty state: recent searches, suggestions and an explore mosaic. With a
 // query: sectioned results from lib/search.js. The query is kept in the URL.
 export default function Search({ initialQuery, filter }) {
-  const { following, blocked, muted, hiddenWords } = useShell();
+  const { following, blocked, muted, hiddenWords, guest } = useShell();
   const [term, setTerm] = useState(initialQuery);
   const [results, setResults] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | loading | done | error
@@ -128,7 +128,7 @@ export default function Search({ initialQuery, filter }) {
         </form>
         {q.length >= 2 && (
           <Tabs variant="underline" label="Filter results" value={filter} onChange={setFilter} className="mx-auto max-w-[680px] px-2 md:px-4"
-            tabs={FILTERS.map((f) => ({ ...f, count: f.id === "top" ? 0 : sections.find((s) => s.id === f.id)?.items.length || 0 }))} />
+            tabs={FILTERS.filter((f) => !guest || f.id !== "people").map((f) => ({ ...f, count: f.id === "top" ? 0 : sections.find((s) => s.id === f.id)?.items.length || 0 }))} />
         )}
       </HomeHeader>
 
@@ -171,6 +171,7 @@ export default function Search({ initialQuery, filter }) {
 // Empty state
 
 function Discover({ recent, onPick, onForget, onClear }) {
+  const { guest } = useShell();
   return (
     <>
       {recent.length > 0 && (
@@ -194,7 +195,7 @@ function Discover({ recent, onPick, onForget, onClear }) {
           <p className="mt-2 text-caption text-fg-subtle">Kept on this device only.</p>
         </section>
       )}
-      <SuggestedPeople />
+      {!guest && <SuggestedPeople />}
       <Explore />
     </>
   );
@@ -242,11 +243,13 @@ function SuggestedPeople() {
 
 function FollowButton({ person, following, setFollowing, className = "" }) {
   const toast = useToast();
+  const { needsAccount } = useShell();
   const [busy, setBusy] = useState(false);
   const on = following.has(person.id);
   if (person.id === me()) return null;
   const toggle = async (e) => {
     e.stopPropagation();
+    if (needsAccount("follow people")) return;
     setBusy(true);
     try {
       await toggleFollow(person, on);

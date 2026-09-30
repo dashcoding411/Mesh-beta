@@ -23,7 +23,7 @@ import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
 export default function UserProfile({ uid }) {
-  const { following, setFollowing, blocked, setBlocked, muted, toggleMute } = useShell();
+  const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
   const toast = useToast();
   const [profile, setProfile] = useState(undefined);
   usePageTitle(profile ? `@${profile.username}` : null, 2);
@@ -45,7 +45,7 @@ export default function UserProfile({ uid }) {
   useEffect(() => {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
-    hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
+    if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
     fetchPostsByAuthor(uid)
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
@@ -65,7 +65,8 @@ export default function UserProfile({ uid }) {
     return () => { window.removeEventListener("keydown", onKey); opener?.focus?.(); };
   }, []);
 
-    const follow = async () => {
+  const follow = async () => {
+    if (needsAccount("follow people")) return;
     if (busy || !profile) return;
     setBusy(true);
     try {
@@ -113,6 +114,7 @@ export default function UserProfile({ uid }) {
   };
 
   const message = async () => {
+    if (needsAccount("message people")) return;
     setMessaging(true);
     try {
       const chatId = await openDirectChat(profile);
@@ -138,7 +140,7 @@ export default function UserProfile({ uid }) {
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>
         {profile && <IconButton icon={Link2} label="Share profile" onClick={share} />}
-        {profile && <IconButton icon={Ellipsis} label="More options" onClick={() => setDialog("menu")} />}
+        {profile && !guest && <IconButton icon={Ellipsis} label="More options" onClick={() => setDialog("menu")} />}
       </header>
 
       <div className="mx-auto max-w-[760px] pb-16">
@@ -151,14 +153,14 @@ export default function UserProfile({ uid }) {
 
         {profile === null && (
           <EmptyState icon={UserX} title="This account isn't available"
-            body="It may have been deleted, or the link is wrong."
+            body={guest ? "It may have been deleted, or you may need to log in to see it." : "It may have been deleted, or the link is wrong."}
             action={<Button onClick={() => goBack("/")}>Go back</Button>} />
         )}
 
         {profile && (
           <>
             <ProfileHeader profile={profile} postCount={locked ? null : posts?.length ?? null}
-              onShowFollows={locked ? undefined : setFollows}
+              onShowFollows={locked || guest ? undefined : setFollows}
               actions={isBlocked ? (
                 <Button className="flex-1" icon={Ban} onClick={() => setDialog("block")}>Unblock</Button>
               ) : (

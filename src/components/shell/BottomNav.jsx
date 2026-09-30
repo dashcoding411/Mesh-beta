@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { House, MessageCircle } from "lucide-react";
-import { navigate } from "../../lib/router";
+import { House, LogIn, MessageCircle, Search } from "lucide-react";
+import { authPath, navigate } from "../../lib/router";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 import Avatar from "../ui/Avatar";
 
-// Mobile tab bar (Home, Messages, Account). Hidden while the on-screen keyboard is open.
+// Mobile tab bar (Home, Messages, Account; signed out: Home, Search, Log in).
+// Hidden while the on-screen keyboard is open.
 export default function BottomNav({ page, profile, unread, immersive }) {
   const keyboardUp = useKeyboardOpen();
   if (keyboardUp) return null;
@@ -15,11 +16,16 @@ export default function BottomNav({ page, profile, unread, immersive }) {
     navigate(path);
   };
 
-  const tabs = [
+  const tabs = profile ? [
     { id: "home", label: "Home", path: "/", icon: House },
     { id: "messages", label: "Messages", path: "/messages", icon: MessageCircle, badge: unread },
     { id: "account", label: "Account", path: "/account" },
+  ] : [
+    { id: "home", label: "Home", path: "/", icon: House },
+    { id: "search", label: "Search", path: "/search", icon: Search },
+    { id: "auth", label: "Log in", path: authPath("login"), icon: LogIn },
   ];
+  const isActive = (id) => (id === "search" ? page.section === "search" : id === "home" ? page.tab === "home" && page.section !== "search" : page.tab === id);
 
   return (
     <nav aria-label="Main" data-theme={immersive ? "dark" : undefined}
@@ -28,7 +34,7 @@ export default function BottomNav({ page, profile, unread, immersive }) {
       }`}>
       <ul className="grid h-14 grid-cols-3">
         {tabs.map((t) => {
-          const active = page.tab === t.id;
+          const active = isActive(t.id);
           const Icon = t.icon;
           return (
             <li key={t.id} className="flex">

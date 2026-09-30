@@ -21,7 +21,7 @@ function brickSummary(brick) {
   return p.pending ? "On, with a change waiting" : "On";
 }
 import {
-  exportMyData, deleteMyAccountData, updateProfileFields, me, POLICY_VERSION, tsMillis, isMinor,
+  exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, isMinor, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
   fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile,
 } from "../lib/db";
@@ -401,7 +401,7 @@ function BirthYearDialog({ onClose, onSaved }) {
     if (v.error) return setError(v.error);
     setBusy(true);
     try {
-      await updateProfileFields(me(), { birthYear: v.year });
+      await setMyBirthYear(v.year);
       onSaved(v.year);
     } catch {
       setError("Couldn't save that. It can only be set once. If it's already set, contact us to correct it.");

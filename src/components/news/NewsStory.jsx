@@ -12,6 +12,7 @@ import { goBack, navigate } from "../../lib/router";
 import { usePageTitle } from "../../lib/usePageTitle";
 import { validateText } from "../../lib/validate";
 import HomeHeader from "../shell/HomeHeader";
+import { useShell } from "../shell/ShellContext";
 import { StoryBody } from "./StoryBody";
 import { LiveUpdates } from "./LiveUpdates";
 import { TopicLabel } from "./parts";
@@ -26,6 +27,7 @@ import { useToast } from "../ui/toast-context";
 
 export function NewsStory({ id }) {
   const toast = useToast();
+  const { needsAccount } = useShell();
   const [story, setStory] = useState(undefined); // undefined loading, null missing
   usePageTitle(story?.title || null, 1);
   const [admin, setAdmin] = useState(false);
@@ -125,7 +127,7 @@ export function NewsStory({ id }) {
                 <Button icon={Share2} onClick={share}>Share</Button>
                 <Button icon={Link2} onClick={copy}>Copy link</Button>
                 {story.status === "approved" && (
-                  <Button icon={Flag} onClick={() => setDialog("suggest")}>Suggest a correction</Button>
+                  <Button icon={Flag} onClick={() => { if (!needsAccount("suggest corrections")) setDialog("suggest"); }}>Suggest a correction</Button>
                 )}
                 {story.status !== "approved" && (story.authors || [story.authorId]).includes(me()) && (
                   <Button icon={PenLine} onClick={() => navigate(`/news/write/${story.id}`)}>Open in the newsroom</Button>

@@ -79,6 +79,8 @@ docs/architecture.md  design notes per subsystem
   lists or shapes drift between the client and the rules.
 - **List queries** must be provable by the rules statically, so post queries
   always constrain `visibility` or `authorId`.
+- **Visitors** can browse public content without an account. The `guest()`
+  branches in the rules define what they can read.
 - **No backend** means some features are intentionally absent (push
   notifications, server-side search, ML moderation). See the limitations
   section in `docs/architecture.md`.

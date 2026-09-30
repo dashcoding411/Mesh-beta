@@ -9,7 +9,7 @@ import {
 import {
   saveOwnLimits, cancelPending, brickUntil, requestTimeZoneChange, fetchMyFamilyLink, fetchMyTeens, inviteTeen,
   acceptFamilyInvite, declineFamilyInvite, removeFamilyLink, saveParentLimits, answerParentRequest,
-  requestParentChange, withdrawParentRequest, listenLock, fetchProfile, fetchUsageFor, deleteNotices,
+  requestParentChange, withdrawParentRequest, listenLock, fetchUsageFor, deleteNotices, recordFamilyLinkEnd,
   fetchBrickStats, setStatsPublic, weekKeyFor,
 } from "../lib/db";
 import { durationLabel } from "../lib/format";
@@ -21,6 +21,7 @@ import TopBar from "./shell/TopBar";
 import Button from "./ui/Button";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import Badge from "./ui/Badge";
+import Segmented from "./ui/Segmented";
 import { Field, Input, Select, Textarea, Checkbox } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
@@ -132,6 +133,7 @@ export default function BrickSettings() {
               <Button onClick={() => setInstant(nextMidnight(Date.now(), deviceOffset()))}>Tonight</Button>
               <Button onClick={() => setInstant(Date.now() + 3 * 86400000)}>3 days</Button>
             </div>
+            <CustomBrick now={now} onPick={setInstant} />
           </section>
 
               {policy?.pending && (
@@ -267,6 +269,69 @@ function Group({ icon: Icon, title, help, children }) {
   );
 }
 
+const MAX_BRICK_MS = 8 * 86400000; // matches the rules' cap on self.until
+const pad = (n) => String(n).padStart(2, "0");
+
+/** Next local occurrence of "HH:MM" after `now`. */
+function nextClockTime(hhmm, now) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date(now);
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() <= now) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
+// Custom instant brick: until a clock time, or for a duration.
+function CustomBrick({ now, onPick }) {
+  const [mode, setMode] = useState("until");
+  const [clock, setClock] = useState(() => {
+    const d = new Date(Date.now() + 3600000);
+    return `${pad(d.getHours())}:${pad(d.getMinutes() < 30 ? 30 : 0)}`;
+  });
+  const [hours, setHours] = useState(1);
+  const [minutes, setMinutes] = useState(0);
+
+  const until = mode === "until"
+    ? (clock ? nextClockTime(clock, now) : 0)
+    : now + (Number(hours) * 60 + Number(minutes)) * 60000;
+  const length = until - now;
+  const error = !until || length < 5 * 60000 ? "At least 5 minutes."
+    : length > MAX_BRICK_MS ? "At most 8 days." : "";
+
+  return (
+    <div className="mt-4 rounded-card border border-line p-3">
+      <Segmented label="Brick by" value={mode} onChange={setMode}
+        options={[{ id: "until", label: "Until a time" }, { id: "for", label: "For a length of time" }]} />
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        {mode === "until" ? (
+          <label className="flex flex-col gap-1 text-caption text-fg-muted">
+            Until
+            <Input type="time" value={clock} onChange={(e) => setClock(e.target.value)} className="!w-36" />
+          </label>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1 text-caption text-fg-muted">
+              Hours
+              <Input type="number" inputMode="numeric" min={0} max={192} value={hours}
+                onChange={(e) => setHours(Math.max(0, Math.min(192, Math.floor(Number(e.target.value) || 0))))} className="!w-24" />
+            </label>
+            <label className="flex flex-col gap-1 text-caption text-fg-muted">
+              Minutes
+              <Select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="!w-24">
+                {[0, 5, 10, 15, 20, 30, 45].map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            </label>
+          </>
+        )}
+        <Button variant="primary" disabled={!!error} onClick={() => onPick(until)}>Brick</Button>
+      </div>
+      <p className={`mt-2 text-caption ${error ? "text-warning-text" : "text-fg-muted"}`}>
+        {error || `Until ${whenLabel(until, now)}, ${spanLabel(length)} from now.`}
+      </p>
+    </div>
+  );
+}
+
 // End <= start wraps overnight; equal times mean all day.
 function AddWindowDialog({ onClose, onAdd }) {
   const [days, setDays] = useState([1, 2, 3, 4, 5]);
@@ -340,7 +405,12 @@ function TeenFamily({ profile, policy }) {
   const [link, setLink] = useState(undefined);
   const [ask, setAsk] = useState(false);
   const [confirmAccept, setConfirmAccept] = useState(false);
-  useEffect(() => { fetchMyFamilyLink().then(setLink).catch(() => setLink(null)); }, []);
+  useEffect(() => {
+    fetchMyFamilyLink().then((l) => {
+      setLink(l);
+      if (l?.status === "active" && !l.untilYear) recordFamilyLinkEnd(profile.birthYear).catch(() => {});
+    }).catch(() => setLink(null));
+  }, [profile.birthYear]);
   if (link === undefined) return null;
 
   if (!link) {
@@ -370,7 +440,7 @@ function TeenFamily({ profile, policy }) {
             body={`You won't be able to remove this yourself: you can ask @${link.parentName} to end it, and it ends on its own on 1 January ${profile.birthYear + 18}.`}
             onClose={() => setConfirmAccept(false)}
             onConfirm={async () => {
-              try { await acceptFamilyInvite(link); setLink({ ...link, status: "active" }); toast({ title: `@${link.parentName} can now set limits` }); }
+              try { await acceptFamilyInvite(link, profile.birthYear); setLink({ ...link, status: "active" }); toast({ title: `@${link.parentName} can now set limits` }); }
               catch { toast({ tone: "error", title: "Couldn't accept" }); }
               setConfirmAccept(false);
             }} />
@@ -481,28 +551,28 @@ function ParentFamily() {
 
 function TeenDialog({ link, onClose }) {
   const toast = useToast();
-  const [child, setChild] = useState(null);
   const [lock, setLock] = useState({ policy: undefined });
   const [usage, setUsage] = useState({});
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  useEffect(() => { fetchProfile(link.id).then(setChild).catch(() => {}); }, [link.id]);
   useEffect(() => listenLock(link.id, (policy) => setLock({ policy })), [link.id]);
   useEffect(() => { if (lock.policy) fetchUsageFor(link.id, lock.policy.tzOffset).then(setUsage); }, [link.id, lock.policy]);
   const policy = lock.policy;
   const layer = policy?.parent || emptyLayer();
+  // Recorded by the teen when they accept.
+  const untilYear = link.untilYear || policy?.parent?.untilYear || 0;
 
   const save = async (next) => {
-    if (!child) return;
+    if (!untilYear) return;
     setBusy(true);
-    try { await saveParentLimits(child, policy, next); toast({ title: "Saved", body: "It applies straight away." }); }
+    try { await saveParentLimits({ ...link, untilYear }, policy, next); toast({ title: "Saved", body: "It applies straight away." }); }
     catch { toast({ tone: "error", title: "Couldn't save" }); }
     finally { setBusy(false); }
   };
   const answer = async (approve) => {
     setBusy(true);
     try {
-      await answerParentRequest(child, policy, approve);
+      await answerParentRequest({ ...link, untilYear }, policy, approve);
       deleteNotices([`familyask_${link.id}`]).catch(() => {});
       toast({ title: approve ? "Approved" : "Declined" });
       if (approve && policy.parentRequest.unlink) onClose();
@@ -512,10 +582,12 @@ function TeenDialog({ link, onClose }) {
 
   return (
     <Dialog title={`@${link.childName}`} onClose={onClose} size="lg">
-      {policy === undefined || !child ? <p className="text-callout text-fg-subtle">Loading…</p> : (
+      {policy === undefined ? <p className="text-callout text-fg-subtle">Loading…</p> : !untilYear ? (
+        <p className="text-callout text-fg-subtle">@{link.childName} needs to open Brick mode once to finish linking. You can set limits after that.</p>
+      ) : (
         <>
           <p className="mb-4 text-caption text-fg-muted">
-            Your limits apply straight away and only you can loosen them. They end on 1 January {child.birthYear + 18}.
+            Your limits apply straight away and only you can loosen them. They end on 1 January {untilYear}.
             Today: {SECTIONS.map((s) => `${Math.floor((usage[s.id] || 0) / 60)} min ${s.label}`).join(", ")}.
           </p>
           {policy?.parentRequest && (

@@ -26,7 +26,7 @@ let soundOn = false;
 // Vertical video feed. Short Flicks loop in full; long ones loop their
 // trailer and link to the full player.
 export default function Flicks({ startId }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, guest } = useShell();
   const [topic, setTopic] = useState("all");
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
@@ -82,7 +82,7 @@ export default function Flicks({ startId }) {
   return (
     <div data-theme="dark" className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
       <HomeHeader section="flicks" transparent>
-        <InterestChips interests={interests} value={topic} onEdit={openInterests} overlay
+        <InterestChips interests={interests} value={topic} onEdit={guest ? undefined : openInterests} overlay
           onChange={(t) => { setTopic(t); setVideos(null); scroller.current?.scrollTo({ top: 0 }); }} />
       </HomeHeader>
 
@@ -122,7 +122,7 @@ function CreateFlickButton() {
 }
 
 function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggleSound }) {
-  const { following, setFollowing } = useShell();
+  const { following, setFollowing, needsAccount } = useShell();
   const toast = useToast();
   const box = useRef(null);
   const video = useRef(null);
@@ -226,6 +226,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     if (tapTimer.current) {
       clearTimeout(tapTimer.current);
       tapTimer.current = null;
+      if (needsAccount("like posts")) return;
       setBurst(true);
       setTimeout(() => setBurst(false), 700);
       if (!liked) act("like");
@@ -236,6 +237,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
 
   const pending = useRef({});
   const act = async (what) => {
+    if (needsAccount({ like: "like posts", save: "save posts", repost: "repost" }[what])) return;
     if (pending.current[what]) return;
     const map = {
       like: ["liked", liked, () => toggleLike(post, liked), "like"],
@@ -263,6 +265,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
   };
 
   const follow = async () => {
+    if (needsAccount("follow people")) return;
     try {
       await toggleFollow({ id: post.authorId, username: post.authorName }, false);
       setFollowing((prev) => new Set(prev).add(post.authorId));

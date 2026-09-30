@@ -5,6 +5,7 @@ import { gifsEnabled } from "../lib/gifs";
 import GifPicker, { GifView } from "./GifPicker";
 import { fetchComments, addComment, deleteComment, openUserProfile, fetchProfile, me } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
+import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
 import { shortTime, fullTime, isoTime } from "../lib/format";
@@ -18,7 +19,7 @@ import { useToast } from "./ui/toast-context";
 
 export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const toast = useToast();
-  const { hiddenAuthors, hiddenWords } = useShell();
+  const { hiddenAuthors, hiddenWords, guest } = useShell();
   const [reporting, setReporting] = useState(null);
   const [revealed, setRevealed] = useState(new Set());
   const [closedReason, setClosedReason] = useState("");
@@ -109,7 +110,12 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   return (
     <Dialog title={count ? `Comments (${count})` : "Comments"} onClose={onClose} size="lg" initialFocusRef={inputRef}
       bodyClassName="!px-0"
-      footer={post.locked || closedReason ? (
+      footer={guest ? (
+        <p className="text-center text-callout text-fg-muted">
+          <button type="button" onClick={() => navigate(authPath("login"))}
+            className="inline-flex min-h-11 items-center font-semibold text-accent-text hover:underline">Log in</button> to join the conversation.
+        </p>
+      ) : post.locked || closedReason ? (
         <p className="flex items-center justify-center gap-2 text-callout text-fg-muted">
           <Lock size={16} aria-hidden="true" /> {post.locked ? "A moderator has paused comments on this post." : closedReason}
         </p>
@@ -196,7 +202,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
                 <IconButton icon={Trash2} label="Delete comment" size={16} className="-mr-2 shrink-0 opacity-70 hover:opacity-100"
                   onClick={() => remove(c)} />
               )}
-              {c.authorId !== me() && c.id && (
+              {!guest && c.authorId !== me() && c.id && (
                 <IconButton icon={Flag} label={`Report @${c.authorName}'s comment`} size={16}
                   className="-mr-2 shrink-0 opacity-60 hover:opacity-100" onClick={() => setReporting(c)} />
               )}

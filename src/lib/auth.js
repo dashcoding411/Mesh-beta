@@ -10,16 +10,76 @@ import {
   sendEmailVerification,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence,
+  signOut,
   updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
   deleteUser,
 } from "firebase/auth";
 
-// "Remember me": local persistence; otherwise session persistence.
+// Sessions always use local persistence so every tab shares them. Without
+// "keep me signed in", the session ends when the last Mesh tab closes:
+// Firebase's own session persistence is per tab, which signs new tabs out.
+const EPHEMERAL_KEY = "mesh:ephemeral-session";
+const TAB_KEY = "mesh:tab";
+let channel = null;
+
+function markTab() {
+  try { sessionStorage.setItem(TAB_KEY, "1"); } catch { /* storage blocked */ }
+}
+
+function openChannel() {
+  if (channel || typeof BroadcastChannel === "undefined") return channel;
+  channel = new BroadcastChannel("mesh-session");
+  channel.addEventListener("message", (e) => { if (e.data === "ping") channel.postMessage("pong"); });
+  return channel;
+}
+
+function anotherTabOpen(timeoutMs = 300) {
+  const ch = openChannel();
+  if (!ch) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const onMessage = (e) => { if (e.data === "pong") { ch.removeEventListener("message", onMessage); resolve(true); } };
+    ch.addEventListener("message", onMessage);
+    ch.postMessage("ping");
+    setTimeout(() => { ch.removeEventListener("message", onMessage); resolve(false); }, timeoutMs);
+  });
+}
+
+/** Signs out a non-persistent session left over from a closed browser. Run before reading auth state. */
+export async function restoreSession() {
+  openChannel();
+  let ephemeral = false;
+  let knownTab = false;
+  try {
+    ephemeral = localStorage.getItem(EPHEMERAL_KEY) === "1";
+    knownTab = sessionStorage.getItem(TAB_KEY) === "1";
+  } catch { /* storage blocked */ }
+  if (ephemeral && !knownTab && !(await anotherTabOpen())) {
+    await auth.authStateReady();
+    if (auth.currentUser) await signOut(auth);
+  }
+  markTab();
+}
+
 export async function applyPersistence(remember) {
-  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  await setPersistence(auth, browserLocalPersistence);
+  try {
+    if (remember) localStorage.removeItem(EPHEMERAL_KEY);
+    else localStorage.setItem(EPHEMERAL_KEY, "1");
+  } catch { /* storage blocked */ }
+  markTab();
+}
+
+/** True when the browser refuses site storage (e.g. cookies blocked), so sign-in can't persist. */
+export function storageBlocked() {
+  try {
+    localStorage.setItem("mesh:probe", "1");
+    localStorage.removeItem("mesh:probe");
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 export async function signInEmail(email, password, remember) {

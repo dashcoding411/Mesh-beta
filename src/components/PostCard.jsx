@@ -39,7 +39,7 @@ export default function PostCard({
   const pending = useRef({});
   const cardRef = useRef(null);
   const seen = useInView(cardRef);
-  const { hiddenAuthors, hiddenWords } = useShell();
+  const { hiddenAuthors, hiddenWords, guest, needsAccount } = useShell();
   const [revealed, setRevealed] = useState(false);
   const mineNow = post.authorId === me();
   // Content allowed on context is collapsed for others, never for the author.
@@ -77,20 +77,26 @@ export default function PostCard({
     }
   };
 
-  const like = () => optimistic("like", "liked", !liked, () => toggleLike(post, liked), "Couldn't update your like");
+  const like = () => {
+    if (needsAccount("like posts")) return;
+    optimistic("like", "liked", !liked, () => toggleLike(post, liked), "Couldn't update your like");
+  };
 
   const likeFromDoubleTap = () => {
+    if (needsAccount("like posts")) return;
     setBurst(true);
     setTimeout(() => setBurst(false), 900);
     if (!liked) like();
   };
 
   const save = async () => {
+    if (needsAccount("save posts")) return;
     const ok = await optimistic("save", "saved", !saved, () => toggleSave(post, saved), "Couldn't update Saved");
     if (ok && !saved) toast({ title: "Saved", action: { label: "View saved", onClick: () => navigate("/saved") } });
   };
 
   const repost = async () => {
+    if (needsAccount("repost")) return;
     if (mine) return toast({ tone: "info", title: "You can't repost your own post", body: "Share it instead, or send it to someone." });
     if (post.visibility !== "public") {
       return toast({ tone: "info", title: "Only public posts can be reposted", body: "Reposting would show it to people the author didn't choose." });
@@ -213,7 +219,7 @@ export default function PostCard({
               })}
             </div>
           ) : null} />
-        {!compact && seen && !post.locked && (
+        {!compact && seen && !post.locked && !guest && (
           <QuickComment post={post} onAdded={(c) => {
             setPreview(c);
             setCounts((x) => ({ ...x, comment: x.comment + 1 }));

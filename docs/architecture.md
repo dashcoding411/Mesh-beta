@@ -16,6 +16,11 @@
   comment, 5s per photo batch, 3s per edit).
 - **Server time only.** Creation times, presence, read markers and consent
   are `request.time`.
+- **Public without an account.** Visitors (`guest()` in the rules) can read
+  public posts and their likes and comments, profiles, public and private
+  circles' pages, public circles' guides, public gatherings, published news
+  and public brick stats. Everything else needs an account, as does listing
+  profiles.
 - **Evaluation budget.** Firestore limits expressions and document lookups per
   request. Large validations are wrapped in functions (`postCreateOk`,
   `circlePostOkAs`) and lookups are kept minimal.
@@ -24,7 +29,7 @@
 
 | Path | Notes |
 | --- | --- |
-| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes). |
+| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
 | `usernames/{handle}` | Handle registry; claimed and released only together with the profile. |
 | `posts/{id}` | `kind`: `post` (Still), `text` (Strand), `short` / `video` (Flicks). Carousels store `media[]` (2–10 slides; `media[0]` mirrors `mediaUrl`). Subcollections: `likes`, `saves`, `sends`, `votes`, `comments`. |
 | `reposts/{postId}_{uid}` | One per user per post; public posts by others only. |
@@ -48,6 +53,10 @@ Composite indexes are declared in `firestore.indexes.json`.
   because its packages have circular imports.
 - **Own profile.** `myProfile()` (`lib/data/users.js`) keeps the signed-in
   profile current with one snapshot listener instead of a read per write.
+- **Visitors.** Signed out, the shell shows public sections and routes
+  account-only pages to a join prompt. Actions call `needsAccount(reason)`
+  from the shell context, which explains what needs an account. Signing in
+  or out reloads the page so no state carries between the two.
 - **Profile cards.** `profileCache` overlays authors' current name and photo on
   denormalised content.
 - **Feed state** is kept per feed for the session so returning restores the
@@ -96,7 +105,7 @@ it (clearing the hold), or suspend accounts (`notSuspended()` in the rules).
 ## Brick mode (`lib/brick.js`)
 
 Weekly windows (half-hour slots per local day), daily per-section caps and
-instant bricks. Tightening applies immediately; loosening waits 24 hours in
+instant bricks (for a length of time, or until a clock time, up to 8 days). Tightening applies immediately; loosening waits 24 hours in
 `pending` (`tighterOrSame` in the rules). Browsing reads check `lockedFor()`;
 messaging, notifications and settings are never locked.
 
@@ -107,7 +116,8 @@ bricks are enforced on every read.
 
 Parents (19+) can add a second layer to an under-18 account after the teen
 accepts. Only the parent can loosen it, and it lapses the year the teen turns
-18.
+18. The teen records that year (`untilYear`) on the link when accepting, since
+the parent can't read their birth year.
 
 `brickStats/{uid}` records verified bricked time: a finished instant brick for
 its exact duration, and whole past days against the schedule in force
@@ -117,7 +127,10 @@ its exact duration, and whole past days against the schedule in force
 
 One-to-one WebRTC. Firestore carries the offer, answer and ICE candidates;
 candidates that arrive before their description are queued. A negotiated data
-channel carries mute, camera and hang-up. The caller performs ICE restarts on
+channel carries mute, camera and hang-up. Every call negotiates a video
+transceiver, so a voice call can turn a camera on with `replaceTrack` and no
+renegotiation. The call screen minimises to a floating window so the rest of
+the app stays usable. The caller performs ICE restarts on
 disconnection (`offerRev`, which the rules require to increment), within a
 25s budget. Only a follower sharing a 1:1 chat can ring someone.
 
@@ -144,8 +157,7 @@ community chat, guides with member progress, and a banner and photo.
 
 Gatherings are public or private, optionally in a circle, with capacity
 enforced by coupling "going" RSVPs to the head count in one batch. Calendar
-export (`.ics`) provides reminders. Public gatherings are viewable signed
-out.
+export (`.ics`) provides reminders.
 
 ## News
 

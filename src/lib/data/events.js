@@ -44,11 +44,15 @@ export async function fetchEvents(groupId = "", { member = false } = {}) {
     ? member
       ? query(collection(db, "events"), where("groupId", "==", groupId), limit(100))
       : query(collection(db, "events"), where("groupId", "==", groupId), where("privacy", "==", "public"), limit(100))
-    : query(collection(db, "events"), where("privacy", "==", "public"), limit(100));
+    : me()
+      ? query(collection(db, "events"), where("privacy", "==", "public"), limit(100))
+      // Signed out, circle gatherings are listed on the circle's page.
+      : query(collection(db, "events"), where("privacy", "==", "public"), where("groupId", "==", ""), limit(100));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
 }
 
 export async function fetchInvitedEvents() {
+  if (!me()) return [];
   const q = query(collection(db, "events"), where("invitees", "array-contains", me()), limit(50));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
 }
@@ -111,6 +115,7 @@ export async function uninviteFromEvent(eventId, uid) {
 export async function fetchMyRsvps(eventIds) {
   const uid = me();
   const map = new Map();
+  if (!uid) return map;
   await Promise.all(
     eventIds.map(async (id) => {
       const snap = await getDoc(doc(db, "events", id, "rsvps", uid)).catch(() => null);

@@ -4,10 +4,11 @@ import { DOCUMENTS } from "../legal/content";
 import { BUSINESS, missingFields } from "../legal/business";
 import { navigate } from "../lib/router";
 import TopBar from "./shell/TopBar";
-import { LogoMark } from "./shell/Sidebar";
+import { useShell } from "./shell/ShellContext";
 
 // Policies are public routes (/legal/:doc), readable signed out.
-export default function Legal({ doc = "privacy", standalone = false }) {
+export default function Legal({ doc = "privacy" }) {
+  const { guest } = useShell();
   const headingRef = useRef(null);
   const current = DOCUMENTS.find((d) => d.id === doc) || DOCUMENTS[0];
   const gaps = missingFields();
@@ -23,18 +24,9 @@ export default function Legal({ doc = "privacy", standalone = false }) {
 
   return (
     <>
-      {standalone ? (
-        <header className="sticky top-0 z-nav flex h-14 items-center gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur">
-          <button type="button" onClick={() => navigate("/")} className="press flex items-center gap-2 rounded-control" aria-label="Mesh, back to sign in">
-            <LogoMark size={26} />
-            <span className="font-display text-title-3 font-extrabold">Mesh</span>
-          </button>
-        </header>
-      ) : (
-        <TopBar title="Policies" back backTo="/account/settings" />
-      )}
+      <TopBar title="Policies" back backTo={guest ? "/" : "/account/settings"} />
 
-      <div data-scroll className={standalone ? "" : "min-h-0 flex-1 overflow-y-auto"}>
+      <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-4 pb-16 pt-6 md:px-6">
           <p className="text-caption text-fg-subtle">Last updated {BUSINESS.lastUpdated}</p>
           <h1 className="mt-1 text-display font-display">Policies</h1>

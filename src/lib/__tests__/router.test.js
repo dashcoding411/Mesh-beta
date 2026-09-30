@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { matchOverlay, matchPage, resolve } from "../router";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAuthPath, authPath, matchOverlay, matchPage, resolve } from "../router";
 
 describe("matchPage", () => {
   it.each([
@@ -12,6 +12,8 @@ describe("matchPage", () => {
     ["/account/settings", { tab: "account", view: "settings" }],
     ["/account/moderation", { tab: "account", view: "moderation" }],
     ["/legal/terms", { tab: "account", view: "legal", doc: "terms" }],
+    ["/login", { tab: "auth", mode: "login" }],
+    ["/signup", { tab: "auth", mode: "signup" }],
   ])("%s", (path, expected) => {
     expect(matchPage(path)).toMatchObject(expected);
   });
@@ -29,5 +31,35 @@ describe("overlays", () => {
     expect(r.overlay).toEqual({ overlay: "post", id: "post1" });
     expect(r.page).toMatchObject({ section: "search" });
     expect(r.bgQuery.get("q")).toBe("cats");
+  });
+});
+
+describe("auth redirects", () => {
+  const at = (url) => {
+    const u = new URL(url, "https://mesh.test");
+    vi.stubGlobal("window", { location: { pathname: u.pathname, search: u.search } });
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("returns to the page the visitor was on", () => {
+    at("/circles/c1?view=about");
+    expect(authPath("login")).toBe("/login?next=%2Fcircles%2Fc1%3Fview%3Dabout");
+    at("/");
+    expect(authPath("signup")).toBe("/signup");
+  });
+
+  it("keeps the destination when switching between log in and sign up", () => {
+    at("/login?next=%2Fnews");
+    expect(authPath("signup")).toBe("/signup?next=%2Fnews");
+    expect(afterAuthPath()).toBe("/news");
+  });
+
+  it("only follows local paths", () => {
+    at("/login?next=https%3A%2F%2Fevil.test");
+    expect(afterAuthPath()).toBe("/");
+    at("/login?next=%2F%2Fevil.test");
+    expect(afterAuthPath()).toBe("/");
+    at("/p/post1");
+    expect(afterAuthPath()).toBe("/p/post1");
   });
 });

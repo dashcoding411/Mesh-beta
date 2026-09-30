@@ -74,16 +74,25 @@ service cloud.firestore {
     function validBirthYear(y) {
       return y is int && (y == 0 || (y >= request.time.year() - 120 && y <= request.time.year() - 13));
     }
-    // Public posting requires 16+. birthYear 0 (unset) passes only for legacy accounts.
+    // Birth year is private (users/{uid}/private/age). Accounts not yet
+    // migrated still carry it on the profile.
+    function birthYearOf(uid) {
+      let agePath = /databases/$(database)/documents/users/$(uid)/private/age;
+      return exists(agePath) ? get(agePath).data.birthYear : profileOf(uid).get('birthYear', 0);
+    }
+    function myBirthYear() {
+      return birthYearOf(request.auth.uid);
+    }
+    // Public posting requires 16+.
     function isAdult() {
-      return myProfile().birthYear > 0
-        && request.time.year() - myProfile().birthYear >= 16;
+      return myBirthYear() > 0 && request.time.year() - myBirthYear() >= 16;
     }
     // Circle age limit: 0 = none; otherwise requires a qualifying birth year.
     function oldEnoughFor(limitYears) {
-      return limitYears == 0
-        || (myProfile().get('birthYear', 0) > 0
-            && request.time.year() - myProfile().birthYear >= limitYears);
+      return limitYears == 0 || (myBirthYear() > 0 && request.time.year() - myBirthYear() >= limitYears);
+    }
+    function guest() {
+      return request.auth == null;
     }
 
     // Shared vocabularies (keep in sync with src/lib/interests.js)
@@ -398,7 +407,7 @@ service cloud.firestore {
         && validLayerBody(p)
         && p.parentId == request.auth.uid
         && isMyName(p.parentName)
-        && p.untilYear == profileOf(uid).birthYear + 18;
+        && p.untilYear == birthYearOf(uid) + 18;
     }
     // Owner changes: tightening applies immediately; loosening only via
     // `pending`, applicable after 24h.
@@ -604,12 +613,14 @@ service cloud.firestore {
 
     // Users
     match /users/{uid} {
-      allow read: if signedIn();
+      // Guests can read profiles once birth year has moved to private/age.
+      allow get: if signedIn() || resource.data.get('birthYear', 0) == 0;
+      allow list: if signedIn();
       allow create: if isUser(uid)
         && incomingData().keys().hasOnly([
           // No email or phone: user docs are readable by every signed-in user.
           'username', 'name', 'usernameChangedAt', 'bio',
-          'pronouns', 'town', 'spouseUsername', 'birthYear', 'photoURL',
+          'pronouns', 'town', 'spouseUsername', 'photoURL',
           'followerCount', 'followingCount', 'createdAt',
           'termsAcceptedAt', 'termsVersion'
         ])
@@ -638,7 +649,7 @@ service cloud.firestore {
         && incomingData().username.matches('^[a-z0-9_]+$')
         && incomingData().bio is string
         && incomingData().bio.size() <= 300
-        && validBirthYear(incomingData().birthYear)
+        && getAfter(/databases/$(database)/documents/users/$(uid)/private/age).data.birthYear > 0
         && incomingData().followerCount == 0
         && incomingData().followingCount == 0;
       allow update: if signedIn() && (
@@ -646,9 +657,10 @@ service cloud.firestore {
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
             'name', 'bio', 'photoURL', 'pronouns', 'town', 'spouseUsername', 'birthYear'
           ])
-          // birthYear can be set once, only if unset.
+          // birthYear may only be removed, when it moves to private/age unchanged.
           && (!incomingData().diff(resource.data).affectedKeys().hasAny(['birthYear'])
-              || (resource.data.get('birthYear', 0) == 0 && validBirthYear(incomingData().birthYear)))
+              || (!('birthYear' in incomingData())
+                  && getAfter(/databases/$(database)/documents/users/$(uid)/private/age).data.birthYear == resource.data.birthYear))
           && (!incomingData().diff(resource.data).affectedKeys().hasAny(['photoURL'])
               || photoOk(incomingData().photoURL))
           && incomingData().get('spouseUsername', '') is string
@@ -768,8 +780,9 @@ service cloud.firestore {
       }
       // Private preferences: interests, hidden words, mutes.
       match /private/{docId} {
-        allow read, delete: if isUser(uid);
-        allow create, update: if isUser(uid)
+        allow read: if isUser(uid);
+        allow delete: if isUser(uid) && docId != 'age';
+        allow create, update: if isUser(uid) && docId == 'prefs'
           && incomingData().get('interests', []) is list
           && incomingData().get('interests', []).size() <= 12
           && incomingData().get('interests', []).hasOnly(interestIds())
@@ -777,6 +790,18 @@ service cloud.firestore {
           && incomingData().get('hiddenWords', []).size() <= 200
           && incomingData().get('muted', []) is list
           && incomingData().get('muted', []).size() <= 500;
+      }
+      // Set once: at signup, when migrating off the profile (same value), or
+      // for legacy accounts that never set one. Removed only with the profile.
+      match /private/age {
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['birthYear'])
+          && validBirthYear(incomingData().birthYear) && incomingData().birthYear > 0
+          && (!exists(/databases/$(database)/documents/users/$(uid))
+              || profileOf(uid).get('birthYear', 0) == 0
+              || profileOf(uid).birthYear == incomingData().birthYear);
+        allow update: if false;
+        allow delete: if isUser(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid));
       }
       match /affinity/{authorId} {
         allow read, write: if isUser(uid);
@@ -896,20 +921,22 @@ service cloud.firestore {
         && incomingData().childName == profileOf(childUid).username
         && incomingData().status == 'invited'
         && incomingData().createdAt == request.time
-        && myProfile().get('birthYear', 0) > 0 && request.time.year() - myProfile().birthYear >= 19
-        && profileOf(childUid).get('birthYear', 0) > 0 && request.time.year() - profileOf(childUid).birthYear < 18
+        && myBirthYear() > 0 && request.time.year() - myBirthYear() >= 19
+        && birthYearOf(childUid) > 0 && request.time.year() - birthYearOf(childUid) < 18
         && !blockedBy(childUid)
         && notSuspended();
+      // The teen records when the link lapses; the parent can't read their age.
       allow update: if signedIn() && request.auth.uid == childUid
-        && resource.data.status == 'invited'
-        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status'])
-        && incomingData().status == 'active';
+        && (resource.data.status == 'invited' || resource.data.get('untilYear', 0) == 0)
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'untilYear'])
+        && incomingData().status == 'active'
+        && incomingData().untilYear == myBirthYear() + 18;
       allow delete: if signedIn()
         && (resource.data.parentId == request.auth.uid
             || (request.auth.uid == childUid
                 && (resource.data.status == 'invited'
                     || !existsAfter(/databases/$(database)/documents/users/$(childUid))
-                    || request.time >= timestamp.date(myProfile().birthYear + 18, 1, 1))));
+                    || request.time >= timestamp.date(myBirthYear() + 18, 1, 1))));
     }
 
     // Brick stats count only server-enforced time: finished instant bricks and
@@ -964,8 +991,8 @@ service cloud.firestore {
         && n.streakDays == (n.scheduleDay == o.scheduleDay + duration.value(1, 'd') ? o.streakDays + 1 : 1);
     }
     match /brickStats/{uid} {
-      allow get: if signedIn() && (isUser(uid) || resource.data.public == true);
-      allow list: if signedIn() && resource.data.public == true;
+      allow get: if resource.data.public == true || isUser(uid);
+      allow list: if resource.data.public == true;
       // Starts at zero; nothing before creation counts.
       allow create: if isUser(uid) && statsShapeOk(incomingData())
         && incomingData().totalSeconds == 0 && incomingData().weekSeconds == 0 && incomingData().streakDays == 0
@@ -984,8 +1011,9 @@ service cloud.firestore {
     // Posts
     match /posts/{postId} {
       // Authors can always read their own posts, even when bricked.
-      allow get: if signedIn() && canReadPost(resource.data)
-        && (resource.data.authorId == request.auth.uid || !lockedFor(sectionOfKind(resource.data.kind)));
+      allow get: if (guest() && resource.data.visibility == 'public')
+        || (signedIn() && canReadPost(resource.data)
+            && (resource.data.authorId == request.auth.uid || !lockedFor(sectionOfKind(resource.data.kind))));
 
       function votedNow(option) {
         return resource.data.get('poll', null) != null
@@ -1000,12 +1028,13 @@ service cloud.firestore {
       // visibility == 'public' or authorId == uid (or groupId for circles), so
       // followers-only posts are only reachable via get. Only full locks apply
       // here, since one query can mix formats.
-      allow list: if signedIn()
-        && (resource.data.visibility == 'public'
-            || resource.data.authorId == request.auth.uid
-            || (resource.data.visibility == 'circle' && isMemberOf(resource.data.groupId))
-            || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)))
-        && (resource.data.authorId == request.auth.uid || !lockedFor(''));
+      allow list: if (guest() && resource.data.visibility == 'public')
+        || (signedIn()
+          && (resource.data.visibility == 'public'
+              || resource.data.authorId == request.auth.uid
+              || (resource.data.visibility == 'circle' && isMemberOf(resource.data.groupId))
+              || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)))
+          && (resource.data.authorId == request.auth.uid || !lockedFor('')));
       allow create: if signedIn()
         && postCreateOk(request.resource.data,
              request.resource.data.get('groupId', '') != '' && isModOf(request.resource.data.get('groupId', '')));
@@ -1098,7 +1127,8 @@ service cloud.firestore {
       }
 
       match /likes/{uid} {
-        allow read: if signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
+        allow read: if (guest() && get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public')
+          || (signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data));
         allow create: if isUser(uid)
           && incomingData().keys().hasOnly(['username', 'createdAt'])
           && isMyName(incomingData().username)
@@ -1130,7 +1160,8 @@ service cloud.firestore {
         function parentPost() {
           return get(/databases/$(database)/documents/posts/$(postId)).data;
         }
-        allow read: if signedIn() && canReadPost(parentPost()) && !lockedFor('');
+        allow read: if (guest() && parentPost().visibility == 'public')
+          || (signedIn() && canReadPost(parentPost()) && !lockedFor(''));
         allow create: if signedIn()
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive', 'createdAt'])
           && authorIsMe(incomingData())
@@ -1227,7 +1258,7 @@ service cloud.firestore {
 
     // Inline media (Spark plan): get by id only, never listed.
     match /media/{mediaId} {
-      allow get: if signedIn();
+      allow get: if true;
       // Owner only, for account deletion.
       allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if signedIn()
@@ -1244,7 +1275,7 @@ service cloud.firestore {
 
     // Reposts: id `{postId}_{uid}`; only others' public posts.
     match /reposts/{repostId} {
-      allow read: if signedIn();
+      allow read: if true;
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt'])
         && incomingData().uid == request.auth.uid
@@ -1423,7 +1454,8 @@ service cloud.firestore {
 
     match /news/{newsId} {
       // Approved: everyone (unless News is locked). Drafts: authors. Submitted: reviewers too.
-      allow read: if signedIn()
+      allow read: if (guest() && resource.data.status == 'approved')
+        || signedIn()
         && ((resource.data.status == 'approved' && !lockedFor('news'))
             || resource.data.authorId == request.auth.uid
             || request.auth.uid in resource.data.authors
@@ -1529,9 +1561,8 @@ service cloud.firestore {
 
       // Live blog updates: authors post while live.
       match /updates/{updateId} {
-        allow read: if signedIn()
-          && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
-          && !lockedFor('news');
+        allow read: if get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
+          && (guest() || !lockedFor('news'));
         allow create: if isNewsWriter()
           && isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data)
           && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
@@ -1853,8 +1884,8 @@ service cloud.firestore {
       }
 
       // Hidden circles: get by id only, never listed.
-      allow get: if signedIn();
-      allow list: if signedIn() && resource.data.privacy in ['public', 'private'];
+      allow get: if signedIn() || resource.data.privacy in ['public', 'private'];
+      allow list: if resource.data.privacy in ['public', 'private'];
 
       function limitsOk(g) {
         return g.get('ageLimit', 0) in [0, 16, 18]
@@ -2008,7 +2039,7 @@ service cloud.firestore {
 
       // Guides: readable with the circle; progress is per member and visible to admins.
       match /guides/{guideId} {
-        allow read: if signedIn() && (circleOf(groupId).privacy == 'public' || isMemberOf(groupId));
+        allow read: if circleOf(groupId).privacy == 'public' || (signedIn() && isMemberOf(groupId));
         allow create, update: if isModOf(groupId)
           && incomingData().keys().hasOnly(['title', 'unitTitles', 'unitBodies', 'createdBy', 'createdAt', 'updatedAt'])
           && incomingData().title is string && incomingData().title.size() >= 2 && incomingData().title.size() <= 100
@@ -2067,11 +2098,13 @@ service cloud.firestore {
       allow get: if (signedIn() && canViewEvent(resource.data))
         || (resource.data.privacy == 'public'
             && (resource.data.get('groupId', '') == '' || circleOf(resource.data.groupId).privacy == 'public'));
-      allow list: if signedIn()
-        && (resource.data.privacy == 'public'
-            || resource.data.hostId == request.auth.uid
-            || request.auth.uid in resource.data.invitees
-            || (resource.data.groupId != '' && isMemberOf(resource.data.groupId)));
+      allow list: if (guest() && resource.data.privacy == 'public'
+            && (resource.data.groupId == '' || circleOf(resource.data.groupId).privacy == 'public'))
+        || (signedIn()
+          && (resource.data.privacy == 'public'
+              || resource.data.hostId == request.auth.uid
+              || request.auth.uid in resource.data.invitees
+              || (resource.data.groupId != '' && isMemberOf(resource.data.groupId))));
 
       allow create: if signedIn()
         && incomingData().keys().hasOnly([

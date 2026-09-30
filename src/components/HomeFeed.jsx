@@ -30,7 +30,7 @@ let lastTopic = "all";
 // For you: ranked mix of all formats (lib/algorithm.js). Following:
 // chronological, unranked.
 export default function HomeFeed({ mode }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey, guest } = useShell();
   const toast = useToast();
   const [chosen, setChosen] = useState(lastTopic);
   const topic = mode === "foryou" ? chosen : "all"; // topics narrow For you only
@@ -155,9 +155,9 @@ export default function HomeFeed({ mode }) {
   return (
     <>
       <HomeHeader section={mode}>
-        <FeedTabs value={mode} />
+        {!guest && <FeedTabs value={mode} />}
         {mode === "foryou" && (
-          <InterestChips interests={interests} value={topic} onEdit={openInterests}
+          <InterestChips interests={interests} value={topic} onEdit={guest ? undefined : openInterests}
             onChange={setTopic} />
         )}
       </HomeHeader>
@@ -169,7 +169,7 @@ export default function HomeFeed({ mode }) {
               <Spinner size={14} /> Checking for new posts
             </p>
           )}
-          {mode === "foryou" && topic === "all" && (
+          {mode === "foryou" && topic === "all" && !guest && (
             <>
               <StoryRail />
               <PhotoNudge dismissible className="mx-4 mt-3" />
@@ -195,9 +195,9 @@ export default function HomeFeed({ mode }) {
                 : "Follow people and their posts land here in the order they're shared."}
               action={<Button variant="primary" icon={SearchIcon} onClick={() => navigate("/search")}>Find people</Button>} />
           ) : (
-            <EmptyState icon={Sparkles} title="Your feed is empty"
-              body="Be the first to share something, or find people to follow."
-              action={<Button variant="primary" icon={SearchIcon} onClick={() => navigate("/search")}>Find people</Button>} />
+            <EmptyState icon={Sparkles} title={guest ? "Nothing here yet" : "Your feed is empty"}
+              body={guest ? "Public posts show up here." : "Be the first to share something, or find people to follow."}
+              action={!guest && <Button variant="primary" icon={SearchIcon} onClick={() => navigate("/search")}>Find people</Button>} />
           ))}
 
           {page?.length > 0 && (
@@ -225,7 +225,9 @@ export default function HomeFeed({ mode }) {
                     <CheckCheck size={22} aria-hidden="true" />
                   </span>
                   <p className="text-callout font-semibold text-fg">You're all caught up</p>
-                  <p className="mt-1 text-caption text-fg-subtle">That's everything new. Check back later, or follow more people to see more here.</p>
+                  <p className="mt-1 text-caption text-fg-subtle">
+                    {guest ? "That's everything new. Check back later." : "That's everything new. Check back later, or follow more people to see more here."}
+                  </p>
                 </div>
               )}
             </div>
