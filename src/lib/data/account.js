@@ -5,6 +5,7 @@ import { fetchGroups } from "./circles.js";
 import { me } from "./core.js";
 import { fetchEvents } from "./events.js";
 import { deleteNews } from "./news.js";
+import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
 import { fetchFollowList, fetchMyPrefs, fetchProfile } from "./users.js";
 
@@ -90,7 +91,8 @@ export async function deleteMyAccountData() {
     const snap = await getDocs(query(collection(db, col), where(field, "==", uid), limit(500))).catch(() => null);
     return snap?.docs || [];
   };
-  for (const d of await mine("stories", "authorId")) await deleteDoc(d.ref).catch(() => {});
+  // Stories go with their likes and echoes.
+  for (const d of await mine("stories", "authorId")) await deleteStory({ id: d.id, ...d.data() }).catch(() => deleteDoc(d.ref).catch(() => {}));
   // News stories you lead, with their history and live updates.
   for (const d of await mine("news", "authorId")) await deleteNews(d.id).catch(() => {});
   for (const d of await mine("media", "ownerId")) await deleteDoc(d.ref).catch(() => {});

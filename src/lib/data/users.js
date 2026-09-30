@@ -19,7 +19,7 @@ export async function fetchProfile(uid) {
 /* Bump this when the terms or privacy policy change materially. Existing
    accounts keep the version they accepted, which is what lets you tell who
    still needs to see a change notice. */
-export const POLICY_VERSION = "2026-09-29.3";
+export const POLICY_VERSION = "2026-09-30.1";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);

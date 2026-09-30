@@ -175,6 +175,7 @@ export async function sendMessage(chatId, text, extras = {}) {
       : extras.voice ? `Voice message · ${Math.floor(extras.voice.duration / 60)}:${String(extras.voice.duration % 60).padStart(2, "0")}`
       : extras.gif ? "Sent a GIF"
       : extras.call ? extras.call.summary
+      : extras.storyReply ? `Story reply: ${text}`
       : text).slice(0, 80),
     lastSenderId: uid,
     updatedAt: serverTimestamp(),

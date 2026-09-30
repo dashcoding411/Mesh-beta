@@ -100,6 +100,25 @@ Formats: a **Still** is a photo, a **Strand** is up to 500 characters of text, a
 inbox for 24 hours. Posts can be liked, commented on, **reposted** to your
 followers, saved, and shared by link or into a conversation.
 
+**Stories** last 24 hours (`src/components/StoryViewer.jsx`,
+`src/lib/data/stories.js`). On someone else's story you can:
+
+- **Like** it. Only the author sees who liked it and how many
+  (`stories/{id}/likes/{uid}`), in their story's Activity.
+- **Reply** privately, or send a quick reaction: it arrives as a message in
+  your conversation with them, showing the story it answers (`storyReply`;
+  the rules check the story is real and by someone in that conversation).
+  Their message settings apply, as for any message.
+- **Echo** it: echoes are Mesh's public replies on a story, readable by
+  everyone who can see the story (`stories/{id}/echoes/`). They're held to the
+  same rules as comments: the hate filter, the comment pace, blocks, and the
+  author's choice of who may comment. They can only be added while the story
+  is up; the author can delete any of them, and they go when the story does.
+
+Likes and echoes on your story show up in Notifications, and open the story
+with its Activity. Stories open from anywhere with `openStory(id)`
+(`src/lib/openStory.js`).
+
 ### Handles vs names
 
 Your **handle** (`@nishil`) is unique across Mesh and rate-limited: once changed,
@@ -779,7 +798,8 @@ and a bare `firebase deploy` would overwrite that project instead.
 - `reposts/{postId}_{uid}`: one per person per post; public posts by others only
 - `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
 - `reports/{type}_{id}_{uid}`: one per person per thing; moderators only
-- `stories/{id}`: 24-hour media, filtered client-side
+- `stories/{id}`: 24-hour media, filtered client-side, with `likes/{uid}` (the
+  author only) and `echoes/` (public replies)
 - `news/{id}`: a story's blocks, `script`, sources, authors, `version` and
   review status, with `revisions/`, `presence/`, `updates/` (live blogs) and
   `correctionRequests/`; `newsWriters/{uid}`: who may write news

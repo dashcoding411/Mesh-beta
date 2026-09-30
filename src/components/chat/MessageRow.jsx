@@ -1,4 +1,4 @@
-// One message in a conversation, and the things a message can carry: a call log, a shared post, a poll.
+// One message in a conversation, and the things a message can carry: a call log, a shared post, a poll, the story it replies to.
 import {
   ChartBar, Check, Copy, Ellipsis, Flag, Pencil, Phone, PhoneMissed, Play, Reply, Undo2, Video,
 } from "lucide-react";
@@ -20,6 +20,7 @@ import MediaImg from "../ui/MediaImg";
 import { MenuGroup, MenuItem } from "../ui/Menu";
 import { useToast } from "../ui/toast-context";
 import { LinkedText } from "../ui/RichText";
+import { openStory } from "../../lib/openStory";
 
 export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const { m, first, last } = row;
@@ -29,7 +30,7 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const [reporting, setReporting] = useState(false);
   const mine = m.senderId === me();
   // Plain words with a web address in them: the address becomes a link.
-  const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
+  const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && !m.storyReply && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
   const name = chat.nicknames?.[m.senderId] || chat.memberNames?.[m.senderId] || "Someone";
   const reactions = groupReactions(m.reactions);
   const sent = tsMillis(m.createdAt); // 0 while the write is still in flight
@@ -107,10 +108,11 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
           ) : (
           <button type="button" onClick={() => setMenu(true)} onDoubleClick={() => react("❤️")}
             title={sent ? fullTime(sent) : "Sending…"}
-            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : m.gif ? " sent a GIF" : ""}: ${m.call?.summary || m.poll?.question || m.text || m.gif?.title || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
+            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : m.gif ? " sent a GIF" : m.storyReply ? " replied to a story" : ""}: ${m.call?.summary || m.poll?.question || m.text || m.gif?.title || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
             className={`min-w-0 text-left text-body ${shape} ${(m.sharedPost || m.gif) && !m.text ? "p-1" : "px-4 py-2"} ${
               m.gif && !m.text ? "bg-transparent" : mine ? `text-white ${theme.bubble}` : "bg-surface-3 text-fg"
             }`}>
+            {m.storyReply && <StoryReplyCard reply={m.storyReply} sent={sent} mine={mine} />}
             {m.call && <CallLog call={m.call} />}
             {m.gif && <GifView gif={m.gif} className="max-w-[260px]" />}
             {m.poll && <PollView chatId={chat.id} msg={m} mine={mine} />}
@@ -187,6 +189,34 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
           body="It'll be removed for everyone in the conversation." onConfirm={unsend} onClose={() => setConfirmUnsend(false)} />
       )}
     </li>
+  );
+}
+
+/* A reply to a story shows the story, small, while it's still up (a day at
+   most), so the words make sense; after that, just that it was a story. */
+function StoryReplyCard({ reply, sent, mine }) {
+  const [now] = useState(() => Date.now());
+  const gone = sent && now - sent > 24 * 3600 * 1000;
+  const label = reply.authorId === me() ? "Replied to your story" : mine ? "You replied to their story" : "Replied to a story";
+  const isVideo = reply.mediaType?.startsWith("video/");
+  const open = (e) => { e.stopPropagation(); openStory(reply.id); };
+  return (
+    <span className="mb-1.5 block">
+      <span className="block text-label font-semibold opacity-80">{label}</span>
+      {gone ? (
+        <span className="mt-1 block text-caption italic opacity-75">The story is no longer available</span>
+      ) : (
+        <span role="link" tabIndex={0} onClick={open} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") open(e); }}
+          aria-label="Open the story"
+          className="mt-1 block h-[132px] w-[80px] cursor-pointer overflow-hidden rounded-[12px] bg-black ring-1 ring-white/20">
+          {isVideo ? (
+            <video src={`${reply.mediaUrl}#t=0.5`} preload="metadata" muted playsInline tabIndex={-1} aria-hidden="true" className="h-full w-full object-cover" />
+          ) : (
+            <MediaImg src={reply.mediaUrl} alt="" loading="lazy" className="h-full w-full object-cover" placeholderClass="h-full w-full" />
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 

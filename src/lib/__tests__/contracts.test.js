@@ -47,6 +47,31 @@ describe("app and security rules agree", () => {
     for (const k of written) expect(allowed).toContain(k);
   });
 
+  it("on every kind of notification: each has a rule that checks it happened", () => {
+    const src = readFileSync(new URL("../data/notifications.js", import.meta.url), "utf8");
+    const types = src.match(/NOTICE_TYPES = \[([^\]]*)\]/)[1].split(",").map((t) => t.trim().replace(/"/g, ""));
+    expect(types).toContain("storylike");
+    for (const t of types) expect(rules).toContain(`n.type == '${t}'`);
+  });
+
+  it("on the story a reply answers", () => {
+    const messageKeys = rules.match(/match \/messages\/\{messageId\}[\s\S]*?keys\(\)\.hasOnly\(\[([^\]]*)\]/)[1];
+    expect(messageKeys).toContain("'storyReply'");
+    const stories = readFileSync(new URL("../data/stories.js", import.meta.url), "utf8");
+    const sent = stories.match(/storyReply: \{ ([^}]*) \}/)[1].split(",").map((kv) => kv.split(":")[0].trim());
+    const allowed = rules.match(/function storyReplyOk[\s\S]*?hasOnly\(\[([^\]]*)\]/)[1].split(",").map((k) => k.trim().replace(/'/g, ""));
+    for (const k of sent) expect(allowed).toContain(k);
+  });
+
+  it("on every call status the app writes", () => {
+    const src = readFileSync(new URL("../calls.js", import.meta.url), "utf8") + readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
+    const patterns = [/status: "(\w+)"/g, /status = "(\w+)"/g, /refuseCall\([^,)]+, "(\w+)"\)/g, /[?:] "(declined|missed|ended)"/g];
+    const statuses = new Set(patterns.flatMap((re) => [...src.matchAll(re)].map((m) => m[1])));
+    const rule = rules.match(/function callStatusOk[\s\S]*?\n {6}\}/)[0];
+    for (const st of statuses) expect(rule).toContain(`'${st}'`);
+    expect(statuses).toContain("busy");
+  });
+
   it("on what counts as contact details in a circle post", () => {
     const circles = readFileSync(new URL("../data/circles.js", import.meta.url), "utf8");
     expect(circles).toContain("(\\d[ ().-]{0,2}){9,}\\d");

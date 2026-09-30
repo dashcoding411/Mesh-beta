@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, Bell, CheckCheck, UserCheck,
+  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, Bell, CheckCheck, UserCheck, Waves,
 } from "lucide-react";
+import { openStory } from "../lib/openStory";
 import {
   markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, openPost, openUserProfile, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis,
 } from "../lib/db";
@@ -27,6 +28,8 @@ const ICONS = {
   familyask: { icon: ShieldCheck, className: "bg-warning-text/15 text-warning-text" },
   invite: { icon: CalendarDays, className: "bg-accent-soft text-accent-text" },
   joined: { icon: Blend, className: "bg-success-text/15 text-success-text" },
+  storylike: { icon: Heart, className: "bg-like/15 text-like" },
+  echo: { icon: Waves, className: "bg-accent-soft text-accent-text" },
 };
 const KEEP_DAYS = 90;
 
@@ -169,6 +172,8 @@ function NoticeRow({ group, fresh, following }) {
     familyask: <>{who} asked you to change their limits{quote ? ":" : ""}{quote}</>,
     invite: <>{who} invited you to a gathering</>,
     joined: <>You&apos;re in: {who} let you into a circle</>,
+    storylike: <>{who}{rest} liked your story</>,
+    echo: <>{who} echoed your story:{quote}</>,
   }[n.type] || <>{who}</>;
 
   const open = () => {
@@ -176,6 +181,7 @@ function NoticeRow({ group, fresh, following }) {
     if (["family", "familyok", "familyask"].includes(n.type)) return navigate("/account/brick");
     if (n.type === "invite") return navigate(`/gatherings/${n.ref}`);
     if (n.type === "joined") return navigate(`/circles/${n.ref}`);
+    if (n.type === "storylike" || n.type === "echo") return openStory(n.ref, { panel: "activity" });
     openUserProfile(n.actorId);
   };
 
@@ -216,7 +222,7 @@ function NoticeRow({ group, fresh, following }) {
       <span className="relative shrink-0">
         <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={44} />
         <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
-          <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" ? "currentColor" : "none"} />
+          <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" || n.type === "storylike" ? "currentColor" : "none"} />
         </span>
       </span>
       <button type="button" onClick={open} className="relative min-w-0 flex-1 text-left">

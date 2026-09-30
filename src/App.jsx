@@ -22,6 +22,7 @@ import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
 import Shortcuts from "./components/Shortcuts";
 import { ExternalLinkDialog } from "./components/ui/ExternalLink";
+import StoryOpener from "./components/StoryOpener";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
 import { DOCUMENTS } from "./legal/content.js";
@@ -382,6 +383,7 @@ export default function App() {
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
         <Shortcuts onCreate={openComposer} />
         <ExternalLinkDialog />
+        <StoryOpener />
 
         {interestsDialog && (
           <InterestsDialog initial={interests} firstRun={interestsDialog === "first"}

@@ -1,4 +1,4 @@
-// Notifications: likes, comments, reposts, follows, mentions and invites.
+// Notifications: likes, comments, reposts, follows, mentions, invites, and likes and echoes on stories.
 //
 // There's no server of our own to write them, so the person who acts writes
 // the notice into the other person's inbox (users/{uid}/notifications). The
@@ -15,7 +15,7 @@ import { db } from "../../firebase";
 import { me, tsMillis } from "./core.js";
 import { fetchProfile } from "./users.js";
 
-export const NOTICE_TYPES = ["like", "comment", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined"];
+export const NOTICE_TYPES = ["like", "comment", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo"];
 
 /** The fixed id for an action, so the same action never notifies twice. */
 export function noticeId(type, { actor, postId = "", commentId = "", ref = "" }) {
@@ -26,6 +26,8 @@ export function noticeId(type, { actor, postId = "", commentId = "", ref = "" })
     case "mention": return `mention_${postId}`;
     case "invite": return `invite_${ref}`;
     case "joined": return `joined_${ref}`;
+    case "storylike": return `storylike_${ref}_${actor}`;
+    case "echo": return `echo_${commentId}`;
     default: return `${type}_${actor}`;
   }
 }
@@ -100,7 +102,8 @@ export function groupNotices(list) {
   const groups = [];
   const byKey = new Map();
   for (const n of list) {
-    const key = ["like", "repost"].includes(n.type) ? `${n.type}:${n.postId}` : n.id;
+    const key = ["like", "repost"].includes(n.type) ? `${n.type}:${n.postId}`
+      : n.type === "storylike" ? `storylike:${n.ref}` : n.id;
     const g = byKey.get(key);
     if (g) { g.items.push(n); g.unread = g.unread || !n.read; continue; }
     const fresh = { key, type: n.type, items: [n], unread: !n.read, at: tsMillis(n.createdAt) };

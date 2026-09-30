@@ -189,7 +189,19 @@ service cloud.firestore {
         || (n.type == 'accept' && id == 'accept_' + actor && n.text == ''
             && exists(/databases/$(database)/documents/users/$(actor)/followers/$(uid)))
         || familyNotice(uid, id, n, actor)
-        || inviteNotice(uid, id, n, actor);
+        || inviteNotice(uid, id, n, actor)
+        || storyNotice(uid, id, n, actor);
+    }
+    // A like or an echo on your story (`ref` is the story).
+    function storyNotice(uid, id, n, actor) {
+      let storyPath = /databases/$(database)/documents/stories/$(n.ref);
+      return (n.type == 'storylike' && id == 'storylike_' + n.ref + '_' + actor && n.text == ''
+            && exists(/databases/$(database)/documents/stories/$(n.ref)/likes/$(actor))
+            && get(storyPath).data.authorId == uid)
+        || (n.type == 'echo' && id == 'echo_' + n.commentId
+            && get(/databases/$(database)/documents/stories/$(n.ref)/echoes/$(n.commentId)).data.authorId == actor
+            && get(/databases/$(database)/documents/stories/$(n.ref)/echoes/$(n.commentId)).data.text[0:n.text.size()] == n.text
+            && get(storyPath).data.authorId == uid);
     }
     // Asked to a gathering by its host, or let into a circle by its admins.
     function inviteNotice(uid, id, n, actor) {
@@ -1389,6 +1401,67 @@ service cloud.firestore {
             || ownInlineImage(incomingData().mediaUrl));
       allow update: if false;
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+
+      function storyNow() {
+        return get(/databases/$(database)/documents/stories/$(storyId)).data;
+      }
+      function canSeeStory(s) {
+        return signedIn()
+          && (s.get('audience', 'public') == 'public'
+              || s.authorId == request.auth.uid
+              || exists(/databases/$(database)/documents/users/$(s.authorId)/followers/$(request.auth.uid)))
+          && !lockedFor('feed');
+      }
+      function storyLive(s) {
+        return s.createdAt > request.time - duration.value(24, 'h');
+      }
+
+      // Likes are for the story's author alone: nobody else sees who liked
+      // it, or how many did.
+      match /likes/{uid} {
+        allow get: if isUser(uid) || (signedIn() && storyNow().authorId == request.auth.uid);
+        allow list: if signedIn() && storyNow().authorId == request.auth.uid;
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['username', 'createdAt'])
+          && isMyName(incomingData().username)
+          && incomingData().createdAt == request.time
+          && storyNow().authorId != request.auth.uid
+          && canSeeStory(storyNow()) && storyLive(storyNow())
+          && !blockedBy(storyNow().authorId)
+          && notSuspended();
+        allow update: if false;
+        // Yours to take back; the author's to clear when the story goes.
+        allow delete: if isUser(uid) || (signedIn() && storyNow().authorId == request.auth.uid);
+      }
+
+      // Echoes: public replies on a story, seen by everyone who can see the
+      // story. Held to the same standard as comments (the hate filter, the
+      // comment pace, blocks, and the author's choice of who may comment),
+      // and only while the story is up.
+      match /echoes/{echoId} {
+        allow read: if canSeeStory(storyNow());
+        allow create: if signedIn()
+          && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'createdAt'])
+          && authorIsMe(incomingData())
+          && incomingData().createdAt == request.time
+          && rateOk('comment', 3)
+          && incomingData().text is string
+          && incomingData().text.size() > 0 && incomingData().text.size() <= 300
+          && hateFree(incomingData().text)
+          && notSuspended()
+          && echoAllowed(storyNow());
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.authorId == request.auth.uid || storyNow().authorId == request.auth.uid || isAdmin());
+      }
+      function echoAllowed(s) {
+        return canSeeStory(s) && storyLive(s)
+          && (s.authorId == request.auth.uid
+              || (!blockedBy(s.authorId)
+                  && (profileOf(s.authorId).get('commentPolicy', 'everyone') == 'everyone'
+                      || (profileOf(s.authorId).get('commentPolicy', 'everyone') == 'following'
+                          && follows(s.authorId, request.auth.uid)))));
+      }
     }
 
     // ---------- news (must cite sources; admin-reviewed) ----------
@@ -1620,6 +1693,14 @@ service cloud.firestore {
       function inChat() {
         return signedIn() && request.auth.uid in chatData().members;
       }
+      function storyReplyOk(r) {
+        let story = get(/databases/$(database)/documents/stories/$(r.id)).data;
+        return r.keys().hasOnly(['id', 'authorId', 'mediaUrl', 'mediaType'])
+          && story.authorId == r.authorId
+          && story.mediaUrl == r.mediaUrl
+          && story.get('mediaType', '') == r.mediaType
+          && r.authorId in chatData().members;
+      }
       // Only your own key inside a uid-keyed map may change.
       function onlyMyKeyIn(field) {
         return incomingData()[field].diff(resource.data[field]).affectedKeys()
@@ -1758,7 +1839,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if inChat();
         allow create: if inChat()
-          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'poll', 'call'])
+          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'poll', 'call', 'storyReply'])
           && incomingData().senderId == request.auth.uid
           && incomingData().createdAt == request.time
           && incomingData().reactions == {}
@@ -1791,6 +1872,9 @@ service cloud.firestore {
                   && incomingData().call.seconds is int && incomingData().call.seconds >= 0 && incomingData().call.seconds <= 86400
                   && incomingData().call.summary is string && incomingData().call.summary.size() <= 60))
           && (!('gif' in incomingData()) || gifOk(incomingData().gif))
+          // A reply to a story shows the story it answers: it has to be real,
+          // and by someone in this conversation.
+          && (!('storyReply' in incomingData()) || storyReplyOk(incomingData().storyReply))
           // Private conversations aren't filtered for hate speech (people can
           // block and report); a suspended account can't send, though.
           && notSuspended()
