@@ -149,7 +149,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   const [data, handleHits] = await Promise.all([
     loadPool(),
     // Exact handle lookup reaches accounts outside the pool.
-    me() ? searchUsers(q.replace(/\s/g, "")).catch(() => []) : [],
+    me ? searchUsers(q.replace(/\s/g, "")).catch(() => []) : [],
   ]);
   const { posts, people, circles, gatherings, news, affinity } = data;
   const results = [];
