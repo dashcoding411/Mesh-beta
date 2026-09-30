@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, SwitchCamera, Volume2 } from "lucide-react";
 import Avatar from "./ui/Avatar";
+import { relayConfigured } from "../lib/calls";
+import { endTone, startTone } from "../lib/callTones";
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -11,9 +13,17 @@ function useSession(session) {
   return session;
 }
 
-function StreamVideo({ stream, muted = false, mirror = false, className = "" }) {
+/* Plays a stream. Browsers can refuse to start sound on their own; when
+   that happens onBlocked says so, and a tap starts it. */
+function StreamPlayer({ stream, kind = "video", muted = false, mirror = false, className = "", onBlocked }) {
   const ref = useRef(null);
-  useEffect(() => { if (ref.current && stream && ref.current.srcObject !== stream) ref.current.srcObject = stream; });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !stream) return;
+    if (el.srcObject !== stream) el.srcObject = stream;
+    el.play?.().then(() => onBlocked?.(false)).catch((err) => { if (err?.name === "NotAllowedError") onBlocked?.(true); });
+  });
+  if (kind === "audio") return <audio ref={ref} autoPlay className="hidden" />;
   return <video ref={ref} autoPlay playsInline muted={muted} className={`${mirror ? "-scale-x-100" : ""} ${className}`} />;
 }
 
@@ -29,17 +39,27 @@ function CallButton({ icon: Icon, label, onClick, tone = "neutral", pressed }) {
         className={`press flex h-16 w-16 items-center justify-center rounded-full ${tones[tone]}`}>
         <Icon size={26} aria-hidden="true" />
       </button>
-      <span className="text-caption text-white/80" aria-hidden="true">{label}</span>
+      <span className="whitespace-nowrap text-caption text-white/80" aria-hidden="true">{label}</span>
     </span>
   );
 }
 
-/* The whole-screen call view. Audio calls show the other person's picture;
+const ENDED = {
+  declined: "Declined",
+  missed: "No answer",
+  cancelled: "Call cancelled",
+  busy: "On another call",
+  ended: "Call ended",
+};
+
+/* The whole-screen call view. Voice calls show the other person's picture;
    video calls show their video full screen with yours in the corner. */
 export function CallScreen({ session, onClose }) {
   useSession(session);
   const [now, setNow] = useState(0);
+  const [soundBlocked, setSoundBlocked] = useState(false);
   const endBtn = useRef(null);
+  const { state } = session;
 
   useEffect(() => {
     if (!session.startedAt) return;
@@ -49,46 +69,81 @@ export function CallScreen({ session, onClose }) {
 
   useEffect(() => { endBtn.current?.focus(); }, []);
 
+  // The ringback while it rings at their end, and a tone when it's over.
   useEffect(() => {
-    if (session.state !== "ended") return;
-    const t = setTimeout(onClose, 1800);
-    return () => clearTimeout(t);
-  }, [session.state, onClose]);
+    if (state === "ringing" && session.isCaller) return startTone("ringback");
+    if (state === "ended") endTone();
+  }, [state, session.isCaller]);
 
+  useEffect(() => {
+    if (state !== "ended") return;
+    const t = setTimeout(onClose, 2000);
+    return () => clearTimeout(t);
+  }, [state, onClose]);
+
+  const failed = relayConfigured()
+    ? "Couldn't connect. Check your connection and try again."
+    : "Couldn't connect. Some networks, like mobile data, block direct calls.";
   const status = {
     starting: "Starting…",
     ringing: "Ringing…",
     connecting: "Connecting…",
+    reconnecting: "Reconnecting…",
     active: session.startedAt ? fmt(Math.max(0, (now || session.startedAt) - session.startedAt) / 1000) : "Connected",
-    ended: {
-      declined: "Declined", missed: "No answer", cancelled: "Call cancelled", busy: "Busy",
-      failed: "Couldn't connect. Some networks block direct calls.", ended: "Call ended",
-    }[session.endedReason] || "Call ended",
-  }[session.state];
-  const hasRemoteVideo = session.video && session.remoteStream.getVideoTracks().length > 0 && session.state === "active";
+    ended: session.endedReason === "failed" ? failed : ENDED[session.endedReason] || "Call ended",
+  }[state];
+
+  const remoteVideo = session.remoteStream.getVideoTracks()[0];
+  const showRemoteVideo = session.video && !!remoteVideo && !session.remoteCameraOff && (state === "active" || state === "reconnecting");
+  const live = state !== "ended";
+  const localVideo = session.video && session.localStream && !session.cameraOff && live;
+  // Until it connects, your own camera fills the screen, like a mirror.
+  const localFull = localVideo && !showRemoteVideo && !session.startedAt;
 
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label={`${session.video ? "Video" : "Voice"} call with @${session.peer.username}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col bg-zinc-950 text-white anim-fade">
-      {hasRemoteVideo && <StreamVideo stream={session.remoteStream} className="absolute inset-0 h-full w-full object-cover" />}
-      {!session.video && <audio ref={(el) => { if (el && el.srcObject !== session.remoteStream) el.srcObject = session.remoteStream; }} autoPlay />}
+      {/* Their voice always plays here; the video element stays muted. */}
+      {live && <StreamPlayer kind="audio" stream={session.remoteStream} onBlocked={setSoundBlocked} />}
+      {showRemoteVideo && <StreamPlayer stream={session.remoteStream} muted className="absolute inset-0 h-full w-full object-cover" />}
+      {localFull && <StreamPlayer stream={session.localStream} muted mirror={session.facing === "user"} className="absolute inset-0 h-full w-full object-cover opacity-60" />}
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 pt-safe text-center">
-        {!hasRemoteVideo && <Avatar profile={session.peer} size={120} />}
+        {!showRemoteVideo && <Avatar profile={session.peer} size={120} />}
         <p className="text-title-1 font-display drop-shadow">@{session.peer.username}</p>
-        <p role="status" aria-live="polite" className="text-body text-white/80 tabular drop-shadow">{status}</p>
+        <p role="status" aria-live="polite" className="max-w-xs text-body text-white/80 tabular drop-shadow">{status}</p>
+        {live && session.remoteMuted && (
+          <p className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1 text-caption text-white/90"><MicOff size={14} aria-hidden="true" /> Muted</p>
+        )}
+        {live && session.noCamera && (
+          <p className="rounded-full bg-black/50 px-3 py-1 text-caption text-white/90">No camera available, so they'll hear you but not see you.</p>
+        )}
+        {live && soundBlocked && (
+          <button type="button"
+            onClick={async () => {
+              const players = [...document.querySelectorAll("[role=dialog] audio, [role=dialog] video")];
+              const ok = await Promise.all(players.map((el) => el.play().then(() => true, () => false)));
+              if (ok.every(Boolean)) setSoundBlocked(false);
+            }}
+            className="press flex items-center gap-2 rounded-full bg-white px-4 py-2 text-callout font-semibold text-black">
+            <Volume2 size={18} aria-hidden="true" /> Tap to hear them
+          </button>
+        )}
       </div>
 
-      {session.video && session.localStream && !session.cameraOff && session.state !== "ended" && (
-        <StreamVideo stream={session.localStream} muted mirror
+      {localVideo && !localFull && (
+        <StreamPlayer stream={session.localStream} muted mirror={session.facing === "user"}
           className="absolute right-4 top-[calc(1rem+env(safe-area-inset-top))] z-20 h-44 w-28 rounded-card object-cover shadow-overlay md:h-56 md:w-40" />
       )}
 
-      {session.state !== "ended" && (
+      {live && (
         <div className="relative z-10 flex justify-center gap-6 px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
           <CallButton icon={session.muted ? MicOff : Mic} label={session.muted ? "Unmute" : "Mute"} pressed={session.muted} onClick={() => session.toggleMute()} />
-          {session.video && (
+          {session.video && !session.noCamera && (
             <CallButton icon={session.cameraOff ? VideoOff : Video} label={session.cameraOff ? "Camera on" : "Camera off"} pressed={session.cameraOff} onClick={() => session.toggleCamera()} />
+          )}
+          {session.video && session.canFlip && !session.cameraOff && (
+            <CallButton icon={SwitchCamera} label="Flip" onClick={() => session.flipCamera()} />
           )}
           <span ref={endBtn} tabIndex={-1} className="outline-none">
             <CallButton icon={PhoneOff} label="End" tone="danger" onClick={() => session.hangUp()} />
@@ -106,8 +161,12 @@ export function IncomingCall({ call, onAnswer, onDecline }) {
   useEffect(() => {
     answerRef.current?.focus();
     navigator.vibrate?.([400, 200, 400, 200, 400]);
-    return () => navigator.vibrate?.(0);
-  }, []);
+    const stop = startTone("ring");
+    // So a call is noticed from another tab.
+    const title = document.title;
+    document.title = `Call from @${call.callerName} · Mesh`;
+    return () => { stop(); navigator.vibrate?.(0); document.title = title; };
+  }, [call.callerName]);
   return createPortal(
     <div role="alertdialog" aria-modal="true" aria-label={`Incoming ${call.video ? "video" : "voice"} call from @${call.callerName}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col items-center justify-between bg-zinc-950 px-6 py-16 text-white anim-fade">

@@ -67,7 +67,8 @@ attacking the live database; see Security.
 | Variable | What it turns on |
 |---|---|
 | `VITE_GIPHY_API_KEY` | GIFs in posts, comments and messages. Get a free key at developers.giphy.com. Without it the GIF buttons are hidden. |
-| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls between some mobile and office networks fail to connect. |
+| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls from most mobile data and some Wi-Fi fail to connect (see Calls). |
+| `VITE_TURN_API_URL` | Or: a URL that returns TURN credentials as a list of ICE servers, such as Metered's. |
 | `VITE_APPLE_SIGNIN=on` | Shows "Continue with Apple". Only set it once Apple sign-in is configured in Firebase. |
 | `VITE_APPCHECK_DEBUG_TOKEN` | Lets local development pass Firebase App Check (the reCAPTCHA Enterprise key only works on the real domains). Generate one in the Firebase console under App Check > Apps > Manage debug tokens, and keep it in `.env.local` only: anyone with it can pass App Check. The site key itself is public and set in `src/firebase.js` (override with `VITE_APPCHECK_SITE_KEY` / `VITE_APPCHECK_PROVIDER`). |
 | `VITE_STORAGE=on` | Uses Cloud Storage for uploads (and turns on video). Set it after enabling the Blaze plan and deploying `storage.rules`. Until then photos and voice messages are stored in Firestore. |
@@ -196,12 +197,45 @@ members can play them, and unsending deletes the recording too.
 **GIFs** from GIPHY, in messages, comments and Strands.
 
 **Calls**: voice and video, one-to-one, from the phone and camera buttons in a
-chat. You can only ring someone who follows you, so strangers can't make
-someone's phone ring. WebRTC carries the audio and video directly between the two devices;
-Firestore only passes the setup messages, which are deleted when the call ends.
-Each call leaves a line in the chat ("Video call · 3:12", "Missed voice call").
-Group calls would need a media server (an SFU), so they're not included. Without
-a TURN relay (see Optional settings) some network pairs can't connect.
+chat (`src/lib/calls.js`). You can only ring someone who follows you, so
+strangers can't make someone's phone ring. WebRTC carries the audio and video
+directly between the two devices; Firestore only passes the setup messages
+(`calls/{id}`, with each side's network addresses in `callerCandidates/` and
+`calleeCandidates/`), which are deleted when the call ends. Once connected, a
+data channel inside the call carries mute, camera and hang-up.
+
+- **Ringing**: a ringback tone for the caller, a ring for the person called
+  (and the tab title changes), for 45 seconds. Someone already on a call
+  answers "busy" automatically. Closing the tab ends the call.
+- **Staying connected**: addresses that arrive before the answer are held
+  until it does. If the connection drops (a network change, a tunnel), the
+  caller sends a fresh offer (`offerRev`) and the call reconnects; after 25
+  seconds it gives up.
+- **Cameras**: with no camera, or one that's busy, a video call carries on
+  with voice; phones with two cameras get a Flip button.
+- Each call leaves a line in the chat ("Video call · 3:12", "Missed voice
+  call", "Voice call · busy").
+
+**Calls need a TURN relay to work on most mobile data.** Browsers first try to
+connect directly, using Google's STUN servers to learn their public address.
+That fails when either side is behind carrier-grade NAT (most Australian
+mobile data), strict office Wi-Fi or some home routers; then the call has to go
+through a TURN relay, which is a paid or free-tier service. Set one up in
+`.env.local` (see Optional settings) and rebuild:
+
+- **Static credentials** (for example ExpressTURN, or a Metered app's
+  username and password): `VITE_TURN_URLS` (comma-separated `turn:` and
+  `turns:` URLs), `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL`.
+- **A credentials URL** (for example Metered's
+  `https://<app>.metered.live/api/v1/turn/credentials?apiKey=...`):
+  `VITE_TURN_API_URL`, which must return a list of ICE servers. The site's
+  Content-Security-Policy in `firebase.json` allows `*.metered.live`; add
+  your provider's host there if it's another.
+
+Either way the credentials end up in the site's JavaScript, which is how these
+providers expect browsers to use them; limit them in the provider's dashboard.
+Calls relayed through TURN stay encrypted end to end. Group calls would need a
+media server (an SFU), so they're not included.
 
 **Extras**: group polls with live percentages, and 60-character **Thoughts**
 that sit above the inbox for 24 hours. Sharing a post from the feed's Send

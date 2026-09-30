@@ -1255,6 +1255,17 @@ service cloud.firestore {
       function callNow() {
         return get(/databases/$(database)/documents/calls/$(callId)).data;
       }
+      // Who can move a call where: only the person called picks up, declines
+      // or says they're busy; only the caller gives up ringing; either ends it.
+      function callStatusOk(before, after) {
+        return after == before
+          || (before == 'ringing' && after in ['active', 'declined', 'busy'] && request.auth.uid == resource.data.calleeId)
+          || (before == 'ringing' && after == 'missed' && request.auth.uid == resource.data.callerId)
+          || (before in ['ringing', 'active'] && after == 'ended');
+      }
+      function changed() {
+        return incomingData().diff(resource.data).affectedKeys();
+      }
       allow get: if signedIn() && party(resource.data);
       allow list: if signedIn()
         && (resource.data.calleeId == request.auth.uid || resource.data.callerId == request.auth.uid);
@@ -1262,7 +1273,8 @@ service cloud.firestore {
       // who follows you, and who hasn't blocked you. Strangers can message
       // (subject to the person's settings) but can't make their phone ring.
       allow create: if signedIn()
-        && incomingData().keys().hasOnly(['callerId', 'callerName', 'callerPhoto', 'calleeId', 'chatId', 'video', 'status', 'offer', 'createdAt'])
+        && incomingData().keys().hasOnly(['callerId', 'callerName', 'callerPhoto', 'calleeId', 'chatId', 'video', 'status', 'offer', 'offerRev', 'createdAt'])
+        && incomingData().get('offerRev', 0) == 0
         && incomingData().callerId == request.auth.uid
         && isMyName(incomingData().callerName)
         && isMyPhoto(incomingData().callerPhoto)
@@ -1275,27 +1287,33 @@ service cloud.firestore {
         && incomingData().calleeId in get(/databases/$(database)/documents/chats/$(incomingData().chatId)).data.members
         && follows(incomingData().calleeId, request.auth.uid)
         && !blockedBy(incomingData().calleeId);
-      // Only the person called can answer; either side can end it.
+      // Only the person called can answer. To reconnect a dropped call the
+      // caller sends a fresh offer (the next offerRev), and the answer has to
+      // be to the current one.
       allow update: if signedIn() && party(resource.data)
-        && incomingData().diff(resource.data).affectedKeys().hasOnly(['answer', 'status', 'answeredAt', 'endedAt'])
-        && incomingData().status in ['ringing', 'active', 'declined', 'missed', 'ended']
-        && (!incomingData().diff(resource.data).affectedKeys().hasAny(['answer'])
-            || request.auth.uid == resource.data.calleeId);
+        && changed().hasOnly(['answer', 'answerRev', 'offer', 'offerRev', 'status', 'answeredAt', 'endedAt'])
+        && callStatusOk(resource.data.status, incomingData().status)
+        && (!changed().hasAny(['answer', 'answerRev'])
+            || (request.auth.uid == resource.data.calleeId
+                && incomingData().get('answerRev', 0) == incomingData().get('offerRev', 0)))
+        && (!changed().hasAny(['offer', 'offerRev'])
+            || (request.auth.uid == resource.data.callerId && resource.data.status == 'active'
+                && incomingData().offerRev == resource.data.get('offerRev', 0) + 1));
       // Once it's over, either person can delete the call's setup data,
       // which includes both IP addresses.
       allow delete: if signedIn() && party(resource.data)
-        && resource.data.status in ['declined', 'missed', 'ended'];
+        && resource.data.status in ['declined', 'busy', 'missed', 'ended'];
 
       match /callerCandidates/{candidateId} {
         allow read: if signedIn() && party(callNow());
         allow create: if signedIn() && request.auth.uid == callNow().callerId;
-        allow delete: if signedIn() && party(callNow()) && callNow().status in ['declined', 'missed', 'ended'];
+        allow delete: if signedIn() && party(callNow()) && callNow().status in ['declined', 'busy', 'missed', 'ended'];
         allow update: if false;
       }
       match /calleeCandidates/{candidateId} {
         allow read: if signedIn() && party(callNow());
         allow create: if signedIn() && request.auth.uid == callNow().calleeId;
-        allow delete: if signedIn() && party(callNow()) && callNow().status in ['declined', 'missed', 'ended'];
+        allow delete: if signedIn() && party(callNow()) && callNow().status in ['declined', 'busy', 'missed', 'ended'];
         allow update: if false;
       }
     }

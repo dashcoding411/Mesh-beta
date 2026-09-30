@@ -4,7 +4,7 @@ import { auth } from "./firebase";
 import { fetchProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
-import { CallSession, listenIncomingCalls, callsSupported } from "./lib/calls";
+import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
 
 import { useToast } from "./components/ui/toast-context";
 import { useLocation, resolve, navigate, goBack } from "./lib/router";
@@ -148,7 +148,27 @@ export default function App() {
   const noticesUnread = useMemo(() => (notices || []).filter((n) => !n.read && !muted.has(n.actorId) && !blocked.has(n.actorId)).length, [notices, muted, blocked]);
 
   // Incoming calls, while signed in.
-  useEffect(() => { if (signedIn && callsSupported()) return listenIncomingCalls(setIncoming); }, [signedIn]);
+  const callUid = signedIn ? user.uid : null;
+  useEffect(() => { if (callUid && callsSupported()) return listenIncomingCalls(callUid, setIncoming); }, [callUid]);
+  // A caller whose tab closed never says it stopped ringing: let it lapse.
+  useEffect(() => {
+    if (!incoming.length) return;
+    const t = setInterval(() => setIncoming((l) => l.filter((c) => !ringExpired(c))), 5000);
+    return () => clearInterval(t);
+  }, [incoming.length]);
+  // Already on a call: tell anyone else who rings that you're busy. Their
+  // call then stops ringing, which takes it off the list.
+  useEffect(() => {
+    if (!call || call.state === "ended") return;
+    incoming.filter((c) => c.id !== call.signal.id).forEach((c) => refuseCall(c.id, "busy"));
+  }, [call, incoming]);
+  // Closing or leaving the page ends the call rather than leaving it hanging.
+  useEffect(() => {
+    if (!call) return;
+    const bye = () => { call.hangUp(); };
+    window.addEventListener("pagehide", bye);
+    return () => window.removeEventListener("pagehide", bye);
+  }, [call]);
 
   const startCall = useCallback(async (chat, video) => {
     if (!callsSupported()) return toast({ tone: "error", title: "This browser can't make calls" });
@@ -159,10 +179,16 @@ export default function App() {
       return toast({ tone: "info", title: "You can only call people who follow you",
         body: "It stops strangers ringing people. Send a message instead." });
     }
-    const session = new CallSession({ chatId: chat.id, video, peer: { id: other, username: chat.memberNames?.[other] || "?" } });
+    const session = new CallSession({
+      chatId: chat.id, video,
+      peer: { id: other, username: chat.memberNames?.[other] || "?" },
+      self: { id: user.uid, username: profile?.username || "", photoURL: profile?.photoURL || "" },
+    });
     setCall(session);
     try { await session.start(); }
     catch (err) {
+      // Hung up before it got going: nothing to report.
+      if (session.state === "ended" && session.endedReason === "cancelled") return;
       console.error(err);
       // Turn the camera and microphone back off before saying anything.
       session.finish("failed").catch(() => {});
@@ -171,10 +197,11 @@ export default function App() {
         return toast({ tone: "info", title: "You can only call people who follow you",
           body: "It stops strangers ringing people. Send a message instead." });
       }
-      toast({ tone: "error", title: err?.name === "NotAllowedError" ? "Mesh needs your microphone" + (video ? " and camera" : "") : "Couldn't start the call",
-        body: err?.name === "NotAllowedError" ? "Allow access in your browser's site settings, then try again." : undefined });
+      const denied = err?.name === "NotAllowedError";
+      toast({ tone: "error", title: denied ? "Mesh needs your microphone" : err?.name === "NotFoundError" ? "No microphone found" : "Couldn't start the call",
+        body: denied ? "Allow access in your browser's site settings, then try again." : undefined });
     }
-  }, [call, user, toast]);
+  }, [call, user, profile, toast]);
 
   const answer = async (inc) => {
     const session = new CallSession({ chatId: inc.chatId, video: inc.video, incoming: inc, peer: { id: inc.callerId, username: inc.callerName, photoURL: inc.callerPhoto } });
@@ -183,14 +210,15 @@ export default function App() {
     try { await session.answer(); }
     catch (err) {
       console.error(err);
-      await session.decline();
+      await session.finish("failed");
       setCall(null);
-      toast({ tone: "error", title: err?.name === "NotAllowedError" ? "Mesh needs your microphone to answer" : "Couldn't answer the call" });
+      toast({ tone: "error", title: err?.name === "NotAllowedError" ? "Mesh needs your microphone to answer" : "Couldn't answer the call",
+        body: err?.name === "NotAllowedError" ? "Allow access in your browser's site settings." : undefined });
     }
   };
   const decline = async (inc) => {
     setIncoming((l) => l.filter((c) => c.id !== inc.id));
-    await new CallSession({ chatId: inc.chatId, video: inc.video, incoming: inc, peer: { id: inc.callerId, username: inc.callerName } }).decline();
+    await refuseCall(inc.id, "declined");
   };
   const openComposer = useCallback((opts = {}) => setComposer(opts), []);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
