@@ -119,7 +119,7 @@ export default function CirclePage({ circleId }) {
 
   const openManage = (section = "requests") => { setManageSection(section); setDialog("manage"); };
 
-  const inChat = !!group.chatId && inbox.chats.some((c) => c.id === group.chatId);
+  const inChat = !!group.chatId && !!inbox.chats?.some((c) => c.id === group.chatId);
   const openChat = async () => {
     setChatBusy(true);
     try {
