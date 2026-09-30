@@ -174,14 +174,14 @@ function NoticeRow({ group, fresh, following }) {
     joined: <>You&apos;re in: {who} let you into a circle</>,
     storylike: <>{who}{rest} liked your story</>,
     echo: <>{who} echoed your story:{quote}</>,
-  }[n.type] || <>{who}</>;
+  }[n.type] || <>{who} did something new. Reload Mesh to see what.</>;
 
   const open = () => {
     if (["like", "repost", "comment", "mention"].includes(n.type) && n.postId) return openPost(n.postId);
     if (["family", "familyok", "familyask"].includes(n.type)) return navigate("/account/brick");
     if (n.type === "invite") return navigate(`/gatherings/${n.ref}`);
     if (n.type === "joined") return navigate(`/circles/${n.ref}`);
-    if (n.type === "storylike" || n.type === "echo") return openStory(n.ref, { panel: "activity" });
+    if (n.type === "storylike" || n.type === "echo") return openStory(n.ref, { panel: "activity", tab: n.type === "echo" ? "echoes" : "viewers" });
     openUserProfile(n.actorId);
   };
 

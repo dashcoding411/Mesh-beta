@@ -9,15 +9,15 @@ import StoryViewer from "./StoryViewer";
    time, so you can still see who liked and echoed it. */
 export default function StoryOpener() {
   const toast = useToast();
-  const [open, setOpen] = useState(null); // { thread, panel }
+  const [open, setOpen] = useState(null); // { thread, panel, tab }
 
   useEffect(() => {
     const onOpen = async (e) => {
-      const { id, panel = null } = e.detail || {};
+      const { id, panel = null, tab = null } = e.detail || {};
       const story = id ? await fetchStory(id) : null;
       if (!story) return toast({ title: "That story isn't available", body: "It may have been deleted." });
       if (story.authorId !== me() && storyExpired(story)) return toast({ title: "That story has ended", body: "Stories last 24 hours." });
-      setOpen({ panel, thread: { authorId: story.authorId, authorName: story.authorName, authorPhoto: story.authorPhoto, items: [story] } });
+      setOpen({ panel, tab, thread: { authorId: story.authorId, authorName: story.authorName, authorPhoto: story.authorPhoto, items: [story] } });
     };
     window.addEventListener(OPEN_STORY_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_STORY_EVENT, onOpen);
@@ -26,7 +26,7 @@ export default function StoryOpener() {
   if (!open) return null;
   const close = () => setOpen(null);
   return (
-    <StoryViewer key={open.thread.items[0].id} thread={open.thread} startPanel={open.panel}
+    <StoryViewer key={open.thread.items[0].id} thread={open.thread} startPanel={open.panel} startTab={open.tab}
       onClose={close} onNextThread={close} onDeleted={close} />
   );
 }

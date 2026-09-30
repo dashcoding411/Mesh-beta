@@ -4,7 +4,7 @@
 
 export const OPEN_STORY_EVENT = "mesh:open-story";
 
-/** @param {string} id @param {{panel?: "echoes" | "activity"}} [opts] */
+/** @param {string} id @param {{panel?: "echoes" | "activity", tab?: "viewers" | "echoes"}} [opts] */
 export function openStory(id, opts = {}) {
   window.dispatchEvent(new CustomEvent(OPEN_STORY_EVENT, { detail: { id, ...opts } }));
 }

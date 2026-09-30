@@ -20,6 +20,7 @@ import HomeFeed from "./components/HomeFeed";
 import StorageNotice from "./components/StorageNotice";
 import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
+import UpdateBanner from "./components/UpdateBanner";
 import Shortcuts from "./components/Shortcuts";
 import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
@@ -346,6 +347,7 @@ export default function App() {
 
         <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           <OfflineBanner />
+          <UpdateBanner />
           <SuspensionBanner profile={profile} />
           <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
         </main>

@@ -217,6 +217,27 @@ service cloud.firestore {
     // Everything a new post must be, as one function that gets the post
     // once: calling incomingData() seventy times costs enough of Firestore's
     // per-request evaluation budget to crowd out a circle's own checks.
+    // One photo in a carousel: our own kind of address (a photo stored in
+    // Firestore, or in our Storage bucket), never an outside one, which
+    // would log every viewer's IP address. (Ownership is checked for the
+    // first photo; checking all ten would take more lookups than a write gets.)
+    function slideOk(m) {
+      return m is map
+        && m.keys().hasOnly(['url', 'alt', 'w', 'h'])
+        && m.url is string
+        && (m.url.matches('^mesh-media:[A-Za-z0-9]{20}$') || m.url.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
+        && m.get('alt', '') is string && m.get('alt', '').size() <= 500
+        && m.get('w', 0) is int && m.get('h', 0) is int;
+    }
+    function slidesOk(list) {
+      return list is list && list.size() >= 2 && list.size() <= 10
+        && slideOk(list[0]) && slideOk(list[1])
+        && (list.size() < 3 || slideOk(list[2])) && (list.size() < 4 || slideOk(list[3]))
+        && (list.size() < 5 || slideOk(list[4])) && (list.size() < 6 || slideOk(list[5]))
+        && (list.size() < 7 || slideOk(list[6])) && (list.size() < 8 || slideOk(list[7]))
+        && (list.size() < 9 || slideOk(list[8])) && (list.size() < 10 || slideOk(list[9]));
+    }
+
     function postCreateOk(d, circleMod) {
       return d.keys().hasOnly([
             'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
@@ -224,9 +245,12 @@ service cloud.firestore {
             'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'circleTopic',
             'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
             'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
-            'viewCount', 'completeCount', 'createdAt'
+            'viewCount', 'completeCount', 'createdAt', 'media', 'location'
           ])
           && validTopics(d.get('topics', []))
+          && d.get('location', '') is string && d.get('location', '').size() <= 60
+          // A carousel: a Still with 2 to 10 photos, the first being mediaUrl.
+          && (!('media' in d) || (d.kind == 'post' && slidesOk(d.media) && d.media[0].url == d.mediaUrl))
           && d.get('circleTopic', '') is string && d.get('circleTopic', '').size() <= 40
           && notSuspended()
           && authorIsMe(d)
@@ -241,7 +265,7 @@ service cloud.firestore {
           // it behind a warning. Unlabelled, it's refused.
           && d.get('sensitive', false) is bool
           && (d.get('sensitive', false) == true
-              || (hateFree(d.text + ' ' + d.title + ' ' + d.alt)
+              || (hateFree(d.text + ' ' + d.title + ' ' + d.alt + ' ' + d.get('location', ''))
                   && (!('poll' in d) || hateFree(d.poll.options.join(' ')))))
           // A poll: 2 to 4 short options, open for at most a week, no votes yet.
           && (!('poll' in d)
@@ -1106,8 +1130,8 @@ service cloud.firestore {
         // and is paced like posting; changing only who can see it isn't.
         (resource.data.authorId == request.auth.uid
           && resource.data.get('groupId', '') == ''
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated', 'sensitive', 'topics', 'editedAt'])
-          && (!incomingData().diff(resource.data).affectedKeys().hasAny(['text', 'title', 'alt', 'topics', 'sensitive', 'editedAt'])
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'title', 'alt', 'visibility', 'aiGenerated', 'sensitive', 'topics', 'location', 'editedAt'])
+          && (!incomingData().diff(resource.data).affectedKeys().hasAny(['text', 'title', 'alt', 'topics', 'sensitive', 'location', 'editedAt'])
               || (incomingData().editedAt == request.time && rateOk('edit', 3) && notSuspended()))
           && validTopics(incomingData().get('topics', []))
           && incomingData().visibility in ['public', 'followers']
@@ -1120,7 +1144,8 @@ service cloud.firestore {
           && incomingData().get('aiGenerated', false) is bool
           && incomingData().get('sensitive', false) is bool
           && (incomingData().get('sensitive', false) == true
-              || hateFree(incomingData().text + ' ' + incomingData().title + ' ' + incomingData().alt))
+              || hateFree(incomingData().text + ' ' + incomingData().title + ' ' + incomingData().alt + ' ' + incomingData().get('location', '')))
+          && incomingData().get('location', '') is string && incomingData().get('location', '').size() <= 60
           && (resource.data.kind != 'text' || incomingData().text.size() <= 500))
         // A report raises the count by one, only in the same write as that
         // person's first report, and only from accounts over a day old, so a
@@ -1431,6 +1456,20 @@ service cloud.firestore {
           && notSuspended();
         allow update: if false;
         // Yours to take back; the author's to clear when the story goes.
+        allow delete: if isUser(uid) || (signedIn() && storyNow().authorId == request.auth.uid);
+      }
+
+      // Who's seen it: one record per viewer, for the author alone.
+      match /views/{uid} {
+        allow get: if isUser(uid) || (signedIn() && storyNow().authorId == request.auth.uid);
+        allow list: if signedIn() && storyNow().authorId == request.auth.uid;
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['username', 'createdAt'])
+          && isMyName(incomingData().username)
+          && incomingData().createdAt == request.time
+          && storyNow().authorId != request.auth.uid
+          && canSeeStory(storyNow()) && storyLive(storyNow());
+        allow update: if false;
         allow delete: if isUser(uid) || (signedIn() && storyNow().authorId == request.auth.uid);
       }
 
@@ -1839,7 +1878,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if inChat();
         allow create: if inChat()
-          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'poll', 'call', 'storyReply'])
+          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'photo', 'poll', 'call', 'storyReply'])
           && incomingData().senderId == request.auth.uid
           && incomingData().createdAt == request.time
           && incomingData().reactions == {}
@@ -1862,6 +1901,10 @@ service cloud.firestore {
                   && get(/databases/$(database)/documents/posts/$(incomingData().sharedPost.id)).data.text[0:incomingData().sharedPost.text.size()] == incomingData().sharedPost.text))
           && (!('voice' in incomingData())
               || get(/databases/$(database)/documents/chats/$(chatId)/media/$(incomingData().voice.mediaId)).data.ownerId == request.auth.uid)
+          && (!('photo' in incomingData())
+              || (incomingData().photo.keys().hasOnly(['mediaId', 'width', 'height'])
+                  && get(/databases/$(database)/documents/chats/$(chatId)/media/$(incomingData().photo.mediaId)).data.ownerId == request.auth.uid
+                  && get(/databases/$(database)/documents/chats/$(chatId)/media/$(incomingData().photo.mediaId)).data.kind == 'image'))
           && (!('poll' in incomingData())
               || (incomingData().poll.votes == {}
                   && incomingData().poll.question is string && incomingData().poll.question.size() <= 200
@@ -1888,7 +1931,7 @@ service cloud.firestore {
             && request.time < resource.data.createdAt + duration.value(15, 'm'))
           // sender may unsend at any time
           || (resource.data.senderId == request.auth.uid
-            && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'deleted', 'sharedPost', 'gif', 'voice'])
+            && incomingData().diff(resource.data).affectedKeys().hasOnly(['text', 'deleted', 'sharedPost', 'gif', 'voice', 'photo'])
             && incomingData().deleted == true)
           // any member may set or clear their own reaction
           || (incomingData().diff(resource.data).affectedKeys().hasOnly(['reactions'])
@@ -1913,15 +1956,21 @@ service cloud.firestore {
       // Voice notes live inside their conversation: only its members can play them.
       match /media/{mediaId} {
         allow read: if inChat();
+        // Voice notes and photos, readable only by the conversation.
         allow create: if inChat()
-          && incomingData().keys().hasOnly(['ownerId', 'kind', 'data', 'duration', 'createdAt'])
           && incomingData().ownerId == request.auth.uid
-          && incomingData().kind == 'audio'
           && incomingData().data is string
           && incomingData().data.size() <= 900000
-          && incomingData().data.matches('^data:audio/[a-z0-9.+-]+(;[a-z]+=[a-z0-9.,]+)*;base64,.*$')
-          && incomingData().duration is number
-          && incomingData().duration <= 61;
+          && notSuspended()
+          && ((incomingData().kind == 'audio'
+                && incomingData().keys().hasOnly(['ownerId', 'kind', 'data', 'duration', 'createdAt'])
+                && incomingData().data.matches('^data:audio/[a-z0-9.+-]+(;[a-z]+=[a-z0-9.,]+)*;base64,.*$')
+                && incomingData().duration is number
+                && incomingData().duration <= 61)
+              || (incomingData().kind == 'image'
+                && incomingData().keys().hasOnly(['ownerId', 'kind', 'data', 'width', 'height', 'createdAt'])
+                && incomingData().data.matches('^data:image/(webp|jpeg|png);base64,.*$')
+                && incomingData().width is int && incomingData().height is int));
         allow update: if false;
         allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
       }
@@ -2020,12 +2069,24 @@ service cloud.firestore {
           && g.get('chatId', '') is string && g.get('chatId', '').size() <= 64;
       }
 
+      // A banner or circle photo is the admin's own upload, like a profile
+      // photo: never an outside address, which would log every visitor's IP.
+      function circleImageOk(field) {
+        return !incomingData().diff(resource.data).affectedKeys().hasAny([field])
+          || incomingData()[field] == ''
+          || incomingData()[field].matches('^https://firebasestorage[.]googleapis[.]com/.*')
+          || ownInlineImage(incomingData()[field]);
+      }
+
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'name', 'description', 'privacy', 'ownerId', 'memberCount',
           'requireApproval', 'ageLimit', 'interests', 'rules', 'coverColor', 'pinnedPostId',
-          'screeningQuestions', 'automod', 'createdAt', 'featuredPostIds', 'topics', 'chatId'
+          'screeningQuestions', 'automod', 'createdAt', 'featuredPostIds', 'topics', 'chatId',
+          'bannerUrl', 'photoUrl'
         ])
+        && incomingData().get('bannerUrl', '') == ''
+        && incomingData().get('photoUrl', '') == ''
         && incomingData().ownerId == request.auth.uid
         && incomingData().privacy in ['public', 'private', 'hidden']
         && limitsOk(incomingData())
@@ -2047,8 +2108,10 @@ service cloud.firestore {
           && incomingData().diff(resource.data).affectedKeys()
                .hasOnly(['name', 'description', 'privacy', 'requireApproval', 'ageLimit', 'interests',
                          'rules', 'coverColor', 'pinnedPostId',
-                         'screeningQuestions', 'automod', 'featuredPostIds', 'topics', 'chatId'])
+                         'screeningQuestions', 'automod', 'featuredPostIds', 'topics', 'chatId',
+                         'bannerUrl', 'photoUrl'])
           && incomingData().privacy in ['public', 'private', 'hidden']
+          && circleImageOk('bannerUrl') && circleImageOk('photoUrl')
           && limitsOk(incomingData())
           && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', '') + ' ' + incomingData().get('topics', []).join(' '))
           // The community chat has to be this circle's own.

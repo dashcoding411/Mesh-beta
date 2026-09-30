@@ -42,10 +42,12 @@ export const POLL_DURATIONS = [
   { id: 168, label: "1 week", hours: 168 },
 ];
 
+export const MAX_SLIDES = 10;
+
 export async function createPost({
   kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
   duration = 0, trailerStart = 0, aiGenerated = false, topics = [], poll = null, gif = null, sensitive = false,
-  circleTopic = "",
+  circleTopic = "", media = null, location = "",
 }) {
   const user = auth.currentUser;
   const profile = await fetchProfile(user.uid);
@@ -80,6 +82,13 @@ export async function createPost({
     // mockery). Viewers' apps fold or limit it, and the server only accepts
     // a slur when this is set, so a slur can never go out unlabelled.
     ...(sensitive ? { sensitive: true } : {}),
+    // A carousel: 2 to 10 photos, swiped through in order. The first is also
+    // mediaUrl/alt, so everything that shows one photo still works.
+    ...(kind === "post" && media?.length > 1 ? {
+      media: media.slice(0, MAX_SLIDES).map((m) => ({ url: m.url, alt: (m.alt || "").slice(0, 500), w: Math.round(m.width || 0), h: Math.round(m.height || 0) })),
+    } : {}),
+    // Where it was taken, if the author says.
+    ...(location.trim() ? { location: location.trim().slice(0, 60) } : {}),
     // One of the circle's own topics, so members can filter the discussion.
     ...(groupId && circleTopic ? { circleTopic: circleTopic.slice(0, 40) } : {}),
     likeCount: 0,
@@ -211,9 +220,10 @@ export async function fetchPendingPosts(groupId, { mine = false } = {}) {
 /** Change the words on one of your own posts (not in a circle). Stamps
     `editedAt`, which the rules require and every card shows as "Edited".
     Returns the fields that changed, to merge into what's on screen. */
-export async function editPost(post, { text, title = "", alt = "", topics = [], sensitive = false, visibility }) {
+export async function editPost(post, { text, title = "", alt = "", topics = [], sensitive = false, visibility, location }) {
   const user = auth.currentUser;
   const changes = { text, title, alt, topics, sensitive, editedAt: serverTimestamp() };
+  if (location !== undefined && location !== (post.location || "")) changes.location = location;
   if (visibility) changes.visibility = visibility;
   const batch = writeBatch(db);
   batch.update(doc(db, "posts", post.id), changes);
@@ -234,6 +244,8 @@ export async function deleteInline(url) {
 export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
   await deleteInline(post.mediaUrl);
+  // Every photo in a carousel, not just the first.
+  for (const m of (post.media || []).slice(1)) await deleteInline(m.url).catch(() => {});
   if (post.mediaPath) {
     try {
       await deleteObject(ref(storage, post.mediaPath));

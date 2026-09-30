@@ -1,11 +1,15 @@
-// Running a circle: join requests, the approval queue, limits, rules, interests and deleting it.
-import { Check, Hourglass, Trash2, Users, X } from "lucide-react";
-import { useEffect, useState } from "react";
+// Running a circle: join requests, the approval queue, limits, rules, interests, its look and deleting it.
+import { Check, Hourglass, ImagePlus, Trash2, Users, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   AGE_LIMITS, approveJoinRequest, approvePost, declineJoinRequest, deleteGroup, effectiveAutomod,
   deletePost, fetchJoinRequests, fetchPendingPosts, setCircleInterests, setCircleLimits,
-  setCircleRules, setCircleTopics, setScreeningQuestions,
+  setCircleRules, setCircleTopics, setScreeningQuestions, setCircleImage, setCircleCover, COVER_COLORS,
 } from "../../lib/db";
+import { coverClass, LATTICE } from "../../lib/covers";
+import { validateMediaFile } from "../../lib/validate";
+import { CircleAvatar, CircleBanner } from "./CircleImages";
+import PhotoCropper from "../ui/PhotoCropper";
 import { shortTime } from "../../lib/format";
 import { navigate } from "../../lib/router";
 import { InterestToggles } from "../Interests";
@@ -25,12 +29,104 @@ export function ManageDialog({ group, isOwner, section, onSection, onClose, onSa
           { id: "posts", label: "Posts" },
           { id: "limits", label: "Limits" },
           { id: "rules", label: "Details" },
+          ...(isOwner ? [{ id: "look", label: "Look" }] : []),
         ]} />
       {section === "requests" && <JoinRequests group={group} onCountChange={onCountChange} />}
       {section === "posts" && <PostQueue group={group} />}
       {section === "limits" && <LimitsEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
       {section === "rules" && <RulesEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
+      {section === "look" && isOwner && <LookEditor group={group} onSaved={onSaved} />}
     </Dialog>
+  );
+}
+
+/* The circle's look: a banner across the top, its photo, and the colour
+   shown when there's no banner. Each change saves straight away. */
+function LookEditor({ group, onSaved }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(null); // which part is saving
+  const [cropping, setCropping] = useState(null); // a circle photo waiting to be positioned
+  const bannerInput = useRef(null);
+  const photoInput = useRef(null);
+
+  const saveImage = async (field, file) => {
+    if (file) {
+      const v = validateMediaFile(file, "image");
+      if (v.error) return toast({ tone: "error", title: v.error });
+    }
+    setBusy(field);
+    try {
+      await setCircleImage(group, field, file);
+      await onSaved();
+      toast({ title: file ? (field === "bannerUrl" ? "Banner updated" : "Photo updated") : (field === "bannerUrl" ? "Banner removed" : "Photo removed") });
+    } catch (err) {
+      toast({ tone: "error", title: "Couldn't save that", body: err?.message?.includes("quickly") ? err.message : "Check your connection and try again." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const pick = (field) => (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    // The photo is positioned first; the banner goes in as it is.
+    if (field === "photoUrl") setCropping(f);
+    else saveImage(field, f);
+  };
+
+  const saveCover = async (id) => {
+    setBusy("cover");
+    try { await setCircleCover(group.id, id); await onSaved(); }
+    catch { toast({ tone: "error", title: "Couldn't change the colour" }); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <section aria-labelledby="look-banner">
+        <h3 id="look-banner" className="text-callout font-semibold">Banner</h3>
+        <p className="mb-2 text-caption text-fg-muted">Across the top of the circle. A wide photo works best (3:1).</p>
+        <CircleBanner group={group} className="h-28 rounded-card" />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" icon={ImagePlus} loading={busy === "bannerUrl"} onClick={() => bannerInput.current?.click()}>
+            {group.bannerUrl ? "Change banner" : "Add a banner"}
+          </Button>
+          {group.bannerUrl && <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => saveImage("bannerUrl", null)}>Remove</Button>}
+        </div>
+        <input ref={bannerInput} type="file" accept="image/*" className="hidden" onChange={pick("bannerUrl")} aria-hidden="true" tabIndex={-1} />
+      </section>
+
+      <section aria-labelledby="look-photo">
+        <h3 id="look-photo" className="text-callout font-semibold">Circle photo</h3>
+        <p className="mb-2 text-caption text-fg-muted">Shown beside the circle's name, in lists and search.</p>
+        <div className="flex items-center gap-4">
+          <CircleAvatar group={group} size={72} />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" icon={ImagePlus} loading={busy === "photoUrl"} onClick={() => photoInput.current?.click()}>
+              {group.photoUrl ? "Change photo" : "Add a photo"}
+            </Button>
+            {group.photoUrl && <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => saveImage("photoUrl", null)}>Remove</Button>}
+          </div>
+        </div>
+        <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={pick("photoUrl")} aria-hidden="true" tabIndex={-1} />
+        {cropping && (
+          <PhotoCropper file={cropping} shape="square" title="Adjust the circle photo"
+            onCancel={() => setCropping(null)} onDone={async (f) => { setCropping(null); await saveImage("photoUrl", f); }} />
+        )}
+      </section>
+
+      <fieldset>
+        <legend className="text-callout font-semibold">Colour</legend>
+        <p className="mb-2 text-caption text-fg-muted">Behind the initials when there&apos;s no photo, and the banner when there&apos;s no banner.</p>
+        <div className="flex gap-3" role="radiogroup">
+          {COVER_COLORS.map((id, i) => (
+            <button key={id} type="button" role="radio" aria-checked={(group.coverColor || COVER_COLORS[0]) === id} aria-label={`Colour ${i + 1}`}
+              disabled={busy === "cover"} onClick={() => saveCover(id)} style={LATTICE}
+              className={`press h-10 w-10 rounded-full ${coverClass(id)} ${(group.coverColor || COVER_COLORS[0]) === id ? "ring-2 ring-fg ring-offset-2 ring-offset-surface" : ""}`} />
+          ))}
+        </div>
+      </fieldset>
+    </div>
   );
 }
 

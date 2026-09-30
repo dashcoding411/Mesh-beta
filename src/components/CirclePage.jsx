@@ -1,6 +1,6 @@
-import { ArrowLeft, Check, Clock, Lock, Settings2, UserPlus, Users, MessagesSquare, CalendarDays, ScrollText, ListChecks } from "lucide-react";
+import { ArrowLeft, Check, Clock, ImagePlus, Lock, Settings2, UserPlus, Users, MessagesSquare, CalendarDays, ScrollText, ListChecks } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { coverClass, LATTICE } from "../lib/covers";
+import { CircleAvatar, CircleBanner } from "./circle/CircleImages";
 import {
   canJoinDirectly, fetchGroupById, fetchMembership, isCircleMod, joinGroup, leaveGroup, me,
   meetsAgeLimit, myJoinRequest, ROLES, createCircleChat, joinCircleChat, fetchEvents, fetchGuides, tsMillis,
@@ -139,13 +139,18 @@ export default function CirclePage({ circleId }) {
 
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-      <div className={`relative h-36 sm:h-48 ${coverClass(group.coverColor)}`} style={LATTICE}>
-        <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/20 to-transparent" />
+      <CircleBanner group={group} className="h-40 sm:h-56">
+        <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/10 to-transparent" />
         <IconButton icon={ArrowLeft} label="Back to Circles" tone="overlay" className="absolute left-2 top-[calc(0.5rem+env(safe-area-inset-top))]"
           onClick={() => goBack("/circles")} />
-      </div>
+        {isOwner && (
+          <Button size="sm" icon={ImagePlus} className="absolute bottom-14 right-3 !bg-black/45 !text-white backdrop-blur-sm hover:!bg-black/60"
+            onClick={() => openManage("look")}>{group.bannerUrl ? "Edit look" : "Add a banner"}</Button>
+        )}
+      </CircleBanner>
 
       <div className="relative mx-auto -mt-12 max-w-3xl px-4 pb-16 md:px-6">
+        <CircleAvatar group={group} size={88} className="mb-3 ring-4 ring-canvas" />
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

@@ -115,6 +115,11 @@ followers, saved, and shared by link or into a conversation.
   author's choice of who may comment. They can only be added while the story
   is up; the author can delete any of them, and they go when the story does.
 
+**Viewers**: opening someone's story records that you saw it, once
+(`stories/{id}/views/{uid}`), and only the author can list them. Your story's
+Activity shows everyone who's seen it, with a heart beside those who liked it,
+and its echoes.
+
 Likes and echoes on your story show up in Notifications, and open the story
 with its Activity. Stories open from anywhere with `openStory(id)`
 (`src/lib/openStory.js`).
@@ -213,6 +218,13 @@ waveform while recording and a scrubbable one on playback, at 1×, 1.5× or 2×.
 Recordings are stored inside the conversation (`chats/{id}/media`), so only its
 members can play them, and unsending deletes the recording too.
 
+**Photos**: the photo button in the message box picks up to ten. They wait in
+a tray above the box (tap × to drop one) and go as one message each, then
+whatever you typed. Each is resized and compressed in the browser (like
+Stills while Storage is off) and stored inside the conversation
+(`chats/{id}/media`, `kind: "image"`), so only its members can see it. Tap a
+photo to see it full screen; double tap to like it; unsending deletes it.
+
 **GIFs** from GIPHY, in messages, comments and Strands.
 
 **Calls**: voice and video, one-to-one, from the phone and camera buttons in a
@@ -231,7 +243,11 @@ data channel inside the call carries mute, camera and hang-up.
   caller sends a fresh offer (`offerRev`) and the call reconnects; after 25
   seconds it gives up.
 - **Cameras**: with no camera, or one that's busy, a video call carries on
-  with voice; phones with two cameras get a Flip button.
+  with voice; phones with two cameras get a Flip button. Cameras are chosen
+  by name (`src/lib/cameras.js`): asking iPhones for "the back camera" picks a
+  multi-lens camera that starts on the ultra-wide lens and looks zoomed out,
+  so Mesh asks for the plain "Back Camera". Flipping releases one camera
+  before opening the other, since many phones can't run two.
 - Each call leaves a line in the chat ("Video call · 3:12", "Missed voice
   call", "Voice call · busy").
 
@@ -242,11 +258,14 @@ mobile data), strict office Wi-Fi or some home routers; then the call has to go
 through a TURN relay, which is a paid or free-tier service. Set one up in
 `.env.local` (see Optional settings) and rebuild:
 
-- **Static credentials** (for example ExpressTURN, or a Metered app's
-  username and password): `VITE_TURN_URLS` (comma-separated `turn:` and
-  `turns:` URLs), `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL`.
+- **Static credentials** (recommended; for example Metered's free Open Relay
+  plan, or ExpressTURN): `VITE_TURN_URLS` (comma-separated `turn:` and
+  `turns:` URLs, including a `turns:...:443` one for strict networks),
+  `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL`, copied from the provider's
+  dashboard.
 - **A credentials URL** (for example Metered's
-  `https://<app>.metered.live/api/v1/turn/credentials?apiKey=...`):
+  `https://<app>.metered.live/api/v1/turn/credentials?apiKey=...`, though
+  that endpoint has been unreliable lately):
   `VITE_TURN_API_URL`, which must return a list of ICE servers. The site's
   Content-Security-Policy in `firebase.json` allows `*.metered.live`; add
   your provider's host there if it's another.
@@ -273,6 +292,12 @@ enumerating all chats are each rejected.
 Communities with their own admins, rules and limits, and the gatherings they
 plan. Post straight into a circle from the box at the top of its Discussion
 tab; Strands work without Storage, photos and Flicks open the full composer.
+
+**Look** (Manage → Look, or "Edit look" on the banner; the circle's admin
+only): a banner photo across the top, a circle photo shown beside its name in
+lists, and a colour for when there's no photo. Both images must be the admin's
+own uploads (`circleImageOk` in the rules), never an outside address, and go
+when the circle is deleted.
 
 **Limits** (Manage → Limits, circle admin only). Every one is enforced in
 `firestore.rules`, not just the app, and was attack-tested against the live
@@ -475,6 +500,13 @@ Small things that make the app easier to live with:
   comments and notifications show each person's current photo
   (`src/lib/profileCache.js`), not the one saved when they posted.
 - **Offline notice** when the connection drops, and "Back online" when it returns.
+- **Update notice**: a tab or home-screen app can run for days on the version
+  it opened with, and an old copy can't show things a newer one sends (a new
+  kind of notification, say). When a newer version is deployed, a banner
+  offers to reload (checked on returning to the app and every ten minutes).
+  If an old copy tries to open a page whose files a deploy removed, it
+  reloads into the new version once (`mesh:reloaded-for-update` in session
+  storage stops a loop).
 - **Keyboard shortcuts** on desktop: `n` new post, `/` search, `j`/`k` next and
   previous post, `g` then `h`/`m`/`f`/`p` to go Home, Messages, Flicks or your
   profile, and `?` for the list. They pause while typing or in a dialog.
@@ -609,7 +641,35 @@ need the Blaze plan.
 
 ## Posts, interests and topics
 
-Every post card shows who liked it ("Liked by @sam and 11 others"), the first
+Posts are laid out like a photo feed: who posted across the top (with a
+location if the author gave one), the photo or video edge to edge (photos at
+their own shape, portrait ones up to 4:5), the actions under it (like,
+comment, repost, share; save on the right), then likes, the caption with the
+author's name in bold ("more" opens a long one), topics as hashtags and
+comments. A Strand's words come first, large when short. Double tap a photo
+anywhere to like it: a heart springs up over it and the like button pops.
+
+**Carousels**: a Still can hold up to 10 photos (`media` on the post: each
+photo's address, description and size; the first is also `mediaUrl`, so
+shares, Saved and search still show a cover). In the composer you add them,
+pick the cover, move them earlier or later, and describe each one. They're
+stored in one batch, so ten photos aren't held up by the photo pace. In the
+feed they swipe with the browser's own scroll snapping (one photo per swipe,
+`scroll-snap-stop: always`), at the first photo's shape; photos load as you
+near them; a "2/5" counter shows while you swipe; dots in the action bar
+show where you are (five at most, the end ones smaller when there are more);
+wide screens get arrows. The rules check each photo is one of ours, never
+an outside address.
+
+**A second look**: a carousel you had on screen but passed without a tap or
+swipe opens on its second photo the next time it comes round, on a later
+visit, once (`mesh:second-look` on this device, a week at most). The feed
+doesn't push it back to you; it just starts somewhere new if it's there.
+
+Not copied from the photo-feed playbook: infinite scroll (see "What Mesh
+deliberately doesn't do"), and skipping rendering for off-screen posts
+(`content-visibility`), which would break returning to your place in the
+feed, since Mesh restores it by scroll position. Every post card shows who liked it ("Liked by @sam and 11 others"), the first
 comment, a one-line reply box, and labelled Like, Comment, Repost, Share, Copy
 link and Save actions. On your own posts you also see how many people saved or
 sent it, which nobody else sees.
@@ -623,8 +683,9 @@ later in Settings. They're stored in `users/{uid}/private/prefs`, readable only
 by the owner. Sensitive categories (health, religion, politics, sexuality) are
 deliberately not on the list. Posts carry up to 3 **topics**, detected from the
 words (`suggestTopics` in `src/lib/interests.js`, which knows plurals and
-verb forms); the full composer shows them with a Change button, and quick posts
-just use them. Circles have up to 3 interests. For you and Flicks get
+verb forms; words that often mean something else, like "camera" or "run",
+only count alongside another); the full composer shows them with a Change
+button, and quick posts just use them. Circles have up to 3 interests. For you and Flicks get
 a chip row to filter by your interests, the ranker boosts matching topics, and
 Circles has a "For your interests" section, interest filters and a search box.
 
@@ -798,8 +859,8 @@ and a bare `firebase deploy` would overwrite that project instead.
 - `reposts/{postId}_{uid}`: one per person per post; public posts by others only
 - `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
 - `reports/{type}_{id}_{uid}`: one per person per thing; moderators only
-- `stories/{id}`: 24-hour media, filtered client-side, with `likes/{uid}` (the
-  author only) and `echoes/` (public replies)
+- `stories/{id}`: 24-hour media, filtered client-side, with `views/{uid}` and
+  `likes/{uid}` (the author only) and `echoes/` (public replies)
 - `news/{id}`: a story's blocks, `script`, sources, authors, `version` and
   review status, with `revisions/`, `presence/`, `updates/` (live blogs) and
   `correctionRequests/`; `newsWriters/{uid}`: who may write news

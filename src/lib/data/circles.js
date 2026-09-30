@@ -5,7 +5,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
-import { deletePost, fetchGroupPosts, fetchPendingPosts } from "./posts.js";
+import { deleteInline, deletePost, fetchGroupPosts, fetchPendingPosts } from "./posts.js";
+import { uploadMedia } from "./uploads.js";
 import { fetchProfile } from "./users.js";
 import { notify } from "./notifications.js";
 import { createGroupChat } from "./chats.js";
@@ -140,6 +141,22 @@ export function circleVisibility(group) {
 
 export async function setCircleInterests(groupId, interests) {
   await updateDoc(doc(db, "groups", groupId), { interests: interests.slice(0, 3) });
+}
+
+/* A circle's look: its banner, its photo, and the colour behind them when
+   there's no banner. `field` is "bannerUrl" or "photoUrl"; no file removes it. */
+export async function setCircleImage(group, field, file) {
+  if (!["bannerUrl", "photoUrl"].includes(field)) throw new Error("Unknown image");
+  const url = file ? (await uploadMedia(file, undefined, field === "photoUrl" ? "avatars" : "uploads")).url : "";
+  await updateDoc(doc(db, "groups", group.id), { [field]: url });
+  // The one it replaced isn't needed any more.
+  if (group[field] && group[field] !== url) deleteInline(group[field]).catch(() => {});
+  return url;
+}
+
+export async function setCircleCover(groupId, coverColor) {
+  if (!COVER_COLORS.includes(coverColor)) throw new Error("Unknown cover");
+  await updateDoc(doc(db, "groups", groupId), { coverColor });
 }
 
 export async function setCircleRules(groupId, rules) {
@@ -477,6 +494,7 @@ export async function deleteGroup(group) {
   for (const m of members) if (m.id !== uid) await deleteDoc(doc(db, "groups", group.id, "members", m.id)).catch(() => {});
   await deleteDoc(doc(db, "groups", group.id));
   await deleteDoc(doc(db, "groups", group.id, "members", uid)).catch(() => {});
+  await Promise.all([deleteInline(group.bannerUrl), deleteInline(group.photoUrl)]).catch(() => {});
 }
 
 export function canModerate(membership, group) {

@@ -80,6 +80,65 @@ export async function storeInlineImage(file, { maxSide } = {}) {
   return { url: INLINE_PREFIX + ref_.id, path: "", width, height };
 }
 
+/* Several photos at once (a carousel), in one write: the rules allow one
+   photo upload every few seconds, and a batch counts as one. Firestore takes
+   up to 10 MiB in a write, so each photo gets a tenth of that at most. */
+export async function storeInlineImages(files, onProgress) {
+  const budget = Math.min(MAX_DATA_CHARS * 0.85, 9_000_000 / Math.max(1, files.length));
+  const done = [];
+  for (const file of files) {
+    done.push(await compressImage(file, { budget }));
+    onProgress?.(Math.round((done.length / files.length) * 80));
+  }
+  const uid = auth.currentUser.uid;
+  const batch = writeBatch(db);
+  const refs = done.map((img) => {
+    const ref_ = doc(collection(db, "media"));
+    batch.set(ref_, { ownerId: uid, kind: "image", data: img.data, width: img.width, height: img.height, createdAt: serverTimestamp() });
+    return ref_;
+  });
+  batch.set(doc(db, "rateLimits", uid), { media: serverTimestamp() }, { merge: true });
+  try { await batch.commit(); }
+  catch (err) {
+    if (err?.code === "permission-denied") throw new Error("You're uploading photos very quickly. Wait a few seconds and try again.");
+    throw err;
+  }
+  onProgress?.(100);
+  return refs.map((r, i) => ({ url: INLINE_PREFIX + r.id, path: "", width: done[i].width, height: done[i].height }));
+}
+
+/** A photo's size in pixels, read in the browser. */
+export async function imageSize(file) {
+  const img = await loadImage(file);
+  return { width: img.naturalWidth, height: img.naturalHeight };
+}
+
+/** Store a photo inside its conversation, readable only by its members. */
+export async function storeChatPhoto(chatId, file) {
+  const { data, width, height } = await compressImage(file);
+  const ref_ = await addDoc(collection(db, "chats", chatId, "media"), {
+    ownerId: auth.currentUser.uid,
+    kind: "image",
+    data,
+    width,
+    height,
+    createdAt: serverTimestamp(),
+  });
+  return { mediaId: ref_.id, width, height };
+}
+
+/** A conversation's photo, as something an <img> can show. */
+export function useChatMedia(chatId, mediaId) {
+  const [loaded, setLoaded] = useState({ id: null, src: "" });
+  useEffect(() => {
+    let alive = true;
+    if (!chatId || !mediaId) return;
+    fetchInline(INLINE_PREFIX + mediaId, chatId).then((d) => { if (alive) setLoaded({ id: mediaId, src: d || "" }); }).catch(() => {});
+    return () => { alive = false; };
+  }, [chatId, mediaId]);
+  return loaded.id === mediaId ? loaded.src : "";
+}
+
 /** Store a voice note inside its conversation, readable only by its members. */
 export async function storeVoiceNote(chatId, blob, duration) {
   const data = await new Promise((resolve, reject) => {

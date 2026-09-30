@@ -1,5 +1,5 @@
 import {
-  ArrowDown, ArrowLeft, ChartBar, Check, Info, Mic, Pencil, Phone, Reply, SendHorizontal,
+  ArrowDown, ArrowLeft, ChartBar, Check, ImagePlus, Info, Mic, Pencil, Phone, Reply, SendHorizontal,
   Sticker, Trash2, Video, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import { callsSupported } from "../lib/calls";
 import { chatAvatar, chatTitle } from "../lib/chat";
 import {
   CHAT_THEMES, clearTyping, editMessage, listenMessages, listenPresence, listenReads,
-  listenTyping, me, openUserProfile, presenceLabel, sendMessage, sendVoiceMessage, setTyping,
+  listenTyping, me, openUserProfile, presenceLabel, sendMessage, sendPhotoMessage, sendVoiceMessage, setTyping,
   tsMillis,
 } from "../lib/db";
 import { clockTime, dayLabel, plural } from "../lib/format";
@@ -80,6 +80,9 @@ export default function ChatView({ chat }) {
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [sending, setSending] = useState(false);
+  // Photos picked but not sent yet: [{ id, file, url }] (url is a local preview).
+  const [photos, setPhotos] = useState([]);
+  const photoInput = useRef(null);
   useDraft(`chat:${chat.id}`, text.trim() && !editing ? { text } : null);
   const scroller = useRef(null);
   const inputRef = useRef(null);
@@ -131,7 +134,44 @@ export default function ChatView({ chat }) {
     if (near) setUnseen(0);
   };
 
+  const pickPhotos = (e) => {
+    const files = [...(e.target.files || [])].filter((f) => f.type.startsWith("image/"));
+    e.target.value = "";
+    if (!files.length) return;
+    setPhotos((list) => [...list, ...files.map((file) => ({ id: `${file.name}-${file.size}-${Math.random()}`, file, url: URL.createObjectURL(file) }))].slice(0, 10));
+    inputRef.current?.focus();
+  };
+  const dropPhoto = (id) => setPhotos((list) => {
+    list.filter((p) => p.id === id).forEach((p) => URL.revokeObjectURL(p.url));
+    return list.filter((p) => p.id !== id);
+  });
+
+  /* Photos go first, one message each, then the words (if any). A photo
+     that fails stays in the tray to try again. */
+  const sendPhotos = async () => {
+    const queue = photos;
+    setSending(true);
+    const failed = [];
+    let reason = "";
+    for (const p of queue) {
+      try { await sendPhotoMessage(chat.id, p.file); URL.revokeObjectURL(p.url); }
+      catch (err) {
+        console.error(err);
+        failed.push(p);
+        reason = err?.code === "permission-denied" ? "This person isn't accepting your messages." : err?.message?.includes("too") ? err.message : "Check your connection and try again.";
+      }
+    }
+    setPhotos(failed);
+    setSending(false);
+    if (failed.length) toast({ tone: "error", title: failed.length === queue.length ? "Photos not sent" : `${plural(failed.length, "photo")} not sent`, body: reason });
+    return !failed.length;
+  };
+
   const send = async (value = text) => {
+    if (photos.length && !editing && !sending) {
+      const ok = await sendPhotos();
+      if (!ok || !value.trim()) return;
+    }
     const t = value.trim();
     if (!t || sending) return;
     if (t.length > LIMITS.message) return toast({ tone: "error", title: `Messages can be up to ${LIMITS.message} characters` });
@@ -330,6 +370,19 @@ export default function ChatView({ chat }) {
               onClick={() => { setReplyTo(null); if (editing) { setEditing(null); setText(""); } }} />
           </div>
         )}
+        {photos.length > 0 && !editing && (
+          <ul className="mb-2 flex gap-2 overflow-x-auto no-scrollbar" aria-label="Photos to send">
+            {photos.map((p) => (
+              <li key={p.id} className="relative shrink-0">
+                <img src={p.url} alt="" className="h-20 w-20 rounded-control object-cover" />
+                <button type="button" onClick={() => dropPhoto(p.id)} aria-label="Remove this photo" disabled={sending}
+                  className="press absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-fg text-canvas">
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {recorder.state === "recording" || voiceBusy ? (
           <div className="flex items-center gap-2" role="group" aria-label="Recording a voice message">
             <IconButton icon={Trash2} label="Discard voice message" onClick={recorder.cancel} disabled={voiceBusy} />
@@ -351,6 +404,12 @@ export default function ChatView({ chat }) {
           {chat.isGroup && !editing && (
             <IconButton icon={ChartBar} label="Create a poll" tone="solid" onClick={() => setDialog("poll")} />
           )}
+          {!editing && (
+            <>
+              <IconButton icon={ImagePlus} label="Send photos" tone="solid" onClick={() => photoInput.current?.click()} disabled={photos.length >= 10} />
+              <input ref={photoInput} type="file" accept="image/*" multiple className="hidden" onChange={pickPhotos} aria-hidden="true" tabIndex={-1} />
+            </>
+          )}
           {gifsEnabled && !editing && (
             <IconButton icon={Sticker} label="Send a GIF" tone="solid" onClick={() => setDialog("gif")} />
           )}
@@ -360,11 +419,12 @@ export default function ChatView({ chat }) {
             onKeyDown={onKeyDown} maxLength={LIMITS.message} enterKeyHint="send"
             placeholder={editing ? "Edit your message" : "Message…"}
             className="!min-h-11 !rounded-[22px] !py-2.5" />
-          {!text.trim() && !editing && voiceSupported() ? (
+          {!text.trim() && !photos.length && !editing && voiceSupported() ? (
             <IconButton icon={Mic} label="Record a voice message" tone="primary" onClick={startVoice} />
           ) : (
-            <IconButton type="submit" icon={editing ? Check : SendHorizontal} label={editing ? "Save edit" : "Send message"}
-              tone="primary" disabled={!text.trim() || sending} />
+            <IconButton type="submit" icon={editing ? Check : SendHorizontal}
+              label={editing ? "Save edit" : photos.length ? `Send ${plural(photos.length, "photo")}` : "Send message"}
+              tone="primary" disabled={(!text.trim() && !photos.length) || sending} />
           )}
         </form>
         )}

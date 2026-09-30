@@ -1,7 +1,7 @@
 // Uploading photos and video: Cloud Storage when it's on, Firestore otherwise.
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { storage } from "../../firebase";
-import { storeInlineImage } from "../media";
+import { imageSize, storeInlineImage, storeInlineImages } from "../media";
 import { me } from "./core.js";
 
 // ---------- media upload ----------
@@ -69,6 +69,18 @@ export async function uploadMedia(file, onProgress, folder = "uploads") {
     return stored;
   }
   return uploadToStorage(file, onProgress, folder);
+}
+
+/** A carousel's photos, in order, each with its size. */
+export async function uploadPhotos(files, onProgress) {
+  if (!(await storageAvailable())) return storeInlineImages(files, onProgress);
+  const out = [];
+  for (const [i, file] of files.entries()) {
+    const size = await imageSize(file).catch(() => ({ width: 0, height: 0 }));
+    const stored = await uploadToStorage(file, (p) => onProgress?.(Math.round(((i + p / 100) / files.length) * 100)), "uploads");
+    out.push({ ...stored, ...size });
+  }
+  return out;
 }
 
 function uploadToStorage(file, onProgress, folder) {

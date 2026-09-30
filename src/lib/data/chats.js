@@ -4,7 +4,7 @@ import {
   onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
-import { storeVoiceNote } from "../media";
+import { storeChatPhoto, storeVoiceNote } from "../media";
 import { me, snapToList, tsMillis } from "./core.js";
 import { fetchProfile } from "./users.js";
 
@@ -160,6 +160,12 @@ export async function sendVoiceMessage(chatId, blob, duration, peaks) {
   await sendMessage(chatId, "", { voice: { mediaId, duration: Math.round(duration), peaks } });
 }
 
+/** A photo, as its own message. */
+export async function sendPhotoMessage(chatId, file) {
+  const photo = await storeChatPhoto(chatId, file);
+  await sendMessage(chatId, "", { photo });
+}
+
 export async function sendMessage(chatId, text, extras = {}) {
   const uid = me();
   const msg = {
@@ -174,6 +180,7 @@ export async function sendMessage(chatId, text, extras = {}) {
     lastMessage: (extras.poll ? `Poll: ${extras.poll.question}`
       : extras.voice ? `Voice message · ${Math.floor(extras.voice.duration / 60)}:${String(extras.voice.duration % 60).padStart(2, "0")}`
       : extras.gif ? "Sent a GIF"
+      : extras.photo ? "Sent a photo"
       : extras.call ? extras.call.summary
       : extras.storyReply ? `Story reply: ${text}`
       : text).slice(0, 80),
@@ -205,9 +212,11 @@ export async function unsendMessage(chatId, msg, { latest = false } = {}) {
     sharedPost: deleteField(),
     gif: deleteField(),
     voice: deleteField(),
+    photo: deleteField(),
   });
-  // The recording itself goes too, not just the bubble pointing at it.
-  if (msg.voice?.mediaId) await deleteDoc(doc(db, "chats", chatId, "media", msg.voice.mediaId)).catch(() => {});
+  // The recording or photo itself goes too, not just the bubble pointing at it.
+  const mediaId = msg.voice?.mediaId || msg.photo?.mediaId;
+  if (mediaId) await deleteDoc(doc(db, "chats", chatId, "media", mediaId)).catch(() => {});
   // The inbox preview shouldn't keep showing what was unsent.
   if (latest) await updateDoc(chatDoc(chatId), { lastMessage: "Unsent a message" }).catch(() => {});
 }

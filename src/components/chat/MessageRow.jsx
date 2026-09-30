@@ -1,8 +1,10 @@
-// One message in a conversation, and the things a message can carry: a call log, a shared post, a poll, the story it replies to.
+// One message in a conversation, and the things a message can carry: a photo, a call log, a shared post, a poll, the story it replies to.
 import {
   ChartBar, Check, Copy, Ellipsis, Flag, Pencil, Phone, PhoneMissed, Play, Reply, Undo2, Video,
 } from "lucide-react";
 import { useState } from "react";
+import { useChatMedia } from "../../lib/media";
+import Lightbox from "../ui/Lightbox";
 import { mediaAlt } from "../../lib/a11y";
 import {
   canEdit, groupReactions, kindLabel, me, openPost, openUserProfile, openWatch, QUICK_REACTIONS,
@@ -99,6 +101,9 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
               <LinkedText text={m.text} className="block" />
               {m.editedAt && <span className="block text-right text-label opacity-75">Edited</span>}
             </div>
+          ) : m.photo ? (
+            <ChatPhoto chatId={chat.id} photo={m.photo} label={`${mine ? "You" : name} sent a photo. ${when}. Open it`}
+              onMenu={() => setMenu(true)} onLike={() => react("❤️")} />
           ) : m.voice ? (
             // The player has its own buttons, so this bubble can't itself be one.
             <div onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}
@@ -121,7 +126,7 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
             {m.editedAt && <span className="block text-right text-label opacity-75">Edited</span>}
           </button>
           )}
-          {(m.voice || withLink) && <IconButton icon={Ellipsis} label="Message actions" size={16} className="shrink-0" onClick={() => setMenu(true)} />}
+          {(m.voice || withLink || m.photo) && <IconButton icon={Ellipsis} label="Message actions" size={16} className="shrink-0" onClick={() => setMenu(true)} />}
           {/* Quick actions appear beside the bubble on hover or keyboard focus. */}
           <span className="hidden shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:inline-flex">
             <IconButton icon={Reply} label="Reply" size={16} onClick={() => onReply(m)} />
@@ -189,6 +194,25 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
           body="It'll be removed for everyone in the conversation." onConfirm={unsend} onClose={() => setConfirmUnsend(false)} />
       )}
     </li>
+  );
+}
+
+/* A photo in a conversation: shown at its own shape, up to a size that
+   fits a bubble. Tap to see it full screen; double tap to like it. */
+function ChatPhoto({ chatId, photo, label, onMenu, onLike }) {
+  const src = useChatMedia(chatId, photo.mediaId);
+  const [open, setOpen] = useState(false);
+  const ratio = photo.width && photo.height ? Math.min(1.6, Math.max(0.6, photo.height / photo.width)) : 1;
+  return (
+    <>
+      <button type="button" onClick={() => src && setOpen(true)} onDoubleClick={onLike} aria-label={label}
+        onContextMenu={(e) => { e.preventDefault(); onMenu(); }}
+        className="block w-[min(240px,62vw)] overflow-hidden rounded-[20px] bg-surface-3"
+        style={{ aspectRatio: `1 / ${ratio}` }}>
+        {src ? <img src={src} alt="" className="h-full w-full object-cover anim-fade" /> : <span className="block h-full w-full animate-pulse bg-surface-2" />}
+      </button>
+      {open && <Lightbox src={src} alt="A photo sent in this conversation" onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

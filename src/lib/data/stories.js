@@ -1,6 +1,6 @@
-// Stories: 24-hour photos and clips, with likes (for the author only),
-// replies (a private message to the author) and echoes (public replies that
-// everyone who can see the story can read).
+// Stories: 24-hour photos and clips, with views and likes (for the author
+// only), replies (a private message to the author) and echoes (public
+// replies that everyone who can see the story can read).
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch,
 } from "firebase/firestore";
@@ -39,15 +39,40 @@ export async function createStory({ mediaUrl, mediaPath, mediaType }) {
   await addDoc(collection(db, "stories"), story);
 }
 
-/** Take down one of your own stories, with its likes and echoes (and the photo it used). */
+/** Take down one of your own stories, with its views, likes and echoes (and the photo it used). */
 export async function deleteStory(story) {
-  const sub = async (name) => (await getDocs(query(collection(db, "stories", story.id, name), limit(400))).catch(() => null))?.docs || [];
-  const [likes, echoes] = await Promise.all([sub("likes"), sub("echoes")]);
-  const batch = writeBatch(db);
-  [...likes, ...echoes].slice(0, 490).forEach((d) => batch.delete(d.ref));
-  batch.delete(doc(db, "stories", story.id));
-  await batch.commit();
+  const sub = async (name) => (await getDocs(query(collection(db, "stories", story.id, name), limit(2000))).catch(() => null))?.docs || [];
+  const records = (await Promise.all(["views", "likes", "echoes"].map(sub))).flat();
+  // Those go first (the rules check they're on your story), the story last.
+  for (let i = 0; i < records.length; i += 450) {
+    const batch = writeBatch(db);
+    records.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  await deleteDoc(doc(db, "stories", story.id));
   await deleteInline(story.mediaUrl);
+}
+
+// ---------- views: who's seen your story ----------
+
+const viewed = new Set(); // stories this visit has already counted
+
+/** Count your view of someone else's story, once. */
+export async function markStoryViewed(story) {
+  if (!me() || story.authorId === me() || viewed.has(story.id)) return;
+  viewed.add(story.id);
+  try {
+    const ref = doc(db, "stories", story.id, "views", me());
+    if ((await getDoc(ref)).exists()) return;
+    const p = await fetchProfile(me());
+    await setDoc(ref, { username: p?.username || "", createdAt: serverTimestamp() });
+  } catch { /* not counted; nothing to tell the viewer */ }
+}
+
+/** Who's seen your story, newest first. */
+export async function fetchStoryViews(storyId) {
+  const snap = await getDocs(query(collection(db, "stories", storyId, "views"), limit(2000)));
+  return snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
 /** One story by id, for opening it from a notification. Null if it's gone. */

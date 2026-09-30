@@ -1,17 +1,20 @@
-import { useRef, useState } from "react";
+import { createElement, useRef, useState } from "react";
 import { removeAvatar, StorageUnavailableError, uploadAvatar } from "./db";
 import { primeCard } from "./profileCache";
 import { useShell } from "../components/shell/ShellContext";
 import { useToast } from "../components/ui/toast-context";
+import PhotoCropper from "../components/ui/PhotoCropper";
 
 /* Adding, changing or removing your profile photo, from anywhere that
    offers it (your profile, Edit profile, the reminder on Home). Render an
-   <input type="file" {...inputProps} /> and call choose() to open it. */
+   <input type="file" {...inputProps} /> and {cropper}, and call choose() to
+   open it. A chosen photo is positioned and zoomed in the cropper first. */
 export function useProfilePhoto() {
   const { profile, setProfile } = useShell();
   const toast = useToast();
   const ref = useRef(null);
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState(null); // a file waiting in the cropper
 
   const apply = (photoURL) => {
     const next = { ...profile, photoURL };
@@ -19,11 +22,16 @@ export function useProfilePhoto() {
     primeCard(profile.id, next);
   };
 
-  const onChange = async (e) => {
+  const onChange = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) return toast({ tone: "error", title: "Choose an image for your profile photo" });
+    setPicked(file);
+  };
+
+  const upload = async (file) => {
+    setPicked(null);
     setBusy(true);
     try {
       apply(await uploadAvatar(file));
@@ -50,5 +58,6 @@ export function useProfilePhoto() {
     choose: () => ref.current?.click(),
     remove,
     inputProps: { ref, type: "file", accept: "image/*", className: "hidden", tabIndex: -1, "aria-hidden": true, onChange },
+    cropper: picked ? createElement(PhotoCropper, { file: picked, onCancel: () => setPicked(null), onDone: upload }) : null,
   };
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Pause, Play, ChevronLeft, ChevronRight, Trash2, Heart, SendHorizontal, Waves } from "lucide-react";
+import { X, Pause, Play, ChevronLeft, ChevronRight, Trash2, Heart, SendHorizontal, Waves, Eye } from "lucide-react";
 import {
-  deleteStory, me, hasLikedStory, likeStory, fetchStoryLikes, fetchEchoes, addEcho, deleteEcho, replyToStory, storyExpired,
+  deleteStory, me, hasLikedStory, likeStory, fetchStoryLikes, fetchStoryViews, markStoryViewed, fetchEchoes, addEcho, deleteEcho, replyToStory, storyExpired,
   ECHO_MAX, QUICK_REACTIONS,
 } from "../lib/db";
 import { checkContent, markPosted, hitsHiddenWords } from "../lib/moderation";
@@ -23,9 +23,9 @@ const IMAGE_MS = 5000;
    Someone else's story: reply privately (it arrives in your conversation
    with them, showing the story), send a quick reaction, like it (only they
    see), or read and add echoes, the public replies everyone who can see
-   the story can read. Your own story: its activity, meaning who liked it
-   and its echoes. */
-export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null }) {
+   the story can read. Your own story: its activity, meaning who's seen it,
+   who liked it, and its echoes. */
+export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null }) {
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
   const [idx, setIdx] = useState(0);
@@ -36,7 +36,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const [typing, setTyping] = useState(false);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
-  // What we know about each story: { liked, echoes, likes }, by id.
+  // What we know about each story: { liked, echoes, likes, views }, by id.
   const [meta, setMeta] = useState({});
   const closeRef = useRef(null);
   const item = thread.items[idx];
@@ -58,9 +58,15 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
     const id = item.id;
     const got = (p) => { if (live) setMeta((m) => ({ ...m, [id]: { ...m[id], ...p } })); };
     fetchEchoes(id).then((echoes) => got({ echoes })).catch(() => got({ echoes: [] }));
-    if (mine) fetchStoryLikes(id).then((likes) => got({ likes })).catch(() => got({ likes: [] }));
-    else hasLikedStory(id).then((liked) => got({ liked }));
+    if (mine) {
+      fetchStoryLikes(id).then((likes) => got({ likes })).catch(() => got({ likes: [] }));
+      fetchStoryViews(id).then((views) => got({ views })).catch(() => got({ views: [] }));
+    } else {
+      hasLikedStory(id).then((liked) => got({ liked }));
+      markStoryViewed(item);
+    }
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, mine]);
 
   const remove = async () => {
@@ -137,6 +143,15 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   }, [idx, thread, panel]);
 
   const echoes = (info.echoes || []).filter((e) => !hiddenAuthors.has(e.authorId) && !hitsHiddenWords(e.text, hiddenWords));
+  // Everyone who's seen your story, with a heart for those who liked it.
+  // (Likes from before views were counted join the list too.)
+  const viewers = info.views && info.likes ? (() => {
+    const liked = new Set(info.likes.map((l) => l.uid));
+    const seen = new Set(info.views.map((v) => v.uid));
+    return [...info.views, ...info.likes.filter((l) => !seen.has(l.uid))]
+      .map((v) => ({ ...v, liked: liked.has(v.uid) }))
+      .sort((a, b) => Number(b.liked) - Number(a.liked));
+  })() : null;
   const echoCount = info.echoes ? echoes.length : null;
   const expired = storyExpired(item);
 
@@ -196,6 +211,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
             {mine ? (
               <button type="button" onClick={() => setPanel("activity")}
                 className="press mx-auto flex min-h-11 items-center gap-3 rounded-full bg-black/45 px-4 text-callout font-semibold text-white backdrop-blur-sm">
+                <span className="flex items-center gap-1.5"><Eye size={16} aria-hidden="true" /> {viewers ? viewers.length : "·"}</span>
                 <span className="flex items-center gap-1.5"><Heart size={16} aria-hidden="true" /> {info.likes ? info.likes.length : "·"}</span>
                 <span className="flex items-center gap-1.5"><Waves size={16} aria-hidden="true" /> {echoCount ?? "·"}</span>
                 <span>Activity</span>
@@ -247,14 +263,14 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 
         {panel && (
           <StoryPanel panel={panel} setPanel={setPanel} story={item} mine={mine} expired={expired}
-            echoes={echoes} likes={info.likes} authorName={thread.authorName}
+            echoes={echoes} viewers={viewers} authorName={thread.authorName} startTab={startTab}
             onEchoes={(list) => patch(item.id, { echoes: list })} rawEchoes={info.echoes || []} />
         )}
 
         {confirming && (
           <div role="alertdialog" aria-label="Delete this story?" className="absolute inset-x-4 bottom-8 z-30 rounded-card bg-surface p-4 text-fg shadow-overlay pb-safe">
             <p className="text-callout font-semibold">Delete this story?</p>
-            <p className="mt-1 text-caption text-fg-muted">It's removed for everyone straight away, with its likes and echoes.</p>
+            <p className="mt-1 text-caption text-fg-muted">It's removed for everyone straight away, with its views, likes and echoes.</p>
             <div className="mt-3 flex justify-end gap-2">
               <button type="button" onClick={() => setConfirming(false)} disabled={busy}
                 className="press min-h-10 rounded-control px-4 text-callout font-semibold hover:bg-surface-2">Cancel</button>
@@ -271,11 +287,11 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   );
 }
 
-/* The sheet over the lower half of the story: echoes (anyone), or likes
+/* The sheet over the lower half of the story: echoes (anyone), or viewers
    and echoes (the author's activity). */
-function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, likes, authorName, onEchoes }) {
+function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, viewers, authorName, onEchoes, startTab }) {
   const toast = useToast();
-  const [tab, setTab] = useState("echoes");
+  const [tab, setTab] = useState(startTab || (panel === "activity" ? "viewers" : "echoes"));
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -320,7 +336,7 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
         <div className="min-w-0 flex-1">
           <p className="text-callout font-semibold">{title}</p>
           <p className="text-caption text-fg-muted">
-            {panel === "activity" ? "Only you see who liked it." : "Public replies: everyone who can see this story can read them."}
+            {panel === "activity" ? "Only you see who viewed and liked it." : "Public replies: everyone who can see this story can read them."}
           </p>
         </div>
         <IconButton icon={X} label="Close" onClick={() => setPanel(null)} />
@@ -328,7 +344,7 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
 
       {panel === "activity" && (
         <div role="tablist" aria-label="Story activity" className="flex gap-1 px-3 pt-2">
-          {[["echoes", `Echoes · ${echoes.length}`], ["likes", `Likes · ${likes ? likes.length : "…"}`]].map(([id, label]) => (
+          {[["viewers", `Viewers · ${viewers ? viewers.length : "…"}`], ["echoes", `Echoes · ${echoes.length}`]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
               className={`press min-h-9 rounded-full px-3 text-callout font-semibold ${tab === id ? "bg-fg text-canvas" : "text-fg-muted hover:bg-surface-2"}`}>{label}</button>
           ))}
@@ -336,16 +352,16 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
       )}
 
       <div className="min-h-24 flex-1 overflow-y-auto px-4 py-3">
-        {panel === "activity" && tab === "likes" ? (
-          !likes ? <p className="text-callout text-fg-muted">Loading…</p>
-            : !likes.length ? <p className="text-callout text-fg-muted">No likes yet.</p>
+        {panel === "activity" && tab === "viewers" ? (
+          !viewers ? <p className="text-callout text-fg-muted">Loading…</p>
+            : !viewers.length ? <p className="text-callout text-fg-muted">No one's seen it yet.</p>
             : (
               <ul className="space-y-3">
-                {likes.map((l) => (
-                  <li key={l.uid} className="flex items-center gap-3">
-                    <LiveAvatar uid={l.uid} profile={{ username: l.username }} size={32} />
-                    <span className="min-w-0 flex-1 truncate text-callout font-medium">@{l.username}</span>
-                    <Heart size={16} className="fill-like text-like" aria-label="liked" />
+                {viewers.map((v) => (
+                  <li key={v.uid} className="flex items-center gap-3">
+                    <LiveAvatar uid={v.uid} profile={{ username: v.username }} size={32} />
+                    <span className="min-w-0 flex-1 truncate text-callout font-medium">@{v.username}</span>
+                    {v.liked && <Heart size={16} className="fill-like text-like" aria-label="liked it" />}
                   </li>
                 ))}
               </ul>
@@ -371,7 +387,7 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
         )}
       </div>
 
-      {!(panel === "activity" && tab === "likes") && !expired && (
+      {!(panel === "activity" && tab === "viewers") && !expired && (
         <form onSubmit={post} className="border-t border-line px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
           {error && <p role="alert" className="mb-1.5 text-caption text-danger-text">{error}</p>}
           <div className="flex items-center gap-2">

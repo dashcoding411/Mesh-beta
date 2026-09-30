@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags } from "lucide-react";
+import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
-  uploadMedia, createPost, isMinor, StorageUnavailableError, storageAvailable, screenPost,
+  uploadMedia, uploadPhotos, createPost, isMinor, StorageUnavailableError, storageAvailable, screenPost, MAX_SLIDES,
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
@@ -62,7 +62,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [kind, setKind] = useState(initialKind || d.kind || lastKind);
   const [text, setText] = useState(d.text ?? initialText);
   const [title, setTitle] = useState(d.title || "");
-  const [alt, setAlt] = useState(d.alt || "");
+  // A Still's photos, in order: [{ id, file, url (a local preview), alt }].
+  const [photos, setPhotos] = useState([]);
+  const [activePhoto, setActivePhoto] = useState(0);
+  const [location, setLocation] = useState(d.location || "");
   const [ai, setAi] = useState(false);
   const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
   const [restored, setRestored] = useState(!!draft);
@@ -96,14 +99,17 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   useEffect(() => { storageAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
 
   // Words and choices are saved as you go; a photo or video can't be.
-  const hasWords = !!(text.trim() || title.trim() || alt.trim() || gif || poll?.options.some((o) => o.trim()));
+  // Every photo's description, for the checks and the draft fingerprint.
+  const alt = photos.map((p) => p.alt).join("\n");
+  const picked = spec.media === "image" ? photos.length > 0 : !!file;
+  const hasWords = !!(text.trim() || title.trim() || location.trim() || gif || poll?.options.some((o) => o.trim()));
   const finishDraft = useDraft(draftScope, hasWords ? {
-    kind, text, title, alt, visibility, gif,
+    kind, text, title, location, visibility, gif,
     poll: kind === "text" ? poll : null,
     topics: topicsTouched ? topics : undefined,
   } : null);
   const discardDraft = () => {
-    setText(""); setTitle(""); setAlt(""); setPoll(null); setGif(null);
+    setText(""); setTitle(""); setLocation(""); setPoll(null); setGif(null);
     setTopics([]); setTopicsTouched(false); setRestored(false); setWarned("");
   };
   const close = () => {
@@ -120,8 +126,45 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setKind(k);
     setErrors({});
     // A photo can't become a video; keep the words, drop the file.
-    if (KINDS.find((x) => x.id === k).media !== spec.media) { setFile(null); setDuration(0); setAlt(""); }
+    if (KINDS.find((x) => x.id === k).media !== spec.media) { setFile(null); setDuration(0); clearPhotos(); }
   };
+
+  /* Photos for a Still: up to ten, added to the end. Anything that isn't a
+     usable photo is skipped with a note. */
+  const addPhotos = (list) => {
+    const files = [...(list || [])];
+    if (!files.length) return;
+    const room = MAX_SLIDES - photos.length;
+    let error = "";
+    const fresh = [];
+    for (const f of files) {
+      const v = validateMediaFile(f, "image");
+      if (v.error) { error = v.error; continue; }
+      if (fresh.length >= room) { error = `A Still can have up to ${MAX_SLIDES} photos.`; break; }
+      fresh.push({ id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, url: URL.createObjectURL(f), alt: "" });
+    }
+    setErrors(error ? { file: error } : {});
+    if (!fresh.length) return;
+    if (!photos.length) setActivePhoto(0);
+    setPhotos((list) => [...list, ...fresh]);
+  };
+  const removePhoto = (i) => {
+    URL.revokeObjectURL(photos[i].url);
+    setPhotos((list) => list.filter((_, j) => j !== i));
+    setActivePhoto((a) => Math.max(0, Math.min(a > i ? a - 1 : a, photos.length - 2)));
+  };
+  const movePhoto = (i, by) => {
+    const j = i + by;
+    if (j < 0 || j >= photos.length) return;
+    setPhotos((list) => { const next = [...list]; [next[i], next[j]] = [next[j], next[i]]; return next; });
+    setActivePhoto(j);
+  };
+  // Previews are local copies; let them go when the composer closes.
+  const photosRef = useRef(photos);
+  useEffect(() => { photosRef.current = photos; });
+  useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
+  const clearPhotos = () => { photos.forEach((p) => URL.revokeObjectURL(p.url)); setPhotos([]); setActivePhoto(0); };
+  const setPhotoAlt = (value) => setPhotos((list) => list.map((p, i) => (i === activePhoto ? { ...p, alt: value } : p)));
 
   const choose = async (f) => {
     if (!f) return;
@@ -144,7 +187,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       if (opts.length < 2) e.poll = "Give the poll at least two choices.";
       else if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) e.poll = "Each choice needs to be different.";
     }
-    if (spec.media && !file) e.file = kind === "post" ? "Add a photo. Stills are photos." : "Add a video.";
+    if (spec.media && !picked) e.file = kind === "post" ? "Add a photo. Stills are photos." : "Add a video.";
     if (long) {
       const vTitle = validateText(title, LIMITS.title, "Title");
       if (vTitle.error) e.title = vTitle.error;
@@ -153,7 +196,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     // Everything someone else will read goes through the same check.
     const pollText = kind === "text" && poll ? poll.options.join("\n") : "";
     const altText = spec.media === "image" ? alt : "";
-    const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}`, { key: "post", allowQuoted: true });
+    const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}\n${location}`, { key: "post", allowQuoted: true });
     if (!e.text && mod.error) e.text = mod.error;
     if (group && !e.text) {
       const blocked = screenPost(`${title}\n${text}`, group, profile, membership, { kind });
@@ -176,7 +219,14 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     if (modNote && warned !== fingerprint) { setWarned(fingerprint); setNote(modNote); return; }
     try {
       let media = { url: "", path: "" };
-      if (file) {
+      let slides = null;
+      if (spec.media === "image") {
+        setProgress(0);
+        // All the photos in one go; each keeps its own description.
+        slides = (await uploadPhotos(photos.map((p) => p.file), setProgress))
+          .map((u, i) => ({ ...u, alt: photos[i].alt.trim().slice(0, LIMITS.alt) }));
+        media = slides[0];
+      } else if (file) {
         setProgress(0);
         media = await uploadMedia(file, setProgress);
       }
@@ -184,10 +234,12 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         kind: kind === "video" ? (long ? "video" : "short") : kind,
         text: clean,
         title: long ? title.trim() : "",
-        alt: spec.media === "image" ? alt.trim().slice(0, LIMITS.alt) : "",
+        alt: slides ? slides[0].alt : "",
         mediaUrl: media.url,
         mediaPath: media.path,
-        mediaType: file ? file.type : "",
+        mediaType: spec.media === "image" ? photos[0].file.type : file ? file.type : "",
+        media: slides,
+        location: spec.media ? location : "",
         duration,
         trailerStart: long ? trailerStart : 0,
         aiGenerated: spec.media ? ai : false,
@@ -285,11 +337,11 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
 
         {spec.media && !mediaBlocked && (
           <div>
-            {!file ? (
+            {!picked ? (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setDragging(false); choose(e.dataTransfer.files[0]); }}
+                onDrop={(e) => { e.preventDefault(); setDragging(false); if (spec.media === "image") addPhotos(e.dataTransfer.files); else choose(e.dataTransfer.files[0]); }}
                 className={`flex flex-col items-center justify-center rounded-card border-2 border-dashed px-6 py-10 text-center transition-colors ${
                   dragging ? "border-accent-text bg-accent-soft" : errors.file ? "border-danger-text" : "border-field"
                 }`}>
@@ -297,31 +349,31 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                   {spec.media === "image" ? <ImagePlus size={24} aria-hidden="true" /> : <FileVideo size={24} aria-hidden="true" />}
                 </span>
                 <p className="text-callout font-semibold">
-                  {spec.media === "image" ? "Add a photo" : "Add a video"}
+                  {spec.media === "image" ? "Add photos" : "Add a video"}
                 </p>
                 <p className="mt-1 text-caption text-fg-subtle">
                   {spec.media === "image"
-                    ? "JPG, PNG, WebP or GIF · up to 10 MB"
+                    ? `Up to ${MAX_SLIDES}, swiped through in order · JPG, PNG, WebP or GIF · up to 10 MB each`
                     : `Up to 200 MB. Over ${LONG_VIDEO_SECONDS / 60} minutes becomes a long Flick with a trailer.`}
                 </p>
                 <Button id="composer-file" className="mt-4" onClick={() => fileInput.current?.click()}
                   aria-describedby={errors.file ? `${fileId}-err` : undefined}>
-                  Choose {spec.media === "image" ? "a photo" : "a video"}
+                  Choose {spec.media === "image" ? "photos" : "a video"}
                 </Button>
                 <p className="mt-2 hidden text-label text-fg-subtle md:block">or drag it here</p>
                 <input ref={fileInput} type="file" accept={spec.media === "image" ? "image/*" : "video/*"} className="hidden"
-                  tabIndex={-1} aria-hidden="true" onChange={(e) => { choose(e.target.files[0]); e.target.value = ""; }} />
+                  multiple={spec.media === "image"} tabIndex={-1} aria-hidden="true"
+                  onChange={(e) => { if (spec.media === "image") addPhotos(e.target.files); else choose(e.target.files[0]); e.target.value = ""; }} />
               </div>
+            ) : spec.media === "image" ? (
+              <PhotoSet photos={photos} active={activePhoto} onActive={setActivePhoto} busy={busy}
+                onRemove={removePhoto} onMove={movePhoto} onAdd={addPhotos} />
             ) : (
               <div className="relative overflow-hidden rounded-card border border-line bg-black">
-                {spec.media === "image" ? (
-                  <img src={preview} alt={alt.trim() || "The photo you picked"} className="max-h-80 w-full object-contain" />
-                ) : (
-                  <video src={preview} controls playsInline className="max-h-80 w-full" aria-label="The video you picked" />
-                )}
+                <video src={preview} controls playsInline className="max-h-80 w-full" aria-label="The video you picked" />
                 {!busy && (
-                  <IconButton icon={X} label={`Remove ${spec.media === "image" ? "photo" : "video"}`} tone="overlay"
-                    className="absolute right-2 top-2" onClick={() => { setFile(null); setDuration(0); setAlt(""); }} />
+                  <IconButton icon={X} label="Remove video" tone="overlay"
+                    className="absolute right-2 top-2" onClick={() => { setFile(null); setDuration(0); }} />
                 )}
                 {spec.media === "video" && duration > 0 && (
                   <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2.5 py-1 text-label font-semibold text-white">
@@ -388,10 +440,21 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           )
         )}
 
-        {file && spec.media === "image" && (
-          <Field label="Describe this photo" optional count={alt.length} max={LIMITS.alt}
+        {picked && spec.media && (
+          <Field label="Location" optional count={location.length} max={60}>
+            <div className="relative">
+              <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60}
+                placeholder="Where was this?" className="!pl-9" />
+            </div>
+          </Field>
+        )}
+
+        {picked && spec.media === "image" && (
+          <Field label={photos.length > 1 ? `Describe photo ${activePhoto + 1}` : "Describe this photo"} optional
+            count={(photos[activePhoto]?.alt || "").length} max={LIMITS.alt}
             hint="Read aloud to people using screen readers. Leave it blank and your caption is used instead.">
-            <Textarea autoGrow rows={2} maxRows={5} value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={LIMITS.alt}
+            <Textarea autoGrow rows={2} maxRows={5} value={photos[activePhoto]?.alt || ""} onChange={(e) => setPhotoAlt(e.target.value)} maxLength={LIMITS.alt}
               placeholder="e.g. Two friends laughing on a beach at sunset" />
           </Field>
         )}
@@ -432,7 +495,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </fieldset>
         )}
 
-        {file && spec.media && (
+        {picked && spec.media && (
           <div className="rounded-card border border-line bg-surface p-3">
             <Checkbox checked={ai} onChange={setAi}
               description="Tick this if AI made or changed this in a way someone could mistake for real. Mesh shows a “Made with AI” label. Creative use is welcome; passing it off as real isn't.">
@@ -510,6 +573,60 @@ function TrailerPicker({ src, duration, value, onChange }) {
         onChange={(e) => onChange(Number(e.target.value))}
         aria-valuetext={`Trailer starts at ${formatDuration(value)}`}
         className="mt-2 h-11 w-full cursor-pointer accent-violet-500" />
+    </div>
+  );
+}
+
+/* A Still's photos while composing: the one you're looking at, large, and
+   the whole set in order underneath. The first is the cover, what shows in
+   grids and shares. */
+function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd }) {
+  const addRef = useRef(null);
+  const current = photos[active] || photos[0];
+  return (
+    <div>
+      <div className="relative overflow-hidden rounded-card border border-line bg-black">
+        <img src={current.url} alt={current.alt.trim() || `Photo ${active + 1} of ${photos.length}`}
+          className="max-h-96 min-h-48 w-full object-contain" />
+        {photos.length > 1 && (
+          <span className="absolute right-2 top-2 rounded-full bg-black/65 px-2.5 py-1 text-label font-semibold text-white tabular">
+            {active + 1}/{photos.length}
+          </span>
+        )}
+      </div>
+      <ul className="mt-2 flex gap-2 overflow-x-auto px-1 pb-1 pt-2 no-scrollbar" aria-label="Photos in this post, in order">
+        {photos.map((ph, i) => (
+          <li key={ph.id} className="relative shrink-0">
+            <button type="button" onClick={() => onActive(i)} aria-label={`Photo ${i + 1}${i === 0 ? ", the cover" : ""}`} aria-current={i === active || undefined}
+              className={`press block h-16 w-16 overflow-hidden rounded-control ring-2 ring-offset-2 ring-offset-canvas ${i === active ? "ring-accent" : "ring-transparent"}`}>
+              <img src={ph.url} alt="" className="h-full w-full object-cover" />
+            </button>
+            {!busy && (
+              <button type="button" onClick={() => onRemove(i)} aria-label={`Remove photo ${i + 1}`}
+                className="press absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-fg text-canvas">
+                <X size={13} aria-hidden="true" />
+              </button>
+            )}
+          </li>
+        ))}
+        {photos.length < MAX_SLIDES && !busy && (
+          <li className="shrink-0">
+            <button type="button" onClick={() => addRef.current?.click()} aria-label="Add more photos"
+              className="press flex h-16 w-16 items-center justify-center rounded-control border-2 border-dashed border-field text-fg-muted hover:text-fg">
+              <Plus size={20} aria-hidden="true" />
+            </button>
+            <input ref={addRef} type="file" accept="image/*" multiple className="hidden" tabIndex={-1} aria-hidden="true"
+              onChange={(e) => { onAdd(e.target.files); e.target.value = ""; }} />
+          </li>
+        )}
+      </ul>
+      {photos.length > 1 && !busy && (
+        <div className="mt-1 flex items-center gap-1 text-caption text-fg-subtle">
+          <span className="mr-1">{active === 0 ? "Photo 1 is the cover." : `Photo ${active + 1} of ${photos.length}.`} Move it:</span>
+          <IconButton icon={ChevronLeft} label="Move this photo earlier" size={16} disabled={active === 0} onClick={() => onMove(active, -1)} />
+          <IconButton icon={ChevronRight} label="Move this photo later" size={16} disabled={active === photos.length - 1} onClick={() => onMove(active, 1)} />
+        </div>
+      )}
     </div>
   );
 }

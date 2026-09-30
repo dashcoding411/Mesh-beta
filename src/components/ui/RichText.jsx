@@ -51,12 +51,12 @@ export function LinkedText({ text, className = "" }) {
    Search if nobody has the handle (any more). Outbound links are marked
    rel="ugc nofollow noopener", user-generated, not endorsed by us, and
    unable to reach back into this tab. Only http(s) is ever linked. */
-export default function RichText({ text, className = "", highlight }) {
+export default function RichText({ text, className = "", highlight, as: Tag = "p" }) {
   if (!text) return null;
   const parts = tokenize(text);
 
   return (
-    <p className={`whitespace-pre-wrap break-words ${className}`}>
+    <Tag className={`whitespace-pre-wrap break-words ${className}`}>
       {parts.map((p, i) => {
         if (p.t === "text") return <Fragment key={i}>{highlight ? <Highlight text={p.v} query={highlight} /> : p.v}</Fragment>;
         if (p.t === "url") {
@@ -83,7 +83,7 @@ export default function RichText({ text, className = "", highlight }) {
           </a>
         );
       })}
-    </p>
+    </Tag>
   );
 }
 

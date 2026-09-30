@@ -27,6 +27,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { sendMessage } from "./db";
+import { pickCamera } from "./cameras";
 
 export const RING_MS = 45_000;
 const CONNECT_MS = 30_000;   // from the answer to a working connection
@@ -114,7 +115,13 @@ function formatLength(sec) {
 }
 
 const MEDIA_AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-const cameraFor = (facing) => ({ facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } });
+
+async function cameraFor(facing) {
+  const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const id = pickCamera(devices, facing);
+  return id ? { deviceId: { exact: id }, ...size } : { facingMode: facing, ...size };
+}
 
 /* A call session. The screen subscribes with onChange and reads:
      state: "starting" | "ringing" | "connecting" | "active" | "reconnecting" | "ended"
@@ -182,7 +189,7 @@ export class CallSession {
   async openMedia() {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: MEDIA_AUDIO, video: this.video ? cameraFor(this.facing) : false });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: MEDIA_AUDIO, video: this.video ? await cameraFor(this.facing) : false });
     } catch (err) {
       if (!this.video) throw err;
       stream = await navigator.mediaDevices.getUserMedia({ audio: MEDIA_AUDIO });
@@ -436,17 +443,23 @@ export class CallSession {
 
   /** Front and back camera, on phones. The other side sees the switch without a reconnect. */
   async flipCamera() {
-    if (!this.canFlip || !this.localStream) return;
-    const facing = this.facing === "user" ? "environment" : "user";
-    const fresh = await navigator.mediaDevices.getUserMedia({ video: cameraFor(facing) }).catch(() => null);
-    const track = fresh?.getVideoTracks()[0];
-    if (!track) return;
-    track.enabled = !this.cameraOff;
-    const sender = this.pc?.getSenders().find((s) => s.track?.kind === "video");
-    await sender?.replaceTrack(track);
-    const old = this.localStream.getVideoTracks()[0];
-    old?.stop();
-    this.localStream = new MediaStream([...this.localStream.getAudioTracks(), track]);
+    if (!this.canFlip || !this.localStream || this.flipping) return;
+    this.flipping = true;
+    const from = this.facing;
+    const to = from === "user" ? "environment" : "user";
+    const sender = this.pc?.getTransceivers().find((t) => t.receiver.track?.kind === "video")?.sender;
+    // Let go of the camera in use first: many phones can't run two at once.
+    this.localStream.getVideoTracks().forEach((t) => { t.stop(); this.localStream.removeTrack(t); });
+    const open = async (facing) => navigator.mediaDevices.getUserMedia({ video: await cameraFor(facing) }).then((s) => s.getVideoTracks()[0]).catch(() => null);
+    let track = await open(to);
+    const facing = track ? to : from;
+    if (!track) track = await open(from); // couldn't switch: back to the one you had
+    if (track) {
+      track.enabled = !this.cameraOff;
+      await sender?.replaceTrack(track).catch(() => {});
+      this.localStream = new MediaStream([...this.localStream.getAudioTracks(), track]);
+    }
+    this.flipping = false;
     this.set({ facing });
   }
 

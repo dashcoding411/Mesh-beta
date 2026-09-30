@@ -29,6 +29,7 @@ export function EditableAvatar({ size = 88 }) {
       </button>
       {!photo.hasPhoto && <span className="text-label font-semibold text-accent-text" aria-hidden="true">Add photo</span>}
       <input {...photo.inputProps} />
+      {photo.cropper}
     </span>
   );
 }
@@ -62,6 +63,7 @@ export function PhotoNudge({ dismissible = false, className = "" }) {
         </button>
       )}
       <input {...photo.inputProps} />
+      {photo.cropper}
     </div>
   );
 }
@@ -78,6 +80,7 @@ export function PhotoField() {
         {photo.hasPhoto && <Button size="sm" variant="ghost" disabled={photo.busy} onClick={photo.remove}>Remove</Button>}
       </div>
       <input {...photo.inputProps} />
+      {photo.cropper}
     </div>
   );
 }

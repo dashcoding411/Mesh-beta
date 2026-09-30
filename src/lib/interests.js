@@ -88,6 +88,15 @@ const HINTS = {
   gardening: ["garden", "gardening", "plant", "veggie", "seedling", "compost", "succulent", "harvest", "tomatoes"],
   local: ["local", "neighbourhood", "suburb", "community", "council", "markets", "town"],
 };
+/* Words that mean something else as often as not ("the camera on a call",
+   "a quick run to the shops", "that's so funny"). One of these alone doesn't
+   tag a post; two, or one with a clearer word, do. */
+const WEAK = new Set([
+  "photo", "camera", "shot", "run", "running", "lift", "training", "pb", "match", "app", "ai", "code", "space", "research",
+  "series", "trailer", "director", "actor", "learn", "study", "course", "job", "money", "interview", "promotion",
+  "car", "drive", "engine", "local", "town", "community", "eat", "lol", "funny", "episode", "listening to", "radio",
+  "chapter", "author", "bush", "pet", "bird", "plant", "style", "dress", "art", "canvas", "gallery", "switch game",
+]);
 const FORMS = "(s|es|d|ed|ing|er|ers)?";
 const PATTERNS = Object.fromEntries(Object.entries(HINTS).map(([id, words]) => [
   id, new RegExp(`(^|[^a-z0-9])(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})${FORMS}(?=[^a-z0-9]|$)`, "g"),
@@ -96,9 +105,10 @@ const PATTERNS = Object.fromEntries(Object.entries(HINTS).map(([id, words]) => [
 export function suggestTopics(text) {
   const t = String(text || "").toLowerCase();
   const scored = INTERESTS.map((i) => {
-    const tagged = t.includes(`#${i.id}`) ? 3 : 0;
-    const hits = (t.match(PATTERNS[i.id] || /$^/) || []).length;
+    const tagged = t.includes(`#${i.id}`) ? 4 : 0;
+    const re = PATTERNS[i.id];
+    const hits = re ? [...t.matchAll(re)].reduce((n, m) => n + (WEAK.has(m[2]) ? 1 : 2), 0) : 0;
     return { id: i.id, score: tagged + hits };
-  }).filter((s) => s.score > 0);
+  }).filter((s) => s.score >= 2);
   return scored.sort((a, b) => b.score - a.score).slice(0, MAX_POST_TOPICS).map((s) => s.id);
 }
