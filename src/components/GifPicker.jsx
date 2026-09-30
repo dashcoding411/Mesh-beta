@@ -7,8 +7,6 @@ import Dialog from "./ui/Dialog";
 import { Input } from "./ui/Field";
 import { Skeleton, EmptyState } from "./ui/States";
 
-/* Trending on open, search as you type, tap to pick. Every result is a
-   button with the GIF's title as its label. */
 export default function GifPicker({ onPick, onClose }) {
   const { profile } = useShell();
   const [q, setQ] = useState("");
@@ -52,7 +50,6 @@ export default function GifPicker({ onPick, onClose }) {
   );
 }
 
-/** A GIF inside a post, comment or message. */
 export function GifView({ gif, className = "" }) {
   if (!gif?.url) return null;
   const ratio = gif.width && gif.height ? `${gif.width} / ${gif.height}` : "4 / 3";

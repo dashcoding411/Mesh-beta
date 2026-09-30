@@ -6,9 +6,7 @@ import Dialog from "./ui/Dialog";
 import Button from "./ui/Button";
 import { useToast } from "./ui/toast-context";
 
-/* A wrap of toggle chips. Used to pick your interests, a post's topics
-   (max 3) and a circle's interests (max 3). Each chip is a real toggle
-   button, announced as pressed or not. */
+// Toggle chips (aria-pressed) with an optional max.
 export function InterestToggles({ value, onChange, max = MAX_INTERESTS, options = INTERESTS, label = "Interests" }) {
   const full = value.length >= max;
   return (
@@ -31,8 +29,7 @@ export function InterestToggles({ value, onChange, max = MAX_INTERESTS, options 
   );
 }
 
-/* The chips across the top of For you and Flicks: All, then your interests.
-   A radio group, because exactly one is selected. */
+// Feed interest filter: a radio group, exactly one selected.
 export function InterestChips({ interests, value, onChange, onEdit, overlay = false }) {
   if (!interests?.length) {
     return onEdit ? (
@@ -75,8 +72,6 @@ export function InterestChips({ interests, value, onChange, onEdit, overlay = fa
   );
 }
 
-/* Picking interests: first run, and from Settings. Private: stored where
-   only you can read it, used only to shape what you see. */
 export function InterestsDialog({ initial = [], onClose, onSaved, firstRun = false }) {
   const toast = useToast();
   const [value, setValue] = useState(initial);

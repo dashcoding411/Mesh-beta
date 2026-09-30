@@ -18,8 +18,7 @@ import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { Tile } from "./Search";
 
-/* "Married to @x" shows only when @x's profile says the same back. Anyone
-   can type a name into their own profile, so one side alone proves nothing. */
+// Only shown when both profiles name each other.
 function useVerifiedSpouse(profile) {
   const claimed = profile.spouseUsername && !profile.spouseUsername.includes("pending") ? profile.spouseUsername : "";
   const [verified, setVerified] = useState({ for: "", ok: false });
@@ -34,9 +33,7 @@ function useVerifiedSpouse(profile) {
   return claimed && verified.for === claimed && verified.ok ? claimed : "";
 }
 
-/* The public face of an account, the same layout whether it's yours or
-   someone else's, so what you see of yourself is what others see of you.
-   Only the buttons differ. */
+// Same layout for own and other profiles; only the actions differ.
 export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar }) {
   const joined = tsMillis(profile.createdAt);
   const spouse = useVerifiedSpouse(profile);
@@ -128,8 +125,6 @@ export function FollowListDialog({ uid, kind, onClose }) {
   );
 }
 
-/* A profile's posts as a mosaic: Stills as photos, Flicks as video frames,
-   Strands as text tiles. Tap to open. */
 export function PostGrid({ posts, emptyTitle, emptyBody, emptyIcon = Grid3x3, emptyAction }) {
   if (posts === null) {
     return (

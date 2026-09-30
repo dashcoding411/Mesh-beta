@@ -1,8 +1,6 @@
 import { useRef } from "react";
 
-/* WAI-ARIA tabs: arrow keys move between tabs, Home/End jump to the ends,
-   and only the selected tab is in the Tab order (roving tabindex). The
-   segmented look is for 2–4 options; `underline` suits longer rows. */
+// WAI-ARIA tabs with roving tabindex, arrow and Home/End keys.
 export default function Tabs({ tabs, value, onChange, label, variant = "segmented", className = "" }) {
   const refs = useRef([]);
 

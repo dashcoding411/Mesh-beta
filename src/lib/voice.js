@@ -11,9 +11,7 @@ function pickMime() {
   return options.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
 }
 
-/* Records speech-quality audio (~24 kbps, so a minute is ~180 KB), samples
-   the level ten times a second to draw a waveform, and stops by itself at
-   a minute. */
+// ~24 kbps speech recording with a 10Hz level meter; auto-stops at MAX_VOICE_SECONDS.
 export function useVoiceRecorder() {
   const [state, setState] = useState("idle"); // idle | recording
   const [seconds, setSeconds] = useState(0);
@@ -59,7 +57,7 @@ export function useVoiceRecorder() {
     setState("recording");
   }, []);
 
-  /* Resolves with { blob, duration, peaks }: peaks are 40 bars, 0 to 100. */
+  /** Resolves to { blob, duration, peaks } (40 bars, 0–100). */
   const stop = useCallback(() => new Promise((resolve) => {
     const x = r.current;
     if (!x.rec) return resolve(null);

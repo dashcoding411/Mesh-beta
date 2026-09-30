@@ -28,7 +28,7 @@ const KINDS = [
   { id: "text", label: "Strand", icon: Type, media: null },
 ];
 
-// Remembered for the visit: people tend to post the same kind of thing twice.
+// Last-used format, per session.
 let lastKind = "text";
 
 function readDuration(file) {
@@ -44,25 +44,20 @@ function readDuration(file) {
   });
 }
 
-/* Create. One composer for the three formats, and the Flick tab decides
-   short or long for you from the video's length: over three minutes it
-   becomes a long Flick, asks for a title, and lets you pick which thirty
-   seconds play as its trailer in the Flicks feed.
-
-   Nothing you've typed or picked is lost when something fails. */
+// Composer for all formats. Videos longer than LONG_VIDEO_SECONDS become long
+// Flicks, which need a title and a trailer window.
 export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "", circleTopic: initialCircleTopic }) {
   const toast = useToast();
-  // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
+  // Under-16 and private accounts are followers-only (also enforced by the rules).
   const minor = isMinor(profile) || !!profile?.isPrivate;
-  // What you were writing last time, unless you've arrived with something
-  // specific to post (a poll or GIF from the feed, say).
+  // Restore the draft unless opened with explicit content.
   const draftScope = groupId ? `circle:${groupId}` : "post";
   const [draft] = useState(() => (initialText || attach ? null : readDraft(draftScope)));
   const d = draft?.data || {};
   const [kind, setKind] = useState(initialKind || d.kind || lastKind);
   const [text, setText] = useState(d.text ?? initialText);
   const [title, setTitle] = useState(d.title || "");
-  // A Still's photos, in order: [{ id, file, url (a local preview), alt }].
+  // [{ id, file, url: object URL, alt }]
   const [photos, setPhotos] = useState([]);
   const [activePhoto, setActivePhoto] = useState(0);
   const [location, setLocation] = useState(d.location || "");
@@ -74,8 +69,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [trailerStart, setTrailerStart] = useState(0);
   const [errors, setErrors] = useState({});
   const [progress, setProgress] = useState(null);
-  // A borderline or quoted post needs a second, deliberate press, with a note
-  // saying what happens next. Any edit resets it.
+  // Borderline/quoted content requires a second submit; any edit resets it.
   const [warned, setWarned] = useState("");
   const [note, setNote] = useState("");
   const [mediaReady, setMediaReady] = useState(null);
@@ -91,15 +85,13 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const fileId = useId();
 
   const spec = KINDS.find((k) => k.id === kind);
-  // Suggest topics from the words until the author picks their own.
   const shownTopics = topicsTouched ? topics : suggestTopics(`${title} ${text}`);
   const long = kind === "video" && duration > LONG_VIDEO_SECONDS;
   const busy = progress !== null;
 
   useEffect(() => { storageAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
 
-  // Words and choices are saved as you go; a photo or video can't be.
-  // Every photo's description, for the checks and the draft fingerprint.
+  // Drafts persist text and choices only, not media.
   const alt = photos.map((p) => p.alt).join("\n");
   const picked = spec.media === "image" ? photos.length > 0 : !!file;
   const hasWords = !!(text.trim() || title.trim() || location.trim() || gif || poll?.options.some((o) => o.trim()));
@@ -125,12 +117,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     if (busy) return;
     setKind(k);
     setErrors({});
-    // A photo can't become a video; keep the words, drop the file.
+    // Switching media type keeps text but drops files.
     if (KINDS.find((x) => x.id === k).media !== spec.media) { setFile(null); setDuration(0); clearPhotos(); }
   };
 
-  /* Photos for a Still: up to ten, added to the end. Anything that isn't a
-     usable photo is skipped with a note. */
   const addPhotos = (list) => {
     const files = [...(list || [])];
     if (!files.length) return;
@@ -159,7 +149,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setPhotos((list) => { const next = [...list]; [next[i], next[j]] = [next[j], next[i]]; return next; });
     setActivePhoto(j);
   };
-  // Previews are local copies; let them go when the composer closes.
+  // Revoke preview object URLs on unmount.
   const photosRef = useRef(photos);
   useEffect(() => { photosRef.current = photos; });
   useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
@@ -193,7 +183,6 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       if (vTitle.error) e.title = vTitle.error;
       else if (!vTitle.text) e.title = "Long Flicks need a title. It's what people see before they commit.";
     }
-    // Everything someone else will read goes through the same check.
     const pollText = kind === "text" && poll ? poll.options.join("\n") : "";
     const altText = spec.media === "image" ? alt : "";
     const mod = checkContent(`${long ? title : ""}\n${text}\n${pollText}\n${altText}\n${location}`, { key: "post", allowQuoted: true });
@@ -210,7 +199,6 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     const { e, text: clean, note: modNote, sensitive } = validate();
     setErrors(e);
     if (Object.keys(e).length) {
-      // Send focus to the first field that needs attention.
       const first = ["file", "title", "text", "poll"].find((k) => e[k]);
       document.getElementById(`composer-${first}`)?.focus();
       return;
@@ -222,7 +210,6 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       let slides = null;
       if (spec.media === "image") {
         setProgress(0);
-        // All the photos in one go; each keeps its own description.
         slides = (await uploadPhotos(photos.map((p) => p.file), setProgress))
           .map((u, i) => ({ ...u, alt: photos[i].alt.trim().slice(0, LIMITS.alt) }));
         media = slides[0];
@@ -248,8 +235,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         poll: kind === "text" && poll ? { options: poll.options.map((o) => o.trim()).filter(Boolean), hours: poll.hours } : null,
         gif: kind === "text" && gif ? { url: gif.url, width: gif.width, height: gif.height, title: gif.title } : null,
         groupId,
-        // In a circle the circle decides: members-only for private circles,
-        // and "pending" when the circle wants to approve posts first.
+        // Circles decide visibility ("circle" when private, "pending" when held for review).
         visibility: groupId ? circlePostVisibility(group, membership, { text: `${title}\n${clean}`, profile }) : minor ? "followers" : visibility,
         circleTopic: groupId ? circleTopic : "",
       });
@@ -272,7 +258,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     }
   };
 
-  // Photos work without Cloud Storage (stored compressed in Firestore); video doesn't.
+  // Video requires Cloud Storage; photos fall back to inline storage.
   const mediaBlocked = spec.media === "video" && mediaReady === false;
   const heading = group ? `Post to ${group.name}` : "Create";
   const remaining = STRAND_MAX - text.length;
@@ -540,8 +526,7 @@ function Visibility({ value, onChange, locked }) {
   );
 }
 
-/* Pick which thirty seconds of a long video play as its trailer. The preview
-   loops exactly that window so what you see is what the feed will show. */
+// Trailer window picker; the preview loops the selected window.
 function TrailerPicker({ src, duration, value, onChange }) {
   const ref = useRef(null);
   const max = Math.max(0, Math.floor(duration - TRAILER_SECONDS));
@@ -577,9 +562,7 @@ function TrailerPicker({ src, duration, value, onChange }) {
   );
 }
 
-/* A Still's photos while composing: the one you're looking at, large, and
-   the whole set in order underneath. The first is the cover, what shows in
-   grids and shares. */
+// Selected photo preview plus the ordered strip. Index 0 is the cover.
 function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd }) {
   const addRef = useRef(null);
   const current = photos[active] || photos[0];

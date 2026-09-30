@@ -1,10 +1,5 @@
-/* Mesh design tokens.
-
-   The colours themselves live in src/index.css as CSS variables, one set for
-   the dark theme and one for the light, so every component follows the
-   theme without knowing about it. The measured contrast ratios are there,
-   next to each value. Text tokens clear WCAG AA (4.5:1) on every surface they
-   can land on, in both themes; `field` clears the 3:1 non-text minimum. */
+/* Colour values live in src/index.css as theme variables. Text tokens meet
+   WCAG AA on every surface in both themes; `field` meets 3:1 non-text. */
 
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 

@@ -3,8 +3,7 @@ import {
 } from "lucide-react";
 import { sidebarSection } from "../../lib/surfaces";
 
-/* One list of where you can go, shared by the desktop sidebar and the phone
-   drawer so the two never drift apart. `badge` names the count shown on it. */
+// Shared by the desktop sidebar and the mobile drawer. `badge` keys into the counts prop.
 export const MAIN_NAV = [
   { id: "foryou", label: "Home", icon: House, path: "/" },
   { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
@@ -15,7 +14,6 @@ export const MAIN_NAV = [
   { id: "notifications", label: "Notifications", icon: Bell, path: "/notifications", badge: "notifications" },
 ];
 
-/* The less-used places, behind More on desktop and at the foot of the drawer. */
 export const MORE_NAV = [
   { id: "settings", label: "Settings", icon: Settings, path: "/account/settings" },
   { id: "brick", label: "Brick mode", icon: BrickWall, path: "/account/brick" },
@@ -23,7 +21,6 @@ export const MORE_NAV = [
   { id: "leaderboard", label: "Leaderboard", icon: Trophy, path: "/leaderboard" },
 ];
 
-/** Which item lights up for the page on screen. */
 export function activeNavId(page) {
   if (page.tab === "home") return ["saved", "leaderboard"].includes(page.section) ? page.section : sidebarSection(page.section);
   if (page.tab === "account") return { settings: "settings", brick: "brick", profile: "profile" }[page.view] || null;

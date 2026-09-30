@@ -3,18 +3,15 @@ import { Minus, Plus, Crosshair } from "lucide-react";
 import Dialog from "./Dialog";
 import Button from "./Button";
 
-const OUT = 720;        // the saved square, in pixels
+const OUT = 720; // output size (px)
 const MAX_ZOOM = 4;
 
-/* Position and zoom a photo inside a circle (or rounded square) before it's
-   saved: drag to move, pinch or scroll or use the slider to zoom. Arrow keys
-   move it and + and - zoom, for anyone not using a pointer. What's inside the
-   frame is saved as a square. */
+// Square crop with pan (drag/arrow keys) and zoom (pinch/wheel/slider/+ -).
 export default function PhotoCropper({ file, shape = "circle", title = "Adjust your photo", onCancel, onDone }) {
   const [img, setImg] = useState(null);
   const [failed, setFailed] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [pos, setPos] = useState({ x: 0, y: 0 }); // the image centre's offset from the frame's, in frame pixels
+  const [pos, setPos] = useState({ x: 0, y: 0 }); // image centre offset from frame centre (px)
   const [busy, setBusy] = useState(false);
   const frameRef = useRef(null);
   const [frame, setFrame] = useState(300);
@@ -30,7 +27,6 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  // The frame's size on screen, so moves match your finger.
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -39,12 +35,12 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
     return () => ro.disconnect();
   }, [img]);
 
-  // At zoom 1 the photo just covers the frame; everything scales from there.
+  // zoom 1 = cover.
   const cover = img ? frame / Math.min(img.naturalWidth, img.naturalHeight) : 1;
   const scale = cover * zoom;
   const dispW = img ? img.naturalWidth * scale : frame;
   const dispH = img ? img.naturalHeight * scale : frame;
-  // The photo always fills the frame: no empty edges.
+  // Clamp so the image always covers the frame.
   const clamp = (p, z = zoom) => {
     if (!img) return p;
     const s = cover * z;
@@ -54,7 +50,7 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
   };
   const zoomTo = (z) => {
     const next = Math.min(MAX_ZOOM, Math.max(1, z));
-    // Keep the same point in the middle as it grows or shrinks.
+    // Zoom around the frame centre.
     setPos((p) => clamp({ x: (p.x * next) / zoom, y: (p.y * next) / zoom }, next));
     setZoom(next);
   };
@@ -71,7 +67,6 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = [...pointers.current.values()];
     if (pts.length >= 2) {
-      // Pinch: the change in distance between two fingers.
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (gesture.current) zoomTo(gesture.current.zoom * (dist / gesture.current.dist));
       else gesture.current = { dist, zoom };
@@ -91,7 +86,7 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
     if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomTo(zoom + 0.2); }
     if (e.key === "-") { e.preventDefault(); zoomTo(zoom - 0.2); }
   };
-  // React's onWheel is passive, so it can't stop the page scrolling.
+  // React registers wheel listeners as passive; preventDefault needs a native one.
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -103,7 +98,7 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
     if (!img) return;
     setBusy(true);
     try {
-      // The frame, in the photo's own pixels.
+      // Frame rect in source-image pixels.
       const left = frame / 2 + pos.x - dispW / 2;
       const top = frame / 2 + pos.y - dispH / 2;
       const side = frame / scale;
@@ -148,7 +143,6 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
             ) : (
               <span className="skeleton absolute inset-0" aria-hidden="true" />
             )}
-            {/* What's outside the frame is dimmed; the ring is what people will see. */}
             <span aria-hidden="true" className={`pointer-events-none absolute inset-0 ${round} ring-2 ring-white/80`}
               style={{ boxShadow: "0 0 0 9999px rgb(0 0 0 / 0.55)" }} />
           </div>

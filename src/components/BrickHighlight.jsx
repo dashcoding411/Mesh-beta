@@ -5,9 +5,7 @@ import { deviceOffset } from "../lib/brick";
 import { durationLabel } from "../lib/format";
 import { navigate } from "../lib/router";
 
-/* On a profile: how long this person has kept Mesh bricked, if they've
-   chosen to show it. On your own, it shows even when private, with a way
-   to share it. Time counts only when the server enforced the brick. */
+// Shown to others only when stats are public; always to the owner.
 export default function BrickHighlight({ uid, own = false }) {
   const [stats, setStats] = useState(null);
   const [week] = useState(() => weekKeyFor(Date.now(), deviceOffset()));

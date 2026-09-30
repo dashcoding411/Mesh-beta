@@ -22,20 +22,13 @@ import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
 
-// Each feed as you left it: the posts, how far you'd paged and scrolled.
-// Going to Messages and back shouldn't reshuffle the feed or lose your
-// place. Kept for this visit only, and dropped after a while or when you
-// post, so coming back later still brings new things.
+// Feed state kept across remounts (session only; expires, and resets on post).
 const kept = new Map(); // `${uid}:${mode}:${topic}` -> { posts, shown, top, at, feedKey }
 const KEEP_MS = 15 * 60 * 1000;
 let lastTopic = "all";
 
-/* Home. Two feeds, one switch:
-
-   For you:   Flicks, Stills and Strands ranked together (lib/algorithm.js),
-               with reposts from people you follow counted as vouches.
-   Following: only people you follow, newest first, no ranking at all. The
-               honest alternative for anyone who doesn't want an algorithm. */
+// For you: ranked mix of all formats (lib/algorithm.js). Following:
+// chronological, unranked.
 export default function HomeFeed({ mode }) {
   const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey } = useShell();
   const toast = useToast();
@@ -65,8 +58,7 @@ export default function HomeFeed({ mode }) {
     feedScroll.current?.scrollTo({ top: 0 });
   };
 
-  // Your own like, save or repost also moves the count kept with the feed,
-  // so a card rebuilt from it later shows the number you saw.
+  // Mirror the viewer's own interactions into the kept counts.
   const setViewer = useCallback((id, field, on) => {
     setViewerState(id, field, on);
     const count = { liked: "likeCount", saved: "saveCount", reposted: "repostCount" }[field];
@@ -78,15 +70,13 @@ export default function HomeFeed({ mode }) {
     if (quiet) setRefreshing(true);
     try {
       const [list, affinity, hidden, reposts] = await Promise.all([
-        // A topic chip narrows the pool to posts tagged with it.
-        topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
+          topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
       ]);
 
-      // Attach "reposted by" to posts already in the pool, and pull in any
-      // reposted post that isn't, someone you follow vouched for it.
+      // Annotate reposted posts and fetch any that aren't in the pool.
       const byId = new Map(list.map((p) => [p.id, { ...p }]));
       const missing = [...new Set(reposts.map((r) => r.postId))].filter((id) => !byId.has(id)).slice(0, 20);
       const extra = await Promise.all(missing.map((id) => fetchPost(id).catch(() => null)));
@@ -102,7 +92,7 @@ export default function HomeFeed({ mode }) {
       if (mode === "following") {
         const mine = screenForViewer(visible, { myUid: me(), hiddenWords })
           .filter((p) => following.has(p.authorId) || p.repostedBy?.length);
-        // Newest activity first: a repost moves a post up to when it was reposted.
+        // A repost counts as activity at repost time.
         const when = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
         setPosts(mine.sort((a, b) => when(b) - when(a)));
       } else {
@@ -118,9 +108,7 @@ export default function HomeFeed({ mode }) {
     }
   }, [mode, following, hiddenAuthors, topic, interests, hiddenWords, toast]);
 
-  // Load when the feed or topic changes, not on every follow: following
-  // someone mid-scroll shouldn't reshuffle the posts under your thumb. It
-  // counts from the next refresh.
+  // Deliberately not reloaded on follow changes, to avoid reshuffling mid-scroll.
   useEffect(() => {
     if (loadedFor.current === keepKey) return;
     loadedFor.current = keepKey;
@@ -128,7 +116,6 @@ export default function HomeFeed({ mode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keepKey]);
 
-  // Keep what's on screen, and where you are in it.
   useEffect(() => {
     if (posts) kept.set(keepKey, { posts, shown, top: scrollTop.current, at: loadedAt.current, feedKey });
   }, [keepKey, posts, shown, feedKey]);
@@ -146,12 +133,11 @@ export default function HomeFeed({ mode }) {
   useLayoutEffect(() => {
     if (!restored?.top || !feedScroll.current) return;
     feedScroll.current.scrollTop = restored.top;
-    // Once more after the stories row and images have had a frame to size.
+    // Re-apply after layout settles.
     const id = requestAnimationFrame(() => { if (feedScroll.current) feedScroll.current.scrollTop = restored.top; });
     return () => cancelAnimationFrame(id);
   }, [restored]);
 
-  // Tapping Home (or For you in the sidebar) while you're at the top.
   useEffect(() => {
     const onRefresh = () => { setShown(PAGE); load({ quiet: true }); };
     window.addEventListener("mesh:refresh", onRefresh);
@@ -159,8 +145,7 @@ export default function HomeFeed({ mode }) {
   }, [load]);
 
   const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
-  // Someone you block or mute disappears at once, without waiting for a
-  // reload, and Flicks step out of the mix once today's Flicks limit is used.
+  // Apply blocks/mutes immediately; drop Flicks once the Flicks cap is reached.
   const flicksLocked = !!useBrick().state("flicks");
   const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)
     && !(flicksLocked && (p.kind === "short" || p.kind === "video"))) ?? null;
@@ -224,8 +209,7 @@ export default function HomeFeed({ mode }) {
             </div>
           )}
 
-          {/* A deliberate stopping point. Infinite scroll removes the moment
-              where you'd ask "do I want to keep going?", this hands it back. */}
+          {/* Intentional end of feed: no infinite scroll. */}
           {page?.length > 0 && (
             <div className="px-4 py-10 text-center">
               {more > 0 ? (

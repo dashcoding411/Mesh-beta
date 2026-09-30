@@ -1,4 +1,3 @@
-// Asking to join a circle: its rules and screening questions.
 import { useState } from "react";
 import { me, requestToJoin } from "../../lib/db";
 import Button from "../ui/Button";

@@ -1,4 +1,3 @@
-// The newsroom desk: your stories, by stage.
 import { useEffect, useState } from "react";
 import { FilePen, Newspaper, Plus, Radio, Users } from "lucide-react";
 import { createNewsStory, fetchMyStories, isNewsWriter, setLive, tsMillis } from "../../lib/db";
@@ -18,8 +17,6 @@ const STAGES = [
   { id: "approved", title: "Published", match: (s) => s.status === "approved" },
 ];
 
-/* Only approved writers get a desk. Everyone else is told how it works:
-   every Mesh News story has a named, accountable writer. */
 export default function Newsroom() {
   usePageTitle("Newsroom", 1);
   const toast = useToast();

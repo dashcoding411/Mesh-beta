@@ -1,4 +1,3 @@
-// One story's page, with its corrections and the ways to report an error.
 import {
   AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, ShieldCheck, X, Radio,
 } from "lucide-react";
@@ -30,7 +29,7 @@ export function NewsStory({ id }) {
   const [story, setStory] = useState(undefined); // undefined loading, null missing
   usePageTitle(story?.title || null, 1);
   const [admin, setAdmin] = useState(false);
-  const [dialog, setDialog] = useState(null); // suggest | correct | withdraw
+  const [dialog, setDialog] = useState(null); // "suggest" | "correct" | "withdraw"
   const [requests, setRequests] = useState(null);
 
   const load = useCallback(async () => {

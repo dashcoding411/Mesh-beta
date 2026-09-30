@@ -2,9 +2,7 @@ import { useState } from "react";
 import { ImageOff } from "lucide-react";
 import { useMediaSrc } from "../../lib/media";
 
-/* An <img> that understands photos stored in Firestore (`mesh-media:`) as
-   well as ordinary URLs, shows a shimmer while it loads, and says so if it
-   can't load at all. */
+// <img> that resolves mesh-media: URLs, with loading and error states.
 export default function MediaImg({ src, alt, className = "", placeholderClass = "", ...rest }) {
   const url = useMediaSrc(src);
   const [failedFor, setFailedFor] = useState(null);

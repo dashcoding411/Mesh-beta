@@ -41,17 +41,14 @@ function bucketOf(ms, now) {
   return "Earlier";
 }
 
-/* Notifications: who liked, commented, followed or mentioned you, and the
-   invites waiting for an answer. Opening the page marks them read; the
-   ones that were new stay under "New" until you leave. */
+// Opening marks everything read; items unread on arrival stay under "New" for the visit.
 export default function Notifications() {
   const { notices, muted, blocked, following } = useShell();
   const [newIds, setNewIds] = useState(null);
   const marked = useRef(false);
   const [now] = useState(() => Date.now());
 
-  // Gatherings you've replied to that start within a week: the reminders,
-  // worked out from your own replies rather than sent by anyone.
+  // Upcoming RSVPs within a week, derived locally.
   const [soon, setSoon] = useState([]);
   useEffect(() => {
     fetchUpcomingRsvps(10).then((list) => setSoon(list.filter((r) => tsMillis(r.startsAt) < now + 7 * 86400000))).catch(() => {});
@@ -59,9 +56,8 @@ export default function Notifications() {
 
   const visible = useMemo(() => (notices || []).filter((n) => !muted.has(n.actorId) && !blocked.has(n.actorId)), [notices, muted, blocked]);
 
-  // Remember what was new when you arrived (once the list first loads)...
   if (notices && newIds === null) setNewIds(new Set(notices.filter((n) => !n.read).map((n) => n.id)));
-  // ...then mark it all read, and clear out the old ones.
+  // Mark read and prune old notifications.
   useEffect(() => {
     if (!notices || marked.current) return;
     marked.current = true;

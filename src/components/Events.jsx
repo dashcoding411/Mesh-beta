@@ -24,8 +24,6 @@ export function DateBlock({ date, size = 56 }) {
   );
 }
 
-/* A gathering in a list. The whole card opens its page, where you reply,
-   talk, and see who's coming. */
 export function GatheringCard({ event, myStatus }) {
   const date = event.startsAt?.toDate ? event.startsAt.toDate() : null;
   const past = date && date < new Date();
@@ -60,7 +58,7 @@ export function GatheringCard({ event, myStatus }) {
   );
 }
 
-/* Shared by "Plan a gathering" and the host's "Edit": same fields, same checks. */
+// Shared by create and edit.
 export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, onClose, title }) {
   const toLocal = (ts) => {
     const d = ts?.toDate ? ts.toDate() : null;
@@ -123,7 +121,7 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
     }
   };
 
-  // A plain render helper (called, not mounted as a component).
+  // Render helper, called rather than mounted.
   const Radio = ({ name, value, options, onChange }) => (
     <div className="space-y-2">
       {options.map((o) => (

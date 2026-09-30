@@ -2,7 +2,7 @@ import { tsMillis } from "./db";
 
 const toDate = (t) => new Date(typeof t === "number" ? t : tsMillis(t) || Date.now());
 
-/** "now", "5m", "3h", "4d", then "12 Mar", then "12 Mar 2024". Compact for headers. */
+/** "now", "5m", "3h", "4d", "12 Mar", "12 Mar 2024". */
 export function shortTime(t) {
   const d = toDate(t);
   const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
@@ -14,7 +14,7 @@ export function shortTime(t) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
-/** "just now", "5 minutes ago", "yesterday", "3 days ago". For sentences. */
+/** "just now", "5 minutes ago", "yesterday", "3 days ago". */
 export function relativeTime(t) {
   const s = (Date.now() - toDate(t).getTime()) / 1000;
   if (s < 45) return "just now";
@@ -24,7 +24,6 @@ export function relativeTime(t) {
   return rtf.format(-Math.round(s / 86400), "day");
 }
 
-/** The full date and time, for title attributes and screen readers. */
 export function fullTime(t) {
   return toDate(t).toLocaleString(undefined, {
     weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
@@ -44,7 +43,7 @@ export function formatDuration(sec) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
 }
 
-/** "24 min", "1 hr 5 min", for sentences and labels. */
+/** "24 min", "1 hr 5 min". */
 export function spokenDuration(sec) {
   const m = Math.round((sec || 0) / 60);
   if (m < 1) return "under a minute";
@@ -53,7 +52,7 @@ export function spokenDuration(sec) {
   return m % 60 ? `${h} hr ${m % 60} min` : `${h} hr`;
 }
 
-/** Message-list day separators: "Today", "Yesterday", "Monday", "12 March". */
+/** "Today", "Yesterday", "Monday", "12 March". */
 export function dayLabel(t) {
   const d = toDate(t);
   const today = new Date();
@@ -75,14 +74,14 @@ export function plural(n, word, pluralWord = `${word}s`) {
   return `${n} ${n === 1 ? word : pluralWord}`;
 }
 
-/** 1234 → "1.2K". Big counts shouldn't push an action row around. */
+/** 1234 → "1.2K". */
 export function compact(n) {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
-/** "7:00am", "tomorrow at 7:00am", "Friday at 7:00am", in this device's time. */
+/** "7:00am", "tomorrow at 7:00am", "Friday at 7:00am" (local time). */
 export function whenLabel(ms, now = Date.now()) {
   if (!ms) return "";
   const d = new Date(ms);
@@ -105,7 +104,7 @@ export function spanLabel(ms) {
   return h ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
-/** Bricked time: "45m", "14h 30m", "3d 2h". */
+/** "45m", "14h 30m", "3d 2h". */
 export function durationLabel(seconds) {
   const m = Math.floor((seconds || 0) / 60);
   if (m < 1) return seconds > 0 ? "under 1m" : "0m";

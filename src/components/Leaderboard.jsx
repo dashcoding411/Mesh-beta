@@ -14,9 +14,6 @@ import { EmptyState, Skeleton, Loading } from "./ui/States";
 
 const MEDALS = ["bg-amber-400 text-amber-950", "bg-zinc-300 text-zinc-900", "bg-orange-400 text-orange-950"];
 
-/* Who's kept Mesh bricked the longest, among people who chose to show it.
-   Counted only from bricks the server enforced: finished instant bricks
-   and whole days of scheduled time. */
 export default function Leaderboard() {
   const { following } = useShell();
   const [scope, setScope] = useState("week");

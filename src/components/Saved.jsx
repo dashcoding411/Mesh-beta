@@ -9,8 +9,6 @@ import { EmptyState, ErrorState } from "./ui/States";
 import PostCard from "./PostCard";
 import { FeedSkeleton } from "./HomeFeed";
 
-/* Everything you've kept. Private: saves never show on your profile and
-   nobody else can see them. */
 export default function Saved() {
   const [posts, setPosts] = useState(null);
   const [error, setError] = useState(false);
@@ -22,7 +20,6 @@ export default function Saved() {
   }, []);
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
-  // Unsaving from here removes it from the list, that's the point of the page.
   const onViewerChange = (id, field, on) => {
     setViewer(id, field, on);
     if (field === "saved" && !on) setPosts((prev) => prev.filter((p) => p.id !== id));

@@ -1,4 +1,3 @@
-// Reading a story's text: citations, read time, a summary line, links.
 
 
 export const CITE = /\[(\d{1,2})\]/g;

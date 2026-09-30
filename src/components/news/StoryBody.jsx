@@ -1,11 +1,9 @@
-// A story's key points, text with numbered citations, and its sources.
 import { ExternalLink, ListChecks } from "lucide-react";
 import { CITE, hostOf } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
 
-/* Key points, the script with its numbered citations, and the source list
-   they point to. Shared by the story page and the review queue. */
+// Shared by the story page and the review queue.
 export function StoryBody({ story }) {
   const sources = story.sources || [];
   const uid = `n-${story.id}`;
@@ -15,9 +13,8 @@ export function StoryBody({ story }) {
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
     el?.querySelector("a")?.focus({ preventScroll: true });
   };
-  // Stories written in the newsroom are blocks; older ones are a script.
   const blocks = story.blocks || blocksFromDoc(story);
-  // "morning [1]." reads as "morning¹." with no gap before the number.
+  // Drop the space before a citation marker.
   const cite = (text) => String(text || "").split(CITE).map((part, j, all) => {
     if (j % 2 === 0) return j + 1 < all.length ? part.replace(/\s+$/, "") : part;
     const n = Number(part);

@@ -4,9 +4,7 @@ import { EXTERNAL_LINK_EVENT } from "../../lib/links";
 import Dialog from "./Dialog";
 import Button from "./Button";
 
-/* The "you're leaving Mesh" step. The site's name is shown on its own, so
-   a long address can't hide where it really goes, with warnings for the
-   usual tricks: look-alike letters, and bare numeric addresses. */
+// Shows the host separately and warns on punycode or IP-address hosts.
 export function ExternalLinkDialog() {
   const [url, setUrl] = useState(null);
   useEffect(() => {

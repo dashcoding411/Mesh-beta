@@ -1,7 +1,5 @@
-// Circle covers. Circles store one of five cover ids (the original class
-// strings, kept so existing circles and the security rules still match), and
-// each id now maps to one flat colour. The pattern over it is the Mesh
-// lattice: thin crossing threads.
+// Circle cover ids are legacy gradient class strings (also whitelisted in the
+// rules); each maps to a flat colour with the lattice pattern.
 
 const COVERS = {
   "from-violet-600 via-fuchsia-600 to-rose-500": "bg-violet-700",

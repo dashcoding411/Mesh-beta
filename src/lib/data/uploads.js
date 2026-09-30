@@ -1,13 +1,9 @@
-// Uploading photos and video: Cloud Storage when it's on, Firestore otherwise.
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { storage } from "../../firebase";
+// Media uploads: Cloud Storage when enabled, otherwise images inline in Firestore.
+import { loadStorage } from "../../firebase";
 import { imageSize, storeInlineImage, storeInlineImages } from "../media";
 import { me } from "./core.js";
 
-// ---------- media upload ----------
-
-// Thrown when the Firebase project has no Storage bucket provisioned, which
-// happens on the free Spark plan: Cloud Storage requires the Blaze plan.
+// No Storage bucket (Spark plan).
 export class StorageUnavailableError extends Error {
   constructor() {
     super(
@@ -18,25 +14,19 @@ export class StorageUnavailableError extends Error {
   }
 }
 
-// Probed once per session so the composer can tell the user *why* posting is
-// blocked instead of failing at the end of a form.
 let storageCheck = null;
 
 export function storageAvailable() {
-  // Cloud Storage needs the Blaze plan. Until VITE_STORAGE=on is set, don't
-  // probe a bucket that doesn't exist from every visitor's browser.
   if (import.meta.env.VITE_STORAGE !== "on") return Promise.resolve(false);
-  // One shared check: callers that arrive while it's running wait for it
-  // rather than starting their own.
   if (storageCheck) return storageCheck;
-  // A missing bucket can leave the SDK retrying instead of erroring, so the
-  // probe races a timeout; an unanswered bucket is treated as unavailable.
+  // A missing bucket can make the SDK retry instead of failing, hence the timeout.
   const probe = (async () => {
     try {
+      const { getDownloadURL, ref, storage } = await loadStorage();
       await getDownloadURL(ref(storage, `uploads/${me()}/.probe`));
       return true;
     } catch (err) {
-      // "object not found" means the bucket exists and answered: that's a pass.
+      // object-not-found means the bucket exists.
       return err?.code === "storage/object-not-found";
     }
   })();
@@ -57,13 +47,11 @@ function isBucketMissing(err) {
   );
 }
 
-/* Photos go to Cloud Storage when it's on, and into Firestore (compressed)
-   when it isn't; video needs Storage either way. */
 export async function uploadMedia(file, onProgress, folder = "uploads") {
   if (!(await storageAvailable())) {
     if (!file.type.startsWith("image/")) throw new StorageUnavailableError();
     onProgress?.(40);
-    // Avatars show at 40 to 120px, so there's no point keeping a big one.
+    // Avatars render at 120px at most.
     const stored = await storeInlineImage(file, folder === "avatars" ? { maxSide: 480 } : {});
     onProgress?.(100);
     return stored;
@@ -71,7 +59,6 @@ export async function uploadMedia(file, onProgress, folder = "uploads") {
   return uploadToStorage(file, onProgress, folder);
 }
 
-/** A carousel's photos, in order, each with its size. */
 export async function uploadPhotos(files, onProgress) {
   if (!(await storageAvailable())) return storeInlineImages(files, onProgress);
   const out = [];
@@ -83,7 +70,8 @@ export async function uploadPhotos(files, onProgress) {
   return out;
 }
 
-function uploadToStorage(file, onProgress, folder) {
+async function uploadToStorage(file, onProgress, folder) {
+  const { getDownloadURL, ref, storage, uploadBytesResumable } = await loadStorage();
   const uid = me();
   const safeName = file.name.replace(/[^\w.-]/g, "_").slice(-80);
   const path = `${folder}/${uid}/${Date.now()}-${safeName}`;

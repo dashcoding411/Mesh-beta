@@ -14,10 +14,7 @@ import { Textarea } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
-/* The fastest way to say something: a Strand, typed straight into the top
-   of the feed. Photo and Flick open the full composer, since those need a
-   file. What you typed stays put if the post fails, and is kept as a
-   draft if you leave before posting. */
+// Inline Strand composer. Media buttons hand off to the full composer.
 export default function QuickPost({ onPosted }) {
   const { profile, openComposer } = useShell();
   const toast = useToast();
@@ -27,7 +24,7 @@ export default function QuickPost({ onPosted }) {
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(false);
   const [warned, setWarned] = useState("");
-  // Under-16s and private (locked) accounts post to followers only; the rules enforce it too.
+  // Under-16 and private accounts are followers-only (also enforced by the rules).
   const minor = isMinor(profile) || !!profile?.isPrivate;
   const remaining = STRAND_MAX - text.length;
 
@@ -42,7 +39,6 @@ export default function QuickPost({ onPosted }) {
     setBusy(true);
     setError("");
     try {
-      // Topics come from the words themselves; nobody has to pick them.
       const post = await createPost({ kind: "text", text: v.text, visibility: minor ? "followers" : "public", sensitive: mod.sensitive, topics: suggestTopics(v.text) });
       markPosted("post", v.text);
       finishDraft();
@@ -61,7 +57,7 @@ export default function QuickPost({ onPosted }) {
     }
   };
 
-  // The words move to the full composer (and its draft) with you.
+  // Carry the text over to the full composer.
   const handOff = (attach) => {
     openComposer({ kind: "text", attach, text });
     setText("");
@@ -91,8 +87,7 @@ export default function QuickPost({ onPosted }) {
           )}
         </div>
 
-        {/* The divider lights up while the box has focus, the textarea itself
-            is borderless, so this is its visible focus indicator. */}
+        {/* Focus indicator for the borderless textarea. */}
         <div className="mt-2 flex items-center gap-1 border-t border-line pt-2 transition-colors group-focus-within:border-accent-text">
           <IconButton icon={Image} label="Post a photo" size={20} onClick={() => openComposer({ kind: "post" })} className="-ml-2.5 text-accent-text" />
           <IconButton icon={Clapperboard} label="Post a Flick" size={20} onClick={() => openComposer({ kind: "video" })} className="text-accent-text" />

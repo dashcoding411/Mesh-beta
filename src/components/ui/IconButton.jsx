@@ -1,12 +1,8 @@
 import { forwardRef } from "react";
 import { compact } from "../../lib/format";
 
-/* Icon-only buttons must carry a label, it's a required prop, not an
-   afterthought. The visible glyph can be small; the hit area is always at
-   least 44×44 (WCAG 2.5.5) because a 20px target on a phone is a miss.
-
-   `count` renders a number beside the icon and is folded into the accessible
-   name, so a screen reader hears "Like, 42 likes" rather than a bare "Like". */
+// `label` is required. Hit area is at least 44px (WCAG 2.5.5); `count` is
+// included in the accessible name.
 const TONES = {
   ghost: "text-fg-muted hover:text-fg hover:bg-surface-2",
   solid: "bg-surface-2 text-fg hover:bg-surface-3 border border-line",
@@ -14,8 +10,7 @@ const TONES = {
   bare: "text-fg-muted hover:text-fg",
   primary: "bg-accent text-white hover:bg-accent-hover disabled:bg-surface-2 disabled:text-fg-subtle disabled:opacity-100",
 };
-// When pressed, the active colour must win over the hover text colour,
-// otherwise a liked heart turns white the moment the pointer is on it.
+// Pressed colour must win over the hover colour.
 const PRESSED = {
   ghost: "hover:bg-surface-2",
   solid: "bg-surface-2 hover:bg-surface-3 border border-line",

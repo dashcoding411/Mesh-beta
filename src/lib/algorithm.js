@@ -1,38 +1,14 @@
-// The Mesh ranking engine.
+// Feed ranking.
 //
-// Each of the big four optimises for one thing, and each is right about
-// something different. Mesh blends all four:
+// Every post is scored in one unit, expected value per minute of viewer
+// attention, so formats of very different lengths compete on the same axis.
+// Scores are deliberately not normalised per format: that would equate
+// finishing a 15s clip with finishing a 40min video.
 //
-//   TikTok:    interest graph. What holds attention beats who you know, so a
-//               brand-new account can still surface.
-//   Instagram: the sends economy. A save, and more so a send to a specific
-//               person, costs the user something a like doesn't.
-//   Facebook:  meaningful social interaction. Conversation between connected
-//               people beats drive-by taps.
-//   YouTube:   retention, not impressions. Long-form is judged on whether the
-//               people who start it stay.
-//
-// Two deliberate design rulings, both of which cut against the obvious approach:
-//
-//   1. We do NOT normalise each format's engagement to its own percentile and
-//      compare percentiles. That erases magnitude: finishing a 15-second clip
-//      and finishing a 40-minute talk both land at "100% completion", so the
-//      thing that makes long-form valuable disappears. Instead everything is
-//      scored in one shared unit (expected value per minute of viewer
-//      attention), so formats compete on a real axis.
-//
-//   2. Because short-form still wins on raw throughput under almost any
-//      scoring, per-format floors are applied after scoring. Without them the
-//      feed converges on whatever is cheapest to consume and the other formats
-//      starve. The floors are the anti-cannibalisation mechanism; they are not
-//      optional and they are not a tuning knob to zero out.
-//
-// And one rule about harm: reach is earned, not owed. Posts that read as
-// mocking a group are allowed, but they sink for anyone who doesn't follow
-// the author and never appear back to back, so a feed can't turn into fifty
-// posts in a row making fun of the same people. Reports lower a post's
-// reach; enough reports from established accounts take it out of feeds
-// until a moderator looks. Every group gets the same treatment.
+// Short video still wins on throughput, so FORMAT_FLOORS guarantees each
+// format a share of the first slots after scoring. Borderline posts aren't
+// amplified beyond the author's followers and are spaced apart; reports
+// reduce reach, and enough of them hold a post for review.
 
 import { tsMillis, isHeld } from "./db";
 import { assessText, hitsHiddenWords } from "./moderation";
@@ -44,13 +20,10 @@ function levelOf(post) {
   if (!verdicts.has(key)) verdicts.set(key, assessText(textOf(post)).level);
   return verdicts.get(key);
 }
-// Only mockery is held back. A post quoting abuse to call it out isn't:
-// that would bury the people it happened to.
+// "quoted" (abuse quoted to call it out) is deliberately not held back.
 const borderline = (post) => levelOf(post) === "borderline";
 
-/** Drop what this viewer shouldn't be shown at all: held posts, their hidden
-    words, and anything the filter would block (older posts, or ones that went
-    round the app). Your own posts always show for you. */
+/** Removes held posts, hidden-word matches and blocked content (the viewer's own posts are kept). */
 export function screenForViewer(posts, { myUid, hiddenWords = [] } = {}) {
   return posts.filter((p) => p.authorId === myUid
     || (!isHeld(p) && !hitsHiddenWords(textOf(p), hiddenWords) && levelOf(p) !== "block"));
@@ -64,38 +37,30 @@ function jitter(id) {
   return h / 997;
 }
 
-// Rough attention cost of consuming each format, in minutes. Used as the
-// denominator so a 20-minute talk isn't compared to a 12-second clip as if
-// they cost the viewer the same thing.
-// A long Flick's cost is its real runtime when we know it: a 4-minute video
-// and a 40-minute one shouldn't be priced the same. Strands are read, not
-// watched, so they're priced by word count.
+// Attention cost in minutes: the score's denominator. Uses a video's real
+// duration when known and reading time for text.
 const ATTENTION_MINUTES = { post: 0.25, text: 0.15, short: 0.3, video: 6 };
 
 function attentionCost(post) {
   const base = ATTENTION_MINUTES[post.kind] ?? 0.5;
   if (post.kind === "video" && post.duration > 0) return Math.max(3, post.duration / 60);
   if (post.kind === "post" || post.kind === "text") {
-    // Longer text genuinely costs more to read.
-    const words = (post.text || "").trim().split(/\s+/).filter(Boolean).length;
+      const words = (post.text || "").trim().split(/\s+/).filter(Boolean).length;
     return Math.max(base, words / 220); // ~220 wpm
   }
   return base;
 }
 
-// --- component scores, all in "expected value" not percentiles -------------
+// Component scores
 
-// TikTok: how much this author's work has held your attention before.
+// Interest: past affinity with the author.
 function interestValue(post, affinity) {
   const raw = affinity.get(post.authorId) || 0;
   if (raw < 0) return Math.max(raw * 0.8, -12); // negatives bite, but bounded
   return Math.min(Math.log2(1 + raw) * 2.2, 9);
 }
 
-// Facebook: conversation is worth more than taps, and worth more again
-// between people who are actually connected.
-// A repost by someone you follow is a vouch from inside your own graph, so it
-// counts nearly as much as following the author directly.
+// Social: follows, reposts by followed accounts, and comment activity.
 function socialValue(post, followingSet) {
   const connected = followingSet.has(post.authorId);
   const msi = Math.log2(1 + (post.commentCount || 0)) * 1.8;
@@ -103,7 +68,7 @@ function socialValue(post, followingSet) {
   return (connected ? 4 : 0) + msi * (connected ? 1.5 : 1) + Math.log2(1 + vouches) * 3;
 }
 
-// Instagram: saves and sends outrank likes because they cost the user more.
+// Endorsement: saves and sends weigh more than likes.
 function endorsementValue(post) {
   return (
     Math.log2(1 + (post.likeCount || 0)) * 0.9 +
@@ -113,18 +78,13 @@ function endorsementValue(post) {
   );
 }
 
-// YouTube: retention, expressed as attention actually delivered rather than a
-// bare rate. Finishing a 20-minute talk is twenty times more delivered value
-// than finishing a 30-second clip, so this term scales with the format's
-// duration. Because the whole score is later divided by that same duration, a
-// well-retained long video ends up comparable to a well-retained short one
-// instead of being crushed by the division, which is the failure mode of
-// naive per-minute scoring.
+// Retention as delivered attention. Scales with duration so the later
+// per-minute division doesn't penalise well-retained long videos.
 function deliveredAttention(post) {
   const starts = post.viewCount || 0;
   const finishes = post.completeCount || 0;
   const minutes = attentionCost(post);
-  // Unproven uploads get a neutral prior rather than a zero.
+  // Neutral prior for posts with no data yet.
   const completion = starts < 5 ? 0.5 : Math.min(finishes / starts, 1);
   return completion * minutes * 3;
 }
@@ -134,18 +94,14 @@ function freshnessValue(post) {
   return 6 * Math.pow(0.5, ageHours / 20) + 0.3;
 }
 
-// Engagement counts are inflated by how prominently a post was shown, not just
-// how good it was. Without correcting for that the ranker learns "things that
-// ranked highly rank highly". Damping by the position a post was last served
-// at is the cheap stand-in for a full shallow-tower bias model.
+// Damps engagement by the slot a post was last served in, to counter position bias.
 function positionBiasFactor(post) {
   const lastRank = post.lastServedRank;
   if (typeof lastRank !== "number" || lastRank < 0) return 1;
   return 1 / (1 + Math.log2(1 + lastRank) * 0.15);
 }
 
-// Interests you picked: a post tagged with one of them gets a lift. Capped,
-// so interests shape the feed without turning it into a single topic.
+// Capped boost for posts tagged with the viewer's interests.
 function interestValue2(post, interests) {
   if (!interests?.length || !post.topics?.length) return 0;
   const hits = post.topics.filter((t) => interests.includes(t)).length;
@@ -153,10 +109,7 @@ function interestValue2(post, interests) {
 }
 
 export function scorePost(post, { followingSet, affinity, myUid, interests = [] }) {
-  // Endorsements estimate how much value a post carries in total, so they are
-  // scaled by how long that value takes to deliver before the division,
-  // otherwise a like on a 20-minute video counts for a twentieth of a like on
-  // a clip, which is not what a like means.
+  // Scale endorsements by cost before dividing, so a like is worth the same on any length.
   const durationWeight = Math.sqrt(attentionCost(post) / 0.3);
 
   const earned =
@@ -166,25 +119,21 @@ export function scorePost(post, { followingSet, affinity, myUid, interests = [] 
       deliveredAttention(post)) /
     attentionCost(post);
 
-  // Freshness and jitter sit outside the per-minute term: recency and
-  // exploration shouldn't be divided away by a format's length.
+  // Freshness and jitter are added outside the per-minute term.
   let score = earned + freshnessValue(post) + interestValue2(post, interests) + jitter(post.id) * 2;
 
-  // Your own posts belong on your profile, not your For You page.
   if (post.authorId === myUid) score -= 3;
 
-  // Not amplified: borderline posts reach their author's followers, and
-  // sink for everyone else. Each report (up to five) costs some reach.
+  // Borderline posts sink for non-followers; each report (up to five) costs reach.
   if (borderline(post) && post.authorId !== myUid && !followingSet?.has(post.authorId)) score -= 8;
   score -= Math.min(post.reportCount || 0, 5) * 0.8;
 
   return score;
 }
 
-// --- feed assembly ---------------------------------------------------------
+// Feed assembly
 
-// Minimum share of the first N slots each format is guaranteed, provided
-// enough candidates of that format exist.
+// Minimum share of the first slots per format, when enough candidates exist.
 export const FORMAT_FLOORS = { post: 0.2, text: 0.15, short: 0.2, video: 0.1 };
 
 const FLOOR_WINDOW = 20;
@@ -194,8 +143,7 @@ const AUTHOR_WINDOW = 6;
 const BORDERLINE_GAP = 8;
 
 export function rankFeed(posts, ctx) {
-  // Recommendations only: a borderline post reaches its author's followers
-  // (in Following, on the profile, in search), never strangers' For you.
+  // Borderline posts are never recommended to non-followers.
   const pool = screenForViewer(posts, ctx)
     .filter((p) => !borderline(p) || p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId));
   const scored = pool
@@ -205,7 +153,6 @@ export function rankFeed(posts, ctx) {
   const queue = [...scored];
   const out = [];
 
-  // How many of each format the floors demand within the first window.
   const available = countKinds(pool);
   const quota = {};
   for (const [kind, share] of Object.entries(FORMAT_FLOORS)) {
@@ -218,9 +165,7 @@ export function rankFeed(posts, ctx) {
     const placed = out.length;
     const inWindow = placed < FLOOR_WINDOW;
 
-    // Formats are paid down on pace across the window rather than all at the
-    // end. Batching them into the last few slots is what produces a "vvv" run,
-    // the exact clumping the diversity pass exists to avoid.
+    // Meet floors progressively rather than at the end of the window, which would cluster formats.
     let behind = [];
     if (inWindow) {
       const elapsed = (placed + 1) / FLOOR_WINDOW;
@@ -233,8 +178,7 @@ export function rankFeed(posts, ctx) {
 
     const pick = (pred) => queue.findIndex((c) => pred(c.post));
     let idx = -1;
-    // Rules give way in order: the format quota first, then the format-run
-    // rule, and author and borderline spacing last of all.
+    // Constraints relax in order: format quota, format runs, then author/borderline spacing.
     if (behind.length) idx = pick((p) => behind.includes(p.kind) && fitsDiversity(p, out));
     if (idx === -1) idx = pick((p) => fitsDiversity(p, out));
     if (idx === -1 && behind.length) idx = pick((p) => behind.includes(p.kind) && fitsSpacing(p, out));
@@ -246,8 +190,7 @@ export function rankFeed(posts, ctx) {
     out.push(chosen);
   }
 
-  // Record where each post was served so the next pass can discount the
-  // engagement that position itself generated.
+  // Record served position for the position-bias correction.
   return out.map((p, i) => ({ ...p, servedRank: i }));
 }
 
@@ -265,11 +208,9 @@ function fitsDiversity(post, out) {
   return !sameKindRun && fitsSpacing(post, out);
 }
 
-// The rules that hold even when formats can't be varied.
 function fitsSpacing(post, out) {
   const recentAuthors = out.slice(-AUTHOR_WINDOW).filter((p) => p.authorId === post.authorId);
   if (recentAuthors.length >= MAX_PER_AUTHOR_IN_WINDOW) return false;
 
-  // Never two borderline posts close together, whoever posted them.
   return !borderline(post) || !out.slice(-BORDERLINE_GAP).some(borderline);
 }

@@ -1,25 +1,12 @@
-// Brick mode: Mesh down to messages and calls, on your terms.
+// Brick mode policy engine: weekly windows, daily caps per section, and
+// instant bricks. Messages and calls are never locked.
 //
-// One engine, three kinds of limit:
-//   windows   times each week when browsing is off ("weekdays before 10am")
-//   caps      daily minutes for a section ("30 minutes of Flicks")
-//   instant   off from now until a chosen time ("brick me for 2 hours")
-// Messages and calls are never locked: the point is to stop scrolling, not
-// to cut anyone off from people.
+// Tightening applies immediately; loosening waits 24h in `pending`. A parent
+// can add a second layer to an under-18 account that only they can loosen;
+// it lapses on 1 January of the year the teen turns 18.
 //
-// Tightening takes effect at once. Loosening waits 24 hours ("pending"), so
-// the decision is made in a calm moment rather than a craving one. The
-// limits live on the server (locks/{uid}) and the security rules check them
-// on every browse and every change, so neither a refresh, a reinstall, the
-// website nor a hand-made request gets round the lock or the wait.
-//
-// A parent linked to an under-18 account can add a second layer. Only the
-// parent can loosen it (the teen can ask), and it stops counting on
-// 1 January of the year the teen turns 18.
-//
-// This file is the engine's logic, written the same way the rules are, so
-// the app can show exactly what the server will do: what's locked, why, and
-// when it opens again.
+// Mirrors the lock checks in firestore.rules so the UI can predict exactly
+// what the server will allow.
 
 import { serverTimestamp, Timestamp } from "firebase/firestore";
 
@@ -33,23 +20,21 @@ export const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
 export const SLOT_MINUTES = 30;
 export const SLOTS = 48;
 export const COOL_OFF_MS = 24 * 60 * 60 * 1000;
-export const MAX_INSTANT_MS = 8 * 24 * 60 * 60 * 1000;
 const DAY_KEYS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
 
 export function emptyLayer() {
   return { slots: {}, caps: { feed: 0, flicks: 0, news: 0 }, until: 0, since: 0, windows: [] };
 }
 
-/** The layer with an instant brick until `untilMs`: a new brick starts now;
-    one already running is extended and keeps its start. */
+/** Sets an instant brick until `untilMs`, keeping `since` if one is already running. */
 export function withBrickUntil(layer, untilMs, now = Date.now()) {
   if ((layer.until || 0) > now) return { ...layer, until: Math.max(layer.until, untilMs) };
   return { ...layer, until: untilMs, since: "now" };
 }
 
-// ---------- time, in the zone the limits were set in ----------
+// Time, in the zone the limits were set in
 
-/** Minutes east of UTC for this device right now (Sydney: 600 or 660). */
+/** Minutes east of UTC for this device. */
 export function deviceOffset(date = new Date()) {
   return -date.getTimezoneOffset();
 }
@@ -64,29 +49,26 @@ export function localParts(ms, offset) {
   return {
     year: y,
     dayOfYear: Math.floor((Date.UTC(y, d.getUTCMonth(), d.getUTCDate()) - Date.UTC(y, 0, 1)) / 86400000) + 1,
-    dow: ((d.getUTCDay() + 6) % 7) + 1, // 1 = Monday ... 7 = Sunday, as the rules count
+    dow: ((d.getUTCDay() + 6) % 7) + 1, // 1 = Monday
     slot: d.getUTCHours() * 2 + (d.getUTCMinutes() >= 30 ? 1 : 0),
     minuteOfDay: d.getUTCHours() * 60 + d.getUTCMinutes(),
   };
 }
 
-/** The id of today's usage record, as the rules work it out. */
+/** Today's usage doc id, as computed by the rules. */
 export function dayKey(ms, offset) {
   const p = localParts(ms, offset);
   return `${p.year}-${p.dayOfYear}`;
 }
 
-/** The next local midnight after `ms`, when daily caps reset. */
 export function nextMidnight(ms, offset) {
   const p = localParts(ms, offset);
   return ms + (24 * 60 - p.minuteOfDay) * 60000 - (new Date(ms).getUTCSeconds() * 1000 + new Date(ms).getUTCMilliseconds());
 }
 
-// ---------- windows <-> slots ----------
+// Windows <-> slots
 
-/** Weekly windows ({ days: [1..7], from, to } in minutes) as half-hour slots
-    per day. A window whose end is at or before its start runs past
-    midnight into the next day ("10pm to 7am"). */
+/** Converts { days, from, to } windows (minutes) to half-hour slots per day. to <= from wraps past midnight. */
 export function windowsToSlots(windows) {
   const days = DAY_KEYS.map(() => new Set());
   for (const w of windows || []) {
@@ -131,7 +113,7 @@ export function windowLabel(w) {
   return `${daysLabel(w.days)}, ${clockLabel(w.from)} to ${clockLabel(w.to)}`;
 }
 
-// ---------- what's locked ----------
+// Lock evaluation
 
 export function parentActive(policy, now = Date.now()) {
   return !!policy?.parent && now < Date.UTC(policy.parent.untilYear, 0, 1);
@@ -144,8 +126,7 @@ function layerBricked(layer, parts, now) {
   return null;
 }
 
-/** Is `section` ("feed" | "flicks" | "news", or "" for anything) locked at
-    `now`? Returns null when open, or { reason, by, ... } when locked. */
+/** Null if `section` ("feed" | "flicks" | "news" | "") is open at `now`, else { reason, by, ... }. */
 export function lockState(policy, usage, section, now = Date.now()) {
   if (!policy) return null;
   const parts = localParts(now, policy.tzOffset || 0);
@@ -163,7 +144,7 @@ export function lockState(policy, usage, section, now = Date.now()) {
   return null;
 }
 
-/** The daily cap that applies to a section (the stricter of the two), or 0. */
+/** Effective daily cap for a section across both layers, or 0. */
 export function capFor(policy, section, now = Date.now()) {
   const own = policy?.self?.caps?.[section] || 0;
   const par = parentActive(policy, now) ? policy.parent?.caps?.[section] || 0 : 0;
@@ -172,7 +153,7 @@ export function capFor(policy, section, now = Date.now()) {
   return Math.min(own, par);
 }
 
-/** When `section` opens again, or null if it's locked for more than a week. */
+/** When `section` next opens; null if beyond a week. */
 export function unlockAt(policy, usage, section, now = Date.now()) {
   if (!lockState(policy, usage, section, now)) return now;
   const offset = policy.tzOffset || 0;
@@ -180,8 +161,7 @@ export function unlockAt(policy, usage, section, now = Date.now()) {
   let t = now;
   for (let i = 0; i < 8 * SLOTS + 4; i++) {
     const p = localParts(t, offset);
-    // The next half-hour boundary, or an instant brick ending sooner.
-    let next = t + ((SLOT_MINUTES - (p.minuteOfDay % SLOT_MINUTES)) * 60000) - (t % 60000);
+      let next = t + ((SLOT_MINUTES - (p.minuteOfDay % SLOT_MINUTES)) * 60000) - (t % 60000);
     for (const layer of [policy.self, parentActive(policy, t) ? policy.parent : null]) {
       if (layer?.until > t && layer.until < next) next = layer.until;
     }
@@ -192,13 +172,12 @@ export function unlockAt(policy, usage, section, now = Date.now()) {
   return null;
 }
 
-// ---------- stricter or looser (mirrors tighterOrSame in the rules) ----------
+// Strictness (mirrors tighterOrSame in the rules)
 
 function capNoLooser(a, b) {
   return a === b || (a > 0 && (b === 0 || a < b));
 }
 
-/** Is `next` at least as strict as `prev`? */
 export function isTighterOrSame(next, prev, now = Date.now()) {
   for (const k of DAY_KEYS) {
     const had = prev.slots?.[k] || [];
@@ -209,9 +188,7 @@ export function isTighterOrSame(next, prev, now = Date.now()) {
   return (next.until || 0) >= (prev.until || 0) || (prev.until || 0) <= now;
 }
 
-/** The strictest of two layers: every slot of either, the lower of two caps,
-    the later instant brick. Used to apply the tightening part of a change
-    straight away while the loosening part waits. */
+/** Union of slots, lower caps, later instant brick. */
 export function tightest(a, b) {
   const slots = {};
   for (const k of DAY_KEYS) {
@@ -235,9 +212,7 @@ export function tightest(a, b) {
   return { slots, caps, until: later.until || 0, since: later.since || 0, windows };
 }
 
-/** You tightened `prev` into `next` while a loosening (`target`) waits.
-    Carry just what you tightened into the waiting change, so it can't undo
-    it tomorrow, and leave the rest of what's waiting as it was. */
+/** Applies the tightened parts of prev -> next to a pending `target`. */
 export function carryTightening(target, prev, next) {
   const out = { ...target, slots: { ...(target.slots || {}) }, caps: { ...target.caps }, windows: [...(target.windows || [])] };
   for (const k of DAY_KEYS) {
@@ -265,8 +240,7 @@ export function carryTightening(target, prev, next) {
   return out;
 }
 
-/** Apply the change you made (`prev` to `next`) to a waiting change too, so
-    a second loosening adds to the first instead of replacing it. */
+/** Applies prev -> next onto a pending change so successive loosenings accumulate. */
 export function applyChange(target, prev, next) {
   const key = (w) => JSON.stringify([w.days, w.from, w.to]);
   const before = new Set((prev.windows || []).map(key));
@@ -282,7 +256,7 @@ export function applyChange(target, prev, next) {
   return { slots: windowsToSlots(windows), caps, until: later.until || 0, since: later.since || 0, windows };
 }
 
-/** Plain-language list of what a change loosens, for the confirmation. */
+/** Human-readable list of what a change loosens. */
 export function looseningParts(next, prev, now = Date.now()) {
   const out = [];
   const nextKeys = new Set((next.windows || []).map((w) => JSON.stringify([w.days, w.from, w.to])));
@@ -299,7 +273,7 @@ export function looseningParts(next, prev, now = Date.now()) {
   return out;
 }
 
-// ---------- to and from the database ----------
+// Serialisation
 
 const toTs = (ms) => Timestamp.fromMillis(Math.max(0, ms || 0));
 const fromTs = (t) => (t?.toMillis ? t.toMillis() : typeof t === "number" ? t : 0);
@@ -309,13 +283,12 @@ export function layerToDoc(layer) {
     slots: layer.slots || {},
     caps: { feed: layer.caps?.feed || 0, flicks: layer.caps?.flicks || 0, news: layer.caps?.news || 0 },
     until: toTs(layer.until),
-    // "now" marks a brick starting with this write: the server stamps it.
+    // "now" becomes a server timestamp.
     since: layer.since === "now" ? serverTimestamp() : toTs(layer.since),
     windows: (layer.windows || []).map((w) => ({ days: w.days, from: w.from, to: w.to })),
   };
 }
 
-/** Did the weekly schedule change between two layers? */
 export function slotsChanged(a, b) {
   return DAY_KEYS.some((k) => (a?.slots?.[k] || []).join() !== (b?.slots?.[k] || []).join());
 }
@@ -360,12 +333,10 @@ export function policyFromDoc(d) {
   };
 }
 
-/** When a waiting loosening can be applied. */
 export function pendingDueAt(policy) {
   return policy?.pending ? policy.pending.requestedAt + COOL_OFF_MS : null;
 }
 
-/** Is anything set at all (either layer)? */
 export function hasAnyLimit(layer) {
   if (!layer) return false;
   return Object.values(layer.slots || {}).some((l) => l.length)

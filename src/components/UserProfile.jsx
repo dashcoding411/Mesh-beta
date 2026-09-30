@@ -22,8 +22,6 @@ import LockScreen from "./LockScreen";
 import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 
-/* Someone else's profile, opened over whatever you were doing. It has its
-   own URL, so Back closes it and the page underneath is exactly as you left it. */
 export default function UserProfile({ uid }) {
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute } = useShell();
   const toast = useToast();
@@ -36,7 +34,7 @@ export default function UserProfile({ uid }) {
   const [messaging, setMessaging] = useState(false);
   const [follows, setFollows] = useState(null);
   const [requested, setRequested] = useState(false);
-  const [dialog, setDialog] = useState(null); // menu | block
+  const [dialog, setDialog] = useState(null); // "menu" | "block"
   const followed = following.has(uid);
   const isBlocked = blocked.has(uid);
   const isMuted = muted.has(uid);
@@ -52,7 +50,7 @@ export default function UserProfile({ uid }) {
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
     return () => { cancelled = true; };
-    // Following changes are reflected by the button; refetching posts on every follow would flash the grid.
+    // Don't refetch on follow changes; the button reflects them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
@@ -67,8 +65,7 @@ export default function UserProfile({ uid }) {
     return () => { window.removeEventListener("keydown", onKey); opener?.focus?.(); };
   }, []);
 
-  /* Follow, request (private accounts), cancel a request, or unfollow. */
-  const follow = async () => {
+    const follow = async () => {
     if (busy || !profile) return;
     setBusy(true);
     try {

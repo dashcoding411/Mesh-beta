@@ -1,8 +1,5 @@
-// Runs after `vite build`. Mesh is a single-page app, so without this every
-// URL would arrive as the same near-empty HTML until JavaScript ran. The
-// public pages (the policies) are written out as real HTML here, with their
-// own title, description, canonical URL and full text, and the sitemap is
-// generated from the same list. The app takes over as soon as it loads.
+// Post-build: renders the policy pages to static HTML (title, description,
+// canonical URL, full text) and writes sitemap.xml.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { DOCUMENTS } from "../src/legal/content.js";

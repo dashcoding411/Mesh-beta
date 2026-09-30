@@ -4,9 +4,6 @@ import { navigate } from "../lib/router";
 import Button from "./ui/Button";
 import { whenLabel, spanLabel } from "../lib/format";
 
-/* What a locked section shows instead of its content. The server refuses
-   the content anyway; this says why, until when, and where you can still
-   go: Messages and calls are never locked. */
 export default function LockScreen({ section, lock, opensAt, now, parentName, compact = false }) {
   const label = SECTIONS.find((s) => s.id === section)?.label || "This";
   const title = lock.reason === "cap"

@@ -1,5 +1,4 @@
-// Guides: a circle's step-by-step units (a welcome, a how-to, a course),
-// with each member's progress. Admins and moderators write them.
+// Circle guides (multi-step units) with per-member progress.
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, BookOpen, Check, ListChecks, Plus, Trash2 } from "lucide-react";
 import {
@@ -95,7 +94,7 @@ export function Guides({ group, membership }) {
 function GuideView({ group, guide, done, canTrack, moderator, onProgress, onEdit, onClose }) {
   const toast = useToast();
   const [stats, setStats] = useState(null);
-  // Open at the first step not done yet (or the first, if all are).
+  // Resume at the first incomplete step.
   const [current, setCurrent] = useState(() => Math.max(0, guide.unitTitles.findIndex((_, i) => !done.includes(i))));
   useEffect(() => { if (moderator) fetchGuideCompletions(group.id, guide).then(setStats).catch(() => {}); }, [moderator, group.id, guide]);
 

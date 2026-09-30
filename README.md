@@ -1,881 +1,114 @@
 # Mesh
 
-**Making Every Story Heard.**
+A social app for photos, text posts, short and long video, communities,
+events, sourced news and messaging. No ads and no third-party tracking.
 
-A social network for posts, short and long video, communities, gatherings,
-news that has to cite its sources, and messaging. No ads, no data sold, no
-third-party trackers.
+React 19, Vite, Tailwind CSS, and Firebase (Auth, Firestore, Hosting, App
+Check). There is no application server: the client talks to Firestore
+directly and `firestore.rules` is the enforcement layer for every write and
+read. Firestore runs in `australia-southeast1`.
 
-Built with React 19 + Vite + Tailwind on Firebase (Auth, Firestore, Storage).
-Firebase project: `mesh-a293c`, Firestore in `australia-southeast1` (Sydney).
+## Getting started
 
-## Development
-
-Needs Node 20.19 or later.
+Requires Node 20.19+.
 
 ```bash
 npm install
-npm run dev
+npm run dev          # http://localhost:5173
 ```
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | The app on http://localhost:5173 with hot reload. |
-| `npm test` | The test suite (Vitest). `npm run test:watch` re-runs on save. |
-| `npm run lint` | ESLint over everything, including scripts and tests. |
-| `npm run build` | A production build in `dist/`, then `scripts/prerender.mjs` writes the policy pages as static HTML and generates `sitemap.xml`. |
-| `npm run check` | Lint, tests and build together. Run it before every deploy. |
-| `node scripts/preview-prod.mjs` | Serves `dist/` on http://localhost:4174 with the exact headers Firebase Hosting sends (including the Content-Security-Policy). |
-| `node scripts/rules-slur-regex.mjs` | Regenerates the server-side slur patterns for `firestore.rules`. |
+| Command | |
+| --- | --- |
+| `npm run dev` | Dev server with HMR |
+| `npm test` | Vitest (`npm run test:watch` to watch) |
+| `npm run lint` | ESLint |
+| `npm run build` | Production build to `dist/`, then prerenders the policy pages and `sitemap.xml` |
+| `npm run check` | Lint, test and build; run before deploying |
+| `node scripts/preview-prod.mjs` | Serves `dist/` on :4174 with the production headers (CSP etc.) |
+| `node scripts/rules-slur-regex.mjs` | Regenerates the `hateFree()` patterns in `firestore.rules` |
 
-CI (`.github/workflows/ci.yml`) runs lint, tests and the build on every push
-and pull request once the repository is on GitHub.
+CI (`.github/workflows/ci.yml`) runs lint, tests and build on push and PR.
 
-### Layout
+## Configuration
+
+Optional settings go in `.env.local` (git-ignored).
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_ICE_SERVERS` | TURN relay for calls: the provider's ICE servers array as one-line JSON. Required for calls on mobile data (CGNAT). |
+| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | Alternative: static TURN credentials. |
+| `VITE_TURN_API_URL` | Alternative: an endpoint returning ICE servers. Its host must be allowed in the CSP (`firebase.json`). |
+| `VITE_GIPHY_API_KEY` | Enables GIFs. |
+| `VITE_STORAGE=on` | Use Cloud Storage for uploads and enable video. Requires the Blaze plan and deployed `storage.rules`. |
+| `VITE_APPLE_SIGNIN=on` | Show Apple sign-in once it's configured in Firebase. |
+| `VITE_APPCHECK_DEBUG_TOKEN` | App Check debug token for local development. Keep it out of builds. |
+| `VITE_APPCHECK_SITE_KEY`, `VITE_APPCHECK_PROVIDER` | Override the App Check key/provider in `src/firebase.js`. |
+
+TURN credentials are embedded in the client bundle by design; scope them in
+the provider's dashboard. Never put a provider's account secret key here.
+
+## Project layout
 
 ```
 src/
-  App.jsx              routes, the shell, and what loads when (screens load on demand)
-  firebase.js          the Firebase app, App Check, Auth, Firestore
-  components/          one file per screen; big screens have a folder of parts
-    chat/ circle/ news/
-    shell/             sidebar, bottom tabs, headers
-    ui/                the design-system pieces (Button, Dialog, Field...)
+  App.jsx             shell, routing, route-level code splitting
+  firebase.js         Firebase app, App Check, Auth, Firestore; lazy Storage
+  components/         screens; larger ones have folders (chat, circle, news, post, shell)
+    ui/               design-system primitives
   lib/
-    db.js              the data layer's single entry point, re-exporting...
-    data/              ...one module per area: users, posts, chats, circles,
-                       events, news, reports, stories, uploads, account, core
-    moderation.js      the content filter
-    algorithm.js       the feed ranker
-    __tests__/         the test suite
-  legal/               the policies, as data (rendered in the app and prerendered)
-scripts/               build-time and maintenance scripts
-firestore.rules        the security rules: the real enforcement
+    db.js             data-layer entry point (re-exports lib/data/*)
+    data/             Firestore access by domain
+    algorithm.js      feed ranking
+    moderation.js     content filter
+    brick.js          brick mode policy engine (mirrors the rules)
+    calls.js          WebRTC call sessions
+    __tests__/        unit and contract tests
+  legal/              policy documents as data
+scripts/              build and maintenance scripts
+firestore.rules       security rules
+firestore.indexes.json
+docs/architecture.md  design notes per subsystem
 ```
 
-### Tests
-
-`src/lib/__tests__/` covers the content filter (every outcome, and innocent
-text that must pass), validation, routing, formatting, the ranker's spacing
-and recommendation rules, and contract tests that check `firestore.rules` and
-the app agree on the lists they share (interest topics, news topics, circle
-covers, the slur patterns). The security rules themselves were tested by
-attacking the live database; see Security.
-
-### Optional settings (`.env.local`)
-
-| Variable | What it turns on |
-|---|---|
-| `VITE_GIPHY_API_KEY` | GIFs in posts, comments and messages. Get a free key at developers.giphy.com. Without it the GIF buttons are hidden. |
-| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls from most mobile data and some Wi-Fi fail to connect (see Calls). |
-| `VITE_TURN_API_URL` | Or: a URL that returns TURN credentials as a list of ICE servers, such as Metered's. |
-| `VITE_ICE_SERVERS` | Or: the provider's ICE servers array, pasted as JSON on one line (Metered: Show ICE Servers Array). |
-| `VITE_APPLE_SIGNIN=on` | Shows "Continue with Apple". Only set it once Apple sign-in is configured in Firebase. |
-| `VITE_APPCHECK_DEBUG_TOKEN` | Lets local development pass Firebase App Check (the reCAPTCHA Enterprise key only works on the real domains). Generate one in the Firebase console under App Check > Apps > Manage debug tokens, and keep it in `.env.local` only: anyone with it can pass App Check. The site key itself is public and set in `src/firebase.js` (override with `VITE_APPCHECK_SITE_KEY` / `VITE_APPCHECK_PROVIDER`). |
-| `VITE_STORAGE=on` | Uses Cloud Storage for uploads (and turns on video). Set it after enabling the Blaze plan and deploying `storage.rules`. Until then photos and voice messages are stored in Firestore. |
-
-## Surfaces
-
-Names are deliberately our own. "Shorts" belongs to YouTube, "Groups" to
-Facebook, and "Posts" says nothing at all.
-
-**Navigation has three levels.** On phones there are exactly three tabs, always:
-**Home**, **Messages** and **Account**. Home's sidebar (a drawer on phones, a
-rail on desktop) has five sections: **Search**, **For you**, **Flicks**,
-**Circles** and **News**. The feed has its own tabs across the top: **For you**
-and **Following**. Every screen has a real URL, so Back, refresh and
-shared links all work.
-
-| Section | What it is |
-| --- | --- |
-| **For you** | Flicks, Stills and Strands ranked together, stories rail and a quick Strand box on top |
-| **Following** | Only people you follow (and what they repost), newest first, no ranking |
-| **Flicks** | All video. Short Flicks play in full; long ones play a 30-second trailer and open the full-length player |
-| **News** | Stories reviewed against their sources before publication (see below) |
-| **Circles** | Communities, with **Gatherings** (events) as a second tab |
-| **Search** | Explore mix before you type; relevance-ranked, sectioned results after |
-| **Saved** | Your bookmarks, private to you |
-
-Formats: a **Still** is a photo, a **Strand** is up to 500 characters of text, a
-**Flick** is video. **Thoughts** are 60-character notes shown over the Messages
-inbox for 24 hours. Posts can be liked, commented on, **reposted** to your
-followers, saved, and shared by link or into a conversation.
-
-**Stories** last 24 hours (`src/components/StoryViewer.jsx`,
-`src/lib/data/stories.js`). On someone else's story you can:
-
-- **Like** it. Only the author sees who liked it and how many
-  (`stories/{id}/likes/{uid}`), in their story's Activity.
-- **Reply** privately, or send a quick reaction: it arrives as a message in
-  your conversation with them, showing the story it answers (`storyReply`;
-  the rules check the story is real and by someone in that conversation).
-  Their message settings apply, as for any message.
-- **Echo** it: echoes are Mesh's public replies on a story, readable by
-  everyone who can see the story (`stories/{id}/echoes/`). They're held to the
-  same rules as comments: the hate filter, the comment pace, blocks, and the
-  author's choice of who may comment. They can only be added while the story
-  is up; the author can delete any of them, and they go when the story does.
-
-**Viewers**: opening someone's story records that you saw it, once
-(`stories/{id}/views/{uid}`), and only the author can list them. Your story's
-Activity shows everyone who's seen it, with a heart beside those who liked it,
-and its echoes.
-
-Likes and echoes on your story show up in Notifications, and open the story
-with its Activity. Stories open from anywhere with `openStory(id)`
-(`src/lib/openStory.js`).
-
-### Handles vs names
-
-Your **handle** (`@nishil`) is unique across Mesh and rate-limited: once changed,
-you must wait 30 days before changing it again. Your **display name** is
-free-form, can repeat (two people can both be "Alex Nguyen") and can be edited
-any time. The cooldown is enforced in `firestore.rules` against `request.time`,
-not just in the UI.
-
-### Account vs Profile
-
-Deliberately separate layers:
-
-- **Profile** (`Profile.jsx`) is public: how you appear to everyone else. The
-  Account tab opens on it.
-- **Settings** (`Settings.jsx`, behind the gear) is private: sign-in methods,
-  password, birth year, data export, agreements and deletion. Only you see it.
-
-Changing your avatar never touches your credentials, and vice versa.
-
-## The ranking engine
-
-Each of the big four optimises for one thing, and each is right about something
-different. `src/lib/algorithm.js` blends all four rather than picking one:
-
-| Borrowed from | What it contributes |
-| --- | --- |
-| **TikTok** | Interest graph. Affinity built from watch signals can outweigh follows, so a brand-new account still surfaces. |
-| **Instagram** | The sends economy. A save is worth double a like, a send to a friend nearly triple: they cost the user something. |
-| **Facebook** | Meaningful social interaction. Comment threads beat taps, and count for more between people who are connected. |
-| **YouTube** | Retention over impressions. Long-form is scored on completion rate, with new uploads spared until there's data. |
-
-Signal weights live in `SIGNAL` in `src/lib/db.js`: hide −8, skip −1,
-view +0.25, complete +1, replay +1.5, like +1, comment +2, save +3, send +4,
-follow +5. They accumulate per author in `users/{uid}/affinity/{authorId}`,
-readable only by that user.
-
-Two rulings that cut against the obvious approach:
-
-- **No percentile normalisation.** Mapping each format's engagement onto its own
-  CDF and comparing percentiles erases magnitude: finishing a 15-second clip
-  and finishing a 40-minute talk both read as "100% completion", which deletes
-  exactly what makes long-form valuable. Everything is scored in one shared
-  unit instead: expected value per minute of viewer attention.
-- **Per-format floors are the anti-cannibalisation mechanism.** Short-form wins
-  on throughput under almost any scoring, so floors reserve a minimum share of
-  the first 20 slots per format (`FORMAT_FLOORS`: 25% stills, 20% flicks, 15%
-  features). They are paid down *on pace* across the window rather than batched
-  at the end, which would clump three videos in a row.
-
-Also: retention is measured as attention actually delivered (completion ×
-duration) so a well-watched long video isn't crushed by the division; engagement
-is discounted by the position a post was previously served at, since prominence
-inflates counts on its own; freshness decays with a ~20h half-life; per-session
-jitter gives unproven accounts a test run; and a diversity pass caps any author
-at twice per six slots.
-
-## Formats and trailers
-
-Stills need a photo and Flicks need a video; Strands are words only. This is
-enforced in `firestore.rules` (a Strand must have no media and 1 to 500
-characters; everything else must point at our own Storage bucket), not just in
-the composer.
-
-A video over three minutes becomes a **long Flick**: it needs a title, and the
-creator picks which 30 seconds play as its trailer in the Flicks feed. The
-trailer is a window into the same file (`trailerStart`), so there's no second
-upload. Creators can tick **Made with AI**, which labels the post everywhere.
-
-Because Storage needs the Blaze plan (below), the composer probes for it on open
-and explains exactly why photo and video posting is blocked. Strands still work.
-
-## Messages
-
-Modelled closely on Instagram DMs, because that interaction model is the one
-people already know.
-
-**Chat engine**: 1:1 and group threads, reply threading with quoted context,
-emoji reactions (double-tap to heart, long-press for the picker), a 15-minute
-edit window with an "edited" marker, unsend that leaves a tombstone rather than
-silently reshuffling the thread, live typing indicators, presence ("Active now",
-"Active 12m ago"), read receipts, and mark-as-unread.
-
-**Inbox**: General and Requests. A thread lands in Requests when it was
-started by someone you don't follow. Up to three chats can be pinned to the top.
-
-**Personalisation**: five chat themes, and per-thread nicknames that only
-display inside that conversation.
-
-**Voice messages**: tap the mic when the box is empty, talk, tap send. Up to a
-minute, recorded at speech quality (about 180 KB a minute), with a live
-waveform while recording and a scrubbable one on playback, at 1×, 1.5× or 2×.
-Recordings are stored inside the conversation (`chats/{id}/media`), so only its
-members can play them, and unsending deletes the recording too.
-
-**Photos**: the photo button in the message box picks up to ten. They wait in
-a tray above the box (tap × to drop one) and go as one message each, then
-whatever you typed. Each is resized and compressed in the browser (like
-Stills while Storage is off) and stored inside the conversation
-(`chats/{id}/media`, `kind: "image"`), so only its members can see it. Tap a
-photo to see it full screen; double tap to like it; unsending deletes it.
-
-**GIFs** from GIPHY, in messages, comments and Strands.
-
-**Calls**: voice and video, one-to-one, from the phone and camera buttons in a
-chat (`src/lib/calls.js`). You can only ring someone who follows you, so
-strangers can't make someone's phone ring. WebRTC carries the audio and video
-directly between the two devices; Firestore only passes the setup messages
-(`calls/{id}`, with each side's network addresses in `callerCandidates/` and
-`calleeCandidates/`), which are deleted when the call ends. Once connected, a
-data channel inside the call carries mute, camera and hang-up.
-
-- **Ringing**: a ringback tone for the caller, a ring for the person called
-  (and the tab title changes), for 45 seconds. Someone already on a call
-  answers "busy" automatically. Closing the tab ends the call.
-- **Staying connected**: addresses that arrive before the answer are held
-  until it does. If the connection drops (a network change, a tunnel), the
-  caller sends a fresh offer (`offerRev`) and the call reconnects; after 25
-  seconds it gives up.
-- **Cameras**: with no camera, or one that's busy, a video call carries on
-  with voice; phones with two cameras get a Flip button. Cameras are chosen
-  by name (`src/lib/cameras.js`): asking iPhones for "the back camera" picks a
-  multi-lens camera that starts on the ultra-wide lens and looks zoomed out,
-  so Mesh asks for the plain "Back Camera". Flipping releases one camera
-  before opening the other, since many phones can't run two.
-- Each call leaves a line in the chat ("Video call · 3:12", "Missed voice
-  call", "Voice call · busy").
-
-**Calls need a TURN relay to work on most mobile data.** Browsers first try to
-connect directly, using Google's STUN servers to learn their public address.
-That fails when either side is behind carrier-grade NAT (most Australian
-mobile data), strict office Wi-Fi or some home routers; then the call has to go
-through a TURN relay, which is a paid or free-tier service. Set one up in
-`.env.local` (see Optional settings) and rebuild:
-
-- **The ICE servers array** (recommended, and what Mesh uses): in Metered's
-  dashboard, TURN Server > Add Credential > Show ICE Servers Array, and paste
-  the array on one line as `VITE_ICE_SERVERS='[...]'`.
-- **Static credentials** (for example ExpressTURN): `VITE_TURN_URLS` (comma-separated `turn:` and
-  `turns:` URLs, including a `turns:...:443` one for strict networks),
-  `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL`, copied from the provider's
-  dashboard.
-- **A credentials URL** (for example Metered's
-  `https://<app>.metered.live/api/v1/turn/credentials?apiKey=...`, though
-  that endpoint has been unreliable lately):
-  `VITE_TURN_API_URL`, which must return a list of ICE servers. The site's
-  Content-Security-Policy in `firebase.json` allows `*.metered.live`; add
-  your provider's host there if it's another.
-
-Either way the credentials end up in the site's JavaScript, which is how these
-providers expect browsers to use them; limit them in the provider's dashboard.
-The provider's account **secret key** is different: it can create and delete
-credentials, so it never goes in `.env.local` or anywhere in the site.
-Calls relayed through TURN stay encrypted end to end. Group calls would need a
-media server (an SFU), so they're not included.
-
-**Extras**: group polls with live percentages, and 60-character **Thoughts**
-that sit above the inbox for 24 hours. Sharing a post from the feed's Send
-button produces a real preview card (thumbnail, format label and author) that
-opens the full post, rather than a line of text saying something was shared.
-
-Every per-user field is enforced server-side: you can only write your own
-reaction, your own read marker, your own typing indicator, your own pin and
-mute. Verified by probing the live rules: reacting as another user, faking
-someone's typing indicator, writing their read receipt, pinning on their behalf,
-setting their note, removing yourself from a chat while editing it, and
-enumerating all chats are each rejected.
-
-## Circles
-
-Communities with their own admins, rules and limits, and the gatherings they
-plan. Post straight into a circle from the box at the top of its Discussion
-tab; Strands work without Storage, photos and Flicks open the full composer.
-
-**Look** (Manage → Look, or "Edit look" on the banner; the circle's admin
-only): a banner photo across the top, a circle photo shown beside its name in
-lists, and a colour for when there's no photo. Both images must be the admin's
-own uploads (`circleImageOk` in the rules), never an outside address, and go
-when the circle is deleted.
-
-**Limits** (Manage → Limits, circle admin only). Every one is enforced in
-`firestore.rules`, not just the app, and was attack-tested against the live
-rules:
-
-| Limit | What it does |
-| --- | --- |
-| Who can join | Anyone, or admins approve. Private and hidden circles always approve. Screening questions always mean approval. |
-| Age limit | Everyone, 16+ or 18+. Under-age accounts can't join or even ask. |
-| Who can post | All members, or admins and moderators only (this also covers planning gatherings). |
-| Review every post | Members' posts wait as `pending`, visible only to the author and admins, until approved. |
-| Links | Allow, review first, or decline. |
-| New accounts | Under 7, 30, 90 or 180 days old: review first, or decline. |
-| No profile photo | Review first. |
-| Contact details | Decline phone numbers, emails and card numbers (ten or more digits; not years or prices). |
-| Shortest post | Decline Strands under 10, 20 or 50 characters. |
-| Words only | Decline photos and videos. |
-| Removed posts | Decline posts from anyone with a post removed by a moderator in the last 28 days (a "strike"). |
-| Slow mode | Members wait 5, 15 or 60 minutes between posts. The post and a `lastPostAt` stamp on the membership go in one batch, and the rules compare the two. |
-| Blocked words | Up to 40 words, refused for everyone, admins included. |
-
-These are "Admin Assist": every condition either declines a post with the
-reason in words, or sends it to the approval queue. Admins and moderators are
-exempt from all but blocked words. The rules' circle check is kept lean on
-purpose (`circlePostOkAs`, `memberPostOk`, `needsReview`): Firestore caps how
-much one request may evaluate, and the post rule (`postCreateOk`) already does
-a lot. If you add a condition, test posting in a circle as an ordinary member.
-
-**Also in a circle:**
-
-- **Featured**: under the header, the next gathering, the rules and the
-  guides; at the top of Discussion, up to three posts admins feature.
-- **Topics**: the admin sets up to 12 (Manage → Details); members tag a post
-  with one and anyone can filter the discussion by them. Search within the
-  circle matches words in posts and authors.
-- **Chat**: the admin starts it once; members join it themselves (the rules
-  let a circle member add only themselves, and only to the chat the circle
-  points to). It's an ordinary group chat after that.
-- **Guides**: step-by-step units (a welcome, a how-to) with each member's
-  progress, which admins can see as "started / finished".
-
-Also enforced: muted members can't post until the mute ends; paused threads
-take no new comments; private and hidden circles post with visibility
-`circle`, readable only by members, and their comments are just as private;
-members-only posts can't be reposted or sent into chats.
-
-## Gatherings
-
-Each gathering has its own page (`/gatherings/:id`) with replies, a
-**discussion** and a guest list.
-
-- **Public or private.** Private gatherings are visible only to the host,
-  people they invite (Invite people, on the gathering page), and members of the
-  circle they belong to. Invited people find them under Gatherings → You're
-  invited.
-- **Capacity.** Once it's full, Going closes. A reply of Going is only accepted
-  in the same atomic write that raises the head count, which is what keeps the
-  count honest and the limit real.
-- **Who posts.** Everyone who has replied, or the host only (announcements).
-- **Guest list.** Visible to guests, or to the host only; enforced on reads.
-- **Replies**: Going, Interested or Can't go (public); Going, Maybe or Can't
-  go (private). Each reply is also copied to `users/{uid}/rsvps`, which is
-  what "Coming up" in Notifications reads.
-- **Add to calendar**: Google Calendar, or an `.ics` file for everything else
-  with alarms a day and two hours before. That's the reminder system: the
-  calendar does it, so Mesh never needs a server to send anything.
-- **Invite link**: a public gathering's page opens for anyone with the link,
-  signed in or not (`PublicGathering`), with add-to-calendar and a way to
-  join Mesh to reply.
-
-Not built, because each needs a server of our own: email or SMS invites to
-people without accounts, webhooks for ticketing tools, and semantic (AI)
-search. Search within a circle is word matching.
-
-## Privacy controls
-
-In Settings → Privacy and safety, all enforced in `firestore.rules`:
-
-- **Private account.** New followers send a request you approve; locking
-  switches your public posts to followers-only and the rules then refuse
-  public posts and public stories from the account.
-- **Who can message you.** Everyone (strangers land in Requests) or only
-  people you follow. This also covers being added to group chats.
-- **Who can comment.** Everyone, people you follow, or no one.
-- **Blocked accounts.** A block ends follows both ways and stops the person
-  following, requesting, messaging, adding you to groups or commenting.
-  Their posts disappear from your feeds, search and stories.
-- **Muted accounts.** The quiet alternative: their posts, Flicks, stories and
-  comments stop showing for you, but follows stay and they can still message
-  you. Nobody is told. Mute from a post's menu or a profile; the list lives in
-  `users/{uid}/private/prefs` (`muted`, up to 500) and is managed in Settings.
-
-## Notifications
-
-`users/{uid}/notifications`, written by the person who acts (there's no server
-to do it), for likes, comments, reposts, mentions in public posts, follows,
-follow requests and approvals, gathering invites, being let into a circle, and
-parental-control invites and requests. The rules (`noticeHappened`) accept a
-notice only if the thing happened (the like, comment or follow exists), it's
-addressed to the right person, it carries the actor's real handle and photo,
-quoted words are the start of the real comment, and the recipient hasn't
-blocked the actor. Each action has one fixed id (`like_{post}_{actor}`), so
-toggling can't flood anyone; undoing an action takes the notice back.
-
-One listener feeds the badge (sidebar and the phone header's bell) and the
-page. Likes and reposts of one post fold together; opening the page marks
-everything read, and notices older than 90 days are deleted then. "Coming up"
-lists gatherings you've replied to that start within a week.
-
-## Brick mode
-
-Mesh down to messages and calls, on your terms, and slow to undo
-(Settings → Brick mode, `/account/brick`; the engine is `src/lib/brick.js`).
-
-- **Scheduled times**: weekly windows, stored as half-hour slots per day in
-  your own time zone (`slots.d1` is Monday).
-- **Daily limits**: minutes a day for Feed (For you, Following, Search,
-  Circles, Saved), Flicks and News. Time is counted only for sections with a
-  limit: every 30 visible seconds adds 30 to `usage/{uid}_{year}-{day}`, which
-  the rules only let go up, by at most 30, at most every 25 seconds.
-- **Instant brick**: 2 hours, until midnight, or 3 days (at most 8 days).
-
-**Stricter applies now; looser waits 24 hours.** The rules compare every
-change with the current limits (`tighterOrSame`). Anything looser can only go
-into `pending`, stamped with the server's time, and can only be applied once
-24 hours have passed. More loosening adds to what's waiting and restarts the
-clock; tightening while something waits is carried into it so it can't be
-undone tomorrow. Daylight saving moves an hour on its own (at most every 20
-days); a bigger time-zone change waits like any loosening. The limits can't be
-deleted except with the account.
-
-**What the server enforces.** Browsing reads check `lockedFor()`: a scheduled
-window or instant brick refuses posts, comments, stories and news; a used-up
-News limit refuses news, and a used-up Feed or Flicks limit refuses single
-posts of that kind. A feed query mixes Stills and Flicks, so the server can't
-tell a capped section's query from another's; the app keeps those sections
-closed. So refreshing, reinstalling or the website can't get round any limit,
-but a hand-written client could still read feed posts past a Feed or Flicks
-limit (not past a scheduled or instant brick). Closing that last gap needs a
-server that serves the feed itself (Cloud Functions, on the Blaze plan).
-Messages, calls, notifications, settings, your own posts and gathering pages
-never lock.
-
-**Parental controls** use the same engine. A parent (19+ by birth year)
-invites an under-18 account; the teen has to accept, and is told what that
-means first. The parent's limits apply at once, only the parent can loosen
-them (the teen can ask, with a note, including asking to end it), and they
-stop counting on 1 January of the year the teen turns 18. The parent sees the
-teen's limits and today's minutes, nothing else.
-
-**Bricked time and the leaderboard** (`src/lib/data/brickStats.js`,
-`/leaderboard`). `brickStats/{uid}` holds your total, this week's and longest
-bricked time and a streak of bricked days. With no server to watch the clock,
-the client makes claims and the rules check each one against `locks/{uid}`:
-
-- An **instant brick** counts once it's over, for exactly the seconds between
-  its `since` (a server timestamp set when it started) and its `until`.
-- A **scheduled day** counts once the day is over, only for a day after the
-  schedule last changed (`slotsChangedAt`), so a schedule can't be added after
-  the fact. The client adds up that day's slots; the rules check the day's
-  bounds and that it wasn't already counted.
-
-Stats are private until you switch on sharing in Brick mode; only public ones
-can be listed, which is what the leaderboard (this week or all time) reads.
-Profiles show a "Bricked" highlight: always to you, to others only if shared.
-
-## Everyday comforts
-
-Small things that make the app easier to live with:
-
-- **Appearance** (Settings → Appearance, saved on the device in
-  `mesh:appearance`): System, Light or Dark theme; three text sizes (all sizes
-  are in rem, so everything scales together); Reduce motion; and whether feed
-  videos autoplay. Colours are CSS variables (`src/index.css`), so a theme is
-  one block of values. Screens over video or photos (Flicks, Stories, calls,
-  the photo viewer) set `data-theme="dark"` on their root and stay dark in any
-  theme.
-- **Drafts** (`src/lib/drafts.js`): the composer, the quick Strand box and
-  each chat keep unsent words on the device for a week, restore them with a
-  "Discard" option, and clear them on send. The inbox shows "Draft:" on chats
-  with one. Signing out removes every draft.
-- **Feeds keep their place.** Going to Messages and back returns you to the
-  same posts at the same scroll position (kept for 15 minutes, or until you
-  post). Tapping Home, For you or Following when you're already there scrolls
-  to the top; tapping again at the top refreshes.
-- **Editing posts.** Your own posts outside circles: the words, title, alt
-  text and topics, not the media or a poll's choices. The rules stamp
-  `editedAt` (shown as "Edited"), re-run the hate check, and pace edits to one
-  every 3 seconds.
-- **Photo viewer.** Tap a Still to see it full screen (Esc or tap outside to
-  close, ALT shows its description); double tap still likes it.
-- **@mentions** open the person's profile, or Search if the handle is free.
-- **Links** in posts, comments and messages are clickable, including bare
-  `www.` ones. Mesh links open in the app; anything else first shows where it
-  goes (host and full address, with a warning for look-alike or numeric hosts)
-  and asks before leaving (`followLink` in `src/lib/links.js`).
-- **Profile photos.** Your own avatar has an "Add photo" outline until you set
-  one, the feed nudges you once (dismissed per device in
-  `mesh:photo-nudge:{uid}`), and Edit profile has a photo field. Posts,
-  comments and notifications show each person's current photo
-  (`src/lib/profileCache.js`), not the one saved when they posted.
-- **Offline notice** when the connection drops, and "Back online" when it returns.
-- **Update notice**: a tab or home-screen app can run for days on the version
-  it opened with, and an old copy can't show things a newer one sends (a new
-  kind of notification, say). When a newer version is deployed, a banner
-  offers to reload (checked on returning to the app and every ten minutes).
-  If an old copy tries to open a page whose files a deploy removed, it
-  reloads into the new version once (`mesh:reloaded-for-update` in session
-  storage stops a loop).
-- **Keyboard shortcuts** on desktop: `n` new post, `/` search, `j`/`k` next and
-  previous post, `g` then `h`/`m`/`f`/`p` to go Home, Messages, Flicks or your
-  profile, and `?` for the list. They pause while typing or in a dialog.
-- **Email verification**: Settings sends the link if your address isn't verified.
-
-## Group chats
-
-Messages has two boxes: **General** and **Requests** (people you don't follow).
-A group starts with its creator as admin; people are added one at a time so
-the rules can check each add against that person's message setting and
-blocks. Anyone in a group can add people and rename it; only admins remove
-people or appoint admins; anyone can leave (a sole admin leaving hands the
-role on).
-
-## What Mesh deliberately doesn't do
-
-The engagement playbook these mechanics come from also includes a set of
-patterns designed to override judgement rather than serve it. Those are left
-out on purpose:
-
-- **No engineered variable-reward delay.** Refresh is as fast as the network
-  allows. Artificial latency before revealing new content is a slot-machine
-  mechanic.
-- **No infinite scroll.** The feed pages in batches and ends with "You're all
-  caught up". Infinite scroll works by removing the moment where you'd ask
-  whether to keep going; Mesh hands that moment back.
-- **No manufactured urgency.** Stories expire at 24 hours because that's what a
-  story is, not to make you check back.
-- **No contacts, location or IP harvesting** for friend suggestions (see above).
-
-## Suggested people
-
-`src/lib/suggest.js` builds two graphs, the way the big platforms do:
-
-- **Social graph**: mutual-follow overlap (friends-of-friends), damped so one
-  hyper-connected account can't dominate.
-- **Interest graph**: collaborative filtering. People who follow accounts you
-  engage with form a taste cluster; what else that cluster follows is a candidate.
-- **Cold start**: a brand-new account has neither graph, so it falls back to the
-  most-followed and newest accounts.
-
-Deliberately **not** used: contacts, phone numbers, email hashes, IP addresses
-or location. Those are what make suggestion engines feel invasive, and the
-mutual-follow signal is honest enough without them.
-
-## Moderation
-
-One rule for everyone: the same checks apply whichever group is targeted
-(majority or minority) and whichever political side is speaking. Criticising
-ideas, religions as belief systems, countries, governments and policies is
-allowed; attacking people for who they are is not. The public version of this
-is in the Community Guidelines (`src/legal/content.js`).
-
-**Context, not keywords.** Every match is read in its sentence before it's
-judged: negated ("not all X are..."), called out ("saying X are dirty is
-racist"), reported ("he called me a ..."), in-group ("we Indians are always
-late lol"), or endorsed (a laugh, "facts", "not racist but..."). Endorsement
-cancels the others, so "lol my mate said X are dirty 😂" is still blocked.
-
-**What's checked:** everything other people read in public. Private messages,
-group chat names and nicknames aren't filtered; people block and report.
-
-**Four outcomes** (`src/lib/moderation.js`, `assessText`):
-
-| Outcome | What it catches | What happens |
-|---|---|---|
-| block | Slurs against any group; dehumanising generalisations ("X are vermin / dirty / a disease"); calls for violence or exclusion ("kill all X", "deport every X"); "I hate X" about people; "go back to your country"; stereotype abuse phrases; telling someone to kill themselves | Not posted. The message says why, without teaching how to get round it. |
-| borderline | Blanket insults about a group ("X are stupid"); a group, a stereotype and a laugh together (the "50 reels mocking Indians" pattern); coded terms | Posts after a second press. Not recommended to people who don't follow the author, never two within 8 slots, folded away behind a tap in comments and hidden from the comment preview. |
-| quoted | Slurs or abuse quoted to report or call it out | Posts after a second press, behind a tap-to-read warning. Not demoted: that would bury the people it happened to. |
-| ok | Everything else, including criticism, negation and calling hate out | Normal. |
-
-Groups are one list (race, ethnicity, nationality, migration status, religion,
-sexuality, gender, disability), so "white people are vermin" and "Indians are
-vermin" are blocked by the same pattern. Political identities (leftists,
-conservatives, zionists, feminists and so on) are protected only from violence
-and dehumanising language: you can argue with any side, not call it vermin.
-Text is normalised first: look-alike Unicode letters, accents, zero-width
-characters, leetspeak, stretched letters, censoring asterisks, and dots or
-spaces between letters. Words with innocent meanings are checked in context
-("spic and span", "fag end", "tranny fluid", "coon cheese", "chink in the
-armour", "ABO blood group"). It's English only.
-
-The check runs on everything people write that others read: posts (text,
-titles, image descriptions, poll options), comments, messages, names, bios,
-circles, gatherings, news and chat names. GIF searches for slurs return
-nothing, and GIFs whose titles fail the check are dropped.
-
-**On the server** (`hateFree()` in `firestore.rules`): the slurs with no
-innocent meaning are refused by the database itself on every public field.
-Posts and comments can carry one only when labelled `sensitive: true` (the app
-sets it for quoted and borderline text), and every viewer's app covers or
-limits labelled text, so a slur can't reach anyone unwarned by going around
-the app. Viewers' apps also re-check every post: anything that would be
-blocked is left out of feeds and covered elsewhere. The rules language
-can't read context, so this is the narrow core; the contextual checks run in
-every viewer's app, including in the ranker, where they decide what that
-viewer is shown. To change the server list, edit `scripts/rules-slur-regex.mjs`,
-run it, paste the output into `hateFree()`, and deploy the rules.
-
-**Reports**: posts, comments, messages and accounts, with nine reasons and
-optional details. One report per person per thing (the document id enforces
-it). A reported comment or message carries its exact text, which the rules
-check against the original, so a report can't put words in someone's mouth,
-and moderators see only that message, never the conversation. When three
-accounts over a day old report a post, it leaves feeds and search until a
-moderator reviews it; fresh accounts can report but don't count, so a brigade
-of new accounts can't bury a post. A moderator who keeps a post up clears it
-for good.
-
-**Moderators** are the accounts listed in `admins/{uid}` (add one in the
-Firebase console). They get Settings > Moderation: reports grouped by the thing
-reported, the busiest first, with the automatic filter's opinion alongside.
-Actions: remove it, keep it up, or suspend the author for 1, 7 or 30 days or
-permanently. A suspension is enforced by the rules (`notSuspended()`): the
-account can read but can't post, comment, message or create anything. The
-person sees why, until when, and how to appeal. Every decision records who
-made it and when.
-
-**People's own controls**: block, hidden words (Settings > Hidden words; hides
-posts and comments with those words or phrases from feeds, Flicks, search and
-comments, private to them), who can comment, who can message, and "Not
-interested".
-
-**Spam**: link flooding, character mashing, all-caps walls, a 15-second
-posting cooldown, and duplicate-post detection.
-
-**Limits, honestly**: a word-and-pattern filter will miss new slang and
-occasionally stop something harmless, and it can't read images, video or
-voice. Reports and people fill that gap. A machine-learning classifier (such
-as a hosted toxicity model) would catch more, but needs Cloud Functions, which
-need the Blaze plan.
-
-## Posts, interests and topics
-
-Posts are laid out like a photo feed: who posted across the top (with a
-location if the author gave one), the photo or video edge to edge (photos at
-their own shape, portrait ones up to 4:5), the actions under it (like,
-comment, repost, share; save on the right), then likes, the caption with the
-author's name in bold ("more" opens a long one), topics as hashtags and
-comments. A Strand's words come first, large when short. Double tap a photo
-anywhere to like it: a heart springs up over it and the like button pops.
-
-**Carousels**: a Still can hold up to 10 photos (`media` on the post: each
-photo's address, description and size; the first is also `mediaUrl`, so
-shares, Saved and search still show a cover). In the composer you add them,
-pick the cover, move them earlier or later, and describe each one. They're
-stored in one batch, so ten photos aren't held up by the photo pace. In the
-feed they swipe with the browser's own scroll snapping (one photo per swipe,
-`scroll-snap-stop: always`), at the first photo's shape; photos load as you
-near them; a "2/5" counter shows while you swipe; dots in the action bar
-show where you are (five at most, the end ones smaller when there are more);
-wide screens get arrows. The rules check each photo is one of ours, never
-an outside address.
-
-**A second look**: a carousel you had on screen but passed without a tap or
-swipe opens on its second photo the next time it comes round, on a later
-visit, once (`mesh:second-look` on this device, a week at most). The feed
-doesn't push it back to you; it just starts somewhere new if it's there.
-
-Not copied from the photo-feed playbook: infinite scroll (see "What Mesh
-deliberately doesn't do"), and skipping rendering for off-screen posts
-(`content-visibility`), which would break returning to your place in the
-feed, since Mesh restores it by scroll position. Every post card shows who liked it ("Liked by @sam and 11 others"), the first
-comment, a one-line reply box, and labelled Like, Comment, Repost, Share, Copy
-link and Save actions. On your own posts you also see how many people saved or
-sent it, which nobody else sees.
-
-**Polls** on Strands: 2 to 4 options, open for an hour up to a week. Votes are
-anonymous and final. The vote and the count are written together in one batch,
-and the rules check both, so nobody can vote twice or inflate a count.
-
-**Interests**: people pick up to 12 from a fixed list, first on sign-up and
-later in Settings. They're stored in `users/{uid}/private/prefs`, readable only
-by the owner. Sensitive categories (health, religion, politics, sexuality) are
-deliberately not on the list. Posts carry up to 3 **topics**, detected from the
-words (`suggestTopics` in `src/lib/interests.js`, which knows plurals and
-verb forms; words that often mean something else, like "camera" or "run",
-only count alongside another); the full composer shows them with a Change
-button, and quick posts just use them. Circles have up to 3 interests. For you and Flicks get
-a chip row to filter by your interests, the ranker boosts matching topics, and
-Circles has a "For your interests" section, interest filters and a search box.
-
-## Mesh News: the newsroom
-
-Only **writers** can write news, and nobody can publish their own story.
-
-- **Writers** are listed in `newsWriters/{uid}`. Admins add and remove them
-  (Moderation → News writers); a writer can also step down. The rules refuse a
-  new story, or a co-author, who isn't a writer.
-- **The desk** (`/news/desk`) lists your drafts, stories with the reviewers and
-  published ones. **The editor** (`/news/write/<id>`) is a block editor:
-  paragraphs, headings, quotes, lists, images (alt text required) and dividers.
-  Blocks are stored as parallel lists (`blockIds`, `blockTypes`, `blockTexts`,
-  `blockMedia`, `blockAlts`); `script` is the texts joined, and the rules check
-  that it matches. The document logic is `src/lib/storyDoc.js`.
-- **Writing together.** The lead author adds co-authors. While you're in a
-  block, `news/{id}/presence/{uid}` says so and others see it locked. Saving is
-  a transaction on `version`: if someone saved since you loaded, your changes
-  are merged onto theirs block by block (`mergeStory`), so no one's work is
-  overwritten. The rules require every author save to bump `version` by one.
-- **Drafts are private** to their authors. Sending for review saves a
-  **revision** (`news/{id}/revisions`, which can't be edited, and can be
-  deleted only along with the story); you can also save one by hand and see
-  or restore earlier versions from History.
-- **Before review** a story needs a headline, 100 characters of text, two
-  sources, every `[n]` citation matching a listed source, and alt text on every
-  image (`reviewProblems`, and the rules check the essentials). You tick a
-  declaration that it's accurate (`attestedAt`).
-- **Review.** Only admins (`admins/{uid}`, set in the console) approve,
-  reject or send a story back to its authors with a note. A writer can flag a
-  **legal read**; approval is refused until an admin clears it. Readers can
-  suggest corrections, which only admins see; admins append public, dated
-  corrections that can't be removed.
-- **Live blogs** are stories whose authors post timestamped updates
-  (`news/{id}/updates`) once published, marking key ones, and switch the live
-  label off when it's over.
-
-The app says "reviewed against sources", never "fact-checked": review is one
-person checking a story against the sources given, not a guarantee of truth.
-
-Not built, because they need a server (Cloud Functions, Blaze plan): alerts to
-Slack or email, syndication feeds to partners, AI assistance and scroll-driven
-story layouts.
-
-To make yourself an admin, add a document at `admins/<your-uid>` in the Firebase
-console. Your uid is in Settings.
-
-## Security
-
-Server-side rules (`firestore.rules`) are the real gate; the app mirrors them
-for fast feedback. Everything below was attacked on the live database with
-throwaway accounts (September 2026: 109 attacks plus flood-limit bypasses, all
-refused; every legitimate flow re-tested through the app's own code).
-
-- **Identity can't be faked.** Anything that shows who wrote it (posts,
-  comments, likes, reposts, stories, news, gatherings, replies, calls, follow
-  records, chat member names, marriage requests) must carry the author's own
-  handle, display name and photo, as their profile has them. A handle must be
-  claimed in the registry in the same write, can't be squatted, and can't be
-  released while in use, so two profiles never share one.
-- **Dates can't be faked.** Account age, post and comment times, messages,
-  presence, typing and read markers use the server's clock, so nobody can
-  backdate an account to look established or pin a post to the top with a
-  future date.
-- **Counts can't be pushed around.** Likes, saves, sends, reposts, comments,
-  followers, following, circle members and gathering head counts move only in
-  the same batch as the record they count (a like, a follow, a reply), by
-  exactly one, with the final stored value checked, so neither a lone +1 nor a
-  batch of them works. A double tap can't count twice.
-- **Flood limits.** One post every 10 seconds, one comment every 3 and one
-  photo every 5, per account, enforced by the rules with a timestamp that can
-  only be set to "now" and can't be deleted.
-- **Messages can't put words in anyone's mouth.** A quoted reply must match
-  what was really said, a shared-post preview must match the post, a voice note
-  must be the sender's own recording, and a new chat can't arrive pre-muted or
-  with a made-up preview. Adding someone to a group re-checks that they're
-  reachable (not blocked, accepting messages) even if they're slipped in out
-  of order.
-- **Circles.** Moderators can't remove, mute or demote the owner, or other
-  moderators. The cover is one of the app's own gradients (it's used as page
-  styling, so free text isn't accepted).
-- **Profile photos** are our own uploads or Google account photos only, so
-  nobody can set an image that logs the IP address of everyone who views it.
-  "Married to @x" shows only when @x's profile says the same back.
-- **Queries**: list rules are evaluated statically, so feed queries constrain
-  `visibility == 'public'` or `authorId == your uid`. Followers-only posts
-  can't be enumerated; reaching one runs the follower check.
-- **Age**: 13 or over to sign up; under-16 accounts post to followers, never
-  the public feed. Birth year can be set once.
-- **Private data**: saves, hides, interests, hidden words, blocks, reports,
-  suspension reasons and votes are readable only by their owner (or
-  moderators, for reports).
-- **Browser**: a Content-Security-Policy (scripts only from this site and
-  Google sign-in), `frame-ancestors 'none'` and X-Frame-Options against
-  clickjacking, nosniff, a strict referrer policy, and a Permissions-Policy
-  that allows the camera and microphone only for this site. `npm run build &&
-  node scripts/preview-prod.mjs` serves the build on localhost:4174 with exactly
-  the production headers, to test a policy change before deploying.
-- **Auth**: 8-character password minimum, "keep me signed in" chooses local vs
-  session persistence, invisible reCAPTCHA on phone sign-in, and error copy
-  that never reveals whether an account exists.
-
-**Still open:** App Check is registered (reCAPTCHA Enterprise) and every
-request carries a token, but enforcement isn't on yet, so a script with a
-real account can still use the API directly within the limits above. Turn
-enforcement on once the App Check metrics look healthy; see COMPLIANCE.md R8.
-
-## Storage requires the Blaze plan
-
-Firebase now requires the pay-as-you-go **Blaze** plan to create a Cloud Storage
-bucket. Until it's enabled:
-
-- Everything except video works. Photos (Stills, stories, profile pictures,
-  news covers) are compressed in the browser to WebP or JPEG and stored in
-  Firestore (`media/{id}`, under 900 KB, referenced as `mesh-media:<id>`).
-  Voice messages are stored the same way inside their conversation.
-- Video uploads show a clear message explaining they need Storage. When Storage
-  is switched on, photos go there automatically too.
-
-Enabling Blaze needs a payment method, so it's your call. Blaze still includes a
-free tier (5 GB stored, 1 GB/day downloaded), so light use typically costs
-nothing. Once enabled, deploy the storage rules:
-
-```bash
-npx firebase-tools deploy --only storage --project mesh-a293c
-```
-
-Then add `VITE_STORAGE=on` to `.env.local` (and to the environment you build
-the hosted site from) so the app starts using the bucket.
-
-Note the free-tier Storage locations are US-only (`us-east1`, `us-central1`,
-`us-west1`); Australian buckets are Blaze-only.
-
-## Deploying
+## Architecture
+
+- **Rules are authoritative.** Every invariant the UI relies on (ownership,
+  denormalised names and photos, counters, rate limits, visibility, brick mode
+  locks) is enforced in `firestore.rules`. Client checks exist for UX only.
+- **Contract tests** (`src/lib/__tests__/contracts.test.js`) fail when shared
+  lists or shapes drift between the client and the rules.
+- **List queries** must be provable by the rules statically, so post queries
+  always constrain `visibility` or `authorId`.
+- **No backend** means some features are intentionally absent (push
+  notifications, server-side search, ML moderation). See the limitations
+  section in `docs/architecture.md`.
+
+See [docs/architecture.md](docs/architecture.md) for the data model and each
+subsystem.
+
+## Deployment
 
 ```bash
 npm run check
-npx firebase-tools deploy --only firestore:rules,hosting --project mesh-a293c
+npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project mesh-a293c
 ```
 
-Deploy rules and hosting together when both changed: the rules check what
-the app writes, so an old app against new rules (or the reverse) can refuse
-normal actions until the other catches up.
+- Deploy rules and hosting together when both change; the rules validate what
+  the client writes.
+- New composite indexes take a few minutes to build. Deploy indexes before
+  shipping a client that depends on them.
+- Always pass `--project mesh-a293c`. The CLI's default project for this
+  directory may point elsewhere.
 
-Always pass `--project mesh-a293c`. The Firebase CLI's active project for this
-folder can point somewhere else (it was `motopov-6f53d` in September 2026),
-and a bare `firebase deploy` would overwrite that project instead.
+Cloud Storage requires the Blaze plan. Until it's enabled, photos are stored
+inline in Firestore (`media/{id}`) and video uploads are disabled. After
+enabling Blaze, deploy `storage.rules` and build with `VITE_STORAGE=on`.
 
-## Data model
+## Administration
 
-- `users/{uid}`: profile, with `following/`, `followers/`, `followRequests/`,
-  and private `affinity/`, `saved/`, `hidden/`, `blocked/` and `private/prefs`
-  (interests, hidden words, muted accounts)
-- `usernames/{name}`: uniqueness registry
-- `users/{uid}/notifications/{id}`, `users/{uid}/rsvps/{eventId}`: your
-  notifications and your gathering replies (see above)
-- `locks/{uid}`: brick mode limits (`self`, `pending`, a parent's `parent`,
-  and a teen's `parentRequest`); `usage/{uid}_{year}-{day}`: minutes per
-  section; `familyLinks/{teenUid}`: a parent and a teen
-- `groups/{id}/guides/{guideId}` (with `progress/{uid}`): circle guides
-- `rateLimits/{uid}`: the last post, comment, photo and edit times, for flood limits
-- `media/{id}`: photos stored in Firestore while Cloud Storage is off
-- `calls/{id}`: call setup, deleted when a call ends
-- `suspensions/{uid}`: why an account was suspended (moderators and the owner)
-- `posts/{id}`: all content; `kind` is `post` (Still) | `text` (Strand) |
-  `short` (Flick) | `video` (long Flick, with `duration` and `trailerStart`),
-  with `likes/`, `saves/`, `sends/`, `votes/` and `comments/`; each count
-  moves only with the record it counts. `editedAt` is set when the author
-  changes the words.
-- `reposts/{postId}_{uid}`: one per person per post; public posts by others only
-- `users/{uid}/saved/` and `users/{uid}/hidden/`: private per-user lists
-- `reports/{type}_{id}_{uid}`: one per person per thing; moderators only
-- `stories/{id}`: 24-hour media, filtered client-side, with `views/{uid}` and
-  `likes/{uid}` (the author only) and `echoes/` (public replies)
-- `news/{id}`: a story's blocks, `script`, sources, authors, `version` and
-  review status, with `revisions/`, `presence/`, `updates/` (live blogs) and
-  `correctionRequests/`; `newsWriters/{uid}`: who may write news
-- `brickStats/{uid}`: bricked time and streak, public only if you share it
-- `chats/{id}`: with `messages/`
-- `groups/{id}` (Circles): `privacy`, `ownerId`, `rules`, `screeningQuestions`,
-  `automod`, `pinnedPostId`, with `members/` (roles, penalties) and
-  `joinRequests/` (screening answers)
-- `events/{id}` (Gatherings): `privacy`, optional `groupId`, with `rsvps/` and
-  `announcements/`
-- `thoughts/{uid}`: 24-hour status above the inbox
-- `presence/{uid}`: last-active timestamp
-- `spouseRequests/{id}`; `admins/{uid}`
+Admins are documents in `admins/{uid}`, created in the Firebase console. Admins
+get the moderation queue (Settings → Moderation), news review, and can add
+news writers.
+
+App Check tokens are sent on every request but enforcement is not yet enabled;
+see `COMPLIANCE.md`.

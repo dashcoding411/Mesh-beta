@@ -1,9 +1,5 @@
-// How Mesh looks on this device: theme, text size, motion and video autoplay.
-//
-// These are display preferences for one screen, not account data, so they
-// live in this browser only (localStorage, under "mesh:appearance"; see the
-// Cookies & Storage policy). They're applied to <html> as data attributes
-// before the app first renders, and the CSS does the rest.
+// Per-device display preferences (localStorage "mesh:appearance"), applied
+// as data attributes on <html> before first render.
 
 import { useSyncExternalStore } from "react";
 
@@ -46,13 +42,11 @@ function read() {
   }
 }
 
-/** The theme actually showing: the chosen one, or the phone's. */
 export function resolvedTheme(p = prefs) {
   if (p.theme !== "system") return p.theme;
   return systemDark?.matches === false ? "light" : "dark";
 }
 
-/** Should moving things (autoplaying video, animations) hold still? */
 export function motionReduced(p = prefs) {
   return p.motion === "reduce" || !!systemReduce?.matches;
 }
@@ -64,8 +58,7 @@ export function autoplayAllowed(p = prefs) {
 function apply() {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  // With "System" and no JavaScript yet, CSS follows the phone by itself;
-  // setting the attribute here keeps it exact once the app is running.
+  // CSS handles "system" before JS runs; this keeps the attribute exact afterwards.
   root.dataset.theme = resolvedTheme();
   if (prefs.text === "default") delete root.dataset.text;
   else root.dataset.text = prefs.text;
@@ -91,12 +84,10 @@ function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-/** The current preferences, re-rendering when they change. */
 export function useAppearance() {
   return useSyncExternalStore(subscribe, () => prefs, () => DEFAULTS);
 }
 
-// The phone's own settings can change while Mesh is open.
 systemDark?.addEventListener?.("change", emit);
 systemReduce?.addEventListener?.("change", emit);
 apply();

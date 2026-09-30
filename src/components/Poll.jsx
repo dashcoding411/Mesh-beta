@@ -16,9 +16,7 @@ function timeLeft(endsAt) {
   return `${Math.max(1, Math.round(ms / 60e3))}m left`;
 }
 
-/* A poll on a post. Before you vote (and while it's open): the options as
-   buttons. After, or once it closes: the results, with your choice ticked.
-   Votes are anonymous and final. */
+// Options until voted or closed, then results. Votes are anonymous and final.
 export function PollCard({ post }) {
   const toast = useToast();
   const options = post.poll.options;
@@ -76,7 +74,6 @@ export function PollCard({ post }) {
   );
 }
 
-/* Building a poll in the composer: 2 to 4 options and how long it runs. */
 export function PollBuilder({ value, onChange, onRemove }) {
   const set = (patch) => onChange({ ...value, ...patch });
   return (

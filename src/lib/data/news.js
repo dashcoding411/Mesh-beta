@@ -1,48 +1,15 @@
-// News submissions, review and corrections.
+// Published news, review decisions and corrections.
 import {
-  addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, query, serverTimestamp,
-  Timestamp, updateDoc, where, writeBatch,
+  addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
-import { me, snapToList, tsMillis } from "./core.js";
+import { me, snapToList } from "./core.js";
 import { deleteInline } from "./posts.js";
-import { fetchProfile } from "./users.js";
-
-// ---------- news (reviewed against sources before publication) ----------
-
-export async function submitNews({ title, script, sources, topic = "world", keyPoints = [], location = "", coverUrl = "" }) {
-  const profile = await fetchProfile(me());
-  const item = {
-    authorId: me(),
-    authorName: profile?.username || "unknown",
-    title,
-    script,       // [1], [2]… in the text cite the numbered sources
-    sources, // array of URLs
-    topic,
-    keyPoints: keyPoints.slice(0, 3),
-    location,
-    coverUrl,
-    corrections: [],
-    status: "pending",
-    reviewNote: "",
-    likeCount: 0,
-    commentCount: 0,
-    createdAt: serverTimestamp(),
-    // Only ever set by ticking the declaration in the submit form.
-    attestedAt: serverTimestamp(),
-  };
-  const refDoc = await addDoc(collection(db, "news"), item);
-  return { id: refDoc.id, ...item, createdAt: Timestamp.now() };
-}
+import { myProfile } from "./users.js";
 
 export async function fetchNews(status = "approved") {
-  const q = query(collection(db, "news"), where("status", "==", status), limit(100));
-  return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
-}
-
-export async function fetchMyNews() {
-  const q = query(collection(db, "news"), where("authorId", "==", me()), limit(50));
-  return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+  const q = query(collection(db, "news"), where("status", "==", status), orderBy("createdAt", "desc"), limit(100));
+  return snapToList(await getDocs(q));
 }
 
 export async function isAdmin() {
@@ -51,7 +18,7 @@ export async function isAdmin() {
 }
 
 export async function reviewNews(id, status, reviewNote = "") {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   await updateDoc(doc(db, "news", id), {
     status,
     reviewNote,
@@ -60,10 +27,9 @@ export async function reviewNews(id, status, reviewNote = "") {
   });
 }
 
-/** Authors can withdraw a submission; reviewers can take a story down. */
 export async function deleteNews(id) {
   const story = await fetchNewsStory(id);
-  // Its history, live updates and who-was-editing go with it, in one write.
+  // Subcollections go in the same batch; their delete rules check the story is gone.
   const sub = async (name) => (await getDocs(collection(db, "news", id, name)).catch(() => null))?.docs || [];
   const batch = writeBatch(db);
   for (const name of ["revisions", "updates", "presence"]) (await sub(name)).slice(0, 150).forEach((d) => batch.delete(d.ref));
@@ -77,9 +43,8 @@ export async function fetchNewsStory(id) {
   return snap?.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-/** Anyone can flag an error; only admins read the flags. */
 export async function suggestCorrection(storyId, text) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   await addDoc(collection(db, "news", storyId, "correctionRequests"), {
     authorId: me(),
     authorName: profile?.username || "",
@@ -93,7 +58,7 @@ export async function fetchCorrectionRequests(storyId) {
   return snapToList(await getDocs(q));
 }
 
-/** Admins append a public correction to a published story. It's never edited away. */
+/** Corrections are append-only (enforced by the rules). */
 export async function addCorrection(story, note) {
   await updateDoc(doc(db, "news", story.id), {
     corrections: arrayUnion({ note, at: Timestamp.now() }),

@@ -4,12 +4,8 @@ import Button from "./ui/Button";
 
 const KEY = "mesh:storage-notice";
 
-/* Not a consent banner. Mesh sets no analytics or advertising storage, so
-   there's nothing non-essential to ask permission for, and a banner whose
-   only button is "OK" trains people to dismiss the ones that matter. What's
-   owed is disclosure: say what's stored, link to the detail, get out of the
-   way. If non-essential storage is ever added, this has to become a real
-   opt-in with a working refusal. */
+// Disclosure, not a consent prompt: only essential storage is used. Adding
+// non-essential storage would require a real opt-in.
 export default function StorageNotice({ onReadMore }) {
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(KEY) === "1"; } catch { return true; }

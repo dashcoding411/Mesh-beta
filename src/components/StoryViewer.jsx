@@ -16,15 +16,8 @@ import IconButton from "./ui/IconButton";
 
 const IMAGE_MS = 5000;
 
-/* Full-screen stories. Auto-advancing content has to be pausable (WCAG
-   2.2.2), so there's a pause button as well as press-and-hold; arrow keys
-   step through; Escape closes and focus returns to the rail.
-
-   Someone else's story: reply privately (it arrives in your conversation
-   with them, showing the story), send a quick reaction, like it (only they
-   see), or read and add echoes, the public replies everyone who can see
-   the story can read. Your own story: its activity, meaning who's seen it,
-   who liked it, and its echoes. */
+// Auto-advance is pausable (WCAG 2.2.2) via button, press-and-hold, space.
+// Viewers can reply (DM), react, like and echo; authors see activity.
 export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null }) {
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
@@ -36,7 +29,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const [typing, setTyping] = useState(false);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
-  // What we know about each story: { liked, echoes, likes, views }, by id.
+  // Per-story { liked, echoes, likes, views }
   const [meta, setMeta] = useState({});
   const closeRef = useRef(null);
   const item = thread.items[idx];
@@ -52,7 +45,6 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   };
   const prev = () => setIdx(Math.max(0, idx - 1));
 
-  // Likes and echoes for the story on screen.
   useEffect(() => {
     let live = true;
     const id = item.id;
@@ -131,7 +123,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") { if (panel) setPanel(null); else onClose(); return; }
-      // Typing a reply or an echo: the keys are for the words.
+      // Don't hijack keys while typing.
       if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName) || panel) return;
       if (e.key === "ArrowRight") next();
       if (e.key === "ArrowLeft") prev();
@@ -143,8 +135,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   }, [idx, thread, panel]);
 
   const echoes = (info.echoes || []).filter((e) => !hiddenAuthors.has(e.authorId) && !hitsHiddenWords(e.text, hiddenWords));
-  // Everyone who's seen your story, with a heart for those who liked it.
-  // (Likes from before views were counted join the list too.)
+  // Views merged with likes (likes can predate view tracking).
   const viewers = info.views && info.likes ? (() => {
     const liked = new Set(info.likes.map((l) => l.uid));
     const seen = new Set(info.views.map((v) => v.uid));
@@ -205,7 +196,6 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
           <ChevronRight size={32} aria-hidden="true" />
         </button>
 
-        {/* The bar along the bottom: reply, like and echoes, or your story's activity. */}
         {!panel && !confirming && (
           <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-10">
             {mine ? (
@@ -287,8 +277,6 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   );
 }
 
-/* The sheet over the lower half of the story: echoes (anyone), or viewers
-   and echoes (the author's activity). */
 function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, viewers, authorName, onEchoes, startTab }) {
   const toast = useToast();
   const [tab, setTab] = useState(startTab || (panel === "activity" ? "viewers" : "echoes"));

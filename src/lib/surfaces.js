@@ -3,16 +3,8 @@ import {
   House, MessageCircle, UserRound, Bell, Trophy,
 } from "lucide-react";
 
-/* Names are our own: "Shorts" is YouTube's, "Groups" is Facebook's.
-   Flicks covers all video: short clips play in full, long videos play a
-   trailer and open into the full-length player. Stills are photos, Strands
-   are words, Circles are communities.
-
-   Navigation has three levels on purpose:
-     - three tabs that are always there: Home, Messages, Account
-     - five sections of Home in its sidebar: Search, For you, Flicks, Circles, News
-     - the feed's own tabs: For you, Following
-   so neither the bottom bar nor the sidebar grows past what's easy to scan. */
+// Product surfaces. Format names are Mesh's own: Stills (photos), Strands
+// (text), Flicks (video), Circles (communities).
 
 export const TABS = [
   { id: "home", path: "/", label: "Home", icon: House },
@@ -32,13 +24,9 @@ const ALL = {
   leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "Who's kept Mesh bricked the longest" },
 };
 
-/** The Home sidebar, in this order. */
-export const HOME_SECTIONS = [ALL.search, ALL.foryou, ALL.flicks, ALL.circles, ALL.news];
-
-/** Tabs across the top of the feed. */
 export const FEED_TABS = [ALL.foryou, ALL.following];
 
 export const sectionById = (id) => ALL[id] || ALL.foryou;
 
-/** Which sidebar row lights up for a section: the feed's tabs count as For you. */
+/** Sidebar item for a section; feed tabs map to For you. */
 export const sidebarSection = (id) => (["following", "saved"].includes(id) ? "foryou" : id);

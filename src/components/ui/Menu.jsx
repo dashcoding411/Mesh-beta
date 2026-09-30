@@ -1,6 +1,3 @@
-/* Rows inside action sheets and settings lists. Each row is a full-width
-   44px+ target with an optional icon and a one-line explanation, so a
-   destructive row reads as "Unsend, removes it for everyone", not "Unsend". */
 export function MenuItem({ icon: Icon, children, description, onClick, danger = false, disabled = false, trailing }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}

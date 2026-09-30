@@ -10,10 +10,7 @@ import { Field, Input, Textarea } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
-/* Fix a typo, a caption or a description on your own post. The photo or
-   video and any poll stay as they are (people may already have voted), and
-   the post shows "Edited" to everyone. The words go through the same check
-   as a new post. */
+// Text-only edits: media and polls are immutable once posted.
 export default function EditPostDialog({ post, onClose, onSaved }) {
   const toast = useToast();
   const label = kindLabel(post);
@@ -50,7 +47,6 @@ export default function EditPostDialog({ post, onClose, onSaved }) {
       document.getElementById(`edit-${err.title ? "title" : "text"}`)?.focus();
       return;
     }
-    // Same as posting: borderline words need a second, deliberate press.
     if (mod.note && note.for !== fingerprint) return setNote({ for: fingerprint, text: mod.note });
 
     setBusy(true);

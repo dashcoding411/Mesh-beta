@@ -3,11 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import MediaImg from "./MediaImg";
 
-/* A photo on its own, as large as the screen allows. Escape, the close
-   button or a tap on the dark area closes it, and focus goes back to
-   whatever opened it. The description is one tap away for anyone who
-   wants to read it, not only screen reader users. Pinch zoom is the
-   browser's own, so it works however the phone is set up. */
+// Full-screen image with focus trap; alt text is viewable on demand.
 export default function Lightbox({ src, alt, caption, onClose }) {
   const closeRef = useRef(null);
   const [showAlt, setShowAlt] = useState(false);
@@ -19,7 +15,6 @@ export default function Lightbox({ src, alt, caption, onClose }) {
     closeRef.current?.focus();
     const onKey = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); close.current(); }
-      // Keep Tab inside: the only controls are here.
       if (e.key === "Tab") {
         const items = [...document.querySelectorAll("[data-lightbox] button")];
         const i = items.indexOf(document.activeElement);

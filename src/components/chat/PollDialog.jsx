@@ -1,4 +1,3 @@
-// Starting a poll in a group chat.
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { sendPoll } from "../../lib/db";

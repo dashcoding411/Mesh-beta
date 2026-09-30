@@ -1,4 +1,3 @@
-/* Status labels always carry words, not colour alone. */
 const TONES = {
   neutral: "bg-surface-3 text-fg-muted",
   accent: "bg-accent-soft text-accent-ring",

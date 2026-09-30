@@ -10,9 +10,7 @@ import { useToast } from "./ui/toast-context";
 
 const NOUN = { post: "post", comment: "comment", message: "message", user: "account" };
 
-/* One report flow for everything: pick a reason, optionally say more, send.
-   Reports go to a person. The reported account isn't told who reported it.
-   `target` is { type, id, authorId, postId?, chatId?, text? }. */
+/** @param {{type, id, authorId, postId?, chatId?, text?}} target */
 export default function ReportDialog({ target, onClose, onReported, report = reportContent }) {
   const toast = useToast();
   const [reason, setReason] = useState(null);

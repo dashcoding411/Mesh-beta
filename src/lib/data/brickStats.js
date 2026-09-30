@@ -1,26 +1,25 @@
-// Brick stats: how long you've kept Mesh bricked, and the leaderboard.
-//
-// Only time the server itself enforced counts, and the rules check every
-// claim against your limits: a finished instant brick counts once, for
-// exactly as long as it ran; a whole past day counts its scheduled time,
-// as long as the schedule didn't change that day. Private unless you opt in.
+// Bricked-time stats and the leaderboard. Each claim is verified by the rules
+// against the lock doc: a finished instant brick counts once for its exact
+// duration; a past day counts its scheduled slots if the schedule was
+// unchanged that day. Stats are private unless `public` is set.
 
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, Timestamp, where } from "firebase/firestore";
+import {
+  collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where,
+} from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList } from "./core.js";
-import { fetchProfile } from "./users.js";
+import { myProfile } from "./users.js";
 import { localParts } from "../brick.js";
 
 const statsRef = (uid) => doc(db, "brickStats", uid);
 const DAY = 86400000;
 
-/** The Monday that starts this local week, as the rules name it. */
+/** ISO date of the local week's Monday, matching weekKeyOf in the rules. */
 export function weekKeyFor(ms, offset) {
   const monday = localParts(ms - (localParts(ms, offset).dow - 1) * DAY, offset);
   return `${monday.year}-${monday.dayOfYear}`;
 }
 
-/** Local midnight at the start of the day containing `ms`, as a UTC time. */
 export function localMidnight(ms, offset) {
   const p = localParts(ms, offset);
   const into = (p.minuteOfDay * 60000) + (new Date(ms).getUTCSeconds() * 1000) + new Date(ms).getUTCMilliseconds();
@@ -36,13 +35,12 @@ function card(profile) {
   return { username: profile.username, name: profile.name || "", photoURL: profile.photoURL || "" };
 }
 
-/* Bring your stats up to date: start them if needed, then count a finished
-   instant brick and any whole days of scheduled time since last time. Each
-   claim is its own write, which the rules check. Returns the stats. */
+// Creates stats if needed, then claims any finished instant brick and whole
+// scheduled days since the last claim, one verified write each.
 export async function syncBrickStats(policy, raw) {
   if (!policy || !raw) return null;
   const offset = policy.tzOffset || 0;
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   let stats = await fetchBrickStats();
   const now = Date.now();
   const week = weekKeyFor(now, offset);
@@ -62,22 +60,19 @@ export async function syncBrickStats(policy, raw) {
     stats = { ...stats, ...next, weekKey: week };
   };
 
-  // A finished instant brick, not yet counted.
   const until = raw.self.until?.toMillis?.() || 0;
   const since = raw.self.since?.toMillis?.() || until;
   if (until > (stats.instantUntil?.toMillis?.() || 0) && until <= now) {
-    // Whole seconds, cut down as the server counts them (39.8s is 39).
+    // Floor to match the rules' duration.seconds().
     const secs = Math.floor((until - since) / 1000);
     await write({ ...pick(stats), totalSeconds: stats.totalSeconds + secs, weekSeconds: base() + secs, instantUntil: raw.self.until })
       .catch(() => {});
   }
 
-  // Whole past days of scheduled time, from the last one counted.
   const changed = policy.slotsChangedAt;
   if (changed) {
     const today = localMidnight(now, offset);
-    // From the day after the last one counted, but never a day the schedule
-    // changed during, and at most a week back.
+    // Days after the last claim and after slotsChangedAt, at most a week back.
     let firstFull = localMidnight(changed, offset);
     if (firstFull < changed) firstFull += DAY;
     let day = Math.max((stats.scheduleDay?.toMillis?.() || today) + DAY, firstFull, today - 7 * DAY);
@@ -97,7 +92,6 @@ export async function syncBrickStats(policy, raw) {
     }
   }
 
-  // A new week with nothing counted yet starts from zero.
   if (stats.weekKey !== week) await write({ ...pick(stats), weekSeconds: 0 }).catch(() => {});
   return stats;
 }
@@ -107,11 +101,10 @@ const pick = (s) => ({
   instantUntil: s.instantUntil, scheduleDay: s.scheduleDay,
 });
 
-/** Show (or stop showing) your bricked time on your profile and the leaderboard. */
 export async function setStatsPublic(policy, on) {
   const stats = await fetchBrickStats();
   if (!stats) return;
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const week = weekKeyFor(Date.now(), policy?.tzOffset || 0);
   await setDoc(statsRef(me()), {
     ...pick(stats), public: on, ...card(profile),
@@ -120,10 +113,11 @@ export async function setStatsPublic(policy, on) {
   });
 }
 
-/** Everyone who's opted in, ranked by this week (only entries counted
-    this week) or by all time. */
 export async function fetchLeaderboard(scope, week) {
-  const list = snapToList(await getDocs(query(collection(db, "brickStats"), where("public", "==", true), limit(300))));
-  if (scope === "week") return list.filter((s) => s.weekKey === week && s.weekSeconds > 0).sort((a, b) => b.weekSeconds - a.weekSeconds);
-  return list.filter((s) => s.totalSeconds > 0).sort((a, b) => b.totalSeconds - a.totalSeconds);
+  const stats = collection(db, "brickStats");
+  const q = scope === "week"
+    ? query(stats, where("public", "==", true), where("weekKey", "==", week), orderBy("weekSeconds", "desc"), limit(100))
+    : query(stats, where("public", "==", true), orderBy("totalSeconds", "desc"), limit(100));
+  const field = scope === "week" ? "weekSeconds" : "totalSeconds";
+  return snapToList(await getDocs(q)).filter((s) => s[field] > 0);
 }

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listenChats, fetchMyReadTimes, markRead, markUnread, isRequest, me, tsMillis } from "./db";
 
-/* One inbox listener for the whole app. The unread badge on the Messages tab
-   and the Messages page itself read the same state, so opening a chat clears
-   the badge immediately instead of on the next snapshot. */
+// Single app-wide inbox subscription shared by the unread badge and Messages.
 export function useInbox(following, enabled = true) {
   const [chats, setChats] = useState(null);
   const [reads, setReads] = useState(new Map());
@@ -13,8 +11,7 @@ export function useInbox(following, enabled = true) {
     return listenChats(setChats);
   }, [enabled]);
 
-  // Read markers live in a subcollection per chat, so they're fetched when
-  // the set of chats changes rather than streamed.
+  // Read markers are per-chat subcollections: fetched on chat-set change, not streamed.
   const ids = (chats || []).map((c) => c.id).join(",");
   useEffect(() => {
     if (!ids) return;
@@ -22,7 +19,7 @@ export function useInbox(following, enabled = true) {
     fetchMyReadTimes(ids.split(","))
       .then((fetched) => {
         if (cancelled) return;
-        // Keep any read marker set locally since the fetch began, it's newer.
+        // Local markers set since the fetch started win.
         setReads((prev) => {
           const next = new Map(fetched);
           for (const [id, at] of prev) if (at > (next.get(id) ?? 0)) next.set(id, at);

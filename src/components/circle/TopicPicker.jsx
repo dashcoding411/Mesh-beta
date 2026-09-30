@@ -1,5 +1,3 @@
-/* One of the circle's own topics for a post (or none). The same chips,
-   with "All" in front, filter the discussion. */
 export function TopicChips({ topics, value, onChange, label, withAll = false }) {
   const options = withAll ? ["", ...topics] : topics;
   return (

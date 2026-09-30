@@ -1,4 +1,3 @@
-// A circle's gatherings.
 import { CalendarDays, CalendarPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { fetchEvents, fetchMyRsvps } from "../../lib/db";

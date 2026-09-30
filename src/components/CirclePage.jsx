@@ -43,7 +43,7 @@ export default function CirclePage({ circleId }) {
   const [tab, setTab] = useState("discussion");
   const [membership, setMembership] = useState(undefined);
   const [memberCount, setMemberCount] = useState(0);
-  const [dialog, setDialog] = useState(null); // manage | join | leave
+  const [dialog, setDialog] = useState(null); // "manage" | "join" | "leave"
   const [manageSection, setManageSection] = useState("requests");
   const [pendingRequest, setPendingRequest] = useState(null);
   const [joining, setJoining] = useState(false);
@@ -118,7 +118,6 @@ export default function CirclePage({ circleId }) {
 
   const openManage = (section = "requests") => { setManageSection(section); setDialog("manage"); };
 
-  // The circle's chat: the admin opens it once; members join themselves.
   const inChat = !!group.chatId && inbox.chats.some((c) => c.id === group.chatId);
   const openChat = async () => {
     setChatBusy(true);
@@ -229,8 +228,6 @@ export default function CirclePage({ circleId }) {
   );
 }
 
-/* Beneath the header: the next gathering, the rules and the guides, so the
-   things that matter most in a circle are one tap away. */
 function Featured({ group, member, onTab }) {
   const [next, setNext] = useState(null);
   const [guides, setGuides] = useState(0);

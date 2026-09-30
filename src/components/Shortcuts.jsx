@@ -18,9 +18,7 @@ const KEYS = [
 
 const typing = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-/* Single-key shortcuts for keyboards, the way most social sites have them.
-   They never fire while you're typing, with a modifier held, or while a
-   dialog is open, so they can't get in anyone's way. */
+// Single-key shortcuts; ignored while typing, with modifiers, or with a dialog open.
 export default function Shortcuts({ onCreate }) {
   const [help, setHelp] = useState(false);
 
@@ -29,7 +27,6 @@ export default function Shortcuts({ onCreate }) {
     const move = (dir) => {
       const posts = [...document.querySelectorAll("#mesh-main article")];
       if (!posts.length) return;
-      // Step from the post you're on; otherwise from wherever you've scrolled.
       const focused = posts.indexOf(document.activeElement);
       let target;
       if (focused !== -1) target = posts[focused + dir];

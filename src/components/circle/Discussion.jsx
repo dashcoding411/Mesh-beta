@@ -1,4 +1,3 @@
-// A circle's posts, and the box for posting in it.
 import {
   ChartBar, Clapperboard, Hourglass, Image, Info, Lock, LockOpen, MessageSquare, Pin, PinOff, Sticker, VolumeX, Search as SearchIcon, X,
 } from "lucide-react";
@@ -26,9 +25,7 @@ import IconButton from "../ui/IconButton";
 import { EmptyState, ErrorState, InlineMessage, Skeleton } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
-/* Post a Strand straight into the circle. Photo and Flick open the full
-   composer. Everything the circle limits is checked before sending, with
-   the reason in words; the server checks it all again. */
+// Circle limits are checked client-side for messaging and again by the rules.
 function CircleQuickPost({ group, membership, onPosted }) {
   const { profile, openComposer } = useShell();
   const toast = useToast();
@@ -148,8 +145,7 @@ export function Discussion({ group, membership, onChanged, onReview, onPosted })
     } catch { toast({ tone: "error", title: "Couldn't change comments" }); }
   };
 
-  // A moderator's removal counts against its author for 28 days, which the
-  // circle can use to pause their posting (Admin Assist).
+  // Records a strike (28 days) usable by Admin Assist.
   const removed = (id, why) => {
     const post = posts?.find((x) => x.id === id);
     setPosts((prev) => prev.filter((x) => x.id !== id));
@@ -159,7 +155,7 @@ export function Discussion({ group, membership, onChanged, onReview, onPosted })
     }
   };
 
-  // Topic chips and search narrow what's shown; nothing is refetched.
+  // Client-side filtering only.
   const query = normalise(term).trim();
   const shown = useMemo(() => {
     const words = query.split(/\s+/).filter((w) => w.length >= 2);

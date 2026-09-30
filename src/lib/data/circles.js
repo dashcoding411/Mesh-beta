@@ -1,4 +1,4 @@
-// Circles: communities, their rules and limits, members and join requests.
+// Circles: settings, membership, moderation, guides and badges.
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
   setDoc, Timestamp, updateDoc, where, writeBatch,
@@ -7,14 +7,12 @@ import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { deleteInline, deletePost, fetchGroupPosts, fetchPendingPosts } from "./posts.js";
 import { uploadMedia } from "./uploads.js";
-import { fetchProfile } from "./users.js";
+import { fetchProfile, myProfile } from "./users.js";
 import { notify } from "./notifications.js";
 import { createGroupChat } from "./chats.js";
 
-// ---------- circles (communities) ----------
-// privacy: 'public':  anyone can find it and read posts
-//          'private': anyone can find it, only members read posts
-//          'hidden':  invite link only, never listed
+// privacy: "public" (listed, readable), "private" (listed, members read),
+// "hidden" (unlisted, invite link only).
 
 export const CIRCLE_PRIVACY = [
   { id: "public", label: "Public", blurb: "Anyone can find it and read posts." },
@@ -33,7 +31,6 @@ export const COVER_COLORS = [
 ];
 
 export async function fetchGroups() {
-  // Hidden circles are excluded server-side by the list rule.
   const q = query(collection(db, "groups"), where("privacy", "in", ["public", "private"]), limit(100));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
@@ -45,7 +42,7 @@ export async function fetchGroupById(groupId) {
 
 export async function createGroup({ name, description, privacy = "public", ageLimit = 0, interests = [] }) {
   const uid = me();
-  const profile = await fetchProfile(uid);
+  const profile = await myProfile();
   const group = {
     name,
     description,
@@ -72,21 +69,13 @@ export async function createGroup({ name, description, privacy = "public", ageLi
   return { id: refDoc.id, ...group, createdAt: Timestamp.now() };
 }
 
-// --- circle governance ---
-// Rules, entry screening, automated moderation and graduated penalties. A
-// community without these devolves fast, so they ship with the feature rather
-// than after it.
-
-/* Every limit here is enforced twice: in the app, so people get a clear
-   reason before they try, and in firestore.rules, so the limit still holds
-   against anyone who skips the app. Admins and moderators are exempt from
-   the posting limits (not from blocked words). */
+// Mirrored in firestore.rules (circlePostOkAs). Admins and moderators are
+// exempt from posting limits but not from banned words.
 export const AUTOMOD_DEFAULTS = {
   postingPermission: "members", // "members" | "admins": who can start a post
   requirePostApproval: false,   // members' posts wait for an admin or moderator
   bannedWords: [],              // single words, stored lowercase
-  // Admin Assist: conditions checked on every post, each either declining
-  // it with a reason or holding it for an admin to review.
+  // Admin Assist: each condition either declines a post or holds it for review.
   linkAction: "allow",          // "allow" | "hold" | "block"
   newAccountDays: 0,            // 0, 7, 30, 90 or 180
   newAccountAction: "decline",  // "decline" | "hold"
@@ -98,7 +87,7 @@ export const AUTOMOD_DEFAULTS = {
   slowModeMinutes: 0,           // members wait this long between posts (0, 5, 15, 60)
 };
 
-/** A circle's Admin Assist settings, reading the older switches too. */
+/** Admin Assist settings, including legacy fields. */
 export function effectiveAutomod(group) {
   const a = { ...AUTOMOD_DEFAULTS, ...(group?.automod || {}) };
   if (!group?.automod?.linkAction && group?.automod?.blockLinks) a.linkAction = "block";
@@ -106,9 +95,8 @@ export function effectiveAutomod(group) {
   return a;
 }
 
-// The same patterns the rules use for contact details: an email address, or
-// ten or more digits with at most two spaces or brackets between each (phone
-// and card numbers, "(03) 9123 4567"), but not years, dates or prices.
+// Must match the contact-detail patterns in firestore.rules: emails, or 10+
+// digits with up to two separators between each (phones, card numbers).
 export const CONTACT_INFO = /[a-z0-9._%+-]+@[a-z0-9-]+\.[a-z0-9.-]*[a-z]{2,}|\+?(\d[ ().-]{0,2}){9,}\d/i;
 const LINK = /https?:\/\/|www\./i;
 
@@ -122,19 +110,17 @@ export function isCircleMod(membership) {
   return membership?.role === "owner" || membership?.role === "moderator";
 }
 
-/** Whether a profile meets a circle's (or gathering's) age limit. */
 export function meetsAgeLimit(limitYears, profile) {
   if (!limitYears) return true;
   const y = profile?.birthYear || 0;
   return y > 0 && new Date().getFullYear() - y >= limitYears;
 }
 
-/** Can this person join without asking? Mirrors the members rule. */
+/** Mirrors the members create rule. */
 export function canJoinDirectly(group) {
   return group.privacy === "public" && !group.requireApproval && !(group.screeningQuestions || []).length;
 }
 
-/** Private and hidden circles keep posts to members; public circles don't. */
 export function circleVisibility(group) {
   return group.privacy === "public" ? "public" : "circle";
 }
@@ -143,13 +129,11 @@ export async function setCircleInterests(groupId, interests) {
   await updateDoc(doc(db, "groups", groupId), { interests: interests.slice(0, 3) });
 }
 
-/* A circle's look: its banner, its photo, and the colour behind them when
-   there's no banner. `field` is "bannerUrl" or "photoUrl"; no file removes it. */
+/** Sets or clears (file = null) a circle's banner or photo. */
 export async function setCircleImage(group, field, file) {
   if (!["bannerUrl", "photoUrl"].includes(field)) throw new Error("Unknown image");
   const url = file ? (await uploadMedia(file, undefined, field === "photoUrl" ? "avatars" : "uploads")).url : "";
   await updateDoc(doc(db, "groups", group.id), { [field]: url });
-  // The one it replaced isn't needed any more.
   if (group[field] && group[field] !== url) deleteInline(group[field]).catch(() => {});
   return url;
 }
@@ -188,7 +172,6 @@ function normaliseAutomod(a) {
   };
 }
 
-/** Join and membership limits, set together from the Manage dialog. */
 export async function setCircleLimits(groupId, { requireApproval, ageLimit, automod }) {
   await updateDoc(doc(db, "groups", groupId), {
     requireApproval: !!requireApproval,
@@ -203,8 +186,7 @@ const youngAccount = (profile, days) => {
   return age >= 0 && age < days * 86400000;
 };
 
-// Runs before a post is written: the app-side mirror of the circle-post
-// rules in firestore.rules. Returns the reason in words, or null to allow.
+// Client-side mirror of circlePostOkAs. Returns a user-facing reason, or null.
 export function screenPost(text, group, profile, membership, { kind = "text" } = {}) {
   const automod = effectiveAutomod(group);
   const body = String(text || "").toLowerCase();
@@ -241,7 +223,6 @@ export function screenPost(text, group, profile, membership, { kind = "text" } =
   return null;
 }
 
-/** Whether a new post goes straight up, or waits for an admin, and why. */
 export function circlePostVisibility(group, membership, { text = "", profile } = {}) {
   const automod = effectiveAutomod(group);
   if (isCircleMod(membership)) return circleVisibility(group);
@@ -252,13 +233,11 @@ export function circlePostVisibility(group, membership, { text = "", profile } =
   return hold ? "pending" : circleVisibility(group);
 }
 
-// --- join requests (screening questions + rule agreement) ---
+// Join requests
 
 export async function requestToJoin(groupId, answers) {
-  // (Age limits are checked by the rules here too: under-age accounts can't
-  // even ask.)
   const uid = me();
-  const profile = await fetchProfile(uid);
+  const profile = await myProfile();
   await setDoc(doc(db, "groups", groupId, "joinRequests", uid), {
     uid,
     username: profile?.username || "",
@@ -273,8 +252,7 @@ export async function fetchJoinRequests(groupId) {
   return snapToList(await getDocs(q));
 }
 
-// Membership and the member count change together; `lastMember` names who
-// joined or left so the rules can check the count moved because of them.
+// lastMember lets the rules tie the count change to this membership.
 export async function approveJoinRequest(groupId, request) {
   const who = await fetchProfile(request.uid).catch(() => null);
   const batch = writeBatch(db);
@@ -299,13 +277,8 @@ export async function myJoinRequest(groupId) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-// --- pinned posts, thread locking, member penalties ---
+// Featured posts, topics and penalties
 
-export async function setPinnedPost(groupId, postId) {
-  await updateDoc(doc(db, "groups", groupId), { pinnedPostId: postId || "" });
-}
-
-/** Up to three posts shown first, in the Featured section. */
 export function featuredIds(group) {
   if (group?.featuredPostIds?.length) return group.featuredPostIds;
   return group?.pinnedPostId ? [group.pinnedPostId] : [];
@@ -315,21 +288,19 @@ export async function setFeaturedPosts(groupId, ids) {
   await updateDoc(doc(db, "groups", groupId), { featuredPostIds: ids.slice(0, 3), pinnedPostId: "" });
 }
 
-/** The circle's own post topics, set by its admin. */
 export async function setCircleTopics(groupId, topics) {
   const clean = [...new Set(topics.map((t) => t.trim()).filter(Boolean))].slice(0, 12).map((t) => t.slice(0, 30));
   await updateDoc(doc(db, "groups", groupId), { topics: clean });
   return clean;
 }
 
-/** A moderator took a post down: it counts against its author for 28 days. */
+/** Records a strike against the author (counts for 28 days). */
 export async function addStrike(groupId, uid) {
   await updateDoc(doc(db, "groups", groupId, "members", uid), { strikes: increment(1), lastStrikeAt: serverTimestamp() }).catch(() => {});
 }
 
-// --- the circle's community chat ---
+// Community chat
 
-/** An admin opens a chat for the circle; members then join it themselves. */
 export async function createCircleChat(group) {
   const { id } = await createGroupChat(`${group.name}`.slice(0, 60), [], { circleId: group.id });
   await updateDoc(doc(db, "groups", group.id), { chatId: id });
@@ -337,14 +308,14 @@ export async function createCircleChat(group) {
 }
 
 export async function joinCircleChat(group) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   await updateDoc(doc(db, "chats", group.chatId), {
     members: arrayUnion(me()),
     [`memberNames.${me()}`]: profile?.username || "?",
   });
 }
 
-// --- guides: step-by-step units, with each member's progress ---
+// Guides
 
 export async function fetchGuides(groupId) {
   const snap = await getDocs(query(collection(db, "groups", groupId, "guides"), orderBy("createdAt", "asc"), limit(20)));
@@ -379,7 +350,6 @@ export async function setGuideProgress(groupId, guideId, done) {
   await setDoc(doc(db, "groups", groupId, "guides", guideId, "progress", me()), { done: [...new Set(done)].slice(0, 20), updatedAt: serverTimestamp() });
 }
 
-/** How many members have finished a guide (admins only can read these). */
 export async function fetchGuideCompletions(groupId, guide) {
   const snap = await getDocs(query(collection(db, "groups", groupId, "guides", guide.id, "progress"), limit(500))).catch(() => null);
   if (!snap) return null;
@@ -391,7 +361,7 @@ export async function setPostLocked(postId, locked) {
   await updateDoc(doc(db, "posts", postId), { locked });
 }
 
-// Graduated penalties: a timed mute, then post-approval, then removal.
+// Penalties escalate: timed mute, then post approval, then removal.
 export async function penaliseMember(groupId, uid, penalty) {
   const until = penalty === "mute12h" ? Timestamp.fromMillis(Date.now() + 12 * 3600 * 1000) : null;
   await updateDoc(doc(db, "groups", groupId, "members", uid), {
@@ -405,8 +375,7 @@ export function isMuted(membership) {
   return until > Date.now();
 }
 
-// --- contributor badges ---
-// Earned from real activity in the circle rather than handed out.
+// Contributor badges
 
 export function contributorBadge(member, postCount) {
   if (member?.role === "owner") return { label: "Admin", tone: "violet" };
@@ -418,7 +387,6 @@ export function contributorBadge(member, postCount) {
   return null;
 }
 
-/** Post counts per member, from one read of the circle's posts. */
 export async function countPostsByMember(group, member) {
   const posts = await fetchGroupPosts(group, { member }).catch(() => []);
   const counts = new Map();
@@ -438,7 +406,7 @@ export async function fetchMembers(groupId) {
 
 export async function joinGroup(groupId) {
   const uid = me();
-  const profile = await fetchProfile(uid);
+  const profile = await myProfile();
   const batch = writeBatch(db);
   batch.set(doc(db, "groups", groupId, "members", uid), {
     uid,
@@ -457,7 +425,7 @@ export async function leaveGroup(groupId) {
   await batch.commit();
 }
 
-// Admins promote and demote; only the owner can hand out moderator status.
+// Only the owner can grant moderator.
 export async function setMemberRole(groupId, uid, role) {
   await updateDoc(doc(db, "groups", groupId, "members", uid), { role });
 }
@@ -469,13 +437,11 @@ export async function removeMember(groupId, uid) {
   await batch.commit();
 }
 
-/* Delete a circle you own: its posts, its join requests and memberships,
-   then the circle. In that order, because removing other members is checked
-   against the circle's owner, so the circle has to still exist. */
+// Order matters: member deletes are authorised against the circle's owner,
+// so the circle doc goes last.
 export async function deleteGroup(group) {
   const uid = me();
-  // If the posts can't be listed (brick mode, a dropped connection), stop:
-  // deleting the circle anyway would leave its posts behind.
+  // Abort if posts can't be listed (e.g. brick mode) rather than orphan them.
   const [posts, pending, requests, members] = await Promise.all([
     fetchGroupPosts(group, { member: true }),
     fetchPendingPosts(group.id).catch(() => []),
@@ -484,7 +450,7 @@ export async function deleteGroup(group) {
   ]);
   for (const p of [...posts, ...pending]) await deletePost(p).catch(() => {});
   for (const r of requests) await deleteDoc(doc(db, "groups", group.id, "joinRequests", r.id)).catch(() => {});
-  // Guides and everyone's progress in them, while the admins still count as admins.
+  // Guides before memberships, while the caller still counts as an admin.
   for (const g of await fetchGuides(group.id).catch(() => [])) {
     const progress = await getDocs(collection(db, "groups", group.id, "guides", g.id, "progress")).catch(() => null);
     for (const d of progress?.docs || []) await deleteDoc(d.ref).catch(() => {});

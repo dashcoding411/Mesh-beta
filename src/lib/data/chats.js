@@ -1,4 +1,4 @@
-// Messaging: conversations, messages, reactions, typing, read state, polls and thoughts.
+// Conversations, messages, reactions, typing, read state, polls and thoughts.
 import {
   addDoc, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, limit,
   onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
@@ -6,13 +6,9 @@ import {
 import { db } from "../../firebase";
 import { storeChatPhoto, storeVoiceNote } from "../media";
 import { me, snapToList, tsMillis } from "./core.js";
-import { fetchProfile } from "./users.js";
+import { fetchProfile, myProfile } from "./users.js";
 
-// ---------- messaging ----------
-
-// Every stop keeps white message text at 4.5:1 or better (WCAG AA). The
-// earlier ocean, sunset and forest themes used 500-weight colours that fell
-// to 2.4–3.8:1, so messages in them were hard to read.
+// Every bubble colour keeps white text at WCAG AA contrast (4.5:1+).
 export const CHAT_THEMES = {
   default: { label: "Default", bubble: "bg-violet-600",  swatch: "#7c3aed" }, // 5.7:1
   ocean:   { label: "Ocean",   bubble: "bg-sky-700",     swatch: "#0369a1" }, // 5.9:1
@@ -28,19 +24,18 @@ function chatDoc(chatId) {
   return doc(db, "chats", chatId);
 }
 
-/* Throws an Error with a readable message when the other person can't be
-   messaged (they've blocked you, or only take messages from people they follow). */
+/** Rejects with a user-facing message if the other person doesn't accept messages from the caller. */
 export async function openDirectChat(target) {
   const uid = me();
   const chatId = [uid, target.id].sort().join("_");
   const ref = chatDoc(chatId);
   const snap = await getDoc(ref);
   if (snap.exists()) return chatId;
-  const [myProfile, theirProfile] = await Promise.all([fetchProfile(uid), fetchProfile(target.id)]);
+  const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(target.id)]);
   try {
     await setDoc(ref, {
       members: [uid, target.id].sort(),
-      memberNames: { [uid]: myProfile?.username || "?", [target.id]: theirProfile?.username || target.username || "?" },
+      memberNames: { [uid]: mine?.username || "?", [target.id]: theirs?.username || target.username || "?" },
       isGroup: false,
       name: "",
       nicknames: {},
@@ -61,17 +56,15 @@ export async function openDirectChat(target) {
   return chatId;
 }
 
-/* A group starts with just you as its admin; each person is then added
-   one at a time, because the rules check every add (blocked? only takes
-   messages from people they follow?). Returns the chat id and anyone who
-   couldn't be added. */
+// Members are added one write at a time so the rules can vet each add.
+// Resolves to { id, skipped }.
 export async function createGroupChat(name, targets, extra = {}) {
   const uid = me();
-  const myProfile = await fetchProfile(uid);
+  const mine = await myProfile();
   const refDoc = await addDoc(collection(db, "chats"), {
     members: [uid],
     admins: [uid],
-    memberNames: { [uid]: myProfile?.username || "?" },
+    memberNames: { [uid]: mine?.username || "?" },
     isGroup: true,
     name,
     nicknames: {},
@@ -118,7 +111,7 @@ export async function setGroupAdmin(chat, uid, on) {
   await updateDoc(chatDoc(chat.id), { admins: [...admins] });
 }
 
-/* Leaving: if you're the only admin, the next person in the group becomes one. */
+// A sole admin leaving promotes the next member.
 export async function leaveGroupChat(chat) {
   const uid = me();
   const rest = chat.members.filter((m) => m !== uid);
@@ -134,11 +127,10 @@ export async function renameGroupChat(chatId, name) {
 }
 
 export function listenChats(callback) {
-  const q = query(collection(db, "chats"), where("members", "array-contains", me()), limit(100));
+  const q = query(collection(db, "chats"), where("members", "array-contains", me()), orderBy("updatedAt", "desc"), limit(100));
   return onSnapshot(q, (snap) => {
     const uid = me();
     const chats = snapToList(snap).sort((a, b) => {
-      // Pinned chats float, then most recent.
       const ap = (a.pinnedBy || []).includes(uid) ? 1 : 0;
       const bp = (b.pinnedBy || []).includes(uid) ? 1 : 0;
       if (ap !== bp) return bp - ap;
@@ -153,14 +145,11 @@ export function listenMessages(chatId, callback) {
   return onSnapshot(q, (snap) => callback(snapToList(snap)));
 }
 
-/* Record-and-send: the audio goes into the conversation's own media (so
-   only its members can play it), then a message points at it. */
 export async function sendVoiceMessage(chatId, blob, duration, peaks) {
   const mediaId = await storeVoiceNote(chatId, blob, duration);
   await sendMessage(chatId, "", { voice: { mediaId, duration: Math.round(duration), peaks } });
 }
 
-/** A photo, as its own message. */
 export async function sendPhotoMessage(chatId, file) {
   const photo = await storeChatPhoto(chatId, file);
   await sendMessage(chatId, "", { photo });
@@ -190,7 +179,7 @@ export async function sendMessage(chatId, text, extras = {}) {
   await clearTyping(chatId).catch(() => {});
 }
 
-// --- edit & unsend ---
+// Edit and unsend
 
 export function canEdit(msg) {
   return msg.senderId === me() && !msg.deleted && Date.now() - tsMillis(msg.createdAt) < EDIT_WINDOW_MS;
@@ -204,7 +193,7 @@ export async function editMessage(chatId, msg, text) {
   });
 }
 
-// Unsend keeps a tombstone so the thread doesn't silently reshuffle.
+// Unsend leaves a tombstone rather than deleting the message.
 export async function unsendMessage(chatId, msg, { latest = false } = {}) {
   await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
     text: "",
@@ -214,15 +203,12 @@ export async function unsendMessage(chatId, msg, { latest = false } = {}) {
     voice: deleteField(),
     photo: deleteField(),
   });
-  // The recording or photo itself goes too, not just the bubble pointing at it.
   const mediaId = msg.voice?.mediaId || msg.photo?.mediaId;
   if (mediaId) await deleteDoc(doc(db, "chats", chatId, "media", mediaId)).catch(() => {});
-  // The inbox preview shouldn't keep showing what was unsent.
   if (latest) await updateDoc(chatDoc(chatId), { lastMessage: "Unsent a message" }).catch(() => {});
 }
 
-// --- reactions ---
-// Stored as { uid: emoji } so a rule can verify you only ever touch your own key.
+// Reactions are { uid: emoji } so the rules can restrict writes to the caller's key.
 
 export async function reactToMessage(chatId, msg, emoji) {
   const uid = me();
@@ -241,12 +227,12 @@ export function groupReactions(reactions = {}) {
   return [...byEmoji.entries()].map(([emoji, uids]) => ({ emoji, uids, mine: uids.includes(me()) }));
 }
 
-// --- typing & presence ---
+// Typing and presence
 
 let lastTypingWrite = 0;
 
 export async function setTyping(chatId) {
-  // Throttled: a write per keystroke would hammer the document.
+  // Throttled to avoid a write per keystroke.
   if (Date.now() - lastTypingWrite < 3000) return;
   lastTypingWrite = Date.now();
   await setDoc(doc(db, "chats", chatId, "typing", me()), { at: serverTimestamp() });
@@ -293,15 +279,14 @@ export function presenceLabel(atMs) {
   return "";
 }
 
-// --- read receipts & unread ---
+// Read state
 
 export async function markRead(chatId) {
   await setDoc(doc(db, "chats", chatId, "reads", me()), { at: serverTimestamp() }, { merge: true });
 }
 
 export async function markUnread(chatId) {
-  // Rewind the read marker so the chat shows as unread again.
-  await setDoc(doc(db, "chats", chatId, "reads", me()), { at: Timestamp.fromMillis(0) });
+    await setDoc(doc(db, "chats", chatId, "reads", me()), { at: Timestamp.fromMillis(0) });
 }
 
 export function listenReads(chatId, callback) {
@@ -324,7 +309,7 @@ export async function fetchMyReadTimes(chatIds) {
   return map;
 }
 
-// --- inbox organisation ---
+// Inbox
 
 export async function togglePin(chat, pinnedCount) {
   const uid = me();
@@ -353,13 +338,13 @@ export async function setNickname(chatId, uid, nickname) {
   });
 }
 
-// A chat is a "request" when someone you don't follow started it.
+// A request is a chat started by someone the user doesn't follow.
 export function isRequest(chat, followingSet) {
   const uid = me();
   return chat.createdBy !== uid && !followingSet.has(chat.createdBy);
 }
 
-// --- polls ---
+// Polls
 
 export async function sendPoll(chatId, question, options) {
   await sendMessage(chatId, "", {
@@ -375,10 +360,10 @@ export async function votePoll(chatId, msg, optionIndex) {
   });
 }
 
-// --- thoughts (60-char, 24h, pinned above the inbox) ---
+// Thoughts (60 chars, 24h)
 
 export async function setThought(text) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   await setDoc(doc(db, "thoughts", me()), {
     text: text.slice(0, 60),
     username: profile?.username || "",

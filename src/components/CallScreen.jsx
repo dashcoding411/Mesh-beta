@@ -4,8 +4,7 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, SwitchCamera, Volume2 } 
 import Avatar from "./ui/Avatar";
 import { relayConfigured } from "../lib/calls";
 import { endTone, startTone } from "../lib/callTones";
-
-const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+import { formatDuration } from "../lib/format";
 
 function useSession(session) {
   const [, force] = useState(0);
@@ -13,8 +12,7 @@ function useSession(session) {
   return session;
 }
 
-/* Plays a stream. Browsers can refuse to start sound on their own; when
-   that happens onBlocked says so, and a tap starts it. */
+// Reports autoplay rejection via onBlocked so the UI can offer a tap-to-play.
 function StreamPlayer({ stream, kind = "video", muted = false, mirror = false, className = "", onBlocked }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -52,8 +50,6 @@ const ENDED = {
   ended: "Call ended",
 };
 
-/* The whole-screen call view. Voice calls show the other person's picture;
-   video calls show their video full screen with yours in the corner. */
 export function CallScreen({ session, onClose }) {
   useSession(session);
   const [now, setNow] = useState(0);
@@ -69,7 +65,6 @@ export function CallScreen({ session, onClose }) {
 
   useEffect(() => { endBtn.current?.focus(); }, []);
 
-  // The ringback while it rings at their end, and a tone when it's over.
   useEffect(() => {
     if (state === "ringing" && session.isCaller) return startTone("ringback");
     if (state === "ended") endTone();
@@ -89,7 +84,7 @@ export function CallScreen({ session, onClose }) {
     ringing: "Ringing…",
     connecting: "Connecting…",
     reconnecting: "Reconnecting…",
-    active: session.startedAt ? fmt(Math.max(0, (now || session.startedAt) - session.startedAt) / 1000) : "Connected",
+    active: session.startedAt ? formatDuration(Math.floor(Math.max(0, (now || session.startedAt) - session.startedAt) / 1000)) : "Connected",
     ended: session.endedReason === "failed" ? failed : ENDED[session.endedReason] || "Call ended",
   }[state];
 
@@ -97,13 +92,13 @@ export function CallScreen({ session, onClose }) {
   const showRemoteVideo = session.video && !!remoteVideo && !session.remoteCameraOff && (state === "active" || state === "reconnecting");
   const live = state !== "ended";
   const localVideo = session.video && session.localStream && !session.cameraOff && live;
-  // Until it connects, your own camera fills the screen, like a mirror.
+  // Full-screen self view until connected.
   const localFull = localVideo && !showRemoteVideo && !session.startedAt;
 
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label={`${session.video ? "Video" : "Voice"} call with @${session.peer.username}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col bg-zinc-950 text-white anim-fade">
-      {/* Their voice always plays here; the video element stays muted. */}
+      {/* Remote audio plays here; the <video> stays muted. */}
       {live && <StreamPlayer kind="audio" stream={session.remoteStream} onBlocked={setSoundBlocked} />}
       {showRemoteVideo && <StreamPlayer stream={session.remoteStream} muted className="absolute inset-0 h-full w-full object-cover" />}
       {localFull && <StreamPlayer stream={session.localStream} muted mirror={session.facing === "user"} className="absolute inset-0 h-full w-full object-cover opacity-60" />}
@@ -155,14 +150,12 @@ export function CallScreen({ session, onClose }) {
   );
 }
 
-/* Ringing: who's calling, and Answer / Decline. */
 export function IncomingCall({ call, onAnswer, onDecline }) {
   const answerRef = useRef(null);
   useEffect(() => {
     answerRef.current?.focus();
     navigator.vibrate?.([400, 200, 400, 200, 400]);
     const stop = startTone("ring");
-    // So a call is noticed from another tab.
     const title = document.title;
     document.title = `Call from @${call.callerName} · Mesh`;
     return () => { stop(); navigator.vibrate?.(0); document.title = title; };

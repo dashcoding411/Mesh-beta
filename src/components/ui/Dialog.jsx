@@ -9,19 +9,10 @@ const FOCUSABLE =
 
 let openCount = 0;
 
-/* Every overlay in Mesh goes through here, so every overlay behaves:
-
-   - focus moves in on open, and returns to whatever opened it on close
-   - Tab and Shift+Tab stay inside while it's open
-   - Escape closes it, and so does the backdrop
-   - the page behind stops scrolling
-   - it's labelled by its own title for screen readers
-
-   variant:
-     sheet:  slides up from the bottom on phones, centred card on desktop
-     center: centred card everywhere (confirmations)
-     full:   takes the whole screen on phones, large card on desktop
-     drawer: slides in from the left edge (the Home sidebar on phones) */
+/**
+ * Modal with focus trap/restore, Escape and backdrop dismissal, and scroll lock.
+ * variant: "sheet" (bottom sheet on mobile) | "center" | "full" | "drawer"
+ */
 export default function Dialog({
   title, onClose, children, footer, variant = "sheet", size = "md",
   hideTitle = false, initialFocusRef, dismissible = true, bodyClassName = "",
@@ -37,7 +28,6 @@ export default function Dialog({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Focus the requested element, else the first field, else the panel.
     const panel = panelRef.current;
     const target =
       initialFocusRef?.current ||
@@ -69,7 +59,7 @@ export default function Dialog({
         opener.focus({ preventScroll: true });
       }
     };
-    // Mount-only: re-running would steal focus back on every render.
+    // Mount-only, or focus would be reclaimed on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -110,8 +100,6 @@ export default function Dialog({
   );
 }
 
-/* Confirmation for anything destructive. The destructive button names the
-   thing it destroys: "Delete post", not "OK". */
 export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onClose, busy, tone = "danger", children }) {
   return (
     <Dialog title={title} onClose={onClose} variant="center" size="sm">

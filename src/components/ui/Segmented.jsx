@@ -1,8 +1,6 @@
 import { useRef } from "react";
 
-/* A choice of one from 2–4 options that applies straight away (theme, text
-   size). It's a radio group, not tabs: nothing below it switches panels.
-   Arrow keys move and select, and only the chosen option is in the Tab order. */
+// Radio group (not tabs): roving tabindex, arrow keys select.
 export default function Segmented({ options, value, onChange, label, labelledBy, className = "" }) {
   const refs = useRef([]);
 

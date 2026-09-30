@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
 import { Play, Pause, Loader2 } from "lucide-react";
 import { fetchInline, INLINE_PREFIX } from "../lib/media";
-
-const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+import { formatDuration } from "../lib/format";
 
 const BARS = 40;
 
@@ -17,7 +16,6 @@ export function LiveBars({ levels }) {
   );
 }
 
-/* A voice message in the conversation. The audio loads on first play. */
 export function VoiceNote({ chatId, voice, mine }) {
   const [src, setSrc] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,7 +60,7 @@ export function VoiceNote({ chatId, voice, mine }) {
   return (
     <span className="flex min-w-[220px] items-center gap-2.5 py-1">
       <button type="button" onClick={toggle}
-        aria-label={`${playing ? "Pause" : "Play"} voice message, ${fmt(duration)}`}
+        aria-label={`${playing ? "Pause" : "Play"} voice message, ${formatDuration(Math.floor(duration))}`}
         className={`press flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${mine ? "bg-white text-violet-700" : "bg-accent text-white"}`}>
         <Icon size={18} fill={playing || loading ? "none" : "currentColor"} className={loading ? "animate-spin" : ""} aria-hidden="true" />
       </button>
@@ -72,7 +70,7 @@ export function VoiceNote({ chatId, voice, mine }) {
             style={{ height: `${Math.max(12, p)}%` }} />
         ))}
       </span>
-      <span className="w-9 shrink-0 text-right text-caption tabular opacity-90">{error ? "" : fmt(playing || pos ? pos : duration)}</span>
+      <span className="w-9 shrink-0 text-right text-caption tabular opacity-90">{error ? "" : formatDuration(Math.floor(playing || pos ? pos : duration))}</span>
       <button type="button" onClick={cycleRate} aria-label={`Playback speed ${rate} times`}
         className={`press shrink-0 rounded-full px-1.5 text-label font-bold ${mine ? "bg-white/20" : "bg-surface-2"}`}>
         {rate}×

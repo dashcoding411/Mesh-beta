@@ -37,12 +37,10 @@ const TIME_GAP = 60 * 60_000; // a gap longer than this gets a timestamp
 
 const coarsePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
-/* Turn a flat list of messages into rows: day separators, time gaps, and
-   messages marked as the first/last of a run from the same person, which
-   is what lets bubbles cluster instead of each floating alone. */
+// Groups messages into rows with day separators, time gaps and run boundaries.
 function buildRows(messages) {
   const rows = [];
-  const at = (m) => tsMillis(m.createdAt) || Date.now(); // pending writes have no server time yet
+  const at = (m) => tsMillis(m.createdAt) || Date.now(); // pending writes have no server time
   const day = (t) => new Date(t).toDateString();
   messages.forEach((m, i) => {
     const prev = messages[i - 1];
@@ -57,11 +55,8 @@ function buildRows(messages) {
   return rows;
 }
 
-/* One conversation. The details that make chat feel right, all here:
-   clustered bubbles, day separators, the list only auto-scrolls if you're
-   already at the bottom (otherwise a "new messages" pill appears), Enter
-   sends on a keyboard and adds a line on a phone, Escape backs out of a
-   reply, and a failed send keeps your words and offers to retry. */
+// Auto-scrolls only when already at the bottom; otherwise shows a "new
+// messages" pill. Enter sends on desktop, inserts a newline on touch.
 export default function ChatView({ chat }) {
   const { inbox, blocked, startCall, inCall } = useShell();
   const recorder = useVoiceRecorder();
@@ -69,7 +64,6 @@ export default function ChatView({ chat }) {
   const stopping = useRef(false);
   const toast = useToast();
   const [messages, setMessages] = useState(null);
-  // Whatever you'd typed here last time, kept as a draft until it's sent.
   const [text, setText] = useState(() => readDraft(`chat:${chat.id}`)?.data?.text || "");
   const [typing, setTypingUsers] = useState([]);
   const [reads, setReads] = useState(new Map());
@@ -80,7 +74,7 @@ export default function ChatView({ chat }) {
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [sending, setSending] = useState(false);
-  // Photos picked but not sent yet: [{ id, file, url }] (url is a local preview).
+  // Unsent photos: [{ id, file, url: object URL }]
   const [photos, setPhotos] = useState([]);
   const photoInput = useRef(null);
   useDraft(`chat:${chat.id}`, text.trim() && !editing ? { text } : null);
@@ -101,7 +95,6 @@ export default function ChatView({ chat }) {
   useEffect(() => listenPresence(others, (uid, at) => setPresence((prev) => new Map(prev).set(uid, at))), [others]);
   useEffect(() => () => { clearTyping(chat.id).catch(() => {}); }, [chat.id]);
 
-  // Keep read state current while the chat is open.
   useEffect(() => {
     if (messages?.length) inbox.markChatRead(chat.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,8 +106,8 @@ export default function ChatView({ chat }) {
     setUnseen(0);
   }, []);
 
-  // First paint jumps to the newest message; after that, follow new
-  // messages only if you were already at the bottom or sent them yourself.
+  // Jump to the end on first load; afterwards follow only when pinned to the
+  // bottom or for own messages.
   useLayoutEffect(() => {
     if (!messages) return;
     const added = messages.length - lastCount.current;
@@ -146,8 +139,7 @@ export default function ChatView({ chat }) {
     return list.filter((p) => p.id !== id);
   });
 
-  /* Photos go first, one message each, then the words (if any). A photo
-     that fails stays in the tray to try again. */
+  // One message per photo, then the text. Failed photos stay in the tray.
   const sendPhotos = async () => {
     const queue = photos;
     setSending(true);
@@ -175,8 +167,7 @@ export default function ChatView({ chat }) {
     const t = value.trim();
     if (!t || sending) return;
     if (t.length > LIMITS.message) return toast({ tone: "error", title: `Messages can be up to ${LIMITS.message} characters` });
-    // Private conversations aren't filtered for hate speech: people can block
-    // and report instead. Spam checks still apply.
+    // DMs skip the hate filter (block/report instead); spam checks still apply.
     const mod = checkContent(t, { key: "msg", skipCooldown: true, hate: false });
     if (mod.error) return toast({ tone: "error", title: mod.error });
 
@@ -193,7 +184,7 @@ export default function ChatView({ chat }) {
         : {});
     } catch (err) {
       console.error(err);
-      // Put everything back so nothing typed is lost.
+      // Restore input state for retry.
       setText(t);
       setReplyTo(wasReply);
       setEditing(wasEditing);
@@ -206,8 +197,7 @@ export default function ChatView({ chat }) {
     }
   };
 
-  /* Voice notes: tap the mic, talk, tap send. It stops by itself at a minute
-     and sends what it has. Nothing leaves the phone until you send. */
+  // Voice notes auto-stop and send at MAX_VOICE_SECONDS.
   const finishVoice = async () => {
     if (stopping.current) return;
     stopping.current = true;

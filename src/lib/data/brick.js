@@ -1,12 +1,11 @@
-// Brick mode's reads and writes. The logic (what's stricter, what's locked)
-// is in ../brick.js; the security rules check every write here the same way.
+// Brick mode persistence. Policy logic lives in ../brick.js and is mirrored in the rules.
 
 import {
   collection, deleteDoc, doc, getDoc, getDocs, increment, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList } from "./core.js";
-import { fetchProfile, uidForUsername } from "./users.js";
+import { fetchProfile, myProfile, uidForUsername } from "./users.js";
 import { notify } from "./notifications.js";
 import {
   COOL_OFF_MS, applyChange, carryTightening, dayKey, deviceOffset, deviceZone, emptyLayer, isTighterOrSame, layerToDoc, policyFromDoc,
@@ -15,25 +14,22 @@ import {
 
 const lockRef = (uid) => doc(db, "locks", uid);
 
-/** Your limits (or a linked teen's), live. `onChange(policy | null, raw)`. */
+/** Subscribes to a lock doc. `onChange(policy | null, raw)`. */
 export function listenLock(uid, onChange) {
-  // A change just saved has no server time yet; use the estimate rather
-  // than reading it as "the start of time" (which would look long overdue).
+  // Pending server timestamps would read as epoch; use the local estimate.
   return onSnapshot(lockRef(uid),
     (snap) => onChange(snap.exists() ? policyFromDoc(snap.data({ serverTimestamps: "estimate" })) : null, snap.exists() ? snap.data() : null),
     () => onChange(null, null));
 }
 
-/** Today's minutes per section, live. */
 export function listenUsage(uid, offset, onChange) {
   return onSnapshot(doc(db, "usage", `${uid}_${dayKey(Date.now(), offset)}`),
     (snap) => onChange(snap.exists() ? snap.data() : {}), () => onChange({}));
 }
 
-/* Your own limits. Anything at least as strict applies at once. Anything
-   looser is split: the stricter parts apply now, and the full change waits
-   24 hours in `pending`, which you can cancel. Returns { applied } or
-   { applied: false, dueAt }. */
+// Tightening applies immediately. Any loosening is split: the stricter part
+// applies now and the full change waits 24h in `pending`.
+// Resolves to { applied: true } or { applied: false, dueAt }.
 export async function saveOwnLimits(policy, raw, next) {
   if (!policy) {
     await setDoc(lockRef(me()), {
@@ -52,14 +48,14 @@ export async function saveOwnLimits(policy, raw, next) {
   if (isTighterOrSame(next, policy.self)) {
     const changes = { self: layerToDoc(next), updatedAt: serverTimestamp() };
     if (slotsChanged(next, policy.self)) changes.slotsChangedAt = serverTimestamp();
-    // A waiting loosening mustn't undo what you just tightened.
+    // Carry the tightening into any pending loosening.
     if (policy.pending) {
       changes.pending = { ...raw.pending, self: layerToDoc(carryTightening(policy.pending.self, policy.self, next)) };
     }
     await updateDoc(lockRef(me()), changes);
     return { applied: true };
   }
-  // Added to anything already waiting, and the 24 hours start again.
+  // Merges with an existing pending change and restarts the delay.
   const target = policy.pending ? applyChange(policy.pending.self, policy.self, next) : next;
   const now = tightest(policy.self, next);
   await updateDoc(lockRef(me()), {
@@ -75,7 +71,6 @@ export async function cancelPending() {
   await updateDoc(lockRef(me()), { pending: null, updatedAt: serverTimestamp() });
 }
 
-/** Once its 24 hours are up, the waiting change becomes your limits. */
 export async function applyPending(raw) {
   const p = raw.pending;
   const changes = { self: p.self, pending: null, updatedAt: serverTimestamp() };
@@ -88,14 +83,13 @@ export async function applyPending(raw) {
   await updateDoc(lockRef(me()), changes);
 }
 
-/** Brick now, until `untilMs`. Can't be ended early (that would be loosening). */
+/** Instant brick until `untilMs`. Cannot be shortened. */
 export async function brickUntil(policy, raw, untilMs) {
   return saveOwnLimits(policy, raw, withBrickUntil(policy?.self || emptyLayer(), untilMs));
 }
 
-/* Keeping local time right. A daylight-saving hour moves at once (the rules
-   allow an hour at most every 20 days); moving further, to another country,
-   waits 24 hours like any other change, since it shifts every window. */
+// A one-hour offset change (DST) applies immediately, at most every 20 days;
+// larger changes shift every window and go through the 24h delay.
 export async function syncTimeZone(policy) {
   const offset = deviceOffset();
   if (!policy || offset === policy.tzOffset) return "same";
@@ -118,16 +112,15 @@ export async function requestTimeZoneChange(policy, raw) {
   });
 }
 
-// ---------- usage, for daily caps ----------
+// Usage
 
-/** Add 30 seconds to today's count for a section. The rules allow one of
-    these every 25 seconds, so two open tabs can't double-count. */
+/** +30s for a section. The rules accept one increment per 25s. */
 export async function pingUsage(policy, section, seconds = 30) {
   const id = `${me()}_${dayKey(Date.now(), policy.tzOffset || 0)}`;
   await setDoc(doc(db, "usage", id), { uid: me(), [section]: increment(seconds), at: serverTimestamp() }, { merge: true });
 }
 
-/** Earlier days aren't needed once they're over: keep a week, delete the rest. */
+/** Deletes usage docs older than a week. */
 export async function tidyUsage(policy) {
   const today = `${me()}_${dayKey(Date.now(), policy.tzOffset || 0)}`;
   const week = new Set(Array.from({ length: 7 }, (_, i) => `${me()}_${dayKey(Date.now() - i * 86400000, policy.tzOffset || 0)}`));
@@ -146,7 +139,7 @@ export async function fetchUsageFor(uid, offset) {
   return snap?.docs.find((d) => d.id === today)?.data() || {};
 }
 
-// ---------- family: a parent and an under-18 account ----------
+// Parental controls
 
 export async function fetchMyFamilyLink() {
   const snap = await getDoc(doc(db, "familyLinks", me())).catch(() => null);
@@ -157,12 +150,11 @@ export async function fetchMyTeens() {
   return snapToList(await getDocs(query(collection(db, "familyLinks"), where("parentId", "==", me()))));
 }
 
-/** A parent asks to link a teen's account. The teen has to agree. */
 export async function inviteTeen(handle) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
   if (uid === me()) throw new Error("That's your own account.");
-  const [mine, theirs] = await Promise.all([fetchProfile(me()), fetchProfile(uid)]);
+  const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(uid)]);
   const thisYear = new Date().getFullYear();
   if (!(mine?.birthYear > 0) || thisYear - mine.birthYear < 19) throw new Error("Parental controls are for adults. Set your birth year in Settings first.");
   if (!(theirs?.birthYear > 0) || thisYear - theirs.birthYear >= 18) throw new Error(`@${theirs?.username || handle} isn't an under-18 account, so there's nothing to supervise.`);
@@ -186,16 +178,14 @@ export async function declineFamilyInvite() {
   await deleteDoc(doc(db, "familyLinks", me()));
 }
 
-/** The parent ends supervision: their limits go with it. */
 export async function removeFamilyLink(childUid) {
-  // Limits first: once the link is gone, so is the right to change them.
+  // Clear the parent layer first; the link is what authorises it.
   await updateDoc(lockRef(childUid), { parent: null, parentRequest: null, updatedAt: serverTimestamp() }).catch(() => {});
   await deleteDoc(doc(db, "familyLinks", childUid));
 }
 
-/** The parent sets their layer on a teen's account. Takes effect at once. */
 export async function saveParentLimits(child, policy, layer) {
-  const mine = await fetchProfile(me());
+  const mine = await myProfile();
   const parent = { ...layerToDoc(layer), parentId: me(), parentName: mine.username, untilYear: child.birthYear + 18 };
   if (!policy) {
     await setDoc(lockRef(child.id), {
@@ -213,12 +203,11 @@ export async function saveParentLimits(child, policy, layer) {
   }
 }
 
-/** The parent says yes (their layer becomes what was asked for) or no. */
 export async function answerParentRequest(child, policy, approve) {
   const req = policy.parentRequest;
   if (approve && req.unlink) return removeFamilyLink(child.id);
   if (approve) {
-    const mine = await fetchProfile(me());
+    const mine = await myProfile();
     await updateDoc(lockRef(child.id), {
       parent: { ...layerToDoc(req.self), parentId: me(), parentName: mine.username, untilYear: child.birthYear + 18 },
       parentRequest: null,
@@ -229,7 +218,6 @@ export async function answerParentRequest(child, policy, approve) {
   }
 }
 
-/** The teen asks the parent to change (or end) the parent's limits. */
 export async function requestParentChange(policy, target, note, unlink = false) {
   await updateDoc(lockRef(me()), {
     parentRequest: { self: layerToDoc(target), note: note.slice(0, 280), unlink, at: serverTimestamp() },

@@ -3,14 +3,8 @@ import { ToastContext } from "./toast-context";
 import { createPortal } from "react-dom";
 import { Check, AlertTriangle, Info, X } from "lucide-react";
 
-/* Non-blocking feedback: "Saved", "Link copied", "Couldn't send".
-
-   Rules it follows:
-   - announced to screen readers (polite for success, assertive for errors)
-   - long enough to read: 4s for confirmations, 6s when there's an action
-     ("Undo", "Retry") to reach, 8s for errors, and the timer pauses while
-     the pointer or keyboard focus is on it
-   - never more than three at once; the oldest gives way */
+// Polite live region for success, assertive for errors. Durations: 4s,
+// 6s with an action, 8s for errors; paused on hover/focus. Max three.
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const nextId = useRef(1);

@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { fetchStory, me, storyExpired } from "../lib/db";
 import { OPEN_STORY_EVENT } from "../lib/openStory";
 import { useToast } from "./ui/toast-context";
-import StoryViewer from "./StoryViewer";
+const StoryViewer = lazy(() => import("./StoryViewer"));
 
-/* Opens a single story wherever it's asked for (a notification, a reply in
-   a conversation). Someone else's story only while it's up; your own any
-   time, so you can still see who liked and echoed it. */
+// Others' stories open only while live; the author's own open any time.
 export default function StoryOpener() {
   const toast = useToast();
-  const [open, setOpen] = useState(null); // { thread, panel, tab }
+  const [open, setOpen] = useState(null);
 
   useEffect(() => {
     const onOpen = async (e) => {
@@ -26,7 +24,9 @@ export default function StoryOpener() {
   if (!open) return null;
   const close = () => setOpen(null);
   return (
-    <StoryViewer key={open.thread.items[0].id} thread={open.thread} startPanel={open.panel} startTab={open.tab}
-      onClose={close} onNextThread={close} onDeleted={close} />
+    <Suspense fallback={null}>
+      <StoryViewer key={open.thread.items[0].id} thread={open.thread} startPanel={open.panel} startTab={open.tab}
+        onClose={close} onNextThread={close} onDeleted={close} />
+    </Suspense>
   );
 }

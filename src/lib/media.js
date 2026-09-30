@@ -1,21 +1,14 @@
-// Photos and voice notes without Cloud Storage.
-//
-// Cloud Storage needs Firebase's paid Blaze plan. Until that's switched on,
-// small media lives in Firestore instead: photos are resized and compressed
-// in the browser to well under Firestore's 1 MiB document limit, and voice
-// notes are recorded at speech quality (~24 kbps), so a minute is ~180 KB.
-// A post then points at `mesh-media:<id>` rather than a Storage URL, and
-// every <img> resolves that through useMediaSrc().
-//
-// Video is still Storage-only: even a short clip is far past what a
-// document can hold. When Storage is on, photos go there too, automatically.
+// Inline media for the Spark plan (no Cloud Storage): images are compressed
+// client-side to fit a Firestore document and referenced as `mesh-media:<id>`;
+// voice notes are stored the same way inside their chat. Video still needs
+// Storage.
 
 import { useEffect, useState } from "react";
 import { addDoc, collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 export const INLINE_PREFIX = "mesh-media:";
-const MAX_DATA_CHARS = 900_000; // base64 text; the rules cap it too
+const MAX_DATA_CHARS = 900_000; // base64 chars; also enforced by the rules
 const cache = new Map(); // id -> Promise<string>
 
 export const isInline = (url) => typeof url === "string" && url.startsWith(INLINE_PREFIX);
@@ -30,9 +23,7 @@ function loadImage(file) {
   });
 }
 
-/* Resize to at most `maxSide` px and step the quality down until it fits.
-   WebP where the browser can encode it (smaller), JPEG otherwise. Animated
-   GIFs lose their animation here, which is why GIFs come from GIPHY instead. */
+/** Downscales and steps down quality until the data URL fits `budget`. WebP where supported. */
 export async function compressImage(file, { maxSide = 1440, budget = MAX_DATA_CHARS * 0.85 } = {}) {
   const img = await loadImage(file);
   let side = maxSide;
@@ -57,10 +48,10 @@ export async function compressImage(file, { maxSide = 1440, budget = MAX_DATA_CH
   throw new Error("That image is too detailed to post without Cloud Storage. Try a smaller one.");
 }
 
-/** Store a photo; returns a `mesh-media:` URL to put on the post, avatar or story. */
+/** Resolves to { url: "mesh-media:<id>", path, width, height }. */
 export async function storeInlineImage(file, { maxSide } = {}) {
   const { data, width, height } = await compressImage(file, maxSide ? { maxSide } : undefined);
-  // With its rate-limit stamp: the rules allow one photo every few seconds.
+  // The rules require the media rate-limit stamp in the same batch.
   const ref_ = doc(collection(db, "media"));
   const batch = writeBatch(db);
   batch.set(ref_, {
@@ -80,9 +71,8 @@ export async function storeInlineImage(file, { maxSide } = {}) {
   return { url: INLINE_PREFIX + ref_.id, path: "", width, height };
 }
 
-/* Several photos at once (a carousel), in one write: the rules allow one
-   photo upload every few seconds, and a batch counts as one. Firestore takes
-   up to 10 MiB in a write, so each photo gets a tenth of that at most. */
+// One batch for a whole carousel: a single rate-limit window, and the budget
+// is split to stay under Firestore's 10 MiB request limit.
 export async function storeInlineImages(files, onProgress) {
   const budget = Math.min(MAX_DATA_CHARS * 0.85, 9_000_000 / Math.max(1, files.length));
   const done = [];
@@ -107,13 +97,12 @@ export async function storeInlineImages(files, onProgress) {
   return refs.map((r, i) => ({ url: INLINE_PREFIX + r.id, path: "", width: done[i].width, height: done[i].height }));
 }
 
-/** A photo's size in pixels, read in the browser. */
 export async function imageSize(file) {
   const img = await loadImage(file);
   return { width: img.naturalWidth, height: img.naturalHeight };
 }
 
-/** Store a photo inside its conversation, readable only by its members. */
+/** Stored under the chat so only members can read it. */
 export async function storeChatPhoto(chatId, file) {
   const { data, width, height } = await compressImage(file);
   const ref_ = await addDoc(collection(db, "chats", chatId, "media"), {
@@ -127,7 +116,6 @@ export async function storeChatPhoto(chatId, file) {
   return { mediaId: ref_.id, width, height };
 }
 
-/** A conversation's photo, as something an <img> can show. */
 export function useChatMedia(chatId, mediaId) {
   const [loaded, setLoaded] = useState({ id: null, src: "" });
   useEffect(() => {
@@ -139,7 +127,6 @@ export function useChatMedia(chatId, mediaId) {
   return loaded.id === mediaId ? loaded.src : "";
 }
 
-/** Store a voice note inside its conversation, readable only by its members. */
 export async function storeVoiceNote(chatId, blob, duration) {
   const data = await new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -170,8 +157,7 @@ export function fetchInline(url, chatId) {
   return cache.get(key);
 }
 
-/* <img src={useMediaSrc(post.mediaUrl)} />. Storage and GIPHY URLs pass
-   straight through; inline media is fetched once and cached for the visit. */
+/** Resolves `mesh-media:` URLs (cached per session); other URLs pass through. */
 export function useMediaSrc(url) {
   const [src, setSrc] = useState(isInline(url) ? "" : url || "");
   useEffect(() => {

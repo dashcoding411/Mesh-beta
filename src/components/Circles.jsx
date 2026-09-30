@@ -19,10 +19,8 @@ import { EmptyState, ErrorState, Skeleton, InlineMessage } from "./ui/States";
 import CirclePage from "./CirclePage";
 import { GatheringCard, NewGatheringDialog } from "./Events";
 
-/* Circles are communities; Gatherings are what they plan. One section,
-   two tabs: you look for both in the same place. */
 export default function Circles({ circleId, view }) {
-  const [creating, setCreating] = useState(null); // 'circle' | 'gathering'
+  const [creating, setCreating] = useState(null); // "circle" | "gathering"
   const tab = view === "gatherings" ? "gatherings" : "circles";
 
   if (circleId) return <CirclePage circleId={circleId} />;
@@ -73,8 +71,6 @@ export function PrivacyBadge({ privacy }) {
   return <Badge tone={p.tone} icon={p.icon}>{p.label}</Badge>;
 }
 
-/* Your circles first, then circles that match your interests, then the
-   rest. A search box and interest chips narrow all three. */
 function CircleList({ onCreate }) {
   const { interests, openInterests } = useShell();
   const [groups, setGroups] = useState(null);
@@ -94,7 +90,7 @@ function CircleList({ onCreate }) {
   }, []);
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
-  // Your interests lead the chip row; the rest follow so anything can be browsed.
+  // The viewer's interests first.
   const chipIds = useMemo(() => {
     const yours = (interests || []).filter((id) => interestById(id));
     return [...yours, ...INTERESTS.map((i) => i.id).filter((id) => !yours.includes(id))];
@@ -141,8 +137,7 @@ function CircleList({ onCreate }) {
         </div>
         <div role="radiogroup" aria-label="Filter circles by interest" className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:flex-wrap md:px-0">
           {[{ id: "all", label: "All" }, ...chipIds.map((id) => interestById(id))]
-            // On wide screens the full list wraps to four rows; show your
-            // interests and a few more until asked. Phones scroll sideways.
+            // Collapse the chip list on wide screens; phones scroll horizontally.
             .filter((c, i) => allChips || i <= Math.max(8, (interests || []).length + 4) || c.id === topic)
             .map((c) => {
             const on = topic === c.id;
@@ -226,7 +221,6 @@ function CircleSection({ title, groups, highlight }) {
   );
 }
 
-/* Private gatherings you've been invited to, then everything public. */
 function GatheringList({ onCreate }) {
   const [events, setEvents] = useState(null);
   const [invited, setInvited] = useState([]);

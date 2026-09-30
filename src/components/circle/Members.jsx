@@ -1,4 +1,3 @@
-// A circle's members, and what admins can do about them.
 import { VolumeX } from "lucide-react";
 import { useEffect, useState } from "react";
 import {

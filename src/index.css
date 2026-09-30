@@ -2,9 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- themes ----------
-   Colours as space-separated RGB so Tailwind's opacity modifiers work
-   (bg-canvas/90). Ratios measured against every surface in the same theme. */
+/* Theme tokens as space-separated RGB for Tailwind opacity modifiers.
+   Contrast ratios are measured against every surface in the same theme. */
 
 :root,
 [data-theme="dark"] {
@@ -31,12 +30,10 @@
   --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05);
 }
 
-/* Screens that sit over video or photos (Flicks, Stories, the lightbox)
-   stay dark in every theme: they mark their root with data-theme="dark". */
+/* Media screens force dark via data-theme="dark" on their root. */
 [data-theme="dark"]:not(:root) { color: rgb(var(--fg)); }
 
-/* Light, chosen in Settings or (with no choice made) from the phone's own
-   setting, which works before any JavaScript has run. */
+/* Light: explicit setting, or the system preference before JS runs. */
 :root[data-theme="light"] {
   color-scheme: light;
   --canvas: 247 247 248;     /* #f7f7f8 */
@@ -78,8 +75,7 @@
   font-feature-settings: "cv11", "ss01";
 }
 
-/* Text size, from Settings: every size in the app is in rem, so this scales
-   all of it (and the layout with it) at once. */
+/* All sizes are rem, so the root font size scales the whole UI. */
 :root[data-text="large"] { font-size: 112.5%; }
 :root[data-text="larger"] { font-size: 125%; }
 
@@ -98,7 +94,7 @@ body {
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ---------- scrollbars ---------- */
+/* Scrollbars */
 
 * {
   scrollbar-width: thin;
@@ -110,10 +106,7 @@ body {
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* ---------- motion ----------
-   Every animation here explains a change: something arriving, leaving, or
-   responding. Nothing loops for decoration. Durations follow the tokens:
-   120ms micro, 200ms standard, 320ms emphasis. */
+/* Motion. Durations: 120ms micro, 200ms standard, 320ms emphasis. */
 
 @keyframes mesh-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mesh-rise {
@@ -186,11 +179,7 @@ body {
 .press { transition: transform 120ms ease, background-color 200ms ease, color 200ms ease, border-color 200ms ease, box-shadow 200ms ease; }
 .press:active:not(:disabled) { transform: scale(0.97); }
 
-/* ---------- accessibility ---------- */
-
-/* Every interactive element gets a visible focus ring for keyboard users.
-   :focus-visible rather than :focus so pointer users don't see it on click.
-   The ring colour is measured against every surface in each theme. */
+/* Focus ring for keyboard users; accent-ring meets 3:1 on every surface. */
 :focus-visible {
   outline: 2px solid rgb(var(--accent-ring));
   outline-offset: 2px;

@@ -2,10 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import IconButton from "../ui/IconButton";
 import { goBack } from "../../lib/router";
 
-/* The phone header. Each page supplies its own, because only the page knows
-   what belongs there: Home puts the sidebar button and Create in it, a chat
-   puts the person you're talking to. Hidden on desktop, where the sidebar
-   already says where you are. */
+// Mobile page header; hidden on desktop.
 export default function TopBar({ title, left, right, back, backTo = "/", transparent = false, desktop = false, sub }) {
   return (
     <header className={`${desktop ? "" : "md:hidden"} sticky top-0 z-nav shrink-0 pt-safe ${

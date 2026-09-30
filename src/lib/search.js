@@ -1,27 +1,12 @@
-// Search: one query, every kind of thing on Mesh, ranked by how well it
-// answers the query and returned in sections.
+// Client-side search over a cached candidate pool (recent public posts,
+// profiles, circles, news, gatherings).
 //
-// How ranking works, in order of weight:
+// Ranking: field-weighted text relevance (exact > prefix > word start >
+// substring > one typo), multiplied by personal affinity and log-scaled
+// engagement with age decay. Every query token must match some field.
 //
-//   1. Text relevance. Where the match lands matters more than whether it
-//      exists: an exact handle beats a handle that starts with the query,
-//      which beats the query appearing mid-caption. Every word in the query
-//      has to be found somewhere, or the result is dropped, a search for
-//      "melbourne coffee" should not return every post that says "coffee".
-//      One typo is forgiven on longer words, at a discount.
-//   2. Personal context. Things from people you follow, or whose work you
-//      engage with, rise, the same affinity signal the feed uses.
-//   3. Quality and freshness. Engagement is log-scaled so a viral post can't
-//      bury an exact match, and news and posts decay with age.
-//
-// Relevance multiplies everything else: a popular post that barely matches
-// never outranks a precise match from a small account.
-//
-// Scale note: this ranks a candidate pool fetched to the client (recent
-// public posts, profiles, circles, news). That's honest at Mesh's current
-// size and gives real relevance ordering, but it can only find what's in the
-// pool. Past a few thousand posts this belongs in a search index (Typesense,
-// Meilisearch, or Algolia) with the same scoring ideas moved server-side.
+// This only sees what's in the pool; beyond a few thousand posts it needs a
+// real index (Typesense, Meilisearch, Algolia).
 
 import {
   fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers,
@@ -34,7 +19,7 @@ import { assessText, hitsHiddenWords } from "./moderation";
 
 const topicWords = (ids) => (ids || []).map((id) => interestById(id)?.label || "").join(" ");
 
-// ---------- text normalisation ----------
+// Normalisation
 
 export function normalise(s) {
   return String(s || "")
@@ -50,7 +35,7 @@ function tokens(s) {
   return normalise(s).split(" ").filter(Boolean);
 }
 
-// Damerau–Levenshtein, capped at 2: we only ever ask "is it one typo away?"
+// Damerau–Levenshtein, capped at 2.
 function withinOneEdit(a, b) {
   if (a === b) return true;
   const la = a.length, lb = b.length;
@@ -67,9 +52,7 @@ function withinOneEdit(a, b) {
   return edits + (la - i) + (lb - j) <= 1;
 }
 
-/* Score one field against the query. Returns 0 when the field says nothing
-   about it. The ladder (exact, starts-with, word-start, inside a word,
-   one typo) is the core of "most relevant". */
+/** Scores one field; 0 if it doesn't match. */
 function fieldScore(fieldText, q, qTokens) {
   const f = normalise(fieldText);
   if (!f) return { score: 0, matched: new Set() };
@@ -95,9 +78,7 @@ function fieldScore(fieldText, q, qTokens) {
   return { score, matched };
 }
 
-/* Weighted fields: a handle or title is a stronger claim to relevance than a
-   word buried in a caption. Every query token must be matched by at least one
-   field, otherwise the item isn't a result. */
+/** Weighted multi-field score; 0 unless every token matches at least one field. */
 function relevance(fields, q, qTokens) {
   let total = 0;
   const covered = new Set();
@@ -114,7 +95,7 @@ const log1p = (n) => Math.log2(1 + Math.max(0, n || 0));
 const ageDays = (t) => Math.max(0, (Date.now() - tsMillis(t)) / 86_400_000);
 const decay = (t, halfLifeDays) => Math.pow(0.5, ageDays(t) / halfLifeDays);
 
-// ---------- candidate pools (cached briefly so typing doesn't refetch) ----------
+// Candidate pools, cached briefly between keystrokes.
 
 let pool = null;
 let poolAt = 0;
@@ -140,7 +121,7 @@ export async function loadPool({ force = false } = {}) {
   return pool;
 }
 
-// ---------- the search ----------
+// Search
 
 export const SECTIONS = {
   people: { title: "People" },
@@ -156,21 +137,16 @@ const sectionFor = (post) =>
   post.kind === "text" || (post.kind === "post" && !post.mediaUrl) ? "strands"
   : post.kind === "post" ? "stills" : "flicks";
 
-/**
- * Returns { top, sections: [{ id, title, items, best }], total }.
- * Sections are ordered by their strongest result, so a query that names a
- * person leads with People and a query about an event leads with Gatherings.
- */
+/** Resolves to { top, sections: [{ id, title, items, best }], total }, sections ordered by best score. */
 export async function search(rawQuery, { following = new Set(), me = "", blocked = new Set(), muted = new Set(), hiddenWords = [] } = {}) {
   const q = normalise(rawQuery).replace(/^@/, "");
   const qTokens = tokens(q);
   if (!qTokens.length) return { top: null, sections: [], total: 0 };
-  // Searching for a slur or an attack on a group finds nothing to amplify.
-  if (assessText(rawQuery).level === "block") return { top: null, sections: [], total: 0 };
+    if (assessText(rawQuery).level === "block") return { top: null, sections: [], total: 0 };
 
   const [data, handleHits] = await Promise.all([
     loadPool(),
-    // The pool is a sample; an exact handle lookup reaches everyone.
+    // Exact handle lookup reaches accounts outside the pool.
     searchUsers(q.replace(/\s/g, "")).catch(() => []),
   ]);
   const { posts, people, circles, gatherings, news, affinity } = data;
@@ -178,18 +154,13 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
 
   const push = (section, item, rel, prior) => {
     if (rel <= 0) return;
-    // Blocked people don't turn up in your search, as people or as authors.
-    // Muted people's posts don't either, but you can still find the person
-    // (to unmute them, say).
+    // Blocked accounts are excluded entirely; muted accounts only as post authors.
     if (blocked.has(item.authorId) || muted.has(item.authorId) || (section === "people" && blocked.has(item.id))) return;
-    // Held posts and your hidden words stay out of results too.
-    if (item.authorId && item.authorId !== me && isHeld(item)) return;
+        if (item.authorId && item.authorId !== me && isHeld(item)) return;
     if (item.authorId !== me && hitsHiddenWords(`${item.title || ""} ${item.text || ""}`, hiddenWords)) return;
     results.push({ section, item, score: rel * (1 + prior) });
   };
 
-  // People: handle and name dominate; bio helps; social proof and your own
-  // graph break ties.
   const seenPeople = new Set();
   for (const u of [...handleHits, ...people]) {
     if (!u?.id || seenPeople.has(u.id) || u.id === me) continue;
@@ -199,8 +170,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
     push("people", u, rel, prior);
   }
 
-  // Posts of every format. Alt text is searchable too, so a photo someone
-  // described can be found by what's in it.
+  // Alt text is indexed too.
   for (const p of posts) {
     const rel = relevance(
       [[p.title, 2.6], [p.text, 1.4], [p.alt, 0.8], [p.authorName, 1.2], [p.authorDisplayName, 1], [topicWords(p.topics), 1.1],
@@ -212,8 +182,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
       log1p(p.saveCount) * 0.08 + log1p(p.repostCount) * 0.08;
     const personal = (following.has(p.authorId) ? 0.35 : 0) + Math.min(log1p(affinity.get(p.authorId)) * 0.08, 0.4);
     const prior = engagement + personal + 0.4 * decay(p.createdAt, 14);
-    // Borderline posts can be found, but rank low unless you follow the author.
-    const damp = !following.has(p.authorId) && assessText(`${p.title || ""}\n${p.text || ""}`).level !== "ok" ? 0.2 : 1;
+        const damp = !following.has(p.authorId) && assessText(`${p.title || ""}\n${p.text || ""}`).level !== "ok" ? 0.2 : 1;
     push(sectionFor(p), p, rel * damp * (1 - Math.min(p.reportCount || 0, 4) * 0.15), prior);
   }
 
@@ -223,15 +192,14 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   }
 
   for (const g of circles) {
-    // A circle tagged "Running" should turn up for "running", even if its
-    // name is "Night Owls".
+    // Match circle interests as well as names.
     const rel = relevance([[g.name, 3], [topicWords(g.interests), 1.8], [g.description, 1]], q, qTokens);
     push("circles", g, rel, 0.1 * log1p(g.memberCount));
   }
 
   for (const ev of gatherings) {
     const start = ev.startsAt?.toMillis?.() || 0;
-    if (start && start < Date.now() - 86_400_000) continue; // past gatherings aren't answers
+    if (start && start < Date.now() - 86_400_000) continue;
     const rel = relevance([[ev.title, 3], [ev.location, 1.6], [ev.description, 0.8]], q, qTokens);
     push("gatherings", ev, rel, 0.1 * log1p(ev.goingCount));
   }
@@ -248,8 +216,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
     .map(([id, rs]) => ({ id, title: SECTIONS[id].title, best: rs[0].score, items: rs.map((r) => r.item) }))
     .sort((a, b) => b.best - a.best);
 
-  // A top result only when one clearly answers the query, otherwise it's
-  // just the first row of a section, repeated.
+  // Only promote a top result when it clearly beats the rest.
   const [first, second] = results;
   const top = first && (!second || first.score >= second.score * 1.35)
     ? { section: first.section, item: first.item }
@@ -258,9 +225,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   return { top, sections, total: results.length };
 }
 
-// ---------- recent searches ----------
-// Kept on this device only, under the same `mesh:` prefix the Cookies &
-// Storage policy lists. Never sent anywhere; the Clear button wipes it.
+// Recent searches (localStorage only).
 
 const RECENT_KEY = "mesh:recent-searches";
 const RECENT_MAX = 8;

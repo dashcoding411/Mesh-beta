@@ -16,8 +16,6 @@ import { Textarea } from "./ui/Field";
 import { Skeleton, EmptyState, ErrorState, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
-/* Comments open as a sheet over the post, with the box pinned to the bottom
-   where a thumb already is. What you typed survives a failed send. */
 export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
@@ -44,12 +42,10 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     fetchComments(post.id).then(setComments).catch(() => setLoadError(true));
   }, [post.id]);
 
-  // The author decides who can comment (enforced by the rules as well).
   useEffect(() => {
     if (post.authorId === me()) return;
     fetchProfile(post.authorId).then((author) => {
-      // "Only people they follow" is decided by the server when you post;
-      // a refusal comes back with that reason.
+      // "following" policy is resolved by the rules at write time.
       if ((author?.commentPolicy || "everyone") === "off") setClosedReason(`@${post.authorName} has turned comments off.`);
     }).catch(() => {});
   }, [post.authorId, post.authorName]);
@@ -101,7 +97,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   };
 
   const onKey = (e) => {
-    // Enter posts on a keyboard; on a phone the Post button does, and Enter is a new line.
+    // Enter submits on desktop; newline on touch.
     if (e.key === "Enter" && !e.shiftKey && !window.matchMedia("(pointer: coarse)").matches) {
       e.preventDefault();
       submit();
@@ -157,8 +153,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       {comments?.length > 0 && (
         <ul className="divide-y divide-line">
           {comments.filter((c) => !hiddenAuthors.has(c.authorId)).map((c) => {
-            // Folded, not deleted: what might offend (or matches a word you've
-            // hidden) waits behind a tap. Your own comments are never folded for you.
+            // Collapsed behind a tap (never for the viewer's own comments).
             const level = c.authorId === me() || revealed.has(c.id) ? "ok" : assessText(c.text).level;
             const why = c.authorId === me() || revealed.has(c.id) ? ""
               : hitsHiddenWords(c.text, hiddenWords) ? "Contains a word you've hidden"

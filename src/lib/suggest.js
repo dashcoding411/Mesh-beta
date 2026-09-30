@@ -1,18 +1,7 @@
-// Who to follow.
-//
-// Two graphs, same as the big platforms build:
-//
-//   Social graph:  people you plausibly already know. Mutual-follow overlap is
-//                   the honest signal available to us; we deliberately do NOT
-//                   touch contacts, IP addresses or location, because harvesting
-//                   those to guess real-world ties is exactly the practice that
-//                   makes these products feel invasive.
-//   Interest graph: collaborative filtering. If the accounts you engage with
-//                   are also followed by someone else, whatever else they follow
-//                   is a decent bet for you.
-//
-// Cold start: a brand-new account has neither graph, so fall back to the most
-// followed accounts on the instance.
+// Follow suggestions from two signals: friends-of-friends (mutual-follow
+// overlap) and collaborative filtering over affinity. Contacts, IPs and
+// location are deliberately not used. New accounts fall back to the most
+// followed accounts.
 
 import { db } from "../firebase";
 import { collection, getDocs, query, limit, where } from "firebase/firestore";
@@ -38,7 +27,7 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
     scores.set(target, cur);
   };
 
-  // --- social graph: friends-of-friends ---
+  // Friends of friends
   const mutualCounts = new Map();
   const firstHop = [...following].slice(0, 25);
   await Promise.all(
@@ -50,11 +39,11 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
     })
   );
   for (const [target, count] of mutualCounts) {
-    // Diminishing returns so one hyper-connected account can't dominate.
+    // Diminishing returns per connecting account.
     add(target, 4 * Math.log2(1 + count), REASONS.mutual(count));
   }
 
-  // --- interest graph: collaborative filtering over affinity ---
+  // Collaborative filtering
   const affinity = await fetchAffinity().catch(() => new Map());
   const myTaste = [...affinity.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -63,8 +52,6 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
 
   await Promise.all(
     myTaste.map(async (author) => {
-      // People who follow an author I like form a taste cluster; what else
-      // that cluster follows is a candidate for me.
       const theirFollowers = await fetchFollowList(author, "followers").catch(() => []);
       await Promise.all(
         theirFollowers.slice(0, 8).map(async (peer) => {
@@ -75,7 +62,7 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
     })
   );
 
-  // --- cold start / topping up ---
+  // Cold start
   if (scores.size < max) {
     const popular = await fetchPopularProfiles(max * 3).catch(() => []);
     for (const p of popular) {
@@ -100,8 +87,7 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
 }
 
 async function fetchPopularProfiles(n) {
-  // No orderBy on followerCount: the list rule allows a plain signed-in read,
-  // and sorting client-side avoids needing a composite index.
+  // Sorted client-side to avoid an index on followerCount.
   const snap = await getDocs(query(collection(db, "users"), limit(Math.max(n, 50))));
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))

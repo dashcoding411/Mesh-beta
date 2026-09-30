@@ -43,9 +43,6 @@ import { useToast } from "./ui/toast-context";
 
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
 
-/* Private settings. Nothing on this page is visible to anyone else, the
-   header says so, because the line between "my profile" and "my account"
-   is exactly where people get confused about who can see what. */
 export default function Settings() {
   const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, muted } = useShell();
   const brick = useBrick();
@@ -58,8 +55,7 @@ export default function Settings() {
     fetchFollowRequests().then(setRequests).catch(() => setRequests([]));
     fetchBlocked().then(setBlockedList).catch(() => setBlockedList([]));
     isAdmin().then(setAdmin).catch(() => {});
-    // Coming back from the verification link: the signed-in user is cached,
-    // so ask again whether the address is verified now.
+    // Reload the auth user to pick up emailVerified after the link round-trip.
     if (auth.currentUser && !auth.currentUser.emailVerified) {
       auth.currentUser.reload().then(() => setChecked((n) => n + 1)).catch(() => {});
     }
@@ -271,8 +267,7 @@ function Row({ icon: Icon, label, value, meta, help, action, onClick, danger = f
   );
 }
 
-/* How Mesh looks on this device. Saved in this browser only, so a shared
-   laptop and your phone can each be set up the way that suits them. */
+// Per-device appearance settings.
 function AppearanceGroup() {
   const look = useAppearance();
   const rows = [
@@ -478,9 +473,7 @@ function DeleteDialog({ hasPassword, onClose }) {
   );
 }
 
-/* Locking or unlocking your account. Locking also turns your public posts
-   followers-only (the rules stop a private account posting publicly), so the
-   dialog says so before it happens. */
+// Going private also flips public posts to followers-only (the rules require it).
 function PrivacyDialog({ making, canPublic = true, onClose, onDone }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -641,8 +634,7 @@ function BlockedDialog({ list, onClose, onChange }) {
   );
 }
 
-/* People whose posts you've stepped away from without blocking them. The
-   list is stored as ids, so their current handles are looked up here. */
+// Muted accounts are stored as ids; resolve handles for display.
 function MutedDialog({ onClose }) {
   const { muted, toggleMute } = useShell();
   const [people, setPeople] = useState(null);
@@ -651,7 +643,7 @@ function MutedDialog({ onClose }) {
     Promise.all([...muted].slice(0, 200).map((id) => fetchProfile(id).catch(() => null)))
       .then((list) => { if (live) setPeople(list.filter(Boolean)); });
     return () => { live = false; };
-    // Looked up once per opening; unmuting removes people from the list below.
+    // Resolve once per mount; unmutes update the list locally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const shown = people?.filter((p) => muted.has(p.id));
@@ -684,9 +676,7 @@ function MutedDialog({ onClose }) {
   );
 }
 
-/* Your own filter, on top of Mesh's. Anything with these words or phrases
-   is hidden from your feeds, Flicks, search and comments. Nobody else sees
-   the list, and the people who used the words aren't told. */
+// Private hidden-words list, applied client-side across feeds, search and comments.
 function HiddenWordsDialog({ initial, onClose, onSaved }) {
   const toast = useToast();
   const [words, setWords] = useState(initial);

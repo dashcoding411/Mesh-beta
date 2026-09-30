@@ -1,10 +1,5 @@
-// People's current names and photos, for this visit.
-//
-// Posts and comments keep a copy of their author's name and photo from when
-// they were written (the rules check it's genuinely theirs). Someone who
-// changes their photo later would otherwise show two different faces on the
-// same screen, so cards look up the current one here and fall back to the
-// stored copy until it arrives. One read per person per visit.
+// Session cache of current profile cards. Content stores its author's name
+// and photo at write time; this overlays the current ones (one read per uid).
 
 import { useEffect, useSyncExternalStore } from "react";
 import { fetchProfile } from "./db";
@@ -24,14 +19,13 @@ function load(uid) {
     .finally(() => { pending.delete(uid); emit(); }));
 }
 
-/** Put a known-current profile in (your own, after you change it). */
 export function primeCard(uid, profile) {
   if (!uid || !profile) return;
   cards.set(uid, { name: profile.name || "", username: profile.username || "", photoURL: profile.photoURL || "" });
   emit();
 }
 
-/** `fallback` with the person's current name and photo laid over it once known. */
+/** `fallback` overlaid with the cached current card once loaded. */
 export function useLiveCard(uid, fallback) {
   useSyncExternalStore((fn) => { listeners.add(fn); return () => listeners.delete(fn); }, () => version, () => version);
   useEffect(() => { load(uid); }, [uid]);

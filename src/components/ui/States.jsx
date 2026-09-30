@@ -1,9 +1,7 @@
 import { AlertTriangle, RotateCw } from "lucide-react";
 import Button from "./Button";
 
-/* The states nobody screenshots. Every surface that loads data has to handle
-   all four: loading, empty, error and loaded. These are the shared versions so
-   they look and behave the same everywhere. */
+// Shared loading, empty and error states.
 
 export function Spinner({ size = 18, className = "" }) {
   return (
@@ -15,12 +13,11 @@ export function Spinner({ size = 18, className = "" }) {
   );
 }
 
-/** A grey block the size of what's coming. */
 export function Skeleton({ className = "" }) {
   return <div aria-hidden="true" className={`skeleton rounded-control ${className}`} />;
 }
 
-/** Announces loading to assistive tech while the skeletons carry the visual. */
+/** Screen-reader loading announcement; skeletons carry the visuals. */
 export function Loading({ label = "Loading", children }) {
   return (
     <div role="status" aria-live="polite">
@@ -30,8 +27,6 @@ export function Loading({ label = "Loading", children }) {
   );
 }
 
-/* An empty state answers three questions: why is this empty, what should I
-   do, and what happens when I do it. "No data" answers none of them. */
 export function EmptyState({ icon: Icon, title, body, action, compact = false }) {
   return (
     <div className={`flex flex-col items-center text-center ${compact ? "py-8" : "py-16"} px-6 anim-fade`}>
@@ -47,8 +42,6 @@ export function EmptyState({ icon: Icon, title, body, action, compact = false })
   );
 }
 
-/* Specific, understandable, actionable. The retry keeps whatever the user
-   was doing; it never throws them back to a blank page. */
 export function ErrorState({ title = "Something went wrong", body, onRetry, compact = false }) {
   return (
     <div role="alert" className={`flex flex-col items-center text-center ${compact ? "py-8" : "py-16"} px-6`}>
@@ -66,7 +59,7 @@ export function ErrorState({ title = "Something went wrong", body, onRetry, comp
   );
 }
 
-/** Inline form message. Colour is never the only signal, errors carry an icon and words. */
+/** Inline form message with an icon, so colour isn't the only signal. */
 export function InlineMessage({ tone = "error", children, id }) {
   if (!children) return null;
   const tones = {

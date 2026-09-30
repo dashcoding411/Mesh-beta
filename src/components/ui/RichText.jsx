@@ -3,9 +3,8 @@ import { navigate } from "../../lib/router";
 import { openUserProfile, uidForUsername } from "../../lib/db";
 import { followLink } from "../../lib/links";
 
-// URLs (with http(s):// or www.), #tags and @handles. Nothing else is
-// interpreted, no HTML, no markdown. The lookbehinds stop "me@example.com"
-// reading as a handle and "&#39;" as a tag.
+// URLs (http(s) or www.), #tags and @handles only; no HTML or markdown.
+// Lookbehinds keep emails from matching as handles and entities as tags.
 const TOKEN = /((?:https?:\/\/|(?<![\p{L}\p{N}_.@/])www\.)[^\s<]+[^\s<.,:;"')\]!?])|((?<![\p{L}\p{N}_&])#[\p{L}\p{N}_]{2,50})|((?<![\p{L}\p{N}_.])@[a-z0-9_]{3,30})/giu;
 const hrefOf = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 
@@ -28,9 +27,7 @@ const shortLabel = (u) => {
   return label.length > 36 ? `${label.slice(0, 34)}…` : label;
 };
 
-/* A message's words with its web addresses made into links, which open
-   through the "you're leaving Mesh" step. Inline, and underlined in the
-   bubble's own colour, so they read on any chat theme. */
+// Chat text with links only (no tags/handles), styled for any bubble colour.
 export function LinkedText({ text, className = "" }) {
   if (!text) return null;
   return (
@@ -46,11 +43,8 @@ export function LinkedText({ text, className = "" }) {
   );
 }
 
-/* Post text with its links made real. A #tag opens Search, so it's a way in
-   to everything else carrying it. An @handle opens that person's profile, or
-   Search if nobody has the handle (any more). Outbound links are marked
-   rel="ugc nofollow noopener", user-generated, not endorsed by us, and
-   unable to reach back into this tab. Only http(s) is ever linked. */
+// Tags link to Search; handles to the profile (or Search if unknown).
+// External links go through the leave-Mesh dialog with rel="ugc nofollow noopener".
 export default function RichText({ text, className = "", highlight, as: Tag = "p" }) {
   if (!text) return null;
   const parts = tokenize(text);
@@ -87,7 +81,7 @@ export default function RichText({ text, className = "", highlight, as: Tag = "p
   );
 }
 
-/** Bold the parts of `text` that match the words in `query`, used in search results. */
+/** Bolds `query` terms in `text`. */
 export function Highlight({ text, query }) {
   const words = String(query || "").toLowerCase().split(/\s+/).map((w) => w.replace(/^[#@]/, "")).filter((w) => w.length >= 2);
   if (!words.length || !text) return text || null;

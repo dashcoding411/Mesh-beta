@@ -35,14 +35,8 @@ const FILTERS = [
   { id: "gatherings", label: "Gatherings" },
 ];
 
-/* Search.
-
-   Before you type: what you searched recently, people you might know, and a
-   mix of Flicks, Stills and Strands to wander through.
-   As you type: results from everywhere on Mesh, ranked by how well they
-   answer the query (lib/search.js), grouped into sections, with the
-   strongest section first. The query lives in the URL, so Back and refresh
-   both keep your place. */
+// Empty state: recent searches, suggestions and an explore mosaic. With a
+// query: sectioned results from lib/search.js. The query is kept in the URL.
 export default function Search({ initialQuery, filter }) {
   const { following, blocked, muted, hiddenWords } = useShell();
   const [term, setTerm] = useState(initialQuery);
@@ -53,9 +47,7 @@ export default function Search({ initialQuery, filter }) {
   const runId = useRef(0);
   const q = term.trim();
 
-  // A #tag or @handle tapped elsewhere navigates here with a new query while
-  // Search is already open; adopt it. Our own URL updates match `q`, so they
-  // don't clobber what's being typed.
+  // Adopt external query changes (e.g. a tapped #tag); our own URL writes match `q`.
   const [seenInitial, setSeenInitial] = useState(initialQuery);
   if (initialQuery !== seenInitial) {
     setSeenInitial(initialQuery);
@@ -67,7 +59,7 @@ export default function Search({ initialQuery, filter }) {
     setStatus("loading");
     try {
       const r = await search(value, { following, me: me(), blocked, muted, hiddenWords });
-      if (id !== runId.current) return; // a newer keystroke won
+      if (id !== runId.current) return; // stale
       setResults(r);
       setStatus("done");
     } catch (err) {
@@ -76,10 +68,9 @@ export default function Search({ initialQuery, filter }) {
     }
   }, [following, blocked, muted, hiddenWords]);
 
-  // Debounced: search 300ms after typing stops, and keep the URL in step.
+  // 300ms debounce; URL kept in sync.
   useEffect(() => {
-    // Under two characters nothing renders from `results`, so there's no
-    // need to clear it, and keeping it means no flash when you type on.
+    // Results aren't rendered under two characters; keep them to avoid a flash.
     if (q.length < 2) return;
     const t = setTimeout(() => {
       run(q);
@@ -110,7 +101,6 @@ export default function Search({ initialQuery, filter }) {
 
   const sections = results?.sections || [];
   const active = filter === "top" ? null : sections.find((s) => s.id === filter);
-  // On Top, the top result isn't repeated in its own section.
   const topId = results?.top?.item.id;
   const topSections = sections
     .map((s) => (topId && s.id === results.top.section ? { ...s, items: s.items.filter((it) => it.id !== topId) } : s))
@@ -144,8 +134,7 @@ export default function Search({ initialQuery, filter }) {
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[680px] pb-10">
-          {/* Announce outcomes to screen readers without moving focus. */}
-          <p className="sr-only" aria-live="polite">
+              <p className="sr-only" aria-live="polite">
             {q.length >= 2 && status === "done" && results && (results.total ? `${plural(results.total, "result")} for ${q}` : `No results for ${q}`)}
           </p>
 
@@ -179,7 +168,7 @@ export default function Search({ initialQuery, filter }) {
   );
 }
 
-// ---------- before typing ----------
+// Empty state
 
 function Discover({ recent, onPick, onForget, onClear }) {
   return (
@@ -221,8 +210,7 @@ function SuggestedPeople() {
       .then((list) => { if (!cancelled) setPeople(list); })
       .catch(() => { if (!cancelled) setPeople([]); });
     return () => { cancelled = true; };
-    // Suggestions are computed once per visit; following someone from here
-    // shouldn't reshuffle the row under your thumb.
+    // Computed once so following from this row doesn't reshuffle it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -279,8 +267,7 @@ function FollowButton({ person, following, setFollowing, className = "" }) {
   );
 }
 
-/* The wander-through mix: Flicks, Stills and Strands in one mosaic, ordered
-   by the same ranker as the feed. */
+// Explore mosaic, ranked with the feed ranker.
 function Explore() {
   const { following, hiddenAuthors, hiddenWords } = useShell();
   const [items, setItems] = useState(null);
@@ -317,7 +304,7 @@ function Explore() {
 }
 
 export function Tile({ post, tall = false }) {
-  // Early posts were words-only "post" docs; they read as Strands.
+  // Legacy text-only "post" docs render as Strands.
   const asText = post.kind === "text" || (post.kind === "post" && !post.mediaUrl);
   const open = () => {
     if (post.kind === "short") navigate(`/flicks/${post.id}`);
@@ -363,7 +350,7 @@ export function Tile({ post, tall = false }) {
   );
 }
 
-// ---------- results ----------
+// Results
 
 function ResultSkeleton() {
   return (
@@ -482,7 +469,7 @@ function ResultRow({ section, item, q, big = false }) {
   }
 
   if (section === "strands" || section === "stills" || section === "flicks") {
-    // Only reached for the top result, sections render these as cards.
+    // Top result only; sections render cards.
     return <PostHit post={item} q={q} />;
   }
 

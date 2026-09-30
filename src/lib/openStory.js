@@ -1,6 +1,4 @@
-// Opening one story from anywhere (a notification, say). The app shell
-// listens and shows it in the story viewer, with echoes or your story's
-// activity already open when asked.
+// Event-based story opener, handled by StoryOpener in the app shell.
 
 export const OPEN_STORY_EVENT = "mesh:open-story";
 

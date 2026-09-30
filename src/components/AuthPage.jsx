@@ -15,8 +15,7 @@ import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Tabs from "./ui/Tabs";
 
-/* Inputs use text-base (16px) so iOS Safari never zooms on focus, and every
-   control clears the 44px touch target minimum. */
+// Inputs are 16px so iOS Safari doesn't zoom on focus.
 const FIELD =
   "field w-full min-h-12 rounded-control bg-surface-2 border border-field px-4 py-3 text-input text-fg " +
   "placeholder:text-fg-subtle hover:border-fg-subtle focus:border-accent-text focus:ring-4 focus:ring-accent/25 transition-colors";
@@ -65,7 +64,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
-  const [pendingUser, setPendingUser] = useState(null); // OAuth/phone user with no Mesh profile
+  const [pendingUser, setPendingUser] = useState(null); // signed in via OAuth/phone, no profile yet
   const [consent, setConsent] = useState(false);
 
   const recaptchaRef = useRef(null);
@@ -78,7 +77,6 @@ export default function AuthPage() {
 
   const fail = (err) => {
     if (isCancellation(err)) {
-      // Popup dismissed: return quietly, keeping whatever was typed.
       setError("");
       return;
     }
@@ -174,7 +172,6 @@ export default function AuthPage() {
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
 
-  // Policies have their own URLs and are readable signed-out; Back returns here.
   const openDoc = (id) => (e) => { e.preventDefault(); navigate(`/legal/${id}`); };
 
   const consentBox = (
@@ -195,7 +192,7 @@ export default function AuthPage() {
     </div>
   );
 
-  /* ---------- finish-profile step for OAuth / phone users ---------- */
+  // Profile completion for OAuth/phone sign-ups
   if (pendingUser) {
     return (
       <Shell>
@@ -238,14 +235,12 @@ export default function AuthPage() {
           {signup ? "It takes about a minute." : "Log in to pick up where you left off."}
         </p>
 
-        {/* ---- social first ---- */}
         <div className="space-y-2.5">
           <button onClick={() => handleProvider(signInGoogle)} disabled={busy}
             className={`${SOCIAL} border border-line-strong bg-white text-zinc-900 hover:bg-zinc-100`}>
             <GoogleMark /> Continue with Google
           </button>
-          {/* Sign in with Apple needs an Apple Developer account and a Services ID
-              set up in Firebase first; until then the button would only fail. */}
+          {/* Apple sign-in is disabled until a Services ID is configured in Firebase. */}
           {APPLE_ENABLED && (
             <button onClick={() => handleProvider(signInApple)} disabled={busy}
               className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-zinc-800`}>
@@ -263,7 +258,6 @@ export default function AuthPage() {
           <div className="h-px flex-1 bg-line" />
         </div>
 
-        {/* ---- email / phone switch ---- */}
         <Tabs label="Sign-in method" value={method} className="mb-5 flex w-full"
           onChange={(m) => { setMethod(m); setError(""); setConfirmation(null); }}
           tabs={[{ id: "email", label: "Email" }, { id: "phone", label: "Phone" }]} />
@@ -403,8 +397,6 @@ export default function AuthPage() {
     </Shell>
   );
 }
-
-/* ---------- layout + small pieces ---------- */
 
 function Shell({ children }) {
   return (

@@ -1,4 +1,3 @@
-// Starting a conversation or a group.
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createGroupChat, me, openDirectChat, searchUsers } from "../../lib/db";
@@ -10,9 +9,7 @@ import { Field, Input } from "../ui/Field";
 import { EmptyState, InlineMessage } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
-/* New message or new group. A message goes to one person; a group needs at
-   least two others and takes an optional name. People who only accept
-   messages from accounts they follow are skipped, with a note saying who. */
+// Members who don't accept messages from the creator are skipped and reported.
 export function NewChatDialog({ onClose, onCreated, group = false }) {
   const toast = useToast();
   const [term, setTerm] = useState("");

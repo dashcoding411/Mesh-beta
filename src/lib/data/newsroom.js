@@ -1,6 +1,5 @@
-// The newsroom: writers, drafts, co-authors, saving, revisions and live blogs.
-// The document logic (blocks, merging, review checks) is in ../storyDoc.js;
-// the rules in firestore.rules check every write here.
+// Newsroom: writers, drafts, co-authoring, revisions and live blogs.
+// Document model and merge logic live in ../storyDoc.js.
 
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction,
@@ -8,12 +7,12 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
-import { fetchProfile, uidForUsername } from "./users.js";
+import { fetchProfile, myProfile, uidForUsername } from "./users.js";
 import { blocksFromDoc, blocksToDoc, mergeStory, newBlock } from "../storyDoc.js";
 
 const storyRef = (id) => doc(db, "news", id);
 
-// ---------- writers: who may write for Mesh News ----------
+// Writers
 
 export async function isNewsWriter(uid = me()) {
   const snap = await getDoc(doc(db, "newsWriters", uid)).catch(() => null);
@@ -24,7 +23,6 @@ export async function fetchWriters() {
   return snapToList(await getDocs(query(collection(db, "newsWriters"), limit(200))));
 }
 
-/** An admin makes someone a writer. */
 export async function addWriter(handle) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
@@ -37,9 +35,8 @@ export async function removeWriter(uid) {
   await deleteDoc(doc(db, "newsWriters", uid));
 }
 
-// ---------- stories ----------
+// Stories
 
-/** The editor's view of a stored story. */
 export function storyFromDoc(snap) {
   const d = snap.data();
   const points = d.keyPoints || [];
@@ -85,9 +82,8 @@ function storyFields(s) {
   };
 }
 
-/** A new, private draft with you as its lead author. */
 export async function createNewsStory(format = "story") {
-  const p = await fetchProfile(me());
+  const p = await myProfile();
   const ref_ = await addDoc(collection(db, "news"), {
     authorId: me(),
     authorName: p.username,
@@ -121,7 +117,6 @@ export function listenStory(id, onChange, onError) {
   return onSnapshot(storyRef(id), (snap) => onChange(snap.exists() ? storyFromDoc(snap) : null), onError);
 }
 
-/** Stories you're an author of, newest first. */
 export async function fetchMyStories() {
   const [shared, legacy] = await Promise.all([
     getDocs(query(collection(db, "news"), where("authors", "array-contains", me()), limit(100))).then(snapToList).catch(() => []),
@@ -131,9 +126,8 @@ export async function fetchMyStories() {
   return [...byId.values()].sort((a, b) => tsMillis(b.updatedAt || b.createdAt) - tsMillis(a.updatedAt || a.createdAt));
 }
 
-/* Save your version. If someone else saved since you last had the story
-   (the version moved on), your changes are merged onto theirs first, block
-   by block, and saved as the next version: nobody's work is overwritten. */
+// Optimistic concurrency on `version`: if another save landed since `base`,
+// local changes are three-way merged onto the server copy before writing.
 export async function saveStory(id, base, local, extra = {}) {
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(storyRef(id));
@@ -147,19 +141,15 @@ export async function saveStory(id, base, local, extra = {}) {
   });
 }
 
-/** Send it to the reviewers, with your accuracy declaration, and keep a copy. */
 export async function submitStory(id, base, local) {
   const result = await saveStory(id, base, local, { status: "pending", submittedAt: serverTimestamp(), attestedAt: serverTimestamp() });
   await saveRevision(id, result.story, "Sent for review").catch(() => {});
   return result;
 }
 
-/** Back to a draft (a story that was sent back), to work on again. */
 export async function reopenStory(id, base, local) {
   return saveStory(id, base, local, { status: "draft" });
 }
-
-// ---------- the lead author's co-authors ----------
 
 export async function coAuthorFor(handle) {
   const uid = await uidForUsername(handle);
@@ -170,10 +160,10 @@ export async function coAuthorFor(handle) {
   return { id: uid, username: p.username };
 }
 
-// ---------- revisions ----------
+// Revisions
 
 export async function saveRevision(id, story, note = "") {
-  const p = await fetchProfile(me());
+  const p = await myProfile();
   const fields = storyFields(story);
   await addDoc(collection(db, "news", id, "revisions"), {
     title: fields.title, standfirst: fields.standfirst, script: fields.script,
@@ -188,7 +178,7 @@ export async function fetchRevisions(id) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data(), blocks: blocksFromDoc(d.data()) }));
 }
 
-// ---------- presence: who's editing which block ----------
+// Presence (block locks)
 
 export function listenStoryPresence(id, onChange) {
   return onSnapshot(collection(db, "news", id, "presence"),
@@ -203,18 +193,13 @@ export async function clearStoryPresence(id) {
   await deleteDoc(doc(db, "news", id, "presence", me())).catch(() => {});
 }
 
-// ---------- reviewers ----------
-
-export async function sendBackStory(id, note) {
-  const p = await fetchProfile(me());
-  await updateDoc(storyRef(id), { status: "draft", reviewNote: note.slice(0, 300), reviewedBy: p.username, reviewedAt: serverTimestamp() });
-}
+// Review
 
 export async function clearLegalHold(id) {
   await updateDoc(storyRef(id), { legalHold: false, legalNote: "" });
 }
 
-// ---------- live blogs ----------
+// Live blogs
 
 export function listenLiveUpdates(id, onChange) {
   return onSnapshot(query(collection(db, "news", id, "updates"), orderBy("at", "desc"), limit(200)),
@@ -222,7 +207,7 @@ export function listenLiveUpdates(id, onChange) {
 }
 
 export async function postLiveUpdate(id, text, key = false) {
-  const p = await fetchProfile(me());
+  const p = await myProfile();
   await addDoc(collection(db, "news", id, "updates"), { text: text.slice(0, 1500), by: me(), byName: p.username, key: !!key, at: serverTimestamp() });
 }
 

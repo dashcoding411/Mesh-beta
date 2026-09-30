@@ -1,8 +1,5 @@
-// The sounds of a call, made with Web Audio so there are no files to load:
-// the ringback you hear while it rings at the other end (the Australian
-// double ring), the tone of an incoming call, and a short tone when a call
-// ends. If the browser won't play sound yet (no tap on the page so far),
-// they're silently skipped.
+// Call tones synthesised with Web Audio (ringback uses the Australian
+// cadence). Silently skipped when autoplay is blocked.
 
 let ctx = null;
 
@@ -16,8 +13,7 @@ function audio() {
   }
 }
 
-/* One burst: the given frequencies together, faded in and out so it
-   doesn't click. */
+// Short ramps avoid clicks.
 function burst(ac, out, freqs, start, length, volume) {
   const gain = ac.createGain();
   gain.gain.setValueAtTime(0, start);
@@ -37,7 +33,6 @@ function burst(ac, out, freqs, start, length, volume) {
 const PATTERNS = {
   // 0.4s on, 0.2s off, 0.4s on, 2s off.
   ringback: { every: 3000, play: (ac, o, t) => { burst(ac, o, [400, 450], t, 0.4, 0.06); burst(ac, o, [400, 450], t + 0.6, 0.4, 0.06); } },
-  // Two rising notes, twice.
   ring: {
     every: 2200,
     play: (ac, o, t) => {
@@ -47,12 +42,12 @@ const PATTERNS = {
   },
 };
 
-/** Start a repeating tone; returns the function that stops it. */
+/** Returns a stop function. */
 export function startTone(name) {
   const ac = audio();
   const pattern = PATTERNS[name];
   if (!ac || !pattern) return () => {};
-  // Everything goes through one volume, so stopping silences notes already queued.
+  // Shared gain so stopping also silences already-scheduled notes.
   const out = ac.createGain();
   out.connect(ac.destination);
   const tick = () => { try { pattern.play(ac, out, ac.currentTime + 0.05); } catch { /* closed */ } };
@@ -64,7 +59,6 @@ export function startTone(name) {
   };
 }
 
-/** A short falling tone when a call ends. */
 export function endTone() {
   const ac = audio();
   if (!ac) return;

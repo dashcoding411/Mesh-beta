@@ -27,9 +27,7 @@ const TYPE = {
   user: { label: "Account", icon: UserRound },
 };
 
-/* The moderators' queue. Reports about the same thing are grouped into one
-   case, the busiest first. Every decision is recorded on the reports (who,
-   when, what was done), and the same guidelines apply to every group. */
+// Reports are grouped per target, busiest first; decisions are recorded on each report.
 export default function Moderation() {
   const [admin, setAdmin] = useState(null);
   const [tab, setTab] = useState("open");
@@ -113,7 +111,7 @@ export default function Moderation() {
 
 function Case({ item, readOnly, onDone }) {
   const toast = useToast();
-  const [target, setTarget] = useState(undefined); // undefined loading, null gone
+  const [target, setTarget] = useState(undefined); // undefined: loading, null: gone
   const [busy, setBusy] = useState("");
   const [suspending, setSuspending] = useState(false);
   const first = item.reports[0];
@@ -338,9 +336,6 @@ function Suspensions() {
   );
 }
 
-/* Who can write for Mesh News. Writers are named on everything they write
-   and their stories still go through review; this only decides who may
-   start one. */
 function Writers() {
   const toast = useToast();
   const [list, setList] = useState(null);

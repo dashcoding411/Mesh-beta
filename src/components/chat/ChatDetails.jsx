@@ -1,4 +1,3 @@
-// A conversation's details: members, admins, names, theme, nicknames, blocking and leaving.
 import { Ban, Check, LogOut, Mail, Palette, ShieldCheck, UserMinus, UserPlus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { chatTitle } from "../../lib/chat";
@@ -21,9 +20,6 @@ import { MenuGroup, MenuItem } from "../ui/Menu";
 import { EmptyState } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
-/* Conversation details. For a group: its name, who's in it, who runs it,
-   adding people, and leaving. For one-to-one: nicknames and blocking. Theme
-   for both. Every membership change is checked by the rules, not just here. */
 export function ChatDetails({ chat, onClose }) {
   const toast = useToast();
   const { inbox, blocked, setBlocked } = useShell();
@@ -34,7 +30,7 @@ export function ChatDetails({ chat, onClose }) {
   const [nick, setNick] = useState("");
   const [name, setName] = useState(chat.name || "");
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState(null); // add | leave | block
+  const [dialog, setDialog] = useState(null); // "add" | "leave" | "block"
   const nameOf = (uid) => (uid === me() ? "You" : `@${chat.memberNames?.[uid] || "member"}`);
   const other = !chat.isGroup ? others[0] : null;
   const otherBlocked = other && blocked.has(other);

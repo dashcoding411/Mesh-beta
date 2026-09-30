@@ -24,17 +24,14 @@ async function copyLink(post, toast) {
   }
 }
 
-/* Share: out of Mesh (the phone's own share sheet, or a copied link), or to
-   someone inside it. Sending to a person is the strongest signal the ranker
-   has, so it gets a real picker, not an afterthought. */
+// External share (Web Share API or copy link) and send-to-chat.
 export function ShareSheet({ post, onClose }) {
   const { inbox } = useShell();
   const toast = useToast();
   const [sent, setSent] = useState(new Set());
   const [busy, setBusy] = useState("");
   const chats = inbox.chats;
-  // A chat preview copies the post's text and picture into the conversation,
-  // which would carry a members-only post outside its circle.
+  // Circle posts can't be sent: the preview would leak members-only content.
   const membersOnly = post.visibility === "circle" || post.visibility === "pending";
   const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
 
@@ -110,8 +107,6 @@ export function ShareSheet({ post, onClose }) {
   );
 }
 
-/* The ⋯ menu. What's offered depends on whose post it is, and deleting
-   always asks first, naming exactly what goes. */
 export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }) {
   const toast = useToast();
   const { toggleMute } = useShell();
@@ -157,7 +152,7 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
     return (
       <ReportDialog target={{ type: "post", id: post.id, authorId: post.authorId }} onClose={onClose}
         report={(t, reason, details) => reportPost(post, reason, details)}
-        // Reporting also hides it from your own feed straight away.
+        // Reporting also hides the post for the reporter.
         onReported={() => onRemoved("reported")} />
     );
   }
@@ -165,7 +160,7 @@ export function PostMenu({ post, mine, canModerate, onClose, onRemoved, onEdit }
   return (
     <Dialog title="Post options" onClose={onClose} hideTitle>
       <MenuGroup>
-        {/* Circle posts aren't editable: an edit could slip past the circle's own rules. */}
+        {/* Circle posts aren't editable (edits would bypass circle limits). */}
         {mine && !post.groupId && onEdit && (
           <MenuItem icon={Pencil} onClick={onEdit}>Edit {label.toLowerCase()}</MenuItem>
         )}

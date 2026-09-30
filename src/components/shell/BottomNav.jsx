@@ -4,20 +4,13 @@ import { navigate } from "../../lib/router";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 import Avatar from "../ui/Avatar";
 
-/* Phones get exactly three tabs, always: Home, Messages, Account. Everything
-   else hangs off Home's sidebar, so this bar never grows past what a thumb
-   reaches comfortably.
-
-   It steps aside in one situation: while the on-screen keyboard is up.
-   Otherwise the bar sits on top of the keyboard and eats a third of the space
-   you're typing into. It comes back the moment the keyboard goes. */
+// Mobile tab bar (Home, Messages, Account). Hidden while the on-screen keyboard is open.
 export default function BottomNav({ page, profile, unread, immersive }) {
   const keyboardUp = useKeyboardOpen();
   if (keyboardUp) return null;
 
   const tap = (tab, path) => {
-    // The tab you're already on: at its top level, scroll up or refresh;
-    // deeper in (a chat, Settings), go back up to the top level.
+    // Re-tapping the active tab: scroll/refresh at its root, else pop to the root.
     if (page.tab === tab && window.location.pathname === path) return scrollOrRefresh();
     navigate(path);
   };
@@ -69,8 +62,7 @@ export default function BottomNav({ page, profile, unread, immersive }) {
   );
 }
 
-/* The visual viewport shrinks when the on-screen keyboard opens; the layout
-   viewport doesn't. A drop of more than a quarter means a keyboard. */
+// Keyboard heuristic: visual viewport more than 25% shorter than the layout viewport.
 function useKeyboardOpen() {
   const [open, setOpen] = useState(false);
   useEffect(() => {

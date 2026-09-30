@@ -1,10 +1,5 @@
-// A small History-API router. Real URLs mean the phone's Back gesture closes
-// the thing you opened instead of leaving the app, a refresh lands you where
-// you were, and a policy page has an address you can link to.
-//
-// Overlays (someone's profile, a single post, the full-length player) are
-// "modal routes": they get their own URL but remember the page underneath,
-// so the page stays mounted behind them and Back returns to it intact.
+// History API router. Overlay routes (profile, post, player) get their own
+// URL but keep the underlying page mounted, so Back returns to it intact.
 
 import { useSyncExternalStore } from "react";
 
@@ -28,15 +23,14 @@ const depth = () => window.history.state?.depth || 0;
 export function navigate(to, { replace = false, overlay = false } = {}) {
   const here = window.location.pathname + window.location.search;
   if (to === here && !overlay) return;
-  // An overlay opened from another overlay keeps the original page beneath.
-  const bg = overlay ? window.history.state?.bg || here : null;
+    const bg = overlay ? window.history.state?.bg || here : null;
   const state = { depth: replace ? depth() : depth() + 1, ...(bg ? { bg } : {}) };
   if (replace) window.history.replaceState(state, "", to);
   else window.history.pushState(state, "", to);
   emit();
 }
 
-/** Back within the app; if there's nothing to go back to, go to `fallback`. */
+/** history.back() within the app, else navigate to `fallback`. */
 export function goBack(fallback = "/") {
   if (depth() > 0) window.history.back();
   else navigate(fallback, { replace: true });
@@ -58,7 +52,7 @@ export function useLocation() {
   return useSyncExternalStore(subscribe, read, read);
 }
 
-// ---------- route table ----------
+// Routes
 
 const OVERLAYS = [
   [/^\/u\/([^/]+)$/, (m) => ({ overlay: "user", id: decodeURIComponent(m[1]) })],
@@ -103,7 +97,6 @@ export function matchOverlay(path) {
   return null;
 }
 
-/** The page to draw, for an overlay route, whatever it was opened over. */
 export function resolve(loc) {
   const overlay = matchOverlay(loc.path);
   if (!overlay) return { page: matchPage(loc.path), overlay: null };

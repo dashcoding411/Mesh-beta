@@ -1,9 +1,8 @@
-// What a circle lets you do, in words, for the page and the About tab.
 import { BadgeCheck, Ban, Clock, Hourglass, Link2Off, Lock, UserCheck, PhoneOff, Timer, Type, ImageOff, ShieldAlert, Camera } from "lucide-react";
 import { canJoinDirectly, effectiveAutomod, isCircleMod, isMuted } from "../../lib/db";
 import { clockTime, plural } from "../../lib/format";
 
-/* Why you can or can't post here, in words. Mirrors circlePostOk in the rules. */
+/** User-facing posting status. Mirrors circlePostOkAs in the rules. */
 export function postingStatus(group, membership) {
   const automod = effectiveAutomod(group);
   if (!membership) return { ok: false, reason: "Join this circle to post in it." };
@@ -16,7 +15,6 @@ export function postingStatus(group, membership) {
   return { ok: true };
 }
 
-/* The limits a circle has switched on, as short chips anyone can read. */
 export function activeLimits(group) {
   const a = effectiveAutomod(group);
   const out = [];

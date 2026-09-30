@@ -1,4 +1,4 @@
-// Your data: export, and deleting your account.
+// Data export and account deletion.
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { fetchGroups } from "./circles.js";
@@ -7,14 +7,12 @@ import { fetchEvents } from "./events.js";
 import { deleteNews } from "./news.js";
 import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
-import { fetchFollowList, fetchMyPrefs, fetchProfile } from "./users.js";
-
-// ---------- account: data export & deletion (GDPR/CCPA style) ----------
+import { fetchFollowList, fetchMyPrefs, myProfile } from "./users.js";
 
 export async function exportMyData() {
   const uid = me();
   const [profile, posts, groups, events, following, followers] = await Promise.all([
-    fetchProfile(uid),
+    myProfile(),
     fetchPostsByAuthor(uid),
     fetchGroups().then((gs) => gs.filter((g) => g.ownerId === uid)),
     fetchEvents().then((es) => es.filter((e) => e.hostId === uid)),
@@ -54,11 +52,10 @@ export async function exportMyData() {
   };
 }
 
-// Best-effort content wipe before the auth user is deleted. Anything the rules
-// refuse to delete is left in place rather than failing the whole operation.
+// Best effort: anything the rules refuse is left rather than failing the whole wipe.
 export async function deleteMyAccountData() {
   const uid = me();
-  const profile = await fetchProfile(uid).catch(() => null);
+  const profile = await myProfile().catch(() => null);
   const posts = await fetchPostsByAuthor(uid).catch(() => []);
   for (const p of posts) {
     await deletePost(p).catch(() => {});
@@ -68,8 +65,6 @@ export async function deleteMyAccountData() {
     await deleteDoc(doc(db, "reposts", r.id)).catch(() => {});
     await updateDoc(doc(db, "posts", r.postId), { repostCount: increment(-1) }).catch(() => {});
   }
-  // Private lists and signals, then who you follow (and your entry in their
-  // followers), then the profile itself.
   const sub = async (name) => {
     const snap = await getDocs(query(collection(db, "users", uid, name), limit(500))).catch(() => null);
     return snap?.docs || [];
@@ -86,33 +81,27 @@ export async function deleteMyAccountData() {
   }
   await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
   await deleteDoc(doc(db, "users", uid, "private", "prefs")).catch(() => {});
-  // Stories, then every photo you stored (posts, stories, avatar, news covers).
   const mine = async (col, field) => {
     const snap = await getDocs(query(collection(db, col), where(field, "==", uid), limit(500))).catch(() => null);
     return snap?.docs || [];
   };
-  // Stories go with their likes and echoes.
   for (const d of await mine("stories", "authorId")) await deleteStory({ id: d.id, ...d.data() }).catch(() => deleteDoc(d.ref).catch(() => {}));
-  // News stories you lead, with their history and live updates.
   for (const d of await mine("news", "authorId")) await deleteNews(d.id).catch(() => {});
   for (const d of await mine("media", "ownerId")) await deleteDoc(d.ref).catch(() => {});
-  // The profile and its handle go together, so the handle is released only
-  // as the profile stops using it.
+  // Profile and handle together, so the handle is only released with the profile.
   const last = writeBatch(db);
   last.delete(doc(db, "users", uid));
   if (profile?.username) last.delete(doc(db, "usernames", profile.username));
-  // Teens you supervise: take your limits off, then end the link.
+  // Lift parental limits on linked teens before removing the links.
   for (const d of await mine("familyLinks", "parentId")) {
     await updateDoc(doc(db, "locks", d.id), { parent: null, parentRequest: null, updatedAt: serverTimestamp() }).catch(() => {});
     await deleteDoc(d.ref).catch(() => {});
   }
   await last.commit().catch(() => deleteDoc(doc(db, "users", uid)).catch(() => {}));
   await deleteDoc(doc(db, "rateLimits", uid)).catch(() => {});
-  // Off the leaderboard, and out of the newsroom.
   await deleteDoc(doc(db, "brickStats", uid)).catch(() => {});
   await deleteDoc(doc(db, "newsWriters", uid)).catch(() => {});
-  // Brick mode's records can only go once the profile has (the rules
-  // won't let limits be lifted any other way).
+  // Lock records are only deletable once the profile is gone.
   for (const d of await mine("usage", "uid")) await deleteDoc(d.ref).catch(() => {});
   await deleteDoc(doc(db, "locks", uid)).catch(() => {});
   await deleteDoc(doc(db, "familyLinks", uid)).catch(() => {});

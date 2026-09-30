@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { fetchActiveStories, uploadMedia, createStory, me, StorageUnavailableError } from "../lib/db";
 import { validateMediaFile } from "../lib/validate";
@@ -6,10 +6,8 @@ import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import { Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
-import StoryViewer from "./StoryViewer";
+const StoryViewer = lazy(() => import("./StoryViewer"));
 
-/* 24-hour stories across the top of For You. Only shows when there's
-   something to show, or you can add one, an empty rail is just clutter. */
 export default function StoryRail() {
   const { profile, following, hiddenAuthors } = useShell();
   const toast = useToast();
@@ -82,11 +80,13 @@ export default function StoryRail() {
         aria-hidden="true" tabIndex={-1} />
 
       {viewing !== null && threads[viewing] && (
-        <StoryViewer thread={threads[viewing]} onClose={() => setViewing(null)}
-          onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)}
-          onDeleted={(id) => setThreads((list) => list
-            .map((t) => ({ ...t, items: t.items.filter((i) => i.id !== id) }))
-            .filter((t) => t.items.length))} />
+        <Suspense fallback={null}>
+          <StoryViewer thread={threads[viewing]} onClose={() => setViewing(null)}
+            onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)}
+            onDeleted={(id) => setThreads((list) => list
+              .map((t) => ({ ...t, items: t.items.filter((i) => i.id !== id) }))
+              .filter((t) => t.items.length))} />
+        </Suspense>
       )}
     </section>
   );

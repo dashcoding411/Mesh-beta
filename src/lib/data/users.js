@@ -1,7 +1,7 @@
-// Accounts and profiles, handles, interests, follows, follow requests, blocking, privacy settings, people search and spouse links.
+// Profiles, handles, private preferences, follows, blocking and privacy.
 import {
   addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, endAt, getDoc, getDocs, increment, limit,
-  orderBy, query, serverTimestamp, setDoc, startAt, updateDoc, where, writeBatch,
+  onSnapshot, orderBy, query, serverTimestamp, setDoc, startAt, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
@@ -9,16 +9,36 @@ import { bumpAffinity, deleteInline, fetchPostsByAuthor, SIGNAL } from "./posts.
 import { uploadMedia } from "./uploads.js";
 import { notify, unnotify } from "./notifications.js";
 
-// ---------- users & profiles ----------
-
 export async function fetchProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-/* Bump this when the terms or privacy policy change materially. Existing
-   accounts keep the version they accepted, which is what lets you tell who
-   still needs to see a change notice. */
+// Most writes denormalise the author's name and photo, so the signed-in
+// profile is held by a snapshot listener rather than read per write.
+let own = null;
+
+export function myProfile() {
+  const uid = me();
+  if (!uid) return Promise.resolve(null);
+  if (own?.uid !== uid) {
+    own?.stop();
+    const entry = { uid, profile: undefined };
+    entry.ready = new Promise((resolve) => {
+      entry.stop = onSnapshot(doc(db, "users", uid), (snap) => {
+        entry.profile = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        resolve(entry.profile);
+      }, () => {
+        if (own === entry) own = null;
+        resolve(null);
+      });
+    });
+    own = entry;
+  }
+  return own.profile === undefined ? own.ready : Promise.resolve(own.profile);
+}
+
+// Bump on material policy changes. Profiles keep the version they accepted.
 export const POLICY_VERSION = "2026-09-30.3";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
@@ -28,10 +48,7 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     username,
     name: displayName || username,
     usernameChangedAt: null,
-    // Email and phone deliberately are NOT stored here. Every signed-in user
-    // can read every user document, so anything written here is effectively
-    // public. Firebase Auth already holds both, and only the account owner can
-    // read their own auth record, which is the whole point.
+    // No email or phone: user docs are readable by any signed-in user.
     bio: "",
     pronouns: "",
     town: "",
@@ -41,7 +58,7 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     followerCount: 0,
     followingCount: 0,
     createdAt: serverTimestamp(),
-    // Proof of consent, written server-side so it can't be backdated.
+    // Server time, so consent can't be backdated.
     termsAcceptedAt: serverTimestamp(),
     termsVersion: POLICY_VERSION,
   });
@@ -54,8 +71,8 @@ export async function fetchProfileByUsername(username) {
   return uid ? fetchProfile(uid) : null;
 }
 
-const handleCache = new Map(); // handle -> uid | null, for this visit
-/** The account behind an @handle, or null if there isn't one. */
+const handleCache = new Map(); // handle -> uid | null
+
 export async function uidForUsername(username) {
   const handle = String(username || "").toLowerCase().replace(/^@/, "");
   if (!handleCache.has(handle)) {
@@ -74,8 +91,6 @@ export async function updateProfileFields(uid, fields) {
   await updateDoc(doc(db, "users", uid), fields);
 }
 
-// Handles are unique and rate-limited; display names are free-form and may
-// repeat, so two people can both be "Alex Nguyen" with different handles.
 export const USERNAME_COOLDOWN_DAYS = 30;
 
 export function usernameCooldown(profile) {
@@ -111,40 +126,35 @@ export function isMinor(profile) {
   return y > 0 && new Date().getFullYear() - y < 16;
 }
 
-/** Back to initials: clears the photo and deletes the stored copy. */
 export async function removeAvatar() {
-  const previous = (await fetchProfile(me()).catch(() => null))?.photoURL;
+  const previous = (await myProfile().catch(() => null))?.photoURL;
   await updateDoc(doc(db, "users", me()), { photoURL: "" });
   await deleteInline(previous);
 }
 
 export async function uploadAvatar(file, onProgress) {
-  const previous = (await fetchProfile(me()).catch(() => null))?.photoURL;
+  const previous = (await myProfile().catch(() => null))?.photoURL;
   const { url } = await uploadMedia(file, onProgress, "avatars");
   await updateDoc(doc(db, "users", me()), { photoURL: url });
   await deleteInline(previous);
   return url;
 }
 
-// ---------- your interests (private) ----------
-// Stored where only you can read them, and used only to order and filter
-// what you see. Never shown on your profile.
+// Private preferences (interests, hidden words, mutes) live in
+// users/{uid}/private/prefs, readable only by the owner.
 
 export async function fetchMyPrefs() {
   const snap = await getDoc(doc(db, "users", me(), "private", "prefs")).catch(() => null);
   return snap?.exists() ? snap.data() : { interests: [] };
 }
 
-/** Words and phrases you never want to see: posts and comments with them are hidden for you. */
 export async function saveHiddenWords(words) {
   const clean = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))].slice(0, 200).map((w) => w.slice(0, 60));
   await setDoc(doc(db, "users", me(), "private", "prefs"), { hiddenWords: clean, updatedAt: serverTimestamp() }, { merge: true });
   return clean;
 }
 
-/** Mute or unmute someone: their posts, Flicks, stories and comments stop
-    showing for you. Unlike a block they can still message you, and they
-    aren't told. Kept with your other private preferences. */
+/** Muting hides someone's content client-side. Unlike a block, it isn't enforced by the rules. */
 export async function setMuted(uid, on) {
   await setDoc(doc(db, "users", me(), "private", "prefs"), {
     muted: on ? arrayUnion(uid) : arrayRemove(uid),
@@ -159,8 +169,6 @@ export async function saveMyInterests(interests) {
   }, { merge: true });
 }
 
-// ---------- follows ----------
-
 export async function fetchMyFollowingSet() {
   const q = query(collection(db, "users", me(), "following"), limit(500));
   const set = new Set();
@@ -168,15 +176,12 @@ export async function fetchMyFollowingSet() {
   return set;
 }
 
-/** Does `uid` follow you? Calls need it: only followers can be rung. */
 export async function followsMe(uid) {
   const snap = await getDoc(doc(db, "users", uid, "following", me())).catch(() => null);
   return !!snap?.exists();
 }
 
-/* Follow or unfollow. A private (locked) account can't be followed
-   directly: you send a request and they approve it. Returns what happened:
-   "following", "requested" or "unfollowed". */
+/** Follows (or requests, for a private account) or unfollows. Resolves to "following" | "requested" | "unfollowed". */
 export async function toggleFollow(target, currentlyFollowing) {
   const uid = me();
   const followingRef = doc(db, "users", uid, "following", target.id);
@@ -185,8 +190,7 @@ export async function toggleFollow(target, currentlyFollowing) {
     const batch = writeBatch(db);
     batch.delete(followingRef);
     batch.delete(followerRef);
-    // lastFollowing / lastFollower name the relationship each count moved
-    // for, so the rules can check it really changed in this same write.
+    // lastFollowing/lastFollower let the rules tie each count change to this write.
     batch.update(doc(db, "users", uid), { followingCount: increment(-1), lastFollowing: target.id });
     batch.update(doc(db, "users", target.id), { followerCount: increment(-1), lastFollower: uid });
     await batch.commit();
@@ -198,10 +202,10 @@ export async function toggleFollow(target, currentlyFollowing) {
     await requestFollow(target);
     return "requested";
   }
-  const myProfile = await fetchProfile(uid);
+  const mine = await myProfile();
   const batch = writeBatch(db);
   batch.set(followingRef, { username: full?.username || target.username || "", createdAt: serverTimestamp() });
-  batch.set(followerRef, { username: myProfile?.username || "", createdAt: serverTimestamp() });
+  batch.set(followerRef, { username: mine?.username || "", createdAt: serverTimestamp() });
   batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
   batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
   await batch.commit();
@@ -210,10 +214,8 @@ export async function toggleFollow(target, currentlyFollowing) {
   return "following";
 }
 
-// --- follow requests (private accounts) ---
-
 export async function requestFollow(target) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   await setDoc(doc(db, "users", target.id, "followRequests", me()), {
     username: profile?.username || "",
     createdAt: serverTimestamp(),
@@ -236,11 +238,10 @@ export async function fetchFollowRequests() {
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-/* Approving writes both halves of the follow (the rules allow the approver
-   to, while the request exists), then removes the request. */
+// The rules let the approver write both sides of the follow while the request exists.
 export async function approveFollowRequest(request) {
   const uid = me();
-  const [profile, requester] = await Promise.all([fetchProfile(uid), fetchProfile(request.id)]);
+  const [profile, requester] = await Promise.all([myProfile(), fetchProfile(request.id)]);
   const batch = writeBatch(db);
   batch.set(doc(db, "users", uid, "followers", request.id), { username: requester?.username || "", createdAt: serverTimestamp() });
   batch.set(doc(db, "users", request.id, "following", uid), { username: profile?.username || "", createdAt: serverTimestamp() });
@@ -255,10 +256,7 @@ export async function declineFollowRequest(request) {
   await deleteDoc(doc(db, "users", me(), "followRequests", request.id));
 }
 
-// --- blocking ---
-// Blocking someone ends any follow in either direction and stops them
-// following, requesting, messaging you or commenting on your posts (all
-// enforced in the rules). Their posts disappear from what you see.
+// A block also drops follows in both directions; the rest is enforced by the rules.
 
 export async function blockUser(target) {
   const uid = me();
@@ -288,20 +286,20 @@ export async function fetchBlocked() {
   return snapToList(await getDocs(q));
 }
 
-// --- privacy settings ---
-
 export async function setPrivacySettings(fields) {
   await updateDoc(doc(db, "users", me()), fields);
 }
 
-/* Going private: every public post you've made outside circles becomes
-   followers-only. Going public again can reverse it, if you choose. */
+/** Flips all of the user's non-circle posts between public and followers-only. */
 export async function setPostsVisibility(to) {
   const from = to === "followers" ? "public" : "followers";
   const posts = (await fetchPostsByAuthor(me())).filter((p) => !p.groupId && p.visibility === from);
   let done = 0;
-  for (const p of posts) {
-    await updateDoc(doc(db, "posts", p.id), { visibility: to }).then(() => { done += 1; }).catch(() => {});
+  for (let i = 0; i < posts.length; i += 400) {
+    const chunk = posts.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((p) => batch.update(doc(db, "posts", p.id), { visibility: to }));
+    await batch.commit().then(() => { done += chunk.length; }).catch(() => {});
   }
   return { done, total: posts.length };
 }
@@ -310,8 +308,6 @@ export async function fetchFollowList(uid, kind /* 'followers' | 'following' */)
   const q = query(collection(db, "users", uid, kind), limit(200));
   return snapToList(await getDocs(q));
 }
-
-// ---------- search ----------
 
 export async function searchUsers(term) {
   const t = term.toLowerCase().replace(/[^a-z0-9_]/g, "");
@@ -328,14 +324,14 @@ export async function searchUsers(term) {
   return profiles.filter(Boolean);
 }
 
-// ---------- spouse invites ----------
+// Spouse links
 
 export async function sendSpouseRequest(targetProfile) {
   const uid = me();
-  const myProfile = await fetchProfile(uid);
+  const mine = await myProfile();
   await addDoc(collection(db, "spouseRequests"), {
     fromUid: uid,
-    fromUsername: myProfile?.username || "?",
+    fromUsername: mine?.username || "?",
     toUid: targetProfile.id,
     toUsername: targetProfile.username,
     status: "pending",

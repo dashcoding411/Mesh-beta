@@ -1,7 +1,6 @@
 import { coverClass, initialsOf, LATTICE } from "../../lib/covers";
 import MediaImg from "../ui/MediaImg";
 
-/* A circle's photo, or its initials on its colour when it has none. */
 export function CircleAvatar({ group, size = 64, className = "" }) {
   const box = { width: size, height: size };
   if (group.photoUrl) {
@@ -19,7 +18,6 @@ export function CircleAvatar({ group, size = 64, className = "" }) {
   );
 }
 
-/* The banner across the top of a circle: its photo, or its colour with the lattice. */
 export function CircleBanner({ group, className = "", children }) {
   return (
     <div className={`relative overflow-hidden ${group.bannerUrl ? "bg-surface-2" : coverClass(group.coverColor)} ${className}`}

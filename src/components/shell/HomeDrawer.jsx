@@ -5,9 +5,7 @@ import { navigate } from "../../lib/router";
 import { LogoMark } from "./Sidebar";
 import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
 
-/* The phone's version of the sidebar: the same places, in the same order,
-   centred down the side where a thumb finds them, with Settings, Brick mode
-   and Saved at the foot. Opened from the menu button in the Home header. */
+// Mobile counterpart of Sidebar, driven by the same nav items.
 export default function HomeDrawer({ page, profile, unread = 0, notifications = 0, onCreate, onClose }) {
   const current = activeNavId(page);
   const counts = { unread, notifications };

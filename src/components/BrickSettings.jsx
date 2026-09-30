@@ -31,8 +31,6 @@ const CAP_CHOICES = [0, 10, 15, 20, 30, 45, 60, 90, 120, 180];
 const HALF_HOURS = Array.from({ length: 48 }, (_, i) => i * 30);
 const utcLabel = (offset) => `UTC${offset >= 0 ? "+" : "-"}${Math.floor(Math.abs(offset) / 60)}${Math.abs(offset) % 60 ? `:${String(Math.abs(offset) % 60).padStart(2, "0")}` : ""}`;
 
-/* Brick mode: lock Mesh down to messages and calls, on your terms, and make
-   it deliberately slow to undo. Stricter applies now; looser waits a day. */
 export default function BrickSettings() {
   usePageTitle("Brick mode", 1);
   const { profile } = useShell();
@@ -112,8 +110,7 @@ export default function BrickSettings() {
             loosens them waits 24 hours, so you decide in a calm moment, not a craving one. Messages and calls are never locked.
           </p>
 
-          {/* ---- right now ---- */}
-          <section aria-labelledby="brick-now" className="rounded-card border border-line bg-surface p-4">
+              <section aria-labelledby="brick-now" className="rounded-card border border-line bg-surface p-4">
             <div className="flex items-start gap-3">
               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${lockNow ? "bg-accent text-white" : "bg-surface-2 text-fg-muted"}`}>
                 <BrickWall size={22} aria-hidden="true" />
@@ -137,8 +134,7 @@ export default function BrickSettings() {
             </div>
           </section>
 
-          {/* ---- a loosening waiting its 24 hours ---- */}
-          {policy?.pending && (
+              {policy?.pending && (
             <section role="status" className="rounded-card border border-warning-text/30 bg-warning-text/10 p-4">
               <p className="flex items-center gap-2 text-callout font-semibold text-warning-text">
                 <Hourglass size={18} aria-hidden="true" /> A change is waiting
@@ -158,8 +154,7 @@ export default function BrickSettings() {
             </section>
           )}
 
-          {/* ---- scheduled ---- */}
-          <Group icon={CalendarClock} title="Scheduled times" help="Mesh goes to messages and calls only during these times, every week.">
+              <Group icon={CalendarClock} title="Scheduled times" help="Mesh goes to messages and calls only during these times, every week.">
             {self.windows.length === 0 ? (
               <p className="px-4 py-3 text-callout text-fg-subtle">None yet. For example: weekdays before 10am, or every night after 10pm.</p>
             ) : (
@@ -179,8 +174,7 @@ export default function BrickSettings() {
             </div>
           </Group>
 
-          {/* ---- daily caps ---- */}
-          <Group icon={Timer} title="Daily limits" help="When you reach one, that section locks until midnight. Everything else stays open.">
+              <Group icon={Timer} title="Daily limits" help="When you reach one, that section locks until midnight. Everything else stays open.">
             <ul className="divide-y divide-line">
               {SECTIONS.map((s) => {
                 const cap = self.caps[s.id] || 0;
@@ -254,7 +248,6 @@ export default function BrickSettings() {
 
 function nextLockLabel(policy, usage, now) {
   if (!policy || !hasAnyLimit(policy.self) && !parentActive(policy, now)) return "No limits set yet.";
-  // Look ahead a week for the next scheduled lock.
   for (let t = now + 30 * 60000 - (now % (30 * 60000)); t < now + 7 * 86400000; t += 30 * 60000) {
     if (lockState(policy, null, "", t)) return `Next scheduled lock: ${whenLabel(t, now)}.`;
   }
@@ -274,8 +267,7 @@ function Group({ icon: Icon, title, help, children }) {
   );
 }
 
-/* A weekly window: which days, from when, to when. An end at or before the
-   start runs overnight ("10pm to 7am"); the same time twice means all day. */
+// End <= start wraps overnight; equal times mean all day.
 function AddWindowDialog({ onClose, onAdd }) {
   const [days, setDays] = useState([1, 2, 3, 4, 5]);
   const [from, setFrom] = useState(22 * 60);
@@ -326,7 +318,7 @@ function AddWindowDialog({ onClose, onAdd }) {
   );
 }
 
-// ---------- family ----------
+// Parental controls
 
 function FamilySection({ profile, policy }) {
   const year = new Date().getFullYear();
@@ -341,8 +333,7 @@ function FamilySection({ profile, policy }) {
   return age < 18 ? <TeenFamily profile={profile} policy={policy} /> : age >= 19 ? <ParentFamily /> : null;
 }
 
-/* The teen's side: say yes or no to a parent's invite, see the parent's
-   limits, and ask for a change. Only the parent can loosen their limits. */
+// Teen view: accept or decline, view the parent's limits, request changes.
 function TeenFamily({ profile, policy }) {
   const toast = useToast();
   const brickNow = useBrick().now;
@@ -434,8 +425,7 @@ function AskParentDialog({ parentName, layer, policy, onClose }) {
   );
 }
 
-/* The parent's side: link a teen (who has to agree), then set limits that
-   take effect at once, and answer the teen's requests. */
+// Parent view: invite, set limits (immediate), answer requests.
 function ParentFamily() {
   const toast = useToast();
   const [teens, setTeens] = useState(null);
@@ -573,7 +563,6 @@ function InstantRow({ onBrick, disabled }) {
   );
 }
 
-/** Windows and caps, for a parent's layer or a teen's request. */
 function LayerEditor({ layer, onChange, disabled }) {
   const [adding, setAdding] = useState(false);
   const setWindows = (windows) => onChange({ ...layer, windows, slots: windowsToSlots(windows) });
@@ -622,9 +611,7 @@ function LayerSummary({ layer, now }) {
   );
 }
 
-/* What you've got to show for it: time bricked this week and in total, and
-   a streak of days, counted only from bricks the server enforced. Private
-   until you choose to show it on your profile and the leaderboard. */
+// Verified bricked-time stats, with the public/private toggle.
 function BrickedTime({ policy }) {
   const toast = useToast();
   const { openComposer } = useShell();

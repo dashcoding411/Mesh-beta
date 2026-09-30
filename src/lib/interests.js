@@ -3,16 +3,10 @@ import {
   HeartPulse, Leaf, PawPrint, Camera, Laugh, GraduationCap, Briefcase, Car, Mic, Sprout, MapPin, Globe2, Landmark,
 } from "lucide-react";
 
-/* One list of interests for the whole app: what you pick, what posts and
-   circles are tagged with, and what the feed chips filter by.
-
-   Deliberately left out: religion, politics, health conditions, sexuality.
-   Those are sensitive information under the Privacy Act, and a list of
-   personal interests shouldn't quietly become a record of them. News has
-   its own topic list below, which does include politics, because that's a
-   subject of reporting rather than a fact about you.
-
-   The ids are also listed in firestore.rules. Change them together. */
+// Interests shared by profiles, posts, circles and feed filters. Sensitive
+// categories (religion, politics, health, sexuality) are deliberately
+// excluded; news topics are separate and do include politics.
+// Ids are duplicated in firestore.rules (validTopics).
 export const INTERESTS = [
   { id: "music", label: "Music", icon: Music },
   { id: "sport", label: "Sport", icon: Trophy },
@@ -44,7 +38,6 @@ export const interestById = (id) => INTERESTS.find((i) => i.id === id);
 export const MAX_POST_TOPICS = 3;
 export const MAX_INTERESTS = 12;
 
-/* News desks. A story sits in exactly one. */
 export const NEWS_TOPICS = [
   { id: "world", label: "World", icon: Globe2 },
   { id: "local", label: "Local", icon: MapPin },
@@ -59,10 +52,7 @@ export const NEWS_TOPICS = [
 ];
 export const newsTopicById = (id) => NEWS_TOPICS.find((t) => t.id === id);
 
-/* Topics worked out from what someone wrote, so nobody has to pick them:
-   #music, "gig", "recipes", "cooking"... Each word also matches its plural
-   and -ing / -ed forms. The strongest matches win, up to three; the author
-   can still change them in the full composer. */
+// Keyword hints for topic detection. Each also matches plural and -ing/-ed forms.
 const HINTS = {
   music: ["music", "song", "gig", "album", "band", "concert", "playlist", "guitar", "piano", "singer", "spotify", "festival", "dj", "lyrics"],
   sport: ["footy", "afl", "nrl", "cricket", "soccer", "football", "basketball", "tennis", "match", "game day", "grand final", "rugby", "netball", "golf", "surf", "olympics", "f1"],
@@ -88,9 +78,7 @@ const HINTS = {
   gardening: ["garden", "gardening", "plant", "veggie", "seedling", "compost", "succulent", "harvest", "tomatoes"],
   local: ["local", "neighbourhood", "suburb", "community", "council", "markets", "town"],
 };
-/* Words that mean something else as often as not ("the camera on a call",
-   "a quick run to the shops", "that's so funny"). One of these alone doesn't
-   tag a post; two, or one with a clearer word, do. */
+// Ambiguous words score half and can't tag a post on their own.
 const WEAK = new Set([
   "photo", "camera", "shot", "run", "running", "lift", "training", "pb", "match", "app", "ai", "code", "space", "research",
   "series", "trailer", "director", "actor", "learn", "study", "course", "job", "money", "interview", "promotion",

@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
-/* A tab or home-screen app can run for days on the version of Mesh it
-   opened with. When a newer one is out, this says so (checked when you come
-   back to the app, and every ten minutes), because an old copy can't show
-   things the new one sends, like a new kind of notification. */
+// Detects a newer deployed build (on focus and every 10 minutes) and offers a reload.
 
 const CHECK_MS = 10 * 60 * 1000;
 const ENTRY = /\/assets\/index-[\w-]+\.js/;
 
-// The script this page is running; missing in development, where there's nothing to check.
+// Entry script of the running build; absent in dev.
 const running = typeof document !== "undefined"
   ? document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute("src")?.match(ENTRY)?.[0]
   : null;
@@ -19,9 +16,7 @@ async function latest() {
   return html.match(ENTRY)?.[0] || null;
 }
 
-// After a deploy the old version's files are gone, so opening a page it
-// hadn't loaded yet fails. Reload into the new version instead (once, so a
-// real outage can't loop).
+// Stale chunks 404 after a deploy; reload once into the new build.
 if (typeof window !== "undefined") {
   window.addEventListener("vite:preloadError", (e) => {
     try {

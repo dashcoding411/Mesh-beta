@@ -6,8 +6,6 @@ import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
 import { Spinner } from "./ui/States";
 
-/* Your own avatar, as the button that changes it. With no photo it says
-   so plainly ("Add photo", with a dashed ring); with one, a camera badge. */
 export function EditableAvatar({ size = 88 }) {
   const { profile } = useShell();
   const photo = useProfilePhoto();
@@ -34,8 +32,7 @@ export function EditableAvatar({ size = 88 }) {
   );
 }
 
-/* A reminder to add a photo, for accounts that don't have one. On Home it
-   can be dismissed for good on this device. */
+// Dismissal is remembered per account on this device.
 export function PhotoNudge({ dismissible = false, className = "" }) {
   const { profile } = useShell();
   const photo = useProfilePhoto();
@@ -68,7 +65,6 @@ export function PhotoNudge({ dismissible = false, className = "" }) {
   );
 }
 
-/* The photo section at the top of Edit profile. */
 export function PhotoField() {
   const { profile } = useShell();
   const photo = useProfilePhoto();

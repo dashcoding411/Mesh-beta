@@ -17,8 +17,7 @@ import {
   deleteUser,
 } from "firebase/auth";
 
-// "Remember me" keeps the refresh token in local storage; otherwise the
-// session ends when the tab closes.
+// "Remember me": local persistence; otherwise session persistence.
 export async function applyPersistence(remember) {
   await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
 }
@@ -36,8 +35,7 @@ export async function signUpEmail(email, password, remember) {
 export async function signInGoogle(remember) {
   await applyPersistence(remember);
   const provider = new GoogleAuthProvider();
-  // Baseline scopes only: no posting or contacts access at sign-in.
-  provider.addScope("profile");
+    provider.addScope("profile");
   provider.addScope("email");
   provider.setCustomParameters({ prompt: "select_account" });
   return signInWithPopup(auth, provider);
@@ -55,8 +53,7 @@ export function resetPassword(email) {
   return sendPasswordResetEmail(auth, email.trim());
 }
 
-/** Email a link that confirms this address belongs to you. The link lands
-    back on Mesh, which reloads the account to pick up the change. */
+/** Sends a verification email that links back to the app. */
 export function verifyEmail() {
   return sendEmailVerification(auth.currentUser, { url: `${window.location.origin}/account/settings` });
 }
@@ -77,8 +74,7 @@ export async function reauthenticateAndDelete(currentPassword) {
   await deleteUser(user);
 }
 
-// User-facing messages. Deliberately specific where it is safe, and vague
-// where being specific would confirm whether an account exists.
+// Error copy stays vague where specifics would reveal whether an account exists.
 const MESSAGES = {
   "auth/invalid-email": "That email address doesn't look right.",
   "auth/email-already-in-use": "An account with that email already exists. Try logging in instead.",
@@ -99,7 +95,6 @@ const MESSAGES = {
   "auth/code-expired": "That code expired. Request a new one.",
 };
 
-// Closing the provider popup is a normal user action, not an error.
 export const CANCELLED_CODES = [
   "auth/popup-closed-by-user",
   "auth/cancelled-popup-request",

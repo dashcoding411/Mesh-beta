@@ -1,4 +1,4 @@
-// Running a circle: join requests, the approval queue, limits, rules, interests, its look and deleting it.
+// Circle management: requests, approval queue, limits, details, appearance.
 import { Check, Hourglass, ImagePlus, Trash2, Users, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -40,12 +40,10 @@ export function ManageDialog({ group, isOwner, section, onSection, onClose, onSa
   );
 }
 
-/* The circle's look: a banner across the top, its photo, and the colour
-   shown when there's no banner. Each change saves straight away. */
 function LookEditor({ group, onSaved }) {
   const toast = useToast();
-  const [busy, setBusy] = useState(null); // which part is saving
-  const [cropping, setCropping] = useState(null); // a circle photo waiting to be positioned
+  const [busy, setBusy] = useState(null); // "bannerUrl" | "photoUrl" | "cover"
+  const [cropping, setCropping] = useState(null);
   const bannerInput = useRef(null);
   const photoInput = useRef(null);
 
@@ -69,7 +67,7 @@ function LookEditor({ group, onSaved }) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    // The photo is positioned first; the banner goes in as it is.
+    // Only the square photo goes through the cropper.
     if (field === "photoUrl") setCropping(f);
     else saveImage(field, f);
   };
@@ -178,8 +176,6 @@ function JoinRequests({ group, onCountChange }) {
   );
 }
 
-/* Posts held for approval. Approving publishes it to the circle; declining
-   deletes it. */
 function PostQueue({ group }) {
   const toast = useToast();
   const [posts, setPosts] = useState(null);
@@ -227,7 +223,6 @@ function PostQueue({ group }) {
   );
 }
 
-/* Every switch here is enforced by the server, not just the app. */
 function LimitsEditor({ group, onSaved, isOwner }) {
   const toast = useToast();
   const [a, setA] = useState(effectiveAutomod(group));
@@ -335,7 +330,6 @@ function LimitsEditor({ group, onSaved, isOwner }) {
   );
 }
 
-/* One Admin Assist condition: a label and its setting on one line. */
 function Rule({ label, value, onChange, options, extra }) {
   const id = `rule-${label.replace(/\s/g, "")}`;
   return (

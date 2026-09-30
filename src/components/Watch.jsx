@@ -19,10 +19,7 @@ import Comments from "./Comments";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareSheet } from "./PostActions";
 
-/* The full-length player for long Flicks, where a trailer leads when you
-   decide it's worth your time. Native controls on purpose: they bring
-   keyboard control, captions, fullscreen and picture-in-picture for free,
-   and every screen reader already knows them. */
+// Native controls for keyboard, captions, fullscreen and PiP support.
 export default function Watch({ postId }) {
   const { following, setFollowing } = useShell();
   const toast = useToast();

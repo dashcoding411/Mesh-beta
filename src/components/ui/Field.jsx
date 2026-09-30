@@ -1,12 +1,8 @@
 import { cloneElement, forwardRef, useCallback, useEffect, useId, useRef } from "react";
 import { InlineMessage } from "./States";
 
-/* Labels are always visible, placeholders are examples, never the label.
-   The field wires up aria-describedby and aria-invalid itself so no caller
-   can forget to.
-
-   Border is the `field` token, which clears the 3:1 non-text contrast
-   minimum: an input should be findable by its edge, not only its hint. */
+// Field wires up aria-describedby/aria-invalid for its control. The `field`
+// border token meets 3:1 non-text contrast.
 
 export const fieldClass =
   "field w-full rounded-control bg-surface-2 border border-field px-3.5 py-2.5 text-input text-fg " +
@@ -73,8 +69,7 @@ export const Textarea = forwardRef(function Textarea({ className = "", autoGrow 
     el.style.height = `${Math.min(el.scrollHeight, line * maxRows + pad)}px`;
   }, [autoGrow, maxRows]);
   useEffect(fit);
-  // The words rewrap when the box gets wider or narrower (a rotated phone,
-  // a resized window, the web font arriving), so measure again then.
+  // Re-measure on width changes (rotation, resize, font load).
   useEffect(() => {
     const el = inner.current;
     if (!autoGrow || !el || typeof ResizeObserver === "undefined") return;
@@ -100,7 +95,7 @@ export const Select = forwardRef(function Select({ className = "", children, ...
   );
 });
 
-/** Checkbox with a real label and a 44px row, not a 16px square to aim at. */
+/** Checkbox with a full-width 44px label target. */
 export function Checkbox({ checked, onChange, children, description, id: idProp }) {
   const auto = useId();
   const id = idProp || auto;

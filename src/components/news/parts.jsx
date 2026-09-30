@@ -1,4 +1,3 @@
-// Small pieces shared by the news pages: the topic label and the meta line.
 import { AlertTriangle } from "lucide-react";
 import { fullTime, isoTime, plural, shortTime } from "../../lib/format";
 import { newsTopicById } from "../../lib/interests";

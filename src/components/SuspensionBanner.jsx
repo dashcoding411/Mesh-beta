@@ -4,8 +4,6 @@ import { fetchMySuspension, isSuspended, tsMillis } from "../lib/db";
 import { fullTime } from "../lib/format";
 import { BUSINESS } from "../legal/business";
 
-/* A suspended account can still read. It's told plainly why, until when,
-   and how to appeal, rather than finding out from a string of failed posts. */
 export default function SuspensionBanner({ profile }) {
   const suspended = isSuspended(profile);
   const [info, setInfo] = useState(null);

@@ -3,8 +3,6 @@ import { navigate } from "../lib/router";
 import { usePageTitle } from "../lib/usePageTitle";
 import Button from "./ui/Button";
 
-/* An address that doesn't match anything. Says so, rather than quietly
-   showing the home feed as if the link had worked. */
 export default function NotFound() {
   usePageTitle("Page not found", 1);
   return (

@@ -1,4 +1,3 @@
-// A circle's About tab: what it's for, its limits, rules and admins.
 import { Info, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchMembers, ROLES } from "../../lib/db";

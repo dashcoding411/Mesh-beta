@@ -5,11 +5,7 @@ import { MAIN_NAV, MORE_NAV, activeNavId } from "./navItems";
 import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
-/* Desktop navigation. The logo sits at the top, the places you go sit in
-   the middle of the edge where the pointer finds them fastest, and the
-   less-used things live behind More at the bottom. Two widths: an icon
-   rail between 768 and 1280px so the content keeps its room, and the same
-   column with labels above that. */
+// Desktop nav: icon rail at md, labelled column at xl.
 export default function Sidebar({ page, profile, unread, notifications, onCreate }) {
   const current = activeNavId(page);
   const counts = { unread, notifications };
@@ -64,8 +60,6 @@ function NavRow({ icon: Icon, label, active = false, onClick, badge = 0 }) {
   );
 }
 
-/* Settings and the less-used places, one click away without taking a row
-   each. Escape or a click elsewhere closes it; arrow keys move through it. */
 function MoreMenu({ page }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef(null);
@@ -119,11 +113,9 @@ function MoreMenu({ page }) {
   );
 }
 
-/** The Mesh mark: threads crossing, the same as the favicon. */
 export function LogoMark({ size = 28 }) {
-  // Each mark needs its own gradient id: if two share one and the first sits
-  // inside a hidden element (the desktop sidebar on a phone), browsers drop the
-  // gradient and every copy renders as a blank square.
+  // Unique gradient id per instance: a shared id breaks every copy when the
+  // first one is inside a display:none subtree.
   const gradient = `mesh-mark-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">

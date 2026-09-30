@@ -20,15 +20,11 @@ import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
 import { ShareSheet } from "./PostActions";
 
-// Sound is a choice you make once per visit, not once per video.
+// Unmute persists for the session.
 let soundOn = false;
 
-/* Flicks: every video on Mesh in one vertical feed.
-
-   Short Flicks (three minutes or less) play in full and loop. Long ones play
-   a 30-second trailer cut from the full video, then offer the whole thing,
-   so long-form gets discovered where people are already watching, and you
-   decide whether it's worth your next twenty minutes. */
+// Vertical video feed. Short Flicks loop in full; long ones loop their
+// trailer and link to the full player.
 export default function Flicks({ startId }) {
   const { following, hiddenAuthors, interests, openInterests, hiddenWords } = useShell();
   const [topic, setTopic] = useState("all");
@@ -58,7 +54,7 @@ export default function Flicks({ startId }) {
       console.error(err);
       setError(true);
     }
-    // startId only matters on arrival; re-ranking when it changes would reshuffle under the viewer.
+    // startId only matters on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [following, hiddenAuthors, topic, interests, hiddenWords]);
 
@@ -69,7 +65,7 @@ export default function Flicks({ startId }) {
     setMuted(!soundOn);
   };
 
-  // Up/Down (or J/K) step between Flicks, like every vertical video app.
+  // Up/Down and J/K navigation.
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.closest?.("input, textarea, select, [role=dialog]")) return;
@@ -153,7 +149,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
   const mine = post.authorId === me();
   const followsAuthor = following.has(post.authorId);
 
-  // Two observers: one loads the source a screen ahead, one decides who plays.
+  // One observer preloads a screen ahead; the other picks the playing item.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -164,7 +160,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     return () => { nearIO.disconnect(); activeIO.disconnect(); };
   }, []);
 
-  // Leaving the neighbourhood releases the decoder; phones only have a few.
+  // Unload far-away sources to free hardware decoders.
   useEffect(() => {
     const el = video.current;
     if (!el) return;
@@ -193,8 +189,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
       return () => clearTimeout(t);
     }
     el.pause();
-    // Swiping away inside a second and a half is a skip: the clearest
-    // "not for me" signal a vertical feed gets.
+    // Leaving within 1.5s counts as a skip signal.
     if (s.since && Date.now() - s.since < 1500 && !s.viewed) recordSignal(post, "skip").catch(() => {});
     s.since = 0;
   }, [active, post, start]);
@@ -209,8 +204,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     const s = signals.current;
     const end = long ? Math.min(start + TRAILER_SECONDS, el.duration || Infinity) : el.duration || 0;
     if (long && el.currentTime >= end) el.currentTime = start;
-    // Detect a loop wrap: time jumped back to the start.
-    if (!long && s.last > 1 && el.currentTime < s.last - 1) {
+      if (!long && s.last > 1 && el.currentTime < s.last - 1) {
       s.loops += 1;
       recordSignal(post, s.loops === 1 ? "complete" : "replay").catch(() => {});
     }
@@ -227,8 +221,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     setTimeout(() => setFlash(null), 500);
   };
 
-  // Single tap pauses; double tap likes. The single tap waits a beat so a
-  // double tap doesn't also pause.
+  // Single tap (delayed) pauses; double tap likes.
   const onTap = () => {
     if (tapTimer.current) {
       clearTimeout(tapTimer.current);
@@ -323,7 +316,6 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
           </button>
         </div>
 
-        {/* Caption and, for long Flicks, the way through to the full video */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-4 pb-5 pt-24 pr-20 md:pr-4">
           <div className="pointer-events-auto">
             <button type="button" onClick={() => openUserProfile(post.authorId)} className="text-callout font-semibold text-white hover:underline">
@@ -362,7 +354,6 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
         </div>
       </div>
 
-      {/* Actions: over the video on phones, beside it on desktop */}
       <div className="absolute bottom-24 right-2 flex flex-col items-center gap-4 md:static md:self-end md:pb-6">
         <div className="relative mb-2">
           <button type="button" onClick={() => openUserProfile(post.authorId)} aria-label={`@${post.authorName}'s profile`}

@@ -1,27 +1,12 @@
-// One-to-one voice and video calls.
+// One-to-one WebRTC calls. Firestore carries only signalling (offer, answer,
+// ICE candidates); once connected, a data channel carries mute/camera/hang-up.
 //
-// How it works: WebRTC connects the two browsers directly and carries the
-// audio and video; Firestore only passes the setup messages between them
-// (the "offer", the "answer", and network addresses, called ICE candidates).
-// Once connected, a small data channel inside the call itself carries mute,
-// camera and hang-up, so nothing about the call's content touches our
-// servers, and nothing is recorded.
+// Networks behind carrier-grade NAT need a TURN relay: configure
+// VITE_ICE_SERVERS, VITE_TURN_URLS/USERNAME/CREDENTIAL or VITE_TURN_API_URL.
+// Group calls would need an SFU and aren't supported.
 //
-// The honest limits, stated in the UI too:
-// - To find each other through home routers, browsers ask a STUN server for
-//   their public address. We use Google's public STUN servers, so Google sees
-//   the IP addresses of people on calls (disclosed in the Privacy Policy).
-// - Many networks (most mobile data, strict office Wi-Fi, some home routers)
-//   block direct connections. Those calls need a TURN relay. Set
-//   VITE_ICE_SERVERS (the provider's ICE servers array, pasted as it is), or
-//   VITE_TURN_URLS / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL, or
-//   VITE_TURN_API_URL for a provider that hands out credentials over HTTPS
-//   (see the README). Without one, calls between such networks can't connect.
-// - Group calls need a media server (an SFU such as LiveKit), which is a
-//   separate piece of infrastructure. Calls here are one-to-one.
-//
-// The signalling is behind a small interface (firestoreSignal below), so the
-// whole call can be exercised with an in-memory stand-in.
+// Signalling is abstracted (firestoreSignal) so sessions can run against an
+// in-memory channel in tests.
 
 import {
   addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
@@ -29,22 +14,22 @@ import {
 import { db } from "../firebase";
 import { sendMessage } from "./db";
 import { pickCamera } from "./cameras";
+import { formatDuration } from "./format";
 
 export const RING_MS = 45_000;
-const CONNECT_MS = 30_000;   // from the answer to a working connection
-const RECOVER_MS = 25_000;   // how long a dropped call tries to come back
+const CONNECT_MS = 30_000;   // answer -> connected
+const RECOVER_MS = 25_000;   // reconnect budget after a drop
 const RESTART_EVERY_MS = 6_000;
 const MAX_RESTARTS = 3;
 
-// ---------- network: STUN, and a TURN relay if one is set up ----------
+// ICE servers
 
 const STUN = { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] };
-let fetchedRelay = null; // { at, servers }
+let fetchedRelay = null;
 
 export const relayConfigured = () => !!(import.meta.env.VITE_ICE_SERVERS || import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_API_URL);
 
-/* VITE_ICE_SERVERS: the "ICE Servers Array" a TURN provider's dashboard
-   shows (Metered's "Show ICE Servers Array"), pasted as it is. */
+/** Parses VITE_ICE_SERVERS, a JSON array as exported by the TURN provider. */
 export function parseIceServers(raw) {
   if (!raw) return [];
   try {
@@ -67,7 +52,7 @@ export async function iceServers() {
     });
   }
   if (env.VITE_TURN_API_URL) {
-    // Short-lived credentials from the provider, reused for an hour.
+    // Provider credentials are cached for an hour.
     if (!fetchedRelay || Date.now() - fetchedRelay.at > 3_600_000) {
       const list = await fetch(env.VITE_TURN_API_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []);
       const found = Array.isArray(list) ? list : list?.iceServers || [];
@@ -83,9 +68,8 @@ export async function iceServers() {
 export const callsSupported = () =>
   typeof window !== "undefined" && !!window.RTCPeerConnection && !!navigator.mediaDevices?.getUserMedia;
 
-// ---------- the call document ----------
+// Call documents
 
-/** Incoming calls ringing for you right now. */
 export function listenIncomingCalls(uid, callback) {
   const q = query(collection(db, "calls"), where("calleeId", "==", uid), where("status", "==", "ringing"), limit(5));
   return onSnapshot(q, (snap) => {
@@ -95,13 +79,11 @@ export function listenIncomingCalls(uid, callback) {
 
 export const ringExpired = (c, now = Date.now()) => now - (c.createdAt?.toMillis?.() || now) >= RING_MS;
 
-/** Say no to a call without picking up: declined, or busy on another call. */
 export async function refuseCall(id, status = "declined") {
   await updateDoc(doc(db, "calls", id), { status, endedAt: serverTimestamp() }).catch(() => {});
 }
 
-/* The signalling channel for one call, on Firestore: the call document, and
-   a subcollection of network addresses for each side. */
+/** Firestore signalling: the call doc plus a candidate subcollection per side. */
 export function firestoreSignal(id) {
   const ref = id ? doc(db, "calls", id) : doc(collection(db, "calls"));
   return {
@@ -123,11 +105,6 @@ export function firestoreSignal(id) {
   };
 }
 
-function formatLength(sec) {
-  const m = Math.floor(sec / 60);
-  return `${m}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
-}
-
 const MEDIA_AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
 async function cameraFor(facing) {
@@ -137,19 +114,19 @@ async function cameraFor(facing) {
   return id ? { deviceId: { exact: id }, ...size } : { facingMode: facing, ...size };
 }
 
-/* A call session. The screen subscribes with onChange and reads:
-     state: "starting" | "ringing" | "connecting" | "active" | "reconnecting" | "ended"
-     endedReason: "declined" | "missed" | "cancelled" | "busy" | "ended" | "failed" | null
-     localStream, remoteStream, muted, cameraOff, noCamera, canFlip,
-     remoteMuted, remoteCameraOff, startedAt */
+/**
+ * Observable call state for the UI (subscribe with onChange):
+ *   state: "starting" | "ringing" | "connecting" | "active" | "reconnecting" | "ended"
+ *   endedReason: "declined" | "missed" | "cancelled" | "busy" | "ended" | "failed" | null
+ */
 export class CallSession {
   /**
    * @param {object} o
-   * @param {string} o.chatId the one-to-one conversation the call belongs to
-   * @param {{id: string, username: string, photoURL?: string}} o.peer who you're calling
-   * @param {{id: string, username: string, photoURL?: string}} [o.self] you (the caller)
+   * @param {string} o.chatId
+   * @param {{id: string, username: string, photoURL?: string}} o.peer
+   * @param {{id: string, username: string, photoURL?: string}} [o.self] required when calling
    * @param {boolean} o.video
-   * @param {object} [o.incoming] the call document, when answering
+   * @param {object} [o.incoming] call doc, when answering
    * @param {object} [o.signal] signalling channel (defaults to Firestore)
    * @param {Function} [o.logCall] leaves the call's line in the conversation
    */
@@ -178,8 +155,8 @@ export class CallSession {
     this.unsubs = [];
     this.timers = {};
     this.docReady = !!incoming;
-    this.pendingCandidates = [];   // ours, until the call document exists
-    this.remoteCandidates = [];    // theirs, until we have the description they belong to
+    this.pendingCandidates = [];   // local, until the call doc exists
+    this.remoteCandidates = [];    // remote, until their description is applied
     this.offerRev = incoming?.offerRev || 0;
     this.restarts = 0;
   }
@@ -196,10 +173,9 @@ export class CallSession {
     this.timers[name] = ms == null ? undefined : setTimeout(fn, ms);
   }
 
-  // ---------- media ----------
+  // Media
 
-  /* The camera is optional: with none, or one that's busy or blocked, a
-     video call carries on with your voice and your picture. */
+  // Falls back to audio-only if the camera is missing, busy or denied.
   async openMedia() {
     let stream;
     try {
@@ -210,7 +186,7 @@ export class CallSession {
       this.noCamera = true;
       this.cameraOff = true;
     }
-    // Hung up while the browser was asking for the camera.
+    // Hung up during the permission prompt.
     if (this.state === "ended") { stream.getTracks().forEach((t) => t.stop()); return; }
     this.localStream = stream;
     if (this.video && !this.noCamera) {
@@ -220,18 +196,18 @@ export class CallSession {
     this.emit();
   }
 
-  // ---------- the connection ----------
+  // Peer connection
 
   async buildPeer() {
     const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: "max-bundle" });
     this.pc = pc;
-    // Both sides open the same channel by number, so neither waits for the other.
+    // Pre-negotiated channel id, so neither side waits for ondatachannel.
     this.dc = pc.createDataChannel("mesh", { negotiated: true, id: 0 });
     this.dc.onopen = () => this.sendState();
     this.dc.onmessage = (e) => this.onPeerMessage(e.data);
 
     pc.ontrack = (e) => {
-      // A new stream object each time, so players pick up every track.
+      // New MediaStream per track so media elements pick up the change.
       const tracks = e.streams[0]?.getTracks() || [...this.remoteStream.getTracks(), e.track];
       this.remoteStream = new MediaStream(tracks);
       e.track.onunmute = () => this.emit();
@@ -250,9 +226,8 @@ export class CallSession {
     return pc;
   }
 
-  /* Candidates can arrive before the description they belong to (they
-     travel separately), so keep them until it's in place. After a
-     reconnect, the new ones carry a new username fragment. */
+  // Candidates can arrive before their description (they're signalled
+// separately), including new-ufrag candidates after an ICE restart.
   addRemoteCandidate(c) {
     const pc = this.pc;
     if (!pc || pc.signalingState === "closed") return;
@@ -287,7 +262,7 @@ export class CallSession {
       this.restarts = 0;
       this.set({ state: "active", startedAt: this.startedAt || Date.now() });
     } else if ((s === "disconnected" || s === "failed") && this.startedAt) {
-      // Dropped mid-call (a network change, a tunnel): try to come back.
+      // Dropped mid-call: attempt ICE restarts until RECOVER_MS.
       if (this.state !== "reconnecting") {
         this.set({ state: "reconnecting" });
         this.timer("recover", RECOVER_MS, () => this.finish("failed"));
@@ -298,8 +273,7 @@ export class CallSession {
     }
   }
 
-  /* The caller makes a fresh offer with new network paths; the other side
-     answers it through the call document, the same way as the first time. */
+  // Caller-driven ICE restart via a new offer (offerRev + 1).
   async restart() {
     const pc = this.pc;
     if (!pc || this.state === "ended" || this.connectionState() === "connected") return;
@@ -318,7 +292,7 @@ export class CallSession {
     this.timer("restart", RESTART_EVERY_MS, () => this.restart());
   }
 
-  // ---------- in-call messages: mute, camera, hang up ----------
+  // Data channel
 
   sendPeer(msg) {
     if (this.dc?.readyState === "open") { try { this.dc.send(JSON.stringify(msg)); } catch { /* closing */ } }
@@ -333,18 +307,16 @@ export class CallSession {
     if (msg.t === "bye") this.finish("ended", { remote: true });
   }
 
-  // ---------- caller ----------
+  // Caller
 
-  /** Ring the other person. */
-  async start() {
+    async start() {
     await this.openMedia();
     if (this.state === "ended") return;
     const pc = await this.buildPeer();
     if (this.state === "ended") return pc.close();
     const stream = this.localStream;
     pc.addTransceiver(stream.getAudioTracks()[0], { direction: "sendrecv", streams: [stream] });
-    // A video call always offers video, so they can send theirs even if
-    // your camera is off or missing.
+    // Always negotiate video on video calls, even without a local camera.
     if (this.video) {
       const cam = stream.getVideoTracks()[0];
       pc.addTransceiver(cam || "video", { direction: cam ? "sendrecv" : "recvonly", streams: [stream] });
@@ -396,16 +368,15 @@ export class CallSession {
     }
   }
 
-  // ---------- callee ----------
+  // Callee
 
-  /** Pick up. */
-  async answer() {
+    async answer() {
     await this.openMedia();
     if (this.state === "ended") return;
     const pc = await this.buildPeer();
     if (this.state === "ended") return pc.close();
     await this.setRemote(this.incoming.offer);
-    // Our tracks go on the lines their offer opened.
+    // addTrack reuses the transceivers created by the offer.
     this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -420,7 +391,7 @@ export class CallSession {
   async onCalleeDoc(d) {
     if (this.state === "ended") return;
     if (!d || d.status === "ended" || d.status === "missed") return this.finish("ended", { remote: true });
-    // A reconnect: the caller sent a fresh offer.
+    // ICE restart offer.
     const rev = d.offerRev || 0;
     if (rev > this.offerRev && d.offer && this.pc.signalingState === "stable" && !this.applying) {
       this.applying = true;
@@ -440,7 +411,7 @@ export class CallSession {
     this.finish("declined", { remote: true });
   }
 
-  // ---------- controls ----------
+  // Controls
 
   toggleMute() {
     this.localStream?.getAudioTracks().forEach((t) => { t.enabled = this.muted; });
@@ -455,19 +426,19 @@ export class CallSession {
     this.sendState();
   }
 
-  /** Front and back camera, on phones. The other side sees the switch without a reconnect. */
+  /** Switches front/back camera via replaceTrack (no renegotiation). */
   async flipCamera() {
     if (!this.canFlip || !this.localStream || this.flipping) return;
     this.flipping = true;
     const from = this.facing;
     const to = from === "user" ? "environment" : "user";
     const sender = this.pc?.getTransceivers().find((t) => t.receiver.track?.kind === "video")?.sender;
-    // Let go of the camera in use first: many phones can't run two at once.
+    // Release first: many phones can't open two cameras at once.
     this.localStream.getVideoTracks().forEach((t) => { t.stop(); this.localStream.removeTrack(t); });
     const open = async (facing) => navigator.mediaDevices.getUserMedia({ video: await cameraFor(facing) }).then((s) => s.getVideoTracks()[0]).catch(() => null);
     let track = await open(to);
     const facing = track ? to : from;
-    if (!track) track = await open(from); // couldn't switch: back to the one you had
+    if (!track) track = await open(from);
     if (track) {
       track.enabled = !this.cameraOff;
       await sender?.replaceTrack(track).catch(() => {});
@@ -481,8 +452,7 @@ export class CallSession {
     await this.finish(this.state === "ringing" || this.state === "starting" ? "cancelled" : "ended");
   }
 
-  /* Tear everything down once, tell the other side, and (as the caller)
-     leave a line in the conversation: "Video call · 3:12" or "Missed call". */
+  // Idempotent teardown. The caller also logs the call in the chat.
   async finish(reason, { remote = false } = {}) {
     if (this.state === "ended") return;
     const length = this.startedAt ? (Date.now() - this.startedAt) / 1000 : 0;
@@ -501,16 +471,14 @@ export class CallSession {
     }
     if (this.isCaller) {
       const kind = this.video ? "Video call" : "Voice call";
-      const summary = length > 0 ? `${kind} · ${formatLength(length)}`
+      const summary = length > 0 ? `${kind} · ${formatDuration(length)}`
         : reason === "declined" ? `${kind} declined`
         : reason === "busy" ? `${kind} · busy`
         : reason === "failed" ? `${kind} · couldn't connect`
         : `Missed ${kind.toLowerCase()}`;
       Promise.resolve(this.logCall({ video: this.video, seconds: Math.round(length), summary })).catch(() => {});
     }
-    // The setup messages include both people's IP addresses. Once the call
-    // is over they're useless, so delete them, after a pause that lets the
-    // other side see the call has ended.
+    // Signalling contains both parties' IPs; delete it once the peer has seen the end state.
     setTimeout(() => this.signal.wipe().catch(() => {}), 4000);
   }
 }

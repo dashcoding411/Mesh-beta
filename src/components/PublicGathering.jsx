@@ -10,9 +10,7 @@ import { DateBlock } from "./Events";
 import { CalendarButtons } from "./GatheringPage";
 import AuthPage from "./AuthPage";
 
-/* A public gathering, opened from an invite link by someone who isn't
-   signed in: what, when, where, who's hosting, and add-to-calendar. Replying
-   needs an account; the link keeps you on this gathering once you have one. */
+// Signed-out view for public gatherings opened from an invite link.
 export default function PublicGathering({ eventId }) {
   const [event, setEvent] = useState(undefined);
   const [signing, setSigning] = useState(false);

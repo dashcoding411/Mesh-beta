@@ -1,4 +1,3 @@
-// The News front page: topics, the review queue, your submissions and the stories.
 import { ChevronDown, MapPin, Newspaper, PenLine, ShieldCheck, Radio } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clearLegalHold, fetchNews, isAdmin, isNewsWriter, reviewNews } from "../../lib/db";
@@ -61,7 +60,6 @@ export function NewsHome() {
   };
 
   const shown = useMemo(() => (items || []).filter((n) => topic === "all" || (n.topic || "world") === topic), [items, topic]);
-  // Only offer topics that have something in them, plus whatever is selected.
   const liveTopics = useMemo(() => {
     const have = new Set((items || []).map((n) => n.topic || "world"));
     return NEWS_TOPICS.filter((t) => have.has(t.id) || t.id === topic);

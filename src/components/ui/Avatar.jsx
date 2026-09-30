@@ -1,12 +1,8 @@
 import { useState } from "react";
 import { useMediaSrc } from "../../lib/media";
 
-/* Initials on a flat colour when there's no photo, or when the photo fails to
-   load, which is the case people forget. alt="" on purpose: an avatar always
-   sits beside the name it belongs to, so describing it would make a screen
-   reader say the name twice. */
-// Initials sit on one of a few flat colours, chosen from the name so the same
-// person always gets the same one. White text passes 4.5:1 on all of them.
+// Falls back to initials on missing or broken photos. alt="" because the name is always adjacent.
+// Colour is derived from the name; white text meets 4.5:1 on each.
 const TONES = ["bg-violet-700", "bg-sky-700", "bg-emerald-700", "bg-amber-700", "bg-rose-700", "bg-teal-700", "bg-indigo-700", "bg-slate-600"];
 function toneFor(name) {
   let h = 0;

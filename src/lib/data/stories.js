@@ -1,13 +1,11 @@
-// Stories: 24-hour photos and clips, with views and likes (for the author
-// only), replies (a private message to the author) and echoes (public
-// replies that everyone who can see the story can read).
+// Stories (24h) with author-only views and likes, DM replies, and public echoes.
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { deleteInline } from "./posts.js";
-import { fetchProfile } from "./users.js";
+import { myProfile } from "./users.js";
 import { notify, unnotify } from "./notifications.js";
 import { openDirectChat, sendMessage } from "./chats.js";
 
@@ -15,15 +13,11 @@ export const STORY_MS = 24 * 3600 * 1000;
 export const ECHO_MAX = 300;
 export const storyExpired = (story, now = Date.now()) => now - tsMillis(story.createdAt) >= STORY_MS;
 
-// ---------- stories (24h) ----------
-
 const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
 
-/* A private account's stories are for its followers only. Each story
-   carries its day so the last 24 hours can be fetched without a composite
-   index. */
+// `day` lets the last 24h be queried with an `in` filter instead of a composite index.
 export async function createStory({ mediaUrl, mediaPath, mediaType }) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const story = {
     authorId: me(),
     authorName: profile?.username || "unknown",
@@ -39,11 +33,10 @@ export async function createStory({ mediaUrl, mediaPath, mediaType }) {
   await addDoc(collection(db, "stories"), story);
 }
 
-/** Take down one of your own stories, with its views, likes and echoes (and the photo it used). */
 export async function deleteStory(story) {
   const sub = async (name) => (await getDocs(query(collection(db, "stories", story.id, name), limit(2000))).catch(() => null))?.docs || [];
   const records = (await Promise.all(["views", "likes", "echoes"].map(sub))).flat();
-  // Those go first (the rules check they're on your story), the story last.
+  // Subcollections first: their delete rules read the parent story.
   for (let i = 0; i < records.length; i += 450) {
     const batch = writeBatch(db);
     records.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
@@ -53,35 +46,32 @@ export async function deleteStory(story) {
   await deleteInline(story.mediaUrl);
 }
 
-// ---------- views: who's seen your story ----------
+// Views
 
-const viewed = new Set(); // stories this visit has already counted
+const viewed = new Set();
 
-/** Count your view of someone else's story, once. */
 export async function markStoryViewed(story) {
   if (!me() || story.authorId === me() || viewed.has(story.id)) return;
   viewed.add(story.id);
   try {
     const ref = doc(db, "stories", story.id, "views", me());
     if ((await getDoc(ref)).exists()) return;
-    const p = await fetchProfile(me());
+    const p = await myProfile();
     await setDoc(ref, { username: p?.username || "", createdAt: serverTimestamp() });
   } catch { /* not counted; nothing to tell the viewer */ }
 }
 
-/** Who's seen your story, newest first. */
 export async function fetchStoryViews(storyId) {
   const snap = await getDocs(query(collection(db, "stories", storyId, "views"), limit(2000)));
   return snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-/** One story by id, for opening it from a notification. Null if it's gone. */
 export async function fetchStory(id) {
   const snap = await getDoc(doc(db, "stories", id)).catch(() => null);
   return snap?.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-// ---------- likes: only the story's author sees them ----------
+// Likes
 
 export async function hasLikedStory(storyId) {
   const snap = await getDoc(doc(db, "stories", storyId, "likes", me())).catch(() => null);
@@ -91,7 +81,7 @@ export async function hasLikedStory(storyId) {
 export async function likeStory(story, on) {
   const ref = doc(db, "stories", story.id, "likes", me());
   if (on) {
-    const p = await fetchProfile(me());
+    const p = await myProfile();
     await setDoc(ref, { username: p?.username || "", createdAt: serverTimestamp() });
     notify(story.authorId, "storylike", { ref: story.id });
   } else {
@@ -100,13 +90,12 @@ export async function likeStory(story, on) {
   }
 }
 
-/** Who liked your story, newest first. */
 export async function fetchStoryLikes(storyId) {
   const snap = await getDocs(query(collection(db, "stories", storyId, "likes"), limit(500)));
   return snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-// ---------- echoes: public replies on a story ----------
+// Echoes
 
 export async function fetchEchoes(storyId) {
   const snap = await getDocs(query(collection(db, "stories", storyId, "echoes"), orderBy("createdAt", "asc"), limit(200)));
@@ -114,7 +103,7 @@ export async function fetchEchoes(storyId) {
 }
 
 export async function addEcho(story, text) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const echo = {
     authorId: me(),
     authorName: profile?.username || "unknown",
@@ -123,7 +112,7 @@ export async function addEcho(story, text) {
     text: text.slice(0, ECHO_MAX),
     createdAt: serverTimestamp(),
   };
-  // The echo and your comment pace go together, like a comment.
+  // Shares the comment rate limit.
   const ref = doc(collection(db, "stories", story.id, "echoes"));
   const batch = writeBatch(db);
   batch.set(ref, echo);
@@ -133,15 +122,13 @@ export async function addEcho(story, text) {
   return { id: ref.id, ...echo, createdAt: Timestamp.now() };
 }
 
-/** Your own echo, or any echo on your own story. */
 export async function deleteEcho(story, echo) {
   await deleteDoc(doc(db, "stories", story.id, "echoes", echo.id));
   if (echo.authorId === me()) unnotify(story.authorId, "echo", { commentId: echo.id });
 }
 
-// ---------- replies: a private message to the story's author ----------
+// Replies
 
-/** Sends `text` (or a quick reaction) to the author, showing which story it answers. */
 export async function replyToStory(story, text) {
   const chatId = await openDirectChat({ id: story.authorId, username: story.authorName });
   await sendMessage(chatId, text.slice(0, 2000), {

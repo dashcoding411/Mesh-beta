@@ -6,13 +6,10 @@ import {
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { deleteCommentAndCount, hidePost } from "./posts.js";
-import { fetchProfile } from "./users.js";
+import { myProfile } from "./users.js";
 
-// ---------- reports and moderation ----------
-// Anything someone else wrote can be reported: posts, comments, messages and
-// accounts. One report per person per thing. A reported message or comment
-// carries its exact text (the rules check it matches), because moderators
-// can't open private conversations.
+// One report per (reporter, target). Message and comment reports carry the
+// exact text, checked by the rules, since moderators can't read chats.
 
 export const REPORT_REASONS = [
   { id: "hate", label: "Hate or discrimination", description: "Attacks people for their race, ethnicity, nationality, religion, caste, sexuality, gender or disability" },
@@ -28,17 +25,14 @@ export const REPORT_REASONS = [
 
 export const REPORT_LABEL = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r.label]));
 
-/** A post reported by this many established accounts leaves feeds until reviewed. */
+// Reports from accounts older than a day needed to hold a post for review.
 export const HOLD_AFTER_REPORTS = 3;
 
 export function isHeld(post) {
   return (post?.reportCount || 0) >= HOLD_AFTER_REPORTS && post?.modStatus !== "cleared";
 }
 
-/**
- * target: { type: "post" | "comment" | "message" | "user", id, authorId,
- *           postId?, chatId?, text? }
- */
+/** @param {{type: "post"|"comment"|"message"|"user", id: string, authorId: string, postId?: string, chatId?: string, text?: string}} target */
 export async function reportContent(target, reason, details = "") {
   const uid = me();
   const id = `${target.type}_${target.id}_${uid}`;
@@ -56,15 +50,13 @@ export async function reportContent(target, reason, details = "") {
     ...(target.type === "comment" || target.type === "message" ? { excerpt: target.text || "" } : {}),
   };
   const reportRef = doc(db, "reports", id);
-  // Only moderators can read reports, so a repeat shows up as a refused
-  // write (the report already exists and can't be overwritten).
+  // Reports are unreadable to reporters, so a duplicate surfaces as permission-denied.
   const plain = () => setDoc(reportRef, report).then(() => ({ duplicate: false }), (err) => {
     if (err?.code === "permission-denied") return { duplicate: true };
     throw err;
   });
   if (target.type !== "post") return plain();
-  // The report and the post's count go together. Accounts under a day old
-  // can report, but their report doesn't count towards holding the post.
+  // Only accounts older than a day increment reportCount.
   const batch = writeBatch(db);
   batch.set(reportRef, report);
   batch.update(doc(db, "posts", target.id), { reportCount: increment(1) });
@@ -81,17 +73,16 @@ export async function reportPost(post, reason, details = "") {
   return res;
 }
 
-/** Moderators: open reports, newest first. */
 export async function fetchReports(status = "open") {
   const q = query(collection(db, "reports"), where("status", "==", status), limit(300));
   return snapToList(await getDocs(q))
-    // Reports made before targets had types were always about posts.
+    // Legacy reports predate `type` and were always posts.
     .map((r) => (r.targetType ? r : { ...r, targetType: "post", targetId: r.postId }))
     .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
 export async function resolveReports(reports, status, action = "") {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const batch = writeBatch(db);
   for (const r of reports) {
     batch.update(doc(db, "reports", r.id), {
@@ -101,7 +92,6 @@ export async function resolveReports(reports, status, action = "") {
   await batch.commit();
 }
 
-/** Keep a reported post up, and stop reports from holding it back again. */
 export async function clearPost(postId) {
   await updateDoc(doc(db, "posts", postId), { modStatus: "cleared" });
 }
@@ -123,7 +113,7 @@ export const SUSPENSION_LENGTHS = [
 
 export async function suspendUser(uid, days, reason) {
   const until = days ? Timestamp.fromMillis(Date.now() + days * 86_400_000) : Timestamp.fromDate(new Date("9999-12-31"));
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const batch = writeBatch(db);
   batch.update(doc(db, "users", uid), { suspendedUntil: until });
   batch.set(doc(db, "suspensions", uid), { until, reason, by: profile?.username || "", createdAt: serverTimestamp() });

@@ -1,11 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-/* Fonts are self-hosted: the files ship in our own bundle, so no request goes
-   to Google Fonts or any other third party. The Cookies & Storage policy
-   promises exactly that, a CDN font would quietly break the promise. */
+// Self-hosted fonts: the storage policy promises no third-party font requests.
 import "@fontsource-variable/inter/wght.css";
 import "@fontsource-variable/plus-jakarta-sans/wght.css";
-// Theme, text size and motion are applied before the first render.
+// Applies appearance attributes before first render.
 import "./lib/appearance";
 import App from "./App.jsx";
 import { ToastProvider } from "./components/ui/Toast.jsx";

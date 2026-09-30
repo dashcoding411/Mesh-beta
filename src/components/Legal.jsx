@@ -6,17 +6,14 @@ import { navigate } from "../lib/router";
 import TopBar from "./shell/TopBar";
 import { LogoMark } from "./shell/Sidebar";
 
-/* Every policy, each on its own URL (/legal/privacy, /legal/terms, …) so they
-   can be linked from anywhere. Readable signed-out too, the signup form has
-   to link here before an account exists. */
+// Policies are public routes (/legal/:doc), readable signed out.
 export default function Legal({ doc = "privacy", standalone = false }) {
   const headingRef = useRef(null);
   const current = DOCUMENTS.find((d) => d.id === doc) || DOCUMENTS[0];
   const gaps = missingFields();
   const first = useRef(true);
 
-  // Switching document is a navigation: move focus to the new title, but not
-  // on first arrival, since that would yank focus out of wherever it was.
+  // Focus the new title on document switch, but not on initial load.
   useEffect(() => {
     if (!first.current) headingRef.current?.focus();
     first.current = false;

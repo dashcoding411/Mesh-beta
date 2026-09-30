@@ -24,9 +24,7 @@ import ChatView from "./ChatView";
 import { NewChatDialog } from "./chat/NewChatDialog";
 import { chatTitle, chatAvatar } from "../lib/chat";
 
-/* Messages. Two panes on desktop, the inbox stays put while a conversation
-   is open beside it. On a phone they're two screens, and the open chat has
-   its own URL, so Back returns to the inbox. */
+// Two-pane on desktop; on mobile the open chat is its own route.
 export default function Messages({ chatId }) {
   const { inbox, following } = useShell();
   const [tab, setTab] = useState("general");
@@ -36,8 +34,7 @@ export default function Messages({ chatId }) {
   useEffect(() => { touchPresence().catch(() => {}); }, []);
 
   const chats = inbox.chats;
-  // Two boxes: General is everyone you talk to; Requests is messages from
-  // people you don't follow, held until you reply.
+  // Requests: chats started by people the user doesn't follow, until replied to.
   const buckets = useMemo(() => {
     const out = { general: [], requests: [] };
     for (const c of chats || []) {
@@ -53,7 +50,6 @@ export default function Messages({ chatId }) {
   const visible = buckets[tab].filter((c) => !q || chatTitle(c).toLowerCase().includes(q));
   const unreadIn = (id) => buckets[id].filter((c) => inbox.isUnread(c)).length;
 
-  // Mark read on open, and again as messages arrive while it's open.
   useEffect(() => {
     if (active && inbox.isUnread(active)) inbox.markChatRead(active.id);
   }, [active, inbox]);
@@ -162,7 +158,6 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
   const pinned = (chat.pinnedBy || []).includes(me());
   const muted = (chat.mutedBy || []).includes(me());
   const title = chatTitle(chat);
-  // Something you started writing here and didn't send shows first.
   const draft = active ? null : readDraft(`chat:${chat.id}`)?.data?.text?.trim();
   const preview = chat.lastMessage
     ? `${chat.lastSenderId === me() ? "You: " : ""}${chat.lastMessage}`
@@ -226,7 +221,6 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
   );
 }
 
-/* Thoughts: a line of up to 60 characters over the inbox for a day. */
 function ThoughtsRail({ chats }) {
   const toast = useToast();
   const { profile } = useShell();

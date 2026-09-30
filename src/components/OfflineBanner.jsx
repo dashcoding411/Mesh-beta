@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { WifiOff, Wifi } from "lucide-react";
 
-/* Says so when the connection drops, instead of leaving spinners to spin.
-   Whatever you've typed stays put, and a short note says when you're back. */
 export default function OfflineBanner() {
   const [state, setState] = useState(() => (typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "online"));
 

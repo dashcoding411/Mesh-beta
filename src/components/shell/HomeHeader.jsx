@@ -5,12 +5,8 @@ import { navigate } from "../../lib/router";
 import { useShell } from "./ShellContext";
 import { LogoMark } from "./Sidebar";
 
-/* The header every Home section shares.
-
-   Phone: sidebar button on the left, the section's name, then Search and
-   Create. Create lives here because the bottom bar is kept to three tabs.
-   Desktop: the section's name and what it's for, since the sidebar already
-   handles getting around. `children` renders under both (e.g. feed tabs). */
+// Home section header. Mobile adds drawer, search and create buttons;
+// `children` renders below on both (e.g. feed tabs).
 export default function HomeHeader({ section, children, actions, transparent = false }) {
   const { openDrawer, openComposer, noticesUnread } = useShell();
   const meta = sectionById(section);
@@ -22,7 +18,6 @@ export default function HomeHeader({ section, children, actions, transparent = f
         ? "absolute inset-x-0 bg-gradient-to-b from-black/70 via-black/30 to-transparent text-white md:sticky md:bg-canvas/90 md:bg-none md:text-fg md:backdrop-blur md:border-b md:border-line"
         : "sticky border-b border-line bg-canvas/90 backdrop-blur"
     }`}>
-      {/* phone */}
       <div className="flex h-14 items-center gap-1 px-2 pt-safe md:hidden">
         <IconButton icon={Menu} label="Open Home sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />
         <div className="min-w-0 flex-1 px-1">
@@ -52,7 +47,6 @@ export default function HomeHeader({ section, children, actions, transparent = f
         <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />
       </div>
 
-      {/* desktop */}
       <div className="hidden md:flex min-h-16 items-center gap-4 px-6">
         <div className="min-w-0 flex-1 py-3">
           <h1 className="text-title-2">{isFeed ? "Home" : meta.label}</h1>

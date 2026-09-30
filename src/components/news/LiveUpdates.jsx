@@ -1,4 +1,3 @@
-// A live blog's stream of updates, newest first, arriving as they're posted.
 import { useEffect, useState } from "react";
 import { Radio, Send, Star, Trash2 } from "lucide-react";
 import { deleteLiveUpdate, listenLiveUpdates, postLiveUpdate, setLive, tsMillis } from "../../lib/db";
@@ -11,10 +10,7 @@ import { Checkbox, Textarea } from "../ui/Field";
 import { InlineMessage } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
-/* Readers see each update the moment it's posted, with no refreshing: the
-   page holds one live connection to the story's updates. Authors post from
-   the top of the stream while the blog is live, and can mark an update as
-   a key event so it stands out. */
+// Live update stream (one snapshot listener). Authors post while the blog is live.
 export function LiveUpdates({ story, isAuthor, onLiveChange }) {
   const toast = useToast();
   const [updates, setUpdates] = useState(null);

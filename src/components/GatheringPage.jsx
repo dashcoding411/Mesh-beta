@@ -29,10 +29,6 @@ import { DateBlock, GatheringForm } from "./Events";
 
 const STATUS_LABEL = { going: "Going", interested: "Interested", maybe: "Maybe", cant: "Can't go" };
 
-/* One gathering: when and where, your reply, the discussion, and who's
-   coming. What you can see and do here is exactly what the rules allow:
-   private gatherings are for the host, invited people and (in a circle)
-   members; a full gathering closes Going; the host decides who posts. */
 export default function GatheringPage({ eventId }) {
   const toast = useToast();
   const [event, setEvent] = useState(undefined);
@@ -41,7 +37,7 @@ export default function GatheringPage({ eventId }) {
   const [status, setStatus] = useState(null);
   const [tab, setTab] = useState("discussion");
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState(null); // edit | invite | delete
+  const [dialog, setDialog] = useState(null); // "edit" | "invite" | "delete"
 
   const load = useCallback(async () => {
     const ev = await fetchEvent(eventId).catch(() => null);
@@ -390,8 +386,6 @@ function Guests({ event, isHost, status }) {
   );
 }
 
-/* Private gatherings are invite-only, so the host needs a way to invite.
-   Invited people see it under Gatherings → Invited. */
 function InviteDialog({ event, onClose, onChange }) {
   const toast = useToast();
   const [term, setTerm] = useState("");
@@ -470,8 +464,7 @@ function InviteDialog({ event, onClose, onChange }) {
   );
 }
 
-/* A link to the gathering. Public ones open for anyone, even without a
-   Mesh account; private ones only for the people invited. */
+// Public gatherings are viewable signed out; private ones need an invite.
 async function shareGathering(event, toast) {
   const url = eventUrl(event.id);
   try {
@@ -484,8 +477,6 @@ async function shareGathering(event, toast) {
   } catch { /* dismissed */ }
 }
 
-/* Into your own calendar, which then does the reminding: a day before and
-   two hours before. */
 export function CalendarButtons({ event }) {
   const download = () => {
     const blob = new Blob([eventIcs(event)], { type: "text/calendar;charset=utf-8" });

@@ -1,4 +1,3 @@
-// A story waiting for review, and the checklist a reviewer ticks before publishing.
 import { Check, MapPin, X, Scale, Undo2, Radio } from "lucide-react";
 import { useState } from "react";
 import { shortTime } from "../../lib/format";
@@ -14,8 +13,7 @@ const CHECKS = [
   "No photos, footage, audio or quotes look generated or altered",
 ];
 
-/* Approving needs the checklist ticked, so review is a deliberate act,
-   not a button pressed on the way past. */
+// Approval requires the checklist.
 export function ReviewCard({ item, onReview }) {
   const [rejecting, setRejecting] = useState(false); // false | "back" | "reject"
   const [note, setNote] = useState("");

@@ -1,16 +1,14 @@
-// Gatherings: events, replies and their discussion.
+// Gatherings (events): RSVPs, invites, discussion and calendar export.
 import {
   addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, increment, limit,
   orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
-import { fetchProfile } from "./users.js";
+import { myProfile } from "./users.js";
 import { notify } from "./notifications.js";
 
-// ---------- gatherings (events, scoped to a circle or standalone) ----------
-// Public gatherings take Going / Interested; private ones take Going / Maybe /
-// Can't go so a host can count heads exactly.
+// Public gatherings: going/interested. Private: going/maybe/not going.
 
 export const RSVP_OPTIONS = {
   public: [
@@ -25,16 +23,13 @@ export const RSVP_OPTIONS = {
   ],
 };
 
-/* Who can see a gathering (mirrors canViewEvent in firestore.rules):
-   public ones, anyone; private ones, the host, people they've invited, and
-   members of the circle it belongs to. */
+// Mirrors canViewEvent in firestore.rules.
 export function canViewEvent(event, membership) {
   if (!event) return false;
   return event.privacy === "public" || event.hostId === me()
     || (event.invitees || []).includes(me()) || (!!event.groupId && !!membership);
 }
 
-/** Who can post in a gathering's discussion: the host, and anyone who replied. */
 export function canPostInEvent(event, myStatus) {
   if (event.hostId === me()) return true;
   return event.guestPosting !== "host" && !!myStatus;
@@ -44,7 +39,6 @@ export function isEventFull(event) {
   return (event.capacity || 0) > 0 && (event.goingCount || 0) >= event.capacity;
 }
 
-/** A circle's gatherings: all of them for members, only public ones otherwise. */
 export async function fetchEvents(groupId = "", { member = false } = {}) {
   const q = groupId
     ? member
@@ -54,7 +48,6 @@ export async function fetchEvents(groupId = "", { member = false } = {}) {
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
 }
 
-/** Private gatherings you've been invited to. */
 export async function fetchInvitedEvents() {
   const q = query(collection(db, "events"), where("invitees", "array-contains", me()), limit(50));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
@@ -70,7 +63,7 @@ export async function createEvent({
   showGuestList = true, capacity = 0, guestPosting = "guests",
 }) {
   const user = auth.currentUser;
-  const profile = await fetchProfile(user.uid);
+  const profile = await myProfile();
   const event = {
     title,
     description,
@@ -106,7 +99,6 @@ export async function deleteEvent(eventId) {
   await deleteDoc(doc(db, "events", eventId));
 }
 
-/** Invite people to a private gathering by adding them to its guest list. */
 export async function inviteToEvent(eventId, users) {
   await updateDoc(doc(db, "events", eventId), { invitees: arrayUnion(...users.map((u) => u.id)) });
   users.forEach((u) => notify(u.id, "invite", { ref: eventId }));
@@ -133,12 +125,10 @@ export async function fetchGuestList(eventId) {
   return snapToList(await getDocs(q));
 }
 
-/* One atomic write: the reply and the head-count change land together or
-   not at all, so the count can't drift and a full gathering can't be
-   overfilled (the rules check capacity against the count after the write). */
+// RSVP and head count change atomically; the rules check capacity post-write.
 export async function setRsvp(event, previous, next) {
   const uid = me();
-  const profile = await fetchProfile(uid);
+  const profile = await myProfile();
   const rsvpRef = doc(db, "events", event.id, "rsvps", uid);
   const eventRef = doc(db, "events", event.id);
   const result = previous === next ? null : next;
@@ -150,7 +140,7 @@ export async function setRsvp(event, previous, next) {
   const batch = writeBatch(db);
   if (result) batch.set(rsvpRef, { status: result, username: profile?.username || "", createdAt: serverTimestamp() });
   else batch.delete(rsvpRef);
-  // Your own list of replies, for reminders and "coming up".
+  // Mirror under users/{uid}/rsvps for upcoming lists.
   const mineRef = doc(db, "users", uid, "rsvps", event.id);
   if (result) {
     batch.set(mineRef, {
@@ -169,8 +159,6 @@ export async function setRsvp(event, previous, next) {
   return result;
 }
 
-/** Gatherings you said you're going to (or interested in, or maybe) that
-    haven't finished, soonest first. */
 export async function fetchUpcomingRsvps(max = 10) {
   const since = Timestamp.fromMillis(Date.now() - 3 * 3600000);
   const q = query(collection(db, "users", me(), "rsvps"), where("startsAt", ">=", since), orderBy("startsAt", "asc"), limit(max));
@@ -178,7 +166,6 @@ export async function fetchUpcomingRsvps(max = 10) {
   return list.filter((r) => r.status !== "cant");
 }
 
-/** A public gathering by link, for someone who isn't signed in. */
 export async function fetchPublicEvent(eventId) {
   const snap = await getDoc(doc(db, "events", eventId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
@@ -188,15 +175,13 @@ export function eventUrl(eventId) {
   return `${window.location.origin}/gatherings/${encodeURIComponent(eventId)}`;
 }
 
-// --- calendars ---
-// Gatherings have a start time but no end, so calendars get two hours.
+// Calendar export. Events have no end time, so two hours is assumed.
 
 const HOURS = 2;
 const icsTime = (ms) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 const icsText = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => `\\${c}`).replace(/\r?\n/g, "\\n");
 
-/** An .ics file your calendar app can import, with alerts a day and two
-    hours before: the reminders, without Mesh having to send anything. */
+/** iCalendar export with alarms at 1 day and 2 hours. */
 export function eventIcs(event) {
   const start = tsMillis(event.startsAt);
   const lines = [
@@ -229,10 +214,8 @@ export function googleCalendarUrl(event) {
   return `https://calendar.google.com/calendar/render?${params}`;
 }
 
-// --- a gathering's discussion ---
-// Guests (anyone who's replied) and the host post here; the host can switch
-// it to host-only so it reads as announcements. Stored under the gathering,
-// so a private gathering's discussion is exactly as private as the gathering.
+// Discussion: host and RSVP'd guests, or host-only. Stored under the event so
+// it inherits the event's visibility.
 
 export async function fetchEventPosts(eventId) {
   const q = query(collection(db, "events", eventId, "posts"), orderBy("createdAt", "desc"), limit(100));
@@ -240,7 +223,7 @@ export async function fetchEventPosts(eventId) {
 }
 
 export async function addEventPost(eventId, text) {
-  const profile = await fetchProfile(me());
+  const profile = await myProfile();
   const post = {
     authorId: me(),
     authorName: profile?.username || "",
@@ -264,8 +247,7 @@ export async function toggleEventPostLike(eventId, post, liked) {
   });
 }
 
-// Announcements from before discussions existed. Read-only now; they show
-// in the discussion as posts from the host.
+// Legacy announcements, shown as host posts.
 export async function fetchAnnouncements(eventId) {
   const q = query(collection(db, "events", eventId, "announcements"), orderBy("createdAt", "asc"), limit(100));
   return snapToList(await getDocs(q));

@@ -1,40 +1,23 @@
-// Content moderation: hate speech, harassment and spam.
+// Content moderation for public text: hate speech, harassment and spam.
 //
-// The principle: one rule for everyone. The same checks apply whichever group
-// is targeted (majority or minority, any race, ethnicity, nationality,
-// religion, caste, sexuality, gender or disability) and whichever political
-// side is speaking. Criticising ideas, religions as belief systems,
-// countries, governments and policies is allowed. Attacking people for who
-// they are is not.
+// The same checks apply to every group and every side. Criticism of ideas,
+// religions, countries and policies is allowed; attacks on people for who
+// they are aren't.
 //
-// Four outcomes, decided with context (see "context" below):
-//   block       slurs, dehumanising generalisations ("X are vermin"), calls
-//               for violence or exclusion against a group, "go back to your
-//               country" taunts, stereotype abuse phrases, and telling
-//               someone to kill themselves. The post isn't sent.
-//   borderline  mockery that isn't a slur or a dehumanising claim (a group,
-//               a stereotype and a laughing emoji), and blanket insults like
-//               "X are stupid". It posts, but Mesh won't push it to people
-//               who don't follow the author, and in comments it's folded away
-//               behind a tap. Freedom to speak isn't a right to be amplified.
-//   quoted      offensive words used to report or call out abuse ("he called
-//               me a ..."). It posts behind a tap-to-read warning.
-//   ok          everything else, including criticism, negation ("not all X
-//               are ...") and calling hate out.
+// Outcomes (see assessText):
+//   block       slurs, dehumanising generalisations, calls for violence or
+//               exclusion, "go back to your country", self-harm incitement
+//   borderline  mockery and blanket insults: posted, but not recommended to
+//               non-followers and collapsed in comments
+//   quoted      abuse quoted to report or condemn it: posted behind a warning
+//   ok          everything else, including negation and counter-speech
 //
-// What's checked: everything other people read in public (posts, comments,
-// names, bios, circles, gatherings, news). Not private messages.
-//
-// Text is normalised first (look-alike letters, accents, zero-width
-// characters, leetspeak, stretched letters, dots and spaces between letters),
-// so "n1gg3r", "p.a.j.e.e.t" and Cyrillic look-alikes don't slip through.
-//
-// The unambiguous slurs are also enforced by firestore.rules (server side),
-// so they can't be posted by skipping the app. The contextual checks below
-// need a language engine the rules don't have; they run here and in every
-// viewer's ranker, which can't be bypassed for what that viewer sees.
+// Text is normalised first (homoglyphs, accents, zero-width chars, leetspeak,
+// stretching, separators). Unambiguous slurs are also enforced by the rules
+// (hateFree); the contextual checks here have no server-side equivalent.
+// Private messages aren't checked.
 
-// ---------- normalisation ----------
+// Normalisation
 
 const HOMOGLYPHS = {
   "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s",
@@ -43,7 +26,6 @@ const HOMOGLYPHS = {
 };
 const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", 8: "b", "@": "a", $: "s", "!": "i", "|": "i", "€": "e" };
 
-/** Lowercase, look-alikes and accents folded, zero-width characters gone. */
 export function normalize(text) {
   let t = String(text || "").normalize("NFKC").toLowerCase();
   t = t.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, "");
@@ -52,9 +34,8 @@ export function normalize(text) {
   return t.replace(/[’‘`´]/g, "'").replace(/\s+/g, " ");
 }
 
-// Two readings of the same text: as written, and with leetspeak decoded.
-// "dirty!" must stay "dirty" (not "dirtyi"), and "d1rty" must become
-// "dirty", so every pattern is tried against both.
+// Patterns run against the text as written and with leetspeak decoded, since
+// decoding alone would mangle punctuation ("dirty!" -> "dirtyi").
 function variants(text) {
   const plain = normalize(text);
   const leet = plain.replace(/[0134578@$!|€]/g, (c) => LEET[c] ?? c);
@@ -64,8 +45,7 @@ function variants(text) {
 const B = "(?<![a-z])"; // not preceded by a letter
 const E = "(?![a-z])"; // not followed by a letter
 
-// A slur as a pattern that survives stretching ("niiigger"), censoring of
-// vowels ("n*gger") and, for longer words, dots or spaces between letters.
+// Tolerates stretching, censored vowels and (for longer words) separators.
 function slurPattern(word, { gaps = word.replace(/ /g, "").length >= 5 } = {}) {
   const sep = gaps ? "[\\s._\\-*]?" : "";
   return word
@@ -74,7 +54,7 @@ function slurPattern(word, { gaps = word.replace(/ /g, "").length >= 5 } = {}) {
     .join("[\\s._\\-]*");
 }
 
-// ---------- slurs: blocked whoever they target ----------
+// Slurs
 
 const SLURS = [
   // South Asian
@@ -104,8 +84,7 @@ const SLURS = [
   "retard", "retarded", "spastic", "spaz", "mongoloid",
 ];
 
-// Slurs that are also ordinary words: blocked unless the words around them
-// make the innocent meaning plain.
+// Also ordinary words; blocked unless the surrounding words make the benign sense clear.
 const CONTEXTUAL = [
   { term: "coon", innocent: /\bcoon (cheese|hound|hounds|hunting|dog|dogs|skin)\b|\bcoonhound/ },
   { term: "abo", innocent: /\babo (blood|group|groups|type|types|system|antigen|antigens|incompatib\w*|compatib\w*)\b/ },
@@ -118,10 +97,9 @@ const CONTEXTUAL = [
   { term: "dyke", innocent: /\b(the|a|dutch|sea|river|flood|stone|earth)\s(dyke|dykes)\b|\bdyke (wall|road|lane)\b/ },
 ];
 
-// ---------- groups: every group, the same rules ----------
+// Groups
 
-// People, by what they are. The same templates apply to each entry, so
-// "white people are vermin" is blocked exactly like "Indians are vermin".
+// Identity groups. Every template applies to every entry.
 const PEOPLE = [
   "indians?", "pakistanis?", "bangladeshis?", "sri lankans?", "nepalis?", "nepalese", "afghans?", "tamils?", "punjabis?",
   "asians?", "chinese", "japanese", "koreans?", "vietnamese", "filipin[oa]s?", "thais?", "indonesians?", "malaysians?",
@@ -140,8 +118,7 @@ const PEOPLE = [
   "women", "men", "females", "males",
 ];
 
-// Political identities: argue with them all you like. Only violence and
-// dehumanising language ("vermin", "subhuman") is off limits, for every side.
+// Political identities: only violence and dehumanisation are checked.
 const POLITICAL = [
   "leftists?", "lefties", "liberals?", "libs", "conservatives?", "right[- ]?wingers?", "left[- ]?wingers?",
   "republicans?", "democrats?", "labor voters?", "liberal voters?", "greens voters?", "greenies", "communists?",
@@ -152,11 +129,9 @@ const alt = (list) => `(?:${list.join("|")})`;
 const PEOPLE_RE = alt(PEOPLE);
 const ANY_GROUP_RE = alt([...PEOPLE, ...POLITICAL]);
 
-// As the object of a sentence ("I hate X", "dirty X", "kill X") a word like
-// "indian" or "chinese" is often describing something else: "I hate Indian
-// traffic", "kill the Chinese takeaway order". So a singular or adjective
-// form only counts when it isn't followed by another word (a few harmless
-// continuations aside). Plurals ("indians") always count.
+// As an object ("I hate X", "kill X"), singular/adjective forms only count
+// when not followed by a noun ("I hate Indian traffic" is fine). Plurals
+// always count.
 const ADJECTIVE_FORMS = new Set(["chinese", "japanese", "vietnamese", "lebanese", "sudanese", "nepalese"]);
 const pluralOf = (e) => e.replace(/s\?$/, "s");
 const singularOf = (e) => e.replace(/s\?$/, "");
@@ -174,7 +149,7 @@ const objectForm = (list) => {
 const PEOPLE_OBJ = objectForm(PEOPLE);
 const ANY_GROUP_OBJ = objectForm([...PEOPLE, ...POLITICAL]);
 
-// Words that deny people their humanity. Blocked against any group.
+// Dehumanising terms.
 const DEHUMANISING = [
   "animals?", "beasts?", "vermin", "rats", "roaches", "cockroaches", "parasites?", "leeches", "maggots", "insects",
   "sub[- ]?humans?", "not (?:even )?human", "less than human", "savages?", "barbarians", "apes", "monkeys?", "gorillas?",
@@ -183,7 +158,7 @@ const DEHUMANISING = [
   "rapists", "terrorists", "criminals", "thieves", "scammers", "pedos?", "paedos?", "pedophiles", "paedophiles",
 ];
 
-// Blanket insults: nasty, but not dehumanising. Allowed, not amplified.
+// Blanket insults (borderline).
 const INSULTING = [
   "stupid", "dumb", "idiots?", "morons?", "retards?", "brainless", "lazy", "ugly", "useless", "worthless",
   "annoying", "cringe", "losers?", "clowns?", "the worst",
@@ -223,7 +198,7 @@ const BLOCK_PATTERNS = [
   { category: "xenophobia", re: re(`${B}go\\s+back\\s+to\\s+(?:curry\\s?land|poo\\s?land|pajeet\\s?land|chinkland|shithole\\s?(?:country|land)?)${E}`) },
   { category: "xenophobia", re: re(`${B}go\\s+back\\s+(?:home\\s+)?(?:to\\s+)?where\\s+(?:you|u|they|he|she)\\s+(?:came|come|belong)\\s+from${E}`) },
   { category: "xenophobia", re: re(`${B}(?:you|u|they)\\s+(?:smell|stink)s?\\s+(?:like|of)\\s+curry${E}`) },
-  // telling someone to kill themselves
+  // self-harm incitement
   { category: "harassment", re: re(`${B}(?:kys|k y s|kill (?:your ?self|urself|yourselves)|neck (?:your ?self|urself)|go die|hope (?:you|u) die|drink bleach)${E}`) },
 ];
 
@@ -236,25 +211,20 @@ const BORDERLINE_PATTERNS = [
   { category: "coded", re: re(`${B}(?:saar|saaar+|sirs? pls|redeem(?:ed)? sir|bloody bastard benchod)${E}`) },
 ];
 
-// Mockery: a group, a stereotype and a laugh, together. Any one alone is fine.
+// Mockery: group + stereotype + laughter together (borderline).
 const STEREOTYPE_RE = re(`${B}(?:curry|smell\\w*|stink\\w*|scam\\w*|call ?cent(?:er|re)|tech support|street|toilet|poo|shit\\w*|cows?|cow piss|bats?|dogs?|dog meat|rice|chopsticks|accent|sirs?|needful|bobs|vagene|taco|burrito|cartel|terrorists?|bombs?|camels?|sand|oven|shekels?|nose|welfare|centrelink|dole|petrol|goon|boat people|monkeys?|bananas?|watermelon|fried chicken)${E}`);
 const LAUGH_RE = /(😂|🤣|💀|😹|😆|(?<![a-z])(?:lmao+|lmfao+|lol+|rofl|kek|haha+|hehe+|xd)(?![a-z]))/i;
 const PEOPLE_ONLY_RE = re(`${B}${PEOPLE_RE}${E}`);
 
-// ---------- context ----------
-// A word list alone is mindless: it blocks the person describing abuse as
-// readily as the abuser. So every match is read in its sentence first.
-//
-//   negated     "not all X are terrorists", "it's a myth that X are dirty"
-//   condemned   "saying X are vermin is racist", "stop calling us pajeets"
-//   reported    "he called me a paki", "she told me to go back to my country"
-//   in-group    "we Indians are always late lol", "as a Muslim, ..."
-//   endorsed    a laugh, "facts", "based", "he's right": cancels the three
-//               above, so "lol my mate said X are dirty 😂" is still blocked.
+// Context. Each match is read within its sentence:
+//   negated     "not all X are terrorists"
+//   condemned   "saying X are vermin is racist"
+//   reported    "he called me a paki"
+//   in-group    "we Indians are always late lol"
+//   endorsed    laughter, "facts", "based": overrides the three above
 
-// "not" and "never" count only right before the claim ("not all X are...");
-// otherwise "not gonna lie, X are dirty" would pass. Framing phrases count
-// anywhere earlier in the sentence.
+// Negation only counts immediately before the claim ("not gonna lie, X are
+// dirty" isn't negated); framing phrases count anywhere earlier.
 const NEGATION_NEAR_RE = re(`${B}(?:not|never|isn'?t|aren'?t|wasn'?t|weren'?t)\\s+$`);
 const NEGATION_FAR_RE = re(`${B}(?:myth that|false that|lie that|stereotype that|untrue that|wrong to (?:say|think|claim)|stop saying|quit saying|don'?t say|dont say|stop calling|don'?t call|nobody should say|racist to say|doesn'?t mean)${E}`);
 const CONDEMN_RE = re(`${B}(?:racist|racism|racists|xenophob\\w*|bigot\\w*|hate speech|hateful|slurs?|offensive|unacceptable|not (?:okay|ok|cool|funny|acceptable)|shameful|ignorant|prejudice\\w*|discriminat\\w*|stereotyp\\w*|hurtful|abus(?:e|ed|ive)|harass\\w*|called (?:it )?out|stand (?:up )?(?:against|to)|so tired of|sick of|fed up|had enough of|why do people|people who say|stop calling|stop saying|don'?t call|wrong to say|reported (?:him|her|them|it))${E}`);
@@ -264,7 +234,6 @@ const INGROUP_BEFORE_RE = re(`${B}(?:we|us)\\s+(?:all\\s+)?$`);
 const AS_A_RE = re(`${B}as an?\\s+(?:${PEOPLE.map((e) => e.replace(/s\?$/, "")).join("|")})${E}`);
 const FRIENDLY_RE = re(`${B}(?:my|ma|mah|wassup|sup|yo)\\s+$`);
 
-// The sentence a match sits in, and the text either side of it.
 function around(v, index, length) {
   const stops = /[.!?\n]/g;
   let start = 0;
@@ -273,7 +242,7 @@ function around(v, index, length) {
   stops.lastIndex = index + length;
   const next = stops.exec(v);
   const end = next ? next.index : v.length;
-  // Condemnation can sit in the next sentence ("...he said. So racist.").
+  // Condemnation may follow in the next sentence.
   stops.lastIndex = end + 1;
   const after = stops.exec(v);
   const windowEnd = v.length <= 280 ? v.length : after ? after.index : v.length;
@@ -298,7 +267,6 @@ function contextOf(v, index, length) {
   };
 }
 
-// What a match amounts to once its context is read.
 function judge(kind, c) {
   if (kind === "attack") {
     if (c.negated || (c.condemned && !c.endorsed)) return "ok";
@@ -318,7 +286,7 @@ function judge(kind, c) {
   return "borderline";
 }
 
-// ---------- assessment ----------
+// Assessment
 
 const SLUR_RES = SLURS.map((w) => re(`${B}${slurPattern(w)}(?:e?s)?${E}`));
 const CONTEXTUAL_RES = CONTEXTUAL.map(({ term, innocent }) => ({ re: re(`${B}${slurPattern(term, { gaps: false })}(?:e?s)?${E}`), innocent }));
@@ -326,15 +294,8 @@ const g = (r) => new RegExp(r.source, `${r.flags.replace("g", "")}g`);
 const RANK = { ok: 0, quoted: 1, borderline: 2, block: 3 };
 
 /**
- * { level, category?, matched? }
- *   block       not posted
- *   borderline  posted; not recommended beyond the author's followers;
- *               folded away in comments
- *   quoted      offensive words used to report or call out abuse; posted,
- *               shown behind a tap-to-read warning, not demoted
- *   ok
- * `matched` is the fragment, for moderators; never shown to the author as a
- * "how to get around it" hint.
+ * @returns {{ level: "block"|"borderline"|"quoted"|"ok", category?: string, matched?: string }}
+ * `matched` is for moderators only; never show it to the author.
  */
 export function assessText(text) {
   if (!text || !String(text).trim()) return { level: "ok" };
@@ -366,7 +327,6 @@ export function assessText(text) {
   return worst;
 }
 
-/** Anything folded away for others in comments: borderline, quoted, or worse. */
 export function isBorderline(text) {
   return assessText(text).level !== "ok";
 }
@@ -385,17 +345,14 @@ export function blockMessage(category) {
   return BLOCK_MESSAGES[category] || BLOCK_MESSAGES.dehumanising;
 }
 
-/** What people see before a borderline post goes out. */
 export const BORDERLINE_NOTE =
   "This might come across as mocking a group. You can still post it, but Mesh won't recommend it to people who don't follow you.";
 
-/** ...and before a post that quotes offensive words to report or call them out. */
 export const QUOTED_NOTE =
   "This quotes offensive language. It'll post, and people will see a warning and tap to read it.";
 
-// ---------- hidden words (each person's own list) ----------
+// Hidden words
 
-/** Does the text contain any of your hidden words or phrases? */
 export function hitsHiddenWords(text, words) {
   if (!words?.length || !text) return false;
   const vs = variants(text);
@@ -407,7 +364,7 @@ export function hitsHiddenWords(text, words) {
   });
 }
 
-// ---------- spam ----------
+// Spam and cooldowns
 
 const URL_RE = /https?:\/\/|www\./gi;
 
@@ -420,12 +377,11 @@ export function looksLikeSpam(text) {
   return null;
 }
 
-// The server enforces its own minimum gaps (10s between posts, 3s between
-// comments); these are a little longer so people see a clear message first.
+// Slightly longer than the rules' gaps (10s posts, 3s comments) so the client
+// explains the wait before the server refuses.
 const COOLDOWN_MS = { comment: 4000, default: 15000 };
 
-// Storage can be blocked (private modes, strict settings). Every access is
-// guarded so a blocked store degrades to "no cooldown", never a crash.
+// localStorage may be unavailable; fail open.
 function readKey(k) {
   try { return localStorage.getItem(k); } catch { return null; }
 }
@@ -440,8 +396,7 @@ export function postingCooldown(key = "post") {
   return 0;
 }
 
-/* Called only after a post actually succeeds. Recording the text at check
-   time instead would block a retry after a failed send as a "duplicate". */
+// Call only after a successful write, so a retry isn't flagged as a duplicate.
 export function markPosted(key = "post", text = "") {
   writeKey(`mesh:last:${key}`, String(Date.now()));
   if (text) writeKey(`mesh:lasttext:${key}`, String(text));
@@ -452,18 +407,13 @@ export function duplicateOfLast(text, key = "post") {
   return prev !== null && prev === String(text || "") && String(text || "").trim().length > 0;
 }
 
-// ---------- combined check ----------
+// Combined check
 
 /**
- * Before anything is sent. `{ error }` stops it; otherwise `{ ok, note,
- * sensitive }`: show `note` and ask for a second press, and store
- * `sensitive: true` with the post or comment so every viewer's app (and the
- * server, for slurs) knows it was let through on context.
- *
- * `allowQuoted`: only posts and comments can carry quoted offensive words,
- * behind a warning. Names, bios, circles and the rest can't.
- * `hate: false`: private messages. Mesh doesn't filter what people say to
- * each other in private; they can block and report instead.
+ * Pre-submit check. Returns `{ error }`, or `{ ok, note, sensitive }`: show
+ * `note` and require confirmation; persist `sensitive` with the content.
+ * `allowQuoted` is for posts and comments only. `hate: false` skips the hate
+ * checks (private messages).
  */
 export function checkContent(text, { key = "post", skipCooldown = false, allowQuoted = false, hate = true } = {}) {
   const verdict = hate ? assessText(text) : { level: "ok" };
@@ -488,7 +438,7 @@ export function checkContent(text, { key = "post", skipCooldown = false, allowQu
 
 export function checkName(text) {
   const verdict = assessText(text);
-  // A name has no sentence around it to give context: anything flagged is out.
+  // Names have no surrounding context, so any flag rejects.
   if (verdict.level !== "ok") {
     return { error: "That name contains language that isn't allowed on Mesh." };
   }

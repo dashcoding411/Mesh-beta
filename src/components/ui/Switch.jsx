@@ -1,6 +1,4 @@
-/* An on/off switch: a real button with role="switch", so it's announced as
-   "on" or "off" and flips with Space or Enter. The visible track and thumb
-   carry the state by position, not colour alone. */
+// role="switch"; state is conveyed by thumb position as well as colour.
 export default function Switch({ checked, onChange, label, disabled = false, id }) {
   return (
     <button type="button" role="switch" id={id} aria-checked={checked} aria-label={label} disabled={disabled}

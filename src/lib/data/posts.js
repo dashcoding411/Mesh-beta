@@ -1,26 +1,19 @@
-// Posts and everything done to them: likes, saves, sends, reposts, hides and comments.
+// Posts and interactions on them: likes, saves, sends, reposts, hides, comments.
 import {
   collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
   setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
-import { deleteObject, ref } from "firebase/storage";
-import { auth, db, storage } from "../../firebase";
+import { auth, db, loadStorage } from "../../firebase";
 import { navigate } from "../router";
 import { INLINE_PREFIX, isInline } from "../media";
 import { circleVisibility } from "./circles.js";
 import { me, snapToList, tsMillis } from "./core.js";
-import { fetchProfile, uidForUsername } from "./users.js";
+import { myProfile, uidForUsername } from "./users.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
 
-// ---------- posts ----------
-
-/* Four formats, one feed:
-     post:  a Still: a photo with a caption
-     text:  a Strand: words on their own, up to 500 characters
-     short: a Flick: vertical video, three minutes or less
-     video: a long Flick. It appears in the Flicks feed as a trailer cut from
-             the full video (trailerStart, TRAILER_SECONDS long) and opens into
-             the full-length player. */
+// post: photo (Still), text: up to 500 chars (Strand), short: video up to
+// three minutes (Flick), video: longer Flick, shown in feeds as a
+// TRAILER_SECONDS clip starting at trailerStart.
 export const KINDS = {
   post: { label: "Still", plural: "Stills" },
   text: { label: "Strand", plural: "Strands" },
@@ -50,9 +43,9 @@ export async function createPost({
   circleTopic = "", media = null, location = "",
 }) {
   const user = auth.currentUser;
-  const profile = await fetchProfile(user.uid);
+  const profile = await myProfile();
   const post = {
-    kind, // 'post' | 'text' | 'short' | 'video'
+    kind,
     authorId: user.uid,
     authorName: profile?.username || "unknown",
     authorDisplayName: profile?.name || profile?.username || "unknown",
@@ -65,31 +58,24 @@ export async function createPost({
     mediaType: mediaType || "",
     groupId: groupId || "",
     visibility: visibility || "public",
-    duration: Math.round(duration) || 0, // seconds, video only
+    duration: Math.round(duration) || 0, // seconds
     trailerStart: Math.max(0, Math.round(trailerStart) || 0),
-    // The author's own label for AI-made or AI-altered media. Shown on the
-    // post. The Terms require it wherever media could pass for real.
     aiGenerated: !!aiGenerated,
     topics: topics.slice(0, 3),
-    // A Strand can carry a poll (2–4 options) or a GIF from GIPHY. Votes are
-    // counted per option here and recorded privately per voter; see votePoll.
+    // Poll totals live on the post; individual votes are private (see votePoll).
     ...(poll ? {
       poll: { options: poll.options, endsAt: Timestamp.fromMillis(Date.now() + poll.hours * 3600e3) },
       pollVotes0: 0, pollVotes1: 0, pollVotes2: 0, pollVotes3: 0,
     } : {}),
     ...(gif ? { gif } : {}),
-    // Let through on context (quoting or calling out abuse, or borderline
-    // mockery). Viewers' apps fold or limit it, and the server only accepts
-    // a slur when this is set, so a slur can never go out unlabelled.
+    // Flagged content (quoted abuse, borderline wording). The rules reject
+    // blocklisted terms unless this is set, and clients render it collapsed.
     ...(sensitive ? { sensitive: true } : {}),
-    // A carousel: 2 to 10 photos, swiped through in order. The first is also
-    // mediaUrl/alt, so everything that shows one photo still works.
+    // Carousel slides. media[0] duplicates mediaUrl/alt for single-image consumers.
     ...(kind === "post" && media?.length > 1 ? {
       media: media.slice(0, MAX_SLIDES).map((m) => ({ url: m.url, alt: (m.alt || "").slice(0, 500), w: Math.round(m.width || 0), h: Math.round(m.height || 0) })),
     } : {}),
-    // Where it was taken, if the author says.
     ...(location.trim() ? { location: location.trim().slice(0, 60) } : {}),
-    // One of the circle's own topics, so members can filter the discussion.
     ...(groupId && circleTopic ? { circleTopic: circleTopic.slice(0, 40) } : {}),
     likeCount: 0,
     commentCount: 0,
@@ -100,17 +86,15 @@ export async function createPost({
     completeCount: 0,
     createdAt: serverTimestamp(),
   };
-  // The post and a rate-limit stamp go together: the rules allow one post
-  // every ten seconds per account, so a script can't flood the feed.
+  // The rules require the rate-limit stamp in the same batch (one post per 10s).
   const refDoc = doc(collection(db, "posts"));
   const batch = writeBatch(db);
   batch.set(refDoc, post);
   batch.set(doc(db, "rateLimits", user.uid), { post: serverTimestamp() }, { merge: true });
-  // In a circle, your last-post time goes with it (a circle's slow mode reads it).
+  // Circle slow mode reads the member's last post time.
   if (groupId) batch.update(doc(db, "groups", groupId, "members", user.uid), { lastPostAt: serverTimestamp() });
   await batch.commit();
-  // Tell anyone @mentioned in a public post. Followers-only and circle posts
-  // don't notify: the person might not be able to open them.
+  // Mentions notify only for public posts; others may not be readable by the recipient.
   if (post.visibility === "public") {
     mentionedHandles(post.text).forEach(async (handle) => {
       const uid = await uidForUsername(handle).catch(() => null);
@@ -120,9 +104,8 @@ export async function createPost({
   return { id: refDoc.id, ...post, createdAt: Timestamp.now() };
 }
 
-// Every posts query below must satisfy the `list` rule in firestore.rules
-// statically: constrain visibility == 'public', or authorId to your own uid.
-// Dropping either constraint makes Firestore reject the whole query.
+// Post queries must let the `list` rule prove access statically: constrain
+// visibility == "public" or authorId == me(), or the whole query is rejected.
 
 const byNewest = (a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt);
 
@@ -131,9 +114,10 @@ export async function fetchFeed() {
     collection(db, "posts"),
     where("visibility", "==", "public"),
     where("groupId", "==", ""),
+    orderBy("createdAt", "desc"),
     limit(150)
   );
-  return snapToList(await getDocs(q)).sort(byNewest);
+  return snapToList(await getDocs(q));
 }
 
 export async function fetchPostsByKind(kind) {
@@ -141,22 +125,20 @@ export async function fetchPostsByKind(kind) {
     collection(db, "posts"),
     where("visibility", "==", "public"),
     where("kind", "==", kind),
+    orderBy("createdAt", "desc"),
     limit(150)
   );
-  return snapToList(await getDocs(q))
-    .filter((p) => !p.groupId)
-    .sort(byNewest);
+  return snapToList(await getDocs(q)).filter((p) => !p.groupId);
 }
 
-/** Public posts tagged with an interest, for the feed's interest chips. */
 export async function fetchTopicPosts(topic) {
-  const q = query(collection(db, "posts"), where("visibility", "==", "public"), where("topics", "array-contains", topic), limit(100));
-  return snapToList(await getDocs(q)).filter((p) => !p.groupId).sort(byNewest);
+  const q = query(collection(db, "posts"), where("visibility", "==", "public"), where("topics", "array-contains", topic),
+    orderBy("createdAt", "desc"), limit(100));
+  return snapToList(await getDocs(q)).filter((p) => !p.groupId);
 }
 
-/* Poll voting. One vote per person, final, and anonymous: the vote record
-   is readable only by the voter, and the post only holds totals. The vote
-   and the total move together in one write, which the rules require. */
+// Votes are final and private to the voter. The rules require the vote and
+// the total to change in the same batch.
 export async function votePostPoll(post, option) {
   const batch = writeBatch(db);
   batch.set(doc(db, "posts", post.id, "votes", me()), { option, createdAt: serverTimestamp() });
@@ -169,7 +151,6 @@ export async function fetchMyVote(postId) {
   return snap?.exists() ? snap.data().option : null;
 }
 
-/** Short and long Flicks together. Long ones play as their trailer. */
 export async function fetchVideos() {
   const [shorts, longs] = await Promise.all([
     fetchPostsByKind("short"),
@@ -179,37 +160,35 @@ export async function fetchVideos() {
 }
 
 export async function fetchPostsByAuthor(uid) {
-  // Your own profile shows followers-only posts too; someone else's shows public only.
   const q =
     uid === me()
-      ? query(collection(db, "posts"), where("authorId", "==", uid), limit(100))
+      ? query(collection(db, "posts"), where("authorId", "==", uid), orderBy("createdAt", "desc"), limit(100))
       : query(
           collection(db, "posts"),
           where("visibility", "==", "public"),
           where("authorId", "==", uid),
+          orderBy("createdAt", "desc"),
           limit(100)
         );
-  return snapToList(await getDocs(q)).sort(byNewest);
+  return snapToList(await getDocs(q));
 }
 
-/* A circle's posts. Public circles post publicly; private and hidden ones
-   post with visibility "circle", which the rules only let members read.
-   Posts made before a circle went private are still "public", so members
-   of a private circle get both. */
+// Private circles post with visibility "circle"; posts from before a circle
+// went private stay "public", so members read both.
 export async function fetchGroupPosts(group, { member = false } = {}) {
   const byVis = (vis) => getDocs(query(
     collection(db, "posts"),
     where("visibility", "==", vis),
     where("groupId", "==", group.id),
+    orderBy("createdAt", "desc"),
     limit(100)
   )).then(snapToList);
-  if (group.privacy === "public") return (await byVis("public")).sort(byNewest);
+  if (group.privacy === "public") return byVis("public");
   if (!member) return [];
   const [circle, legacy] = await Promise.all([byVis("circle"), byVis("public").catch(() => [])]);
   return [...circle, ...legacy].sort(byNewest);
 }
 
-/** Posts waiting for approval: all of them for admins, your own for you. */
 export async function fetchPendingPosts(groupId, { mine = false } = {}) {
   const q = mine
     ? query(collection(db, "posts"), where("authorId", "==", me()), where("groupId", "==", groupId), where("visibility", "==", "pending"), limit(50))
@@ -217,9 +196,7 @@ export async function fetchPendingPosts(groupId, { mine = false } = {}) {
   return snapToList(await getDocs(q)).sort(byNewest);
 }
 
-/** Change the words on one of your own posts (not in a circle). Stamps
-    `editedAt`, which the rules require and every card shows as "Edited".
-    Returns the fields that changed, to merge into what's on screen. */
+/** Edits a non-circle post. Resolves to the changed fields for optimistic merging. */
 export async function editPost(post, { text, title = "", alt = "", topics = [], sensitive = false, visibility, location }) {
   const user = auth.currentUser;
   const changes = { text, title, alt, topics, sensitive, editedAt: serverTimestamp() };
@@ -236,7 +213,6 @@ export async function approvePost(post, group) {
   await updateDoc(doc(db, "posts", post.id), { visibility: circleVisibility(group) });
 }
 
-// A photo kept in Firestore goes with the post, story or avatar that used it.
 export async function deleteInline(url) {
   if (isInline(url)) await deleteDoc(doc(db, "media", url.slice(INLINE_PREFIX.length))).catch(() => {});
 }
@@ -244,18 +220,18 @@ export async function deleteInline(url) {
 export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
   await deleteInline(post.mediaUrl);
-  // Every photo in a carousel, not just the first.
   for (const m of (post.media || []).slice(1)) await deleteInline(m.url).catch(() => {});
   if (post.mediaPath) {
     try {
+      const { deleteObject, ref, storage } = await loadStorage();
       await deleteObject(ref(storage, post.mediaPath));
     } catch {
-      // media may already be gone; the post delete is what matters
+      // Already gone; the post itself is what matters.
     }
   }
 }
 
-// ---------- likes (one per user) + affinity signals ----------
+// Likes and affinity
 
 export async function fetchMyLikes(postIds) {
   const uid = me();
@@ -269,22 +245,19 @@ export async function fetchMyLikes(postIds) {
   return liked;
 }
 
-// Signal weights, blended from what each of the big four actually optimises:
-//   TikTok:  passive watch signals (completion, replay) map interest fast
-//   Instagram: a "send" to a friend is the strongest taste signal there is
-//   Facebook: comments and replies mean meaningful social interaction
-//   YouTube: a click that turns into sustained watch time beats a bare click
+// Affinity weights per interaction. Costlier actions (send, save, follow)
+// count for more than a like; hide is a strong negative.
 export const SIGNAL = {
-  hide: -8,        // explicit "not interested", the strongest negative
-  skip: -1,        // scrolled away almost immediately
-  view: 0.25,      // watched a meaningful chunk
-  complete: 1,     // watched to the end
-  replay: 1.5,     // watched again, strong intent
+  hide: -8,
+  skip: -1,
+  view: 0.25,
+  complete: 1,
+  replay: 1.5,
   like: 1,
-  comment: 2,      // MSI: conversation beats a tap
+  comment: 2,
   save: 3,
-  send: 4,         // the Instagram "sends" economy
-  repost: 3.5,     // a public endorsement: costs reputation, not just a tap
+  send: 4,
+  repost: 3.5,
   follow: 5,
 };
 
@@ -303,9 +276,7 @@ export async function bumpAffinity(authorId, amount) {
   );
 }
 
-// Counters move only in the same batch as the record they count (a like,
-// a save, a follow...). The rules check both together, so a count can't be
-// pushed around on its own, and a double tap can't count twice.
+// Counters only change in the same batch as the record they count; the rules check both.
 export async function toggleLike(post, currentlyLiked) {
   const uid = me();
   const likeRef = doc(db, "posts", post.id, "likes", uid);
@@ -317,7 +288,7 @@ export async function toggleLike(post, currentlyLiked) {
     await batch.commit();
     unnotify(post.authorId, "like", { postId: post.id });
   } else {
-    const profile = await fetchProfile(uid);
+    const profile = await myProfile();
     batch.set(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
     batch.update(postRef, { likeCount: increment(1) });
     await batch.commit();
@@ -326,7 +297,6 @@ export async function toggleLike(post, currentlyLiked) {
   }
 }
 
-/** A couple of recent likers, for "Liked by @a and 12 others". */
 export async function fetchLikers(postId, n = 2) {
   const snap = await getDocs(query(collection(db, "posts", postId, "likes"), limit(8))).catch(() => null);
   return (snap?.docs || [])
@@ -343,10 +313,7 @@ export async function fetchAffinity() {
   return map;
 }
 
-// ---------- saves & sends ----------
-// These are the two strongest positive signals in the ranker: a save is a
-// private bookmark, a send is passing something to a specific person. Both
-// cost the user more than a like, so both are weighted above it.
+// Saves and sends
 
 export async function fetchMySaves(postIds) {
   const uid = me();
@@ -380,8 +347,7 @@ export async function toggleSave(post, currentlySaved) {
 }
 
 export async function fetchSavedPosts() {
-  // Saves live under each post, so read the ids the user owns via their own
-  // mirror doc rather than a collection-group query.
+  // The user's own mirror, rather than a collection-group query over posts.
   const q = query(collection(db, "users", me(), "saved"), limit(200));
   const ids = (await getDocs(q)).docs.map((d) => d.id);
   const posts = await Promise.all(
@@ -393,9 +359,7 @@ export async function fetchSavedPosts() {
   return posts.filter(Boolean).sort(byNewest);
 }
 
-// Sending a post into a chat produces a real preview card, not a text line.
-// A denormalised snapshot rides along so the bubble renders instantly without
-// a second read, and still resolves to the live post when tapped.
+// The message carries a snapshot of the post so the preview renders without a read.
 export async function sendPostTo(post, chatId, note = "") {
   const uid = me();
   const batch = writeBatch(db);
@@ -421,8 +385,7 @@ export async function sendPostTo(post, chatId, note = "") {
     updatedAt: serverTimestamp(),
   });
   await batch.commit();
-  // The send count is the number of different people who passed it on, so
-  // it's recorded once per person, with its marker, in its own batch.
+  // sendCount counts distinct senders, keyed by a per-sender marker.
   const sendRef = doc(db, "posts", post.id, "sends", uid);
   const already = await getDoc(sendRef).catch(() => null);
   if (!already?.exists()) {
@@ -434,11 +397,7 @@ export async function sendPostTo(post, chatId, note = "") {
   bumpAffinity(post.authorId, SIGNAL.send).catch(() => {});
 }
 
-// ---------- reposts ----------
-// A repost puts someone else's public post in front of your followers with
-// your name on it. One doc per (post, person), keyed so it can't be doubled.
-// Followers-only posts can't be reposted: the rules refuse it, since that
-// would leak them past the audience their author chose.
+// Reposts: one doc per (post, user). Only public posts can be reposted.
 
 const repostId = (postId, uid) => `${postId}_${uid}`;
 
@@ -465,7 +424,7 @@ export async function toggleRepost(post, currentlyReposted) {
     await batch.commit();
     unnotify(post.authorId, "repost", { postId: post.id });
   } else {
-    const profile = await fetchProfile(uid);
+    const profile = await myProfile();
     batch.set(ref_, {
       postId: post.id,
       postAuthorId: post.authorId,
@@ -480,7 +439,6 @@ export async function toggleRepost(post, currentlyReposted) {
   }
 }
 
-/** Recent reposts by a set of people, used to surface what the people you follow passed on. */
 export async function fetchRepostsBy(uids, max = 60) {
   const list = [...uids];
   const out = [];
@@ -493,7 +451,6 @@ export async function fetchRepostsBy(uids, max = 60) {
   return out.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
-/** Posts someone has reposted, newest first. Posts that were deleted or made private drop out. */
 export async function fetchRepostedPosts(uid) {
   const reposts = await fetchRepostsBy([uid], 50);
   const posts = await Promise.all(reposts.map((r) => fetchPost(r.postId).catch(() => null)));
@@ -502,7 +459,6 @@ export async function fetchRepostedPosts(uid) {
     .filter(Boolean);
 }
 
-// Opening a shared post from a chat.
 export async function fetchPost(postId) {
   const snap = await getDoc(doc(db, "posts", postId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
@@ -512,14 +468,11 @@ export function openPost(postId) {
   navigate(`/p/${encodeURIComponent(postId)}`, { overlay: true });
 }
 
-/** A long Flick opens in the full-length player; everything else opens as a post. */
 export function openWatch(postId) {
   navigate(`/watch/${encodeURIComponent(postId)}`, { overlay: true });
 }
 
-// ---------- negative signals ----------
-// Explicit negatives are as valuable to the ranker as positives, and they are
-// the only honest way to give someone control over what they're shown.
+// Hides
 
 export async function hidePost(post, reason = "not_interested") {
   await setDoc(doc(db, "users", me(), "hidden", post.id), {
@@ -527,7 +480,6 @@ export async function hidePost(post, reason = "not_interested") {
     reason,
     createdAt: serverTimestamp(),
   });
-  // A hide is a strong negative against that author.
   bumpAffinity(post.authorId, SIGNAL.hide).catch(() => {});
 }
 
@@ -538,14 +490,13 @@ export async function fetchHiddenPostIds() {
   return set;
 }
 
-// ---------- comments ----------
+// Comments
 
 export async function fetchComments(postId) {
   const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limit(200));
   return snapToList(await getDocs(q));
 }
 
-/** The first comment on a post, shown under it in the feed. */
 export async function fetchTopComment(postId) {
   const snap = await getDocs(query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limit(1))).catch(() => null);
   const d = snap?.docs[0];
@@ -554,7 +505,7 @@ export async function fetchTopComment(postId) {
 
 export async function addComment(post, text, gif = null, sensitive = false) {
   const user = auth.currentUser;
-  const profile = await fetchProfile(user.uid);
+  const profile = await myProfile();
   const comment = {
     authorId: user.uid,
     authorName: profile?.username || "unknown",
@@ -565,8 +516,7 @@ export async function addComment(post, text, gif = null, sensitive = false) {
     ...(sensitive ? { sensitive: true } : {}),
     createdAt: serverTimestamp(),
   };
-  // The comment and the post's count go in one batch; `lastCommentId` names
-  // the comment so the rules can check the count moved because of it.
+  // lastCommentId lets the rules tie the count change to this comment.
   const ref_ = doc(collection(db, "posts", post.id, "comments"));
   const batch = writeBatch(db);
   batch.set(ref_, comment);
@@ -584,13 +534,12 @@ export async function deleteCommentAndCount(postId, commentId) {
   batch.update(doc(db, "posts", postId), { commentCount: increment(-1), lastCommentId: commentId });
   try { await batch.commit(); }
   catch (err) {
-    // The post may be gone, or its count already settled: still remove the comment.
+    // Post deleted or count already settled: remove the comment alone.
     if (err?.code !== "permission-denied" && err?.code !== "not-found") throw err;
     await deleteDoc(doc(db, "posts", postId, "comments", commentId));
   }
 }
 
-/** Your own comment, or any comment on your own post. */
 export async function deleteComment(post, commentId) {
   await deleteCommentAndCount(post.id, commentId);
 }

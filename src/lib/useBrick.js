@@ -4,10 +4,8 @@ import {
 } from "./db";
 import { capFor, dayKey, lockState, pendingDueAt, unlockAt } from "./brick";
 
-/* Brick mode, live, for the whole app: your limits and today's minutes from
-   the server, re-checked every 15 seconds so a window opening or closing
-   shows up without a reload. Its own context, so the ticking clock only
-   re-renders the few places that care. */
+// Live brick policy and usage, re-evaluated every 15s. Separate context so
+// the tick only re-renders consumers.
 export const BrickContext = createContext(null);
 
 export function useBrick() {
@@ -29,7 +27,6 @@ export function useBrickEngine(signedIn) {
     return listenLock(me(), (p, r) => setLock({ policy: p, raw: r, loaded: true }));
   }, [signedIn]);
 
-  // Today's usage, re-subscribed when the local day changes.
   useEffect(() => {
     if (!signedIn || offset === null) return undefined;
     return listenUsage(me(), offset, setUsage);
@@ -40,9 +37,8 @@ export function useBrickEngine(signedIn) {
     return () => clearInterval(t);
   }, []);
 
-  // A loosening that has waited its 24 hours takes effect on its own. A
-  // minute's grace covers a device clock that runs fast, and each waiting
-  // change is tried once per visit, so a refusal can't turn into a loop.
+  // Apply due pending changes. 60s grace for fast clocks; one attempt per
+  // change per session so a rejection can't loop.
   const due = pendingDueAt(policy);
   const tried = useRef(0);
   useEffect(() => {
@@ -52,8 +48,7 @@ export function useBrickEngine(signedIn) {
     applyPending(raw).catch(() => {});
   }, [raw, due, now]);
 
-  // Once a visit: follow daylight saving, drop usage older than a week, and
-  // count any finished bricks towards your stats.
+  // Once per session: DST sync, usage pruning, stats claims.
   const tidied = useRef(false);
   const counted = useRef(0);
   useEffect(() => {
@@ -65,7 +60,7 @@ export function useBrickEngine(signedIn) {
     syncBrickStats(policy, raw).catch(() => {});
   }, [policy, raw]);
 
-  // An instant brick that finishes while Mesh is open is counted straight away.
+  // Claim an instant brick as soon as it ends.
   const brickEnd = policy?.self?.until || 0;
   useEffect(() => {
     if (!brickEnd || now < brickEnd || counted.current === brickEnd) return;
@@ -85,9 +80,8 @@ export function useBrickEngine(signedIn) {
   }), [policy, raw, usage, now, lock.loaded]);
 }
 
-/* Counts time on a capped section: while it's on screen and the tab is in
-   front, every 30 seconds adds 30 to today's total on the server. Nothing
-   is counted where there's no cap, so most people never send these. */
+// Adds 30s of usage every 30s while a capped section is visible. Uncapped
+// sections aren't metered.
 export function useUsageMeter(brick, section) {
   const ref = useRef(brick);
   useEffect(() => { ref.current = brick; }, [brick]);

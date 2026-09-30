@@ -1,4 +1,3 @@
-// Writing a story: the newsroom's editor.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowDown, ArrowUp, Trash2, Plus, ImagePlus, History, Eye, Send, Scale, Radio, Users, X, Check, Info,
@@ -8,7 +7,7 @@ import {
   listenStory, saveStory, submitStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
   clearStoryPresence, coAuthorFor, uploadMedia, me,
 } from "../../lib/db";
-import { mergeStory, newBlock, storyStats, reviewProblems, MAX_BLOCKS } from "../../lib/storyDoc";
+import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS } from "../../lib/storyDoc";
 import { NEWS_TOPICS } from "../../lib/interests";
 import { checkContent } from "../../lib/moderation";
 import { goBack, navigate } from "../../lib/router";
@@ -32,33 +31,28 @@ const TYPE_ICONS = { p: Pilcrow, h2: Heading2, h3: Heading3, quote: Quote, list:
 const TEXT_TYPES = [["p", "Paragraph"], ["h2", "Heading"], ["h3", "Subheading"], ["quote", "Quote"], ["list", "List"]];
 const ADDABLE = [["p", "Paragraph"], ["h2", "Heading"], ["quote", "Quote"], ["list", "List"], ["image", "Image"], ["divider", "Divider"]];
 const PRESENCE_MS = 2 * 60 * 1000;
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-/* The editor. Everything is saved as you go, as numbered versions. Co-
-   authors see each other's changes appear, see who's typing in which block
-   (and can't type over them), and if two people save at the same moment
-   the changes are merged block by block. Nothing is published from here:
-   it goes to a reviewer. */
+// Collaborative block editor: debounced versioned saves with three-way
+// merge (storyDoc.mergeStory) and per-block presence locks.
 export default function StoryEditor({ id }) {
   const toast = useToast();
   const { profile } = useShell();
-  const [base, setBase] = useState(null); // the story as last saved
-  const [local, setLocal] = useState(null); // the story as you're editing it
+  const [base, setBase] = useState(null); // last saved
+  const [local, setLocal] = useState(null); // working copy
   const [missing, setMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
   const [saveError, setSaveError] = useState("");
   const [presence, setPresenceList] = useState([]);
   const [now, setNow] = useState(() => Date.now());
-  const [dialog, setDialog] = useState(null); // submit | history | preview
+  const [dialog, setDialog] = useState(null); // "submit" | "history" | "preview"
   const baseRef = useRef(null);
   const localRef = useRef(null);
   useEffect(() => { baseRef.current = base; }, [base]);
   useEffect(() => { localRef.current = local; }, [local]);
   usePageTitle(local?.title ? `Editing: ${local.title}` : "New story", 2);
 
-  // The story, live: a co-author's saved changes merge into what you're
-  // writing, block by block, without touching the blocks you're working on.
+  // Merge co-authors' saves into the working copy.
   useEffect(() => listenStory(id, (server) => {
     if (!server) { setMissing(true); return; }
     const b = baseRef.current;
@@ -78,8 +72,7 @@ export default function StoryEditor({ id }) {
   const dirty = !!local && !!base && !same(local, base);
   const lead = local?.authorId === me();
 
-  // Save a moment after you stop typing. Edits made while a save is on its
-  // way are rebased onto the result, so none are lost.
+  // Debounced save; edits made during a save are rebased onto its result.
   const save = useCallback(async () => {
     const b = baseRef.current;
     const mine = localRef.current;
@@ -113,7 +106,6 @@ export default function StoryEditor({ id }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  // Who else is where.
   const lockedBy = useMemo(() => {
     const map = {};
     for (const p of presence) {
@@ -270,8 +262,6 @@ function AuthorsStrip({ names, uids, presence, now }) {
   );
 }
 
-/* One block: its text (or image), and, when it has focus, the controls to
-   change its type, move it or remove it. */
 function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChange, onMove, onRemove }) {
   const toast = useToast();
   const [uploading, setUploading] = useState(false);

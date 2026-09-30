@@ -1,4 +1,5 @@
 import { BUSINESS } from "./business.js";
+import { DOCUMENT_TITLES } from "./titles.js";
 
 /* These documents describe what the code in this repository actually does.
    If you change what data is collected, who it is shared with, or how long it
@@ -13,7 +14,7 @@ const OPERATOR = `${B.legalName} (ABN ${B.abn}), trading as ${B.tradingName}`;
 
 export const PRIVACY = {
   id: "privacy",
-  title: "Privacy Policy",
+  title: DOCUMENT_TITLES.privacy,
   summary:
     "What Mesh collects, why, who can see it, and how to get it back or delete it.",
   sections: [
@@ -143,7 +144,7 @@ export const PRIVACY = {
 
 export const TERMS = {
   id: "terms",
-  title: "Terms of Service",
+  title: DOCUMENT_TITLES.terms,
   summary: "The agreement between you and Mesh. Written to be read.",
   sections: [
     {
@@ -239,7 +240,7 @@ export const TERMS = {
 
 export const COOKIES = {
   id: "cookies",
-  title: "Cookies & Storage",
+  title: DOCUMENT_TITLES.cookies,
   summary:
     "Mesh uses browser storage to keep you signed in and to stop spam. There is no advertising or analytics tracking.",
   sections: [
@@ -286,7 +287,7 @@ export const COOKIES = {
 
 export const REFUNDS = {
   id: "refunds",
-  title: "Refunds & Billing",
+  title: DOCUMENT_TITLES.refunds,
   summary: "Mesh is free. There is nothing to charge or refund yet. Here is what happens if that changes.",
   sections: [
     {
@@ -323,7 +324,7 @@ export const REFUNDS = {
 
 export const GUIDELINES = {
   id: "guidelines",
-  title: "Community Guidelines",
+  title: DOCUMENT_TITLES.guidelines,
   summary: "What Mesh is for, and what gets you removed.",
   sections: [
     {

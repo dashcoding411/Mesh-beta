@@ -26,12 +26,11 @@ import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
-import { DOCUMENTS } from "./legal/content.js";
+import { DOCUMENT_TITLES } from "./legal/titles.js";
 import LockScreen from "./components/LockScreen";
 import HomeHeader from "./components/shell/HomeHeader";
 
-// Everything but the shell and the home feed loads when it's first opened,
-// so the first visit downloads only what it shows.
+// Route-level code splitting; only the shell and home feed are in the entry chunk.
 const named = (load, name) => lazy(() => load().then((m) => ({ default: m[name] })));
 const Flicks = lazy(() => import("./components/Flicks"));
 const Search = lazy(() => import("./components/Search"));
@@ -62,20 +61,17 @@ const SECTION_TITLES = {
   notifications: "Notifications", leaderboard: "Leaderboard",
 };
 
-/* Which brick-mode section a page belongs to. Messages, calls, your
-   notifications and settings never lock, and nor do a gathering's details:
-   those are for getting somewhere, not for scrolling. */
+// Brick-mode section for a page. Messaging, notifications, settings and
+// gathering details are never locked.
 function lockSectionOf(page) {
   if (page.tab !== "home" || page.gatheringId || page.notFound) return null;
-  // Writing isn't reading: the newsroom stays open during a News limit.
+  // The newsroom is exempt from News limits.
   if (page.section === "news" && page.view) return null;
   return { foryou: "feed", following: "feed", search: "feed", circles: "feed", saved: "feed", flicks: "flicks", news: "news" }[page.section] || null;
 }
 
-/* The tab title for the section on screen. Pages inside a section (a circle,
-   a profile, a story) set a more specific one with usePageTitle. */
 function sectionTitle(page, signedIn, query) {
-  if (page.view === "legal") return DOCUMENTS.find((d) => d.id === page.doc)?.title || "Policies";
+  if (page.view === "legal") return DOCUMENT_TITLES[page.doc] || "Policies";
   if (!signedIn) return null;
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
@@ -119,7 +115,7 @@ export default function App() {
         setInterests(prefs.interests || []);
         setHiddenWords(prefs.hiddenWords || []);
         setMutedSet(new Set(prefs.muted || []));
-        // Ask once, on a new account's first visit. Skippable, never nagging.
+        // Prompt once per account per device.
         let asked = true;
         try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
         if (p && !(prefs.interests || []).length && !asked) setInterestsDialog("first");
@@ -136,12 +132,11 @@ export default function App() {
   }, []);
 
   const signedIn = !!(user && profile);
-  // Your own current name and photo, for every card that shows you.
+  // Keep the viewer's own card current in the profile cache.
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
   const brick = useBrickEngine(signedIn);
 
-  // Notifications, live: one listener feeds the badge and the page.
   const [notices, setNotices] = useState(null);
   useEffect(() => {
     if (!signedIn) return undefined;
@@ -149,22 +144,20 @@ export default function App() {
   }, [signedIn]);
   const noticesUnread = useMemo(() => (notices || []).filter((n) => !n.read && !muted.has(n.actorId) && !blocked.has(n.actorId)).length, [notices, muted, blocked]);
 
-  // Incoming calls, while signed in.
   const callUid = signedIn ? user.uid : null;
   useEffect(() => { if (callUid && callsSupported()) return listenIncomingCalls(callUid, setIncoming); }, [callUid]);
-  // A caller whose tab closed never says it stopped ringing: let it lapse.
+  // Expire rings whose caller vanished without updating the doc.
   useEffect(() => {
     if (!incoming.length) return;
     const t = setInterval(() => setIncoming((l) => l.filter((c) => !ringExpired(c))), 5000);
     return () => clearInterval(t);
   }, [incoming.length]);
-  // Already on a call: tell anyone else who rings that you're busy. Their
-  // call then stops ringing, which takes it off the list.
+  // Auto-reject other incoming calls as busy; the listener then drops them.
   useEffect(() => {
     if (!call || call.state === "ended") return;
     incoming.filter((c) => c.id !== call.signal.id).forEach((c) => refuseCall(c.id, "busy"));
   }, [call, incoming]);
-  // Closing or leaving the page ends the call rather than leaving it hanging.
+  // End the call on page unload.
   useEffect(() => {
     if (!call) return;
     const bye = () => { call.hangUp(); };
@@ -176,7 +169,7 @@ export default function App() {
     if (!callsSupported()) return toast({ tone: "error", title: "This browser can't make calls" });
     if (call) return;
     const other = chat.members.find((m) => m !== user?.uid);
-    // Check before asking for the camera, so nobody grants access for nothing.
+    // Check eligibility before prompting for camera/mic.
     if (!(await followsMe(other))) {
       return toast({ tone: "info", title: "You can only call people who follow you",
         body: "It stops strangers ringing people. Send a message instead." });
@@ -189,10 +182,9 @@ export default function App() {
     setCall(session);
     try { await session.start(); }
     catch (err) {
-      // Hung up before it got going: nothing to report.
       if (session.state === "ended" && session.endedReason === "cancelled") return;
       console.error(err);
-      // Turn the camera and microphone back off before saying anything.
+      // Release devices before surfacing the error.
       session.finish("failed").catch(() => {});
       setCall(null);
       if (err?.code === "permission-denied") {
@@ -226,7 +218,6 @@ export default function App() {
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const openInterests = useCallback(() => setInterestsDialog("edit"), []);
-  // Muting or unmuting someone: saved first, then shown, with a way back.
   const saveMute = useCallback(async (person, on) => {
     await setMuted(person.id, on);
     setMutedSet((prev) => { const n = new Set(prev); if (on) n.add(person.id); else n.delete(person.id); return n; });
@@ -242,7 +233,6 @@ export default function App() {
       toast({ tone: "error", title: on ? "Couldn't mute" : "Couldn't unmute", body: "Check your connection and try again." });
     }
   }, [saveMute, toast]);
-  // Authors whose posts stay out of your feeds: blocked or muted.
   const hiddenAuthors = useMemo(() => new Set([...blocked, ...muted]), [blocked, muted]);
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
@@ -254,7 +244,7 @@ export default function App() {
   const { page, overlay, bgQuery } = resolve(loc);
   usePageTitle(sectionTitle(page, signedIn, overlay ? bgQuery : loc.query), 0);
   const lockSection = lockSectionOf(page);
-  // Time on a capped section counts towards today's limit (the full player counts as Flicks).
+  // Meter usage for capped sections (the player counts as Flicks).
   useUsageMeter(brick, overlay ? (overlay.overlay === "watch" ? "flicks" : overlay.overlay === "post" ? "feed" : null) : lockSection);
 
   if (!authReady) {
@@ -265,7 +255,7 @@ export default function App() {
     );
   }
 
-  // Policies have to be readable before anyone has an account.
+  // Public routes, available signed out.
   if (!signedIn) {
     if (page.view === "legal") {
       return (
@@ -276,7 +266,6 @@ export default function App() {
         </div>
       );
     }
-    // An invite link to a public gathering works before signing in.
     if (page.gatheringId) {
       return (
         <Suspense fallback={<Loading label="Loading" />}>
@@ -322,8 +311,7 @@ export default function App() {
   }
   if (page.notFound) content = <NotFound />;
 
-  // Brick mode: a locked section shows why and until when, instead of its
-  // content. (The server refuses the content anyway; this is the kind way.)
+  // Locked sections render the lock screen (the rules also refuse the reads).
   const locked = lockSection ? brick.state(lockSection) : null;
   if (locked) {
     content = (
@@ -340,7 +328,6 @@ export default function App() {
     <ShellContext.Provider value={shell}>
     <BrickContext.Provider value={brick}>
       <div className="flex h-dvh flex-col md:flex-row">
-        {/* Keyboard users land here first and can jump the navigation. */}
         <a href="#mesh-main" className="skip-link">Skip to content</a>
 
         <Sidebar page={page} profile={profile} unread={inbox.unreadCount} notifications={noticesUnread} onCreate={() => openComposer()} />
@@ -354,8 +341,7 @@ export default function App() {
 
         <BottomNav page={page} profile={profile} unread={inbox.unreadCount} immersive={immersive} />
 
-        {/* Overlays and dialogs load on first use; while one loads, nothing
-            flashes (they open over a page that's already there). */}
+        {/* Overlays render over the current page, so a null fallback avoids flashing it. */}
         <Suspense fallback={null}>
         {overlay?.overlay === "user" && <UserProfile key={overlay.id} uid={overlay.id} />}
         {overlayLock ? (
@@ -412,7 +398,6 @@ export default function App() {
   );
 }
 
-/* A post or video opened by link while its section is locked. */
 function LockedOverlay({ section, lock, brick }) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Locked"

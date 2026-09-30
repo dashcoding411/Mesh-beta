@@ -1,21 +1,8 @@
-// A news story as a structured document: an ordered list of blocks
-// (paragraph, heading, quote, list, image, divider), not a blob of HTML.
-//
-// Stored as parallel lists (ids, types, texts, images, descriptions) so the
-// security rules can check every word; `script` is the texts joined, which
-// the rules check too, and which search, summaries and read times use.
-// This file is the pure part: conversion, merging concurrent edits, and the
-// checks a story has to pass before review.
+// News story document model. Blocks are stored as parallel arrays so the
+// rules can validate them; `script` (texts joined by blank lines) is also
+// checked by the rules and used for search and read time. Pure functions:
+// conversion, three-way merge, review checks.
 
-export const BLOCK_TYPES = [
-  { id: "p", label: "Paragraph" },
-  { id: "h2", label: "Heading" },
-  { id: "h3", label: "Subheading" },
-  { id: "quote", label: "Quote" },
-  { id: "list", label: "List" },
-  { id: "image", label: "Image" },
-  { id: "divider", label: "Divider" },
-];
 export const MAX_BLOCKS = 150;
 export const CITE_RE = /\[(\d{1,2})\]/g;
 
@@ -29,7 +16,7 @@ export function newBlock(type = "p", text = "") {
   return { id: newBlockId(), type, text, media: "", alt: "" };
 }
 
-/** Blocks from a stored story (new ones), or from an older plain script. */
+/** Handles both block-based and legacy script-only docs. */
 export function blocksFromDoc(d) {
   if (Array.isArray(d?.blockIds)) {
     return d.blockIds.map((id, i) => ({
@@ -39,7 +26,6 @@ export function blocksFromDoc(d) {
   return String(d?.script || "").split(/\n{2,}|\n/).filter((p) => p.trim()).map((p) => newBlock("p", p));
 }
 
-/** The stored form: parallel lists, plus the joined text the rules check. */
 export function blocksToDoc(blocks) {
   const list = blocks.slice(0, MAX_BLOCKS);
   const blockTexts = list.map((b) => (b.type === "divider" ? "" : String(b.text || "")));
@@ -55,14 +41,12 @@ export function blocksToDoc(blocks) {
 
 const FIELDS = ["title", "standfirst", "topic", "location", "coverUrl", "format", "legalHold", "legalNote"];
 const LIST_FIELDS = ["keyPoints", "sources"];
-const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+export const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const blockEq = (a, b) => !!a && !!b && a.type === b.type && a.text === b.text && a.media === b.media && a.alt === b.alt;
 
-/* Two people saved at once: `base` is what you started from, `theirs` is
-   what's on the server now, `mine` is your version. Each field and each
-   block goes to whoever changed it; where both did, yours wins for fields
-   and blocks you touched, theirs for the rest. Blocks you added keep their
-   place after the block before them. */
+// Three-way merge. Per field and per block, a side's change wins where only
+// it changed; on conflict `mine` wins for what it touched. New local blocks
+// are placed after their original predecessor.
 export function mergeStory(base, theirs, mine) {
   const out = { ...theirs };
   for (const f of [...FIELDS, ...LIST_FIELDS]) {
@@ -75,13 +59,13 @@ export function mergeStory(base, theirs, mine) {
     const b = baseMap.get(t.id);
     const m = mineMap.get(t.id);
     if (!m && b) {
-      // You deleted it: gone, unless they changed it meanwhile.
+      // Deleted locally: drop unless changed remotely.
       if (!blockEq(t, b)) result.push(t);
       continue;
     }
     result.push(m && b && !blockEq(m, b) ? m : m && !b ? m : t);
   }
-  // Blocks you added that the server doesn't have yet.
+  // Locally added blocks.
   const have = new Set(result.map((b) => b.id));
   mine.blocks.forEach((m, i) => {
     if (have.has(m.id) || baseMap.has(m.id)) return;
@@ -105,7 +89,7 @@ export function storyStats(story) {
   return { words, minutes: Math.max(1, Math.round(words / 220)), cited: [...cites].sort((a, b) => a - b) };
 }
 
-/** Everything a story needs before a reviewer sees it, in words. */
+/** User-facing problems blocking submission for review. */
 export function reviewProblems(story) {
   const out = [];
   const body = blocksToDoc(story.blocks).script;

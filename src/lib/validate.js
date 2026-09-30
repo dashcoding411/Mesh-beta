@@ -1,6 +1,4 @@
-// Client-side validation. Mirrors the limits enforced server-side in
-// firestore.rules / storage.rules. The rules are the real gate; this just
-// gives users fast feedback.
+// Client-side validation mirroring the limits in firestore.rules/storage.rules.
 
 export const LIMITS = {
   username: { min: 3, max: 30 },
@@ -50,8 +48,7 @@ export function validBirthYear(raw) {
   if (!Number.isInteger(y) || y < now - 120 || y > now) {
     return { error: "Enter a real birth year." };
   }
-  // Mesh isn't for children under 13 (see the Privacy Policy); the rules
-  // refuse younger birth years too.
+  // Minimum age 13, also enforced by the rules (validBirthYear).
   if (y > now - 13) return { error: "You need to be at least 13 to use Mesh." };
   return { year: y };
 }

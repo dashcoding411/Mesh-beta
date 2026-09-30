@@ -5,21 +5,16 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
-    // The Firebase SDK alone is ~610 kB (~180 kB gzipped) and can't be split
-    // safely (see below); everything of ours is well under the default 500.
+    // The Firebase chunk (~590 kB) can't be split safely; see manualChunks.
     chunkSizeWarningLimit: 650,
     rollupOptions: {
       output: {
-        // Libraries change far less often than the app, so they get their own
-        // files: after an app update, returning visitors re-download only the
-        // app code, not Firebase and React too.
+        // Vendor chunks for long-term caching across app deploys.
         manualChunks(id) {
-          // Stylesheets (the self-hosted fonts) stay with the app's CSS file.
           if (!id.includes("node_modules") || /\.css($|\?)/.test(id)) return undefined;
-          // Firebase stays in one file: its packages import each other in a
-          // cycle, and splitting them across files breaks start-up order
-          // ("Cannot access ... before initialization"). idb and re2js are
-          // libraries only Firebase uses.
+          // Firebase packages have circular imports; splitting them breaks
+          // initialisation order. Storage is excluded because it's lazy-loaded.
+          if (/@firebase\/storage|firebase\/storage/.test(id)) return undefined;
           if (/firebase|\/idb\/|\/re2js\//.test(id)) return "firebase";
           if (id.includes("react-dom") || id.includes("/react/") || id.includes("scheduler")) return "react";
           if (id.includes("lucide-react")) return "icons";

@@ -1,4 +1,3 @@
-// Shared helpers: who's signed in, timestamps, snapshots, and opening a profile.
 import { auth } from "../../firebase";
 import { navigate } from "../router";
 
@@ -13,8 +12,6 @@ export function snapToList(snapshot) {
 export function me() {
   return auth.currentUser?.uid;
 }
-
-// ---------- tiny app-wide navigation bus ----------
 
 export function openUserProfile(uid) {
   if (!uid) return;

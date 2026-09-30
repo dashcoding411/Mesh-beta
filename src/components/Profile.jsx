@@ -17,8 +17,6 @@ import IconButton from "./ui/IconButton";
 import { useToast } from "./ui/toast-context";
 import { ProfileHeader, FollowListDialog, PostGrid, EditProfileDialog } from "./ProfileParts";
 
-/* The Account tab opens on your public profile: exactly what other people
-   see. Private settings are one tap away behind the gear, and say so. */
 export default function Profile() {
   const { profile, setProfile, openComposer } = useShell();
   const brick = useBrick();
@@ -37,9 +35,7 @@ export default function Profile() {
     fetchIncomingSpouseRequests().then(setSpouseRequests).catch(() => {});
   }, []);
 
-  // An invite you sent shows as "(pending)" on your profile until the other
-  // person answers. Once they have, settle it here: linked if they accepted,
-  // cleared if they declined.
+  // Settle a sent spouse invite once the other person has answered.
   const pending = profile?.spouseUsername?.endsWith(" (pending)") ? profile.spouseUsername : "";
   useEffect(() => {
     if (!pending) return;

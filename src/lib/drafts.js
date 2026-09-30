@@ -1,10 +1,5 @@
-// Unfinished posts and messages, kept on this device so closing the
-// composer, switching chats or losing the tab doesn't lose what you wrote.
-//
-// Stored in this browser only (localStorage, keys beginning "mesh:draft:",
-// see the Cookies & Storage policy), per account, for a week at most, and
-// all of them are removed when you sign out. Photos and videos aren't kept:
-// only words and choices.
+// Local drafts (localStorage, "mesh:draft:<uid>:<scope>"), kept for a week
+// and cleared on sign-out. Text and choices only; media isn't persisted.
 
 import { useCallback, useEffect, useRef } from "react";
 import { me } from "./db";
@@ -14,7 +9,7 @@ const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const keyFor = (scope) => `${PREFIX}${me() || "signed-out"}:${scope}`;
 
-/** The saved draft for `scope`, or null. `at` is when it was last saved. */
+/** { data, at } or null. */
 export function readDraft(scope) {
   if (!scope) return null;
   try {
@@ -29,7 +24,6 @@ export function readDraft(scope) {
   }
 }
 
-/** Save a draft (as JSON text), or remove it when `json` is empty. */
 export function writeDraft(scope, json) {
   if (!scope) return;
   try {
@@ -38,25 +32,21 @@ export function writeDraft(scope, json) {
   } catch { /* storage full or blocked: the draft lasts as long as the screen */ }
 }
 
-/** Every draft on this device, for any account. Called on sign-out. */
+/** Removes drafts for every account (sign-out). */
 export function clearAllDrafts() {
   try {
     Object.keys(localStorage).filter((k) => k.startsWith(PREFIX)).forEach((k) => localStorage.removeItem(k));
   } catch { /* storage blocked: nothing was saved */ }
 }
 
-/** Keep `data` saved as the draft for `scope` while it changes (null or
-    undefined means there's nothing worth keeping). Returns `finish`, to call
-    once the post is sent: it removes the draft and stops the last few
-    keystrokes being saved back as the screen closes. */
+/** Debounced autosave of `data` (null clears). Returns `finish()` to call after a successful send. */
 export function useDraft(scope, data) {
   const json = data ? JSON.stringify(data) : "";
   const latest = useRef(json);
   const finishedWith = useRef(null);
 
   useEffect(() => {
-    // Right after finishing, the screen may render once more with the words
-    // it just sent. That isn't a new draft.
+    // Ignore the render that follows finish() with the just-sent text.
     if (finishedWith.current !== null) {
       if (json === finishedWith.current) return;
       finishedWith.current = null;
@@ -66,7 +56,7 @@ export function useDraft(scope, data) {
     return () => clearTimeout(t);
   }, [scope, json]);
 
-  // Closing within the 400ms still keeps the last words.
+  // Flush on unmount inside the debounce window.
   useEffect(() => () => writeDraft(scope, latest.current), [scope]);
 
   return useCallback(() => {

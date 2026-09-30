@@ -1,17 +1,8 @@
 import { forwardRef } from "react";
 import { Spinner } from "./States";
 
-/* One button, five jobs. Hierarchy is the point: a screen should have one
-   primary action at most, so "primary" is a decision, not a default.
-
-     primary:   the one thing this screen is for
-     secondary: a real alternative (Cancel, Message)
-     ghost:     low-emphasis actions that sit in a row of others
-     danger:    destroys something; always paired with a confirmation
-     brand:     solid accent. Reserved for Create and first-run CTAs.
-
-   Hover goes darker, never lighter: white text on violet-500 is only 4.2:1,
-   which fails AA. violet-700 on hover is 7.1:1. */
+// variant: primary (at most one per screen) | secondary | ghost | danger | brand.
+// Hover darkens rather than lightens to keep white text at AA contrast.
 const VARIANTS = {
   primary: "bg-accent text-white hover:bg-accent-hover shadow-raised",
   secondary: "bg-surface-2 text-fg border border-line-strong hover:bg-surface-3",
@@ -46,8 +37,7 @@ const Button = forwardRef(function Button(
         ${VARIANTS[variant]} ${SIZES[size]} ${full ? "w-full" : ""} ${className}`}
       {...rest}
     >
-      {/* The label stays in the layout while loading so the button never
-          changes width under the pointer, only its content swaps. */}
+      {/* Label keeps its width while loading. */}
       <span className={`inline-flex items-center gap-[inherit] ${loading ? "invisible" : ""}`}>
         {Icon && <Icon size={iconSize} strokeWidth={2} aria-hidden="true" />}
         {children}
