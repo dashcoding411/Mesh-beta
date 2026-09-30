@@ -69,6 +69,7 @@ attacking the live database; see Security.
 | `VITE_GIPHY_API_KEY` | GIFs in posts, comments and messages. Get a free key at developers.giphy.com. Without it the GIF buttons are hidden. |
 | `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | A TURN relay for calls. Without one, calls from most mobile data and some Wi-Fi fail to connect (see Calls). |
 | `VITE_TURN_API_URL` | Or: a URL that returns TURN credentials as a list of ICE servers, such as Metered's. |
+| `VITE_ICE_SERVERS` | Or: the provider's ICE servers array, pasted as JSON on one line (Metered: Show ICE Servers Array). |
 | `VITE_APPLE_SIGNIN=on` | Shows "Continue with Apple". Only set it once Apple sign-in is configured in Firebase. |
 | `VITE_APPCHECK_DEBUG_TOKEN` | Lets local development pass Firebase App Check (the reCAPTCHA Enterprise key only works on the real domains). Generate one in the Firebase console under App Check > Apps > Manage debug tokens, and keep it in `.env.local` only: anyone with it can pass App Check. The site key itself is public and set in `src/firebase.js` (override with `VITE_APPCHECK_SITE_KEY` / `VITE_APPCHECK_PROVIDER`). |
 | `VITE_STORAGE=on` | Uses Cloud Storage for uploads (and turns on video). Set it after enabling the Blaze plan and deploying `storage.rules`. Until then photos and voice messages are stored in Firestore. |
@@ -258,8 +259,10 @@ mobile data), strict office Wi-Fi or some home routers; then the call has to go
 through a TURN relay, which is a paid or free-tier service. Set one up in
 `.env.local` (see Optional settings) and rebuild:
 
-- **Static credentials** (recommended; for example Metered's free Open Relay
-  plan, or ExpressTURN): `VITE_TURN_URLS` (comma-separated `turn:` and
+- **The ICE servers array** (recommended, and what Mesh uses): in Metered's
+  dashboard, TURN Server > Add Credential > Show ICE Servers Array, and paste
+  the array on one line as `VITE_ICE_SERVERS='[...]'`.
+- **Static credentials** (for example ExpressTURN): `VITE_TURN_URLS` (comma-separated `turn:` and
   `turns:` URLs, including a `turns:...:443` one for strict networks),
   `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL`, copied from the provider's
   dashboard.
@@ -272,6 +275,8 @@ through a TURN relay, which is a paid or free-tier service. Set one up in
 
 Either way the credentials end up in the site's JavaScript, which is how these
 providers expect browsers to use them; limit them in the provider's dashboard.
+The provider's account **secret key** is different: it can create and delete
+credentials, so it never goes in `.env.local` or anywhere in the site.
 Calls relayed through TURN stay encrypted end to end. Group calls would need a
 media server (an SFU), so they're not included.
 

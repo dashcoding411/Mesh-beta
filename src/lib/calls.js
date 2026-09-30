@@ -13,6 +13,7 @@
 //   the IP addresses of people on calls (disclosed in the Privacy Policy).
 // - Many networks (most mobile data, strict office Wi-Fi, some home routers)
 //   block direct connections. Those calls need a TURN relay. Set
+//   VITE_ICE_SERVERS (the provider's ICE servers array, pasted as it is), or
 //   VITE_TURN_URLS / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL, or
 //   VITE_TURN_API_URL for a provider that hands out credentials over HTTPS
 //   (see the README). Without one, calls between such networks can't connect.
@@ -40,11 +41,24 @@ const MAX_RESTARTS = 3;
 const STUN = { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] };
 let fetchedRelay = null; // { at, servers }
 
-export const relayConfigured = () => !!(import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_API_URL);
+export const relayConfigured = () => !!(import.meta.env.VITE_ICE_SERVERS || import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_API_URL);
+
+/* VITE_ICE_SERVERS: the "ICE Servers Array" a TURN provider's dashboard
+   shows (Metered's "Show ICE Servers Array"), pasted as it is. */
+export function parseIceServers(raw) {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    return (Array.isArray(list) ? list : []).filter((s) => s && (typeof s.urls === "string" || Array.isArray(s.urls)));
+  } catch {
+    console.error("VITE_ICE_SERVERS isn't a JSON list of ICE servers; calls will go without a relay.");
+    return [];
+  }
+}
 
 export async function iceServers() {
   const env = import.meta.env;
-  const servers = [STUN];
+  const servers = [STUN, ...parseIceServers(env.VITE_ICE_SERVERS)];
   if (env.VITE_TURN_URLS) {
     servers.push({
       urls: env.VITE_TURN_URLS.split(",").map((u) => u.trim()).filter(Boolean),
