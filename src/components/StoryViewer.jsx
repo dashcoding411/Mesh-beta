@@ -18,10 +18,10 @@ const IMAGE_MS = 5000;
 
 // Auto-advance is pausable (WCAG 2.2.2) via button, press-and-hold, space.
 // Viewers can reply (DM), react, like and echo; authors see activity.
-export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null }) {
+export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null, startAt = 0 }) {
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
-  const [idx, setIdx] = useState(0);
+  const [idx, setIdx] = useState(Math.min(startAt, thread.items.length - 1));
   const [paused, setPaused] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);

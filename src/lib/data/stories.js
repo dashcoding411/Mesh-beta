@@ -48,7 +48,12 @@ export async function deleteStory(story) {
 
 // Views
 
-const viewed = new Set();
+const viewed = new Set(); // story ids this account has seen
+
+/** Seen by the viewer (their own stories always count as seen). */
+export function storySeen(story) {
+  return story.authorId === me() || viewed.has(story.id);
+}
 
 export async function markStoryViewed(story) {
   if (!me() || story.authorId === me() || viewed.has(story.id)) return;
@@ -152,6 +157,12 @@ export async function fetchActiveStories(followingSet = new Set()) {
   const list = lists.flat()
     .filter((s) => !seen.has(s.id) && seen.add(s.id) && tsMillis(s.createdAt) > cutoff)
     .sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt));
+  // Which of the others' stories this account has already seen.
+  const uid = me();
+  await Promise.all(list.filter((s) => s.authorId !== uid && !viewed.has(s.id)).map((s) =>
+    getDoc(doc(db, "stories", s.id, "views", uid))
+      .then((d) => { if (d.exists()) viewed.add(s.id); })
+      .catch(() => {})));
   const byAuthor = new Map();
   for (const s of list) {
     if (!byAuthor.has(s.authorId)) byAuthor.set(s.authorId, { authorId: s.authorId, authorName: s.authorName, authorPhoto: s.authorPhoto, items: [] });

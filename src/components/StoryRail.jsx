@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { fetchActiveStories, uploadMedia, createStory, me, StorageUnavailableError } from "../lib/db";
+import { fetchActiveStories, uploadMedia, createStory, me, storySeen, StorageUnavailableError } from "../lib/db";
 import { validateMediaFile } from "../lib/validate";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
@@ -8,16 +8,32 @@ import { Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 const StoryViewer = lazy(() => import("./StoryViewer"));
 
+const seenAll = (t) => t.items.every(storySeen);
+// Others' stories, unseen first, like Instagram. Seen ones stay, with a grey ring.
+const lineUp = (threads) => {
+  const others = threads.filter((t) => t.authorId !== me());
+  return [...others.filter((t) => !seenAll(t)), ...others.filter(seenAll)];
+};
+
 export default function StoryRail() {
   const { profile, following, hiddenAuthors } = useShell();
   const toast = useToast();
   const [threads, setThreads] = useState([]);
-  const [viewing, setViewing] = useState(null);
+  // Rail order, refreshed when stories load and when the viewer closes, not mid-viewing.
+  const [queue, setQueue] = useState([]);
+  const [viewing, setViewing] = useState(null); // { list, at }
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
+  const load = async () => {
+    const list = (await fetchActiveStories(following)).filter((x) => !hiddenAuthors.has(x.authorId));
+    setThreads(list);
+    setQueue(lineUp(list));
+    return list;
+  };
   useEffect(() => {
-    fetchActiveStories(following).then((t) => setThreads(t.filter((x) => !hiddenAuthors.has(x.authorId)))).catch(() => {});
+    load().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [following, hiddenAuthors]);
 
   const addStory = async (e) => {
@@ -31,7 +47,7 @@ export default function StoryRail() {
     try {
       const { url, path } = await uploadMedia(file);
       await createStory({ mediaUrl: url, mediaPath: path, mediaType: file.type });
-      setThreads(await fetchActiveStories(following));
+      await load();
       toast({ title: "Added to your story", body: "It disappears after 24 hours." });
     } catch (err) {
       console.error(err);
@@ -45,18 +61,19 @@ export default function StoryRail() {
     }
   };
 
-  const mineIdx = threads.findIndex((t) => t.authorId === me());
-  const others = threads.map((t, i) => ({ t, i })).filter(({ t }) => t.authorId !== me());
+  const mine = threads.find((t) => t.authorId === me());
+  const close = () => { setViewing(null); setQueue(lineUp(threads)); };
+  const current = viewing && viewing.list[viewing.at];
 
   return (
     <section aria-label="Stories" className="border-b border-line">
       <ul className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
         <li className="relative flex w-[68px] shrink-0 flex-col items-center gap-1.5">
           <button type="button"
-            onClick={() => (mineIdx !== -1 ? setViewing(mineIdx) : fileRef.current?.click())}
-            aria-label={mineIdx !== -1 ? "View your story" : "Add to your story"}
+            onClick={() => (mine ? setViewing({ list: [mine], at: 0 }) : fileRef.current?.click())}
+            aria-label={mine ? "View your story" : "Add to your story"}
             className="press rounded-full">
-            <Avatar profile={profile} size={60} ring={mineIdx !== -1} />
+            <Avatar profile={profile} size={60} ring={!!mine} />
           </button>
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
             aria-label="Add to your story"
@@ -66,23 +83,28 @@ export default function StoryRail() {
           <span className="w-full truncate text-center text-label text-fg-muted">Your story</span>
         </li>
 
-        {others.map(({ t, i }) => (
-          <li key={t.authorId} className="flex w-[68px] shrink-0 flex-col items-center gap-1.5">
-            <button type="button" onClick={() => setViewing(i)} aria-label={`View @${t.authorName}'s story`}
-              className="press rounded-full">
-              <Avatar profile={{ username: t.authorName, photoURL: t.authorPhoto }} size={60} ring />
-            </button>
-            <span className="w-full truncate text-center text-label text-fg-muted">{t.authorName}</span>
-          </li>
-        ))}
+        {queue.map((t, i) => {
+          const seen = seenAll(t);
+          return (
+            <li key={t.authorId} className="flex w-[68px] shrink-0 flex-col items-center gap-1.5">
+              <button type="button" onClick={() => setViewing({ list: queue, at: i })}
+                aria-label={`View @${t.authorName}'s story${seen ? ", seen" : ""}`} className="press rounded-full">
+                <Avatar profile={{ username: t.authorName, photoURL: t.authorPhoto }} size={60} ring={seen ? "seen" : true} />
+              </button>
+              <span className={`w-full truncate text-center text-label ${seen ? "text-fg-subtle" : "text-fg-muted"}`}>{t.authorName}</span>
+            </li>
+          );
+        })}
       </ul>
       <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory}
         aria-hidden="true" tabIndex={-1} />
 
-      {viewing !== null && threads[viewing] && (
+      {current && (
         <Suspense fallback={null}>
-          <StoryViewer thread={threads[viewing]} onClose={() => setViewing(null)}
-            onNextThread={() => setViewing(viewing + 1 < threads.length ? viewing + 1 : null)}
+          {/* Opens at the first story not yet seen; once all are seen, from the start. */}
+          <StoryViewer key={current.authorId} thread={current} onClose={close}
+            startAt={Math.max(0, current.items.findIndex((s) => !storySeen(s)))}
+            onNextThread={() => (viewing.at + 1 < viewing.list.length ? setViewing({ ...viewing, at: viewing.at + 1 }) : close())}
             onDeleted={(id) => setThreads((list) => list
               .map((t) => ({ ...t, items: t.items.filter((i) => i.id !== id) }))
               .filter((t) => t.items.length))} />

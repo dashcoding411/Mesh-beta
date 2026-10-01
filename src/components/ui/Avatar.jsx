@@ -36,8 +36,9 @@ export default function Avatar({ profile, size = 40, ring = false, className = "
   );
 
   if (!ring) return <span className={`inline-flex shrink-0 ${className}`}>{face}</span>;
+  // ring="seen" is the grey ring of a story already watched.
   return (
-    <span className={`inline-flex shrink-0 rounded-full bg-accent p-[2px] ${className}`}>
+    <span className={`inline-flex shrink-0 rounded-full p-[2px] ${ring === "seen" ? "bg-line-strong" : "bg-accent"} ${className}`}>
       <span className="rounded-full bg-canvas p-[2px]">{face}</span>
     </span>
   );

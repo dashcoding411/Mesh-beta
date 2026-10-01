@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus, Trophy, Flame, Share2,
+  ChevronDown, MessageCircle,
 } from "lucide-react";
 import {
   SECTIONS, DAYS, DAY_NAMES, COOL_OFF_MS, emptyLayer, windowsToSlots, windowLabel, clockLabel, isTighterOrSame,
@@ -106,10 +107,7 @@ export default function BrickSettings() {
           <header className="hidden md:block">
             <h1 className="text-title-1">Brick mode</h1>
           </header>
-          <p className="text-callout text-fg-muted">
-            Lock Mesh down to messages and calls, on your terms. Stricter limits start straight away. Anything that
-            loosens them waits 24 hours, so you decide in a calm moment, not a craving one. Messages and calls are never locked.
-          </p>
+          <BrickIntro />
 
               <section aria-labelledby="brick-now" className="rounded-card border border-line bg-surface p-4">
             <div className="flex items-start gap-3">
@@ -380,6 +378,59 @@ function AddWindowDialog({ onClose, onAdd }) {
         {days.length > 0 && to <= from && from !== to && <span className="text-fg-subtle"> (overnight)</span>}
       </p>
     </Dialog>
+  );
+}
+
+// What Brick mode is, open on someone's first visit and a tap away after that.
+const INTRO_KEY = "mesh:brick-intro";
+const INTRO = [
+  { icon: Timer, title: "Brick me now", body: "Lock Mesh for a while, like two hours or until tomorrow. Ending it early counts as loosening, so it waits 24 hours." },
+  { icon: CalendarClock, title: "Schedules", body: "Lock Mesh at set times every week, like school nights or work hours." },
+  { icon: Hourglass, title: "Daily limits", body: "Give Home, Flicks and News a daily allowance. When it runs out, that section locks until tomorrow." },
+  { icon: Clock, title: "The 24-hour rule", body: "Stricter limits start straight away. Anything that loosens them waits 24 hours, so you decide in a calm moment, not a craving one." },
+  { icon: MessageCircle, title: "Always open", body: "Messages, calls, notifications and settings are never locked." },
+  { icon: Trophy, title: "Bricked time counts", body: "Time spent bricked can go on your profile and the leaderboard, if you choose to share it." },
+  { icon: Users, title: "Parents", body: "A parent can add limits to a teen's account, if the teen agrees." },
+];
+
+function BrickIntro() {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(INTRO_KEY) !== "seen"; } catch { return true; }
+  });
+  const toggle = (next) => {
+    setOpen(next);
+    if (!next) { try { localStorage.setItem(INTRO_KEY, "seen"); } catch { /* storage blocked: shows again next visit */ } }
+  };
+  return (
+    <section aria-labelledby="brick-intro" className="rounded-card border border-accent-text/30 bg-accent-soft/40">
+      <button type="button" onClick={() => toggle(!open)} aria-expanded={open}
+        className="press flex w-full items-center gap-3 p-4 text-left">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-white">
+          <BrickWall size={20} aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span id="brick-intro" className="block text-callout font-semibold">What is Brick mode?</span>
+          <span className="block text-caption text-fg-muted">Lock the browsing parts of Mesh so you can put it down.</span>
+        </span>
+        <ChevronDown size={18} className={`shrink-0 text-fg-subtle transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <ul className="space-y-3">
+            {INTRO.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="flex gap-3">
+                <Icon size={18} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-callout font-semibold">{title}</span>
+                  <span className="block text-caption text-fg-muted">{body}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" variant="primary" className="mt-4" onClick={() => toggle(false)}>Got it</Button>
+        </div>
+      )}
+    </section>
   );
 }
 
