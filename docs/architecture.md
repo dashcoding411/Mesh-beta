@@ -42,7 +42,7 @@
 | `locks/{uid}`, `usage/{uid}_{year}-{day}`, `familyLinks/{teenUid}`, `brickStats/{uid}` | Brick mode. |
 | `reports/{type}_{id}_{uid}`, `suspensions/{uid}` | Moderation. |
 | `media/{id}` | Inline images (Spark plan), referenced as `mesh-media:<id>`. |
-| `rateLimits/{uid}`, `presence/{uid}`, `thoughts/{uid}`, `spouseRequests/{id}`, `admins/{uid}` | |
+| `rateLimits/{uid}`, `presence/{uid}`, `thoughts/{uid}`, `spouseRequests/{id}`, `admins/{uid}`, `badges/pink` | |
 
 Composite indexes are declared in `firestore.indexes.json`.
 
@@ -62,7 +62,9 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Verification.** Admins verify accounts (`verified` in `users/{uid}.badges`)
   from a profile's menu or the Verified tab in moderation. Verified accounts
   and journalists get a purple tick beside their name on profiles, posts,
-  comments and search results.
+  comments and search results. The founder alone can give a pink check
+  instead, to one account at a time: `badges/pink` names the holder, and the
+  rules require the holder's badges (and only theirs) to carry `pink`.
 - **Notification banners.** Notifications that arrive during a visit drop in
   as a short banner (not on the Notifications page, not from muted or blocked
   people).

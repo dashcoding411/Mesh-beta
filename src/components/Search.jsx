@@ -16,7 +16,7 @@ import HomeHeader from "./shell/HomeHeader";
 import Tabs from "./ui/Tabs";
 import Avatar from "./ui/Avatar";
 import { VerifiedTick } from "./ui/Badges";
-import { isVerified } from "../lib/badges";
+import { tickOf } from "../lib/badges";
 import MediaImg from "./ui/MediaImg";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
@@ -233,7 +233,7 @@ function SuggestedPeople() {
               <Avatar profile={p} size={56} />
               <span className="mt-2 flex w-full items-center justify-center gap-1 text-callout font-semibold">
                 <span className="truncate">{p.name || p.username}</span>
-                {isVerified(p.badges) && <VerifiedTick size={14} />}
+                {tickOf(p.badges) && <VerifiedTick size={14} pink={tickOf(p.badges) === "pink"} />}
               </span>
               <span className="w-full truncate text-caption text-fg-subtle">@{p.username}</span>
             </button>
@@ -405,7 +405,7 @@ function TopResult({ hit, q }) {
           <button type="button" onClick={() => openUserProfile(item.id)} className="min-w-0 flex-1 text-left">
             <span className="flex items-center gap-1.5 text-title-3">
               <span className="truncate"><Highlight text={item.name || item.username} query={q} /></span>
-              {isVerified(item.badges) && <VerifiedTick size={18} />}
+              {tickOf(item.badges) && <VerifiedTick size={18} pink={tickOf(item.badges) === "pink"} />}
             </span>
             <span className="block truncate text-callout text-fg-subtle">@<Highlight text={item.username} query={q} /></span>
             <span className="mt-1 block text-caption text-fg-muted">{plural(item.followerCount || 0, "follower")}</span>
@@ -469,7 +469,7 @@ function ResultRow({ section, item, q, big = false }) {
           <span className="min-w-0">
             <span className="flex items-center gap-1 text-callout font-semibold">
               <span className="truncate"><Highlight text={item.name || item.username} query={q} /></span>
-              {isVerified(item.badges) && <VerifiedTick size={14} />}
+              {tickOf(item.badges) && <VerifiedTick size={14} pink={tickOf(item.badges) === "pink"} />}
             </span>
             <span className="block truncate text-caption text-fg-subtle">
               @<Highlight text={item.username} query={q} />

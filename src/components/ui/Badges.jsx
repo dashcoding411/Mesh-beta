@@ -1,5 +1,5 @@
 import { BadgeCheck, Crown, FlaskConical, Gem, Sparkles } from "lucide-react";
-import { isVerified } from "../../lib/badges";
+import { tickOf } from "../../lib/badges";
 
 // Profile badges (see lib/badges.js), most distinguished first. The founders'
 // shimmer (gold and silver); the queen's shimmers, glows and twinkles; beta
@@ -23,11 +23,11 @@ const BADGES = [
   },
 ];
 
-/** The purple tick by a verified account's name (admin-verified, or a journalist). */
-export function VerifiedTick({ size = 16, className = "", decorative = false, label = "Verified" }) {
+/** The tick by a verified account's name: purple (admin-verified, or a journalist) or the founder's pink one. */
+export function VerifiedTick({ size = 16, className = "", decorative = false, pink = false, label = pink ? "Pink check" : "Verified" }) {
   return (
     <span title={decorative ? undefined : label} className={`inline-flex shrink-0 ${className}`}>
-      <BadgeCheck size={size} strokeWidth={2.2} className="fill-accent text-white" aria-hidden="true" />
+      <BadgeCheck size={size} strokeWidth={2.2} className={`${pink ? "fill-pink-500" : "fill-accent"} text-white`} aria-hidden="true" />
       {!decorative && <span className="sr-only">{label}</span>}
     </span>
   );
@@ -55,12 +55,12 @@ export function ProfileBadges({ badges }) {
 /** Beside a name, for posts and comments: the verified tick, then the most distinguished badge. */
 export function BadgeMark({ badges }) {
   const [top] = held(badges);
-  const tick = isVerified(badges);
+  const tick = tickOf(badges);
   if (!top && !tick) return null;
   const Icon = top?.icon;
   return (
     <>
-      {tick && <VerifiedTick size={16} />}
+      {tick && <VerifiedTick size={16} pink={tick === "pink"} />}
       {top && (
         <span title={top.label} className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${top.className}`}>
           <Icon size={10} strokeWidth={2.6} aria-hidden="true" />

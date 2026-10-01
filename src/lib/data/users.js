@@ -187,6 +187,24 @@ export async function fetchVerified() {
   return snapToList(snap);
 }
 
+/** Founder only (the rules check): gives the pink check to `uid`, taking it from whoever had it. */
+export async function setPinkCheck(uid, on) {
+  const reg = doc(db, "badges", "pink");
+  const current = (await getDoc(reg)).data()?.uid || "";
+  const batch = writeBatch(db);
+  if (on) {
+    if (current && current !== uid && (await getDoc(doc(db, "users", current))).exists()) {
+      batch.update(doc(db, "users", current), { badges: arrayRemove("pink") });
+    }
+    batch.update(doc(db, "users", uid), { badges: arrayUnion("pink") });
+    batch.set(reg, { uid, givenAt: serverTimestamp() });
+  } else {
+    batch.update(doc(db, "users", uid), { badges: arrayRemove("pink") });
+    if (current === uid) batch.delete(reg);
+  }
+  await batch.commit();
+}
+
 /** Admins only (the rules check). */
 export async function setBadge(uid, badge, on) {
   await updateDoc(doc(db, "users", uid), { badges: on ? arrayUnion(badge) : arrayRemove(badge) });

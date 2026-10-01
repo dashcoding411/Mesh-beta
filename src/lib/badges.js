@@ -5,6 +5,8 @@ import { tsMillis } from "./db";
 
 export const BETA_ENDS = Date.parse("2026-10-02T00:00:00+10:00");
 
+export const FOUNDER_UID = "8mqBWdkKGzabDf4gFeTWEK1GP3J2";
+
 const PERSONAL = {
   "8mqBWdkKGzabDf4gFeTWEK1GP3J2": "founder", // @the_admin
   HVlA1t8sbMTuq1ggBA8akPCEEqg2: "cofounder", // @noah
@@ -21,6 +23,12 @@ export function badgesOf(profile) {
 
 /** Admins verify accounts (users/{uid}.badges), shown as a purple tick. */
 export const isVerified = (badges) => !!badges?.includes("verified");
+
+/** The founder's pink check: one account at a time. It replaces the purple tick. */
+export const hasPinkCheck = (badges) => !!badges?.includes("pink");
+
+/** Which tick goes beside a name: "pink", "verified" or null. */
+export const tickOf = (badges) => (hasPinkCheck(badges) ? "pink" : isVerified(badges) ? "verified" : null);
 
 /** Joined during the beta, so the badge comes with the account rather than an admin. */
 export function betaByJoinDate(profile) {

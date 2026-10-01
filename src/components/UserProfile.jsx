@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2, FlaskConical, BadgeCheck,
+  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2, FlaskConical, BadgeCheck, Heart,
 } from "lucide-react";
 import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
-  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, isAdmin, setBadge,
+  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, isAdmin, setBadge, setPinkCheck, me,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { MenuItem, MenuGroup } from "./ui/Menu";
@@ -23,7 +23,7 @@ import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
-import { betaByJoinDate } from "../lib/badges";
+import { betaByJoinDate, FOUNDER_UID } from "../lib/badges";
 import { primeCard } from "../lib/profileCache";
 
 export default function UserProfile({ uid }) {
@@ -149,6 +149,20 @@ export default function UserProfile({ uid }) {
     }
   };
 
+  const togglePink = async () => {
+    const on = !profile.badges?.includes("pink");
+    setDialog(null);
+    try {
+      await setPinkCheck(uid, on);
+      const badges = on ? [...(profile.badges || []), "pink"] : (profile.badges || []).filter((b) => b !== "pink");
+      setProfile((p) => ({ ...p, badges }));
+      primeCard(uid, { ...profile, badges });
+      toast({ title: on ? `@${profile.username} has the pink check` : "Pink check removed" });
+    } catch {
+      toast({ tone: "error", title: "Couldn't change the pink check" });
+    }
+  };
+
   const share = async () => {
     const url = `${window.location.origin}/u/${uid}`;
     try {
@@ -257,6 +271,13 @@ export default function UserProfile({ uid }) {
               Report @{profile.username}
             </MenuItem>
           </MenuGroup>
+          {me() === FOUNDER_UID && (
+            <MenuGroup>
+              <MenuItem icon={Heart} onClick={togglePink} description="Only you can give this, to one person at a time">
+                {profile.badges?.includes("pink") ? "Remove pink check" : "Give pink check"}
+              </MenuItem>
+            </MenuGroup>
+          )}
           {admin && (
             <MenuGroup>
               <MenuItem icon={BadgeCheck} onClick={() => toggleBadge("verified")}

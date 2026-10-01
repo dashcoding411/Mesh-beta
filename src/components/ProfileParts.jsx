@@ -18,7 +18,7 @@ import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { ProfileBadges, VerifiedTick } from "./ui/Badges";
 import { useJournalist } from "../lib/journalists";
-import { badgesOf, isVerified } from "../lib/badges";
+import { badgesOf, tickOf } from "../lib/badges";
 import { Tile } from "./Search";
 
 // Only shown when both profiles name each other.
@@ -49,7 +49,8 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
         <div className="min-w-0 flex-1 pt-1">
           <h1 className="flex min-w-0 items-center gap-2 text-title-1">
             <span className="truncate">{profile.name || profile.username}</span>
-            {(journalist || isVerified(profile.badges)) && <VerifiedTick size={22} label={journalist ? "Verified journalist" : "Verified"} />}
+            {tickOf(profile.badges) === "pink" ? <VerifiedTick size={22} pink />
+              : (journalist || tickOf(profile.badges)) && <VerifiedTick size={22} label={journalist ? "Verified journalist" : "Verified"} />}
             {profile.isPrivate && (
               <span title="Private account" className="shrink-0 text-fg-muted">
                 <Lock size={18} aria-hidden="true" /><span className="sr-only">Private account</span>
