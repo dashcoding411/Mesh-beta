@@ -554,7 +554,7 @@ service cloud.firestore {
         && incomingData().authorId != request.auth.uid
         && incomingData().status == 'open'
         && incomingData().createdAt == request.time
-        && incomingData().reason in ['hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'other']
+        && incomingData().reason in ['hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'unlabelled_ai', 'other']
         && incomingData().get('details', '') is string
         && incomingData().get('details', '').size() <= 500
         && ((incomingData().targetType == 'post'
@@ -789,7 +789,8 @@ service cloud.firestore {
           && incomingData().get('hiddenWords', []) is list
           && incomingData().get('hiddenWords', []).size() <= 200
           && incomingData().get('muted', []) is list
-          && incomingData().get('muted', []).size() <= 500;
+          && incomingData().get('muted', []).size() <= 500
+          && incomingData().get('hideAi', false) is bool;
       }
       // Set once: at signup, when migrating off the profile (same value), or
       // for legacy accounts that never set one. Removed only with the profile.
@@ -1071,8 +1072,10 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
           && existsAfter(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
           && myProfile().createdAt < request.time - duration.value(1, 'd'))
-        // Moderator review clears the hold.
+        // Moderator review clears the hold, and can label a post as made with AI.
         || (isAdmin() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', ''])
+        || (isAdmin() && incomingData().diff(resource.data).affectedKeys().hasOnly(['aiGenerated', 'modStatus'])
+            && incomingData().aiGenerated == true && incomingData().get('modStatus', '') in ['cleared', ''])
         // Circle mods can lock comments on a thread.
         || (onlyKey('locked')
           && resource.data.get('groupId', '') != ''

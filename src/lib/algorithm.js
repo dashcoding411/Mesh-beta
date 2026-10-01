@@ -24,9 +24,10 @@ function levelOf(post) {
 const borderline = (post) => levelOf(post) === "borderline";
 
 /** Removes held posts, hidden-word matches and blocked content (the viewer's own posts are kept). */
-export function screenForViewer(posts, { myUid, hiddenWords = [] } = {}) {
+// `hideAi` drops posts labelled as made with AI.
+export function screenForViewer(posts, { myUid, hiddenWords = [], hideAi = false } = {}) {
   return posts.filter((p) => p.authorId === myUid
-    || (!isHeld(p) && !hitsHiddenWords(textOf(p), hiddenWords) && levelOf(p) !== "block"));
+    || (!isHeld(p) && !(hideAi && p.aiGenerated) && !hitsHiddenWords(textOf(p), hiddenWords) && levelOf(p) !== "block"));
 }
 
 const SESSION_SEED = Math.random() * 1000;

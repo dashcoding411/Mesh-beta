@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
@@ -23,7 +23,7 @@ function brickSummary(brick) {
 import {
   exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, isMinor, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile,
+  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
 } from "../lib/db";
 import Switch from "./ui/Switch";
 import Segmented from "./ui/Segmented";
@@ -44,7 +44,7 @@ import { useToast } from "./ui/toast-context";
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
 
 export default function Settings() {
-  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, muted } = useShell();
+  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, muted } = useShell();
   const brick = useBrick();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
@@ -67,6 +67,15 @@ export default function Settings() {
 
   const accepted = tsMillis(profile?.termsAcceptedAt);
   const outdated = profile?.termsVersion && profile.termsVersion !== POLICY_VERSION;
+
+  const toast = useToast();
+  const toggleAi = (on) => {
+    setHideAi(on);
+    saveHideAi(on).catch(() => {
+      setHideAi(!on);
+      toast({ tone: "error", title: "Couldn't save that", body: "Check your connection and try again." });
+    });
+  };
 
   return (
     <>
@@ -140,6 +149,10 @@ export default function Settings() {
               value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
               onClick={() => setDialog("hidden")} />
+            <Row icon={WandSparkles} label="Hide posts made with AI"
+              value={hideAi ? "Hidden from Home, Flicks and Explore" : "Shown, with a Made with AI label"}
+              help="Covers posts their authors labelled, and ones moderators labelled after a report. You'll still see them on people's profiles."
+              action={<Switch label="Hide posts made with AI" checked={hideAi} onChange={toggleAi} />} />
           </Group>
 
           <AppearanceGroup />

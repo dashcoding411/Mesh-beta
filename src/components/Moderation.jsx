@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, Trash2, Check, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel,
+  ShieldCheck, Trash2, Check, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
 } from "lucide-react";
 import {
-  isAdmin, fetchReports, resolveReports, clearPost, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
+  isAdmin, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
   fetchWriters, addWriter, removeWriter,
 } from "../lib/db";
@@ -145,6 +145,10 @@ function Case({ item, readOnly, onDone }) {
         if (item.type === "message") await removeMessage(first.chatId, item.targetId);
         await resolveReports(item.reports, "actioned", "removed");
         toast({ title: `${T.label} removed` });
+      } else if (kind === "label") {
+        await labelPostAi(item.targetId);
+        await resolveReports(item.reports, "actioned", "labelled");
+        toast({ title: "Labelled as made with AI", body: "People who hide AI posts won't see it in their feeds." });
       } else {
         if (item.type === "post" && target) await clearPost(item.targetId);
         await resolveReports(item.reports, "dismissed", "kept");
@@ -214,7 +218,7 @@ function Case({ item, readOnly, onDone }) {
 
       {readOnly ? (
         <p className="mt-3 border-t border-line pt-3 text-caption text-fg-subtle">
-          {first.action === "removed" ? "Removed" : first.action === "suspended" ? "Author suspended" : "Kept up"}
+          {{ removed: "Removed", suspended: "Author suspended", labelled: "Labelled as made with AI" }[first.action] || "Kept up"}
           {first.reviewedBy ? ` by @${first.reviewedBy}` : ""}{first.reviewedAt ? `, ${shortTime(first.reviewedAt)}` : ""}
         </p>
       ) : (
@@ -222,6 +226,11 @@ function Case({ item, readOnly, onDone }) {
           {item.type !== "user" && target && (
             <Button size="sm" variant="danger" icon={Trash2} loading={busy === "remove"} disabled={!!busy} onClick={() => act("remove")}>
               Remove {T.label.toLowerCase()}
+            </Button>
+          )}
+          {item.type === "post" && target && !target.aiGenerated && (
+            <Button size="sm" icon={WandSparkles} loading={busy === "label"} disabled={!!busy} onClick={() => act("label")}>
+              Label as made with AI
             </Button>
           )}
           <Button size="sm" icon={Check} loading={busy === "keep"} disabled={!!busy} onClick={() => act("keep")}>

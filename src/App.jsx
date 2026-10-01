@@ -104,6 +104,7 @@ export default function App() {
   const [blocked, setBlocked] = useState(new Set());
   const [interests, setInterests] = useState([]);
   const [hiddenWords, setHiddenWords] = useState([]);
+  const [hideAi, setHideAi] = useState(false);
   const [muted, setMutedSet] = useState(() => new Set());
   const [interestsDialog, setInterestsDialog] = useState(null); // null | "first" | "edit"
   const [incoming, setIncoming] = useState([]);
@@ -145,6 +146,7 @@ export default function App() {
           setBlocked(b);
           setInterests(prefs.interests || []);
           setHiddenWords(prefs.hiddenWords || []);
+          setHideAi(!!prefs.hideAi);
           setMutedSet(new Set(prefs.muted || []));
           // Prompt once per account per device.
           let asked = true;
@@ -270,9 +272,9 @@ export default function App() {
   const hiddenAuthors = useMemo(() => new Set([...blocked, ...muted]), [blocked, muted]);
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
-    interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords,
+    interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount,
-  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords, hideAi,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount]);
 
   const { page, overlay, bgQuery } = resolve(loc);

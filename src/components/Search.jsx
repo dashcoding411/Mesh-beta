@@ -272,18 +272,18 @@ function FollowButton({ person, following, setFollowing, className = "" }) {
 
 // Explore mosaic, ranked with the feed ranker.
 function Explore() {
-  const { following, hiddenAuthors, hiddenWords } = useShell();
+  const { following, hiddenAuthors, hiddenWords, hideAi } = useShell();
   const [items, setItems] = useState(null);
   const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { posts, affinity } = await loadPool();
-      const ranked = rankFeed(posts.filter((p) => !p.groupId), { followingSet: following, affinity, myUid: me(), hiddenWords });
+      const ranked = rankFeed(posts.filter((p) => !p.groupId), { followingSet: following, affinity, myUid: me(), hiddenWords, hideAi });
       setItems(ranked.filter((p) => p.authorId !== me() && !hiddenAuthors.has(p.authorId)).slice(0, 30));
       setError(false);
     } catch { setError(true); }
-  }, [following, hiddenAuthors, hiddenWords]);
+  }, [following, hiddenAuthors, hiddenWords, hideAi]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 

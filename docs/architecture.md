@@ -70,7 +70,11 @@ Home is newest first (`latestFirst`; a repost counts when it was reposted).
 For you takes everyone's public posts plus followers-only posts from accounts
 the viewer follows; Following keeps only the accounts they follow. Both are
 screened the same way: held posts, hidden words and blocked text are removed,
-and borderline posts from accounts the viewer doesn't follow are left out.
+borderline posts from accounts the viewer doesn't follow are left out, and
+posts labelled as made with AI are dropped for viewers who hide them (the
+`hideAi` preference, which also applies to Flicks and Explore). Authors label
+their own posts; a moderator can add the label after an "unlabelled AI"
+report.
 
 Followers-only posts are fetched with a query per followed author (up to 100),
 because the rules have to check each author's follower list.

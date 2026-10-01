@@ -28,7 +28,7 @@ let lastTopic = "all";
 // For you: everyone's public posts plus followers-only posts from people you
 // follow. Following: only people you follow. Both newest first.
 export default function HomeFeed({ mode }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey, guest } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, feedKey, guest } = useShell();
   const toast = useToast();
   const [chosen, setChosen] = useState(lastTopic);
   const topic = mode === "foryou" ? chosen : "all"; // topics narrow For you only
@@ -88,7 +88,7 @@ export default function HomeFeed({ mode }) {
 
       const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !hiddenAuthors.has(p.authorId));
 
-      const ordered = latestFirst(visible, { followingSet: following, myUid: me(), hiddenWords });
+      const ordered = latestFirst(visible, { followingSet: following, myUid: me(), hiddenWords, hideAi });
       setPosts(mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered);
       loadedAt.current = Date.now();
     } catch (err) {
@@ -98,7 +98,7 @@ export default function HomeFeed({ mode }) {
     } finally {
       setRefreshing(false);
     }
-  }, [mode, following, hiddenAuthors, topic, hiddenWords, toast]);
+  }, [mode, following, hiddenAuthors, topic, hiddenWords, hideAi, toast]);
 
   // Deliberately not reloaded on follow changes, to avoid reshuffling mid-scroll.
   useEffect(() => {
@@ -137,9 +137,10 @@ export default function HomeFeed({ mode }) {
   }, [load]);
 
   const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
-  // Apply blocks/mutes immediately; drop Flicks once the Flicks cap is reached.
+  // Apply blocks, mutes and the AI setting immediately; drop Flicks once the Flicks cap is reached.
   const flicksLocked = !!useBrick().state("flicks");
   const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)
+    && !(hideAi && p.aiGenerated && p.authorId !== me())
     && !(flicksLocked && (p.kind === "short" || p.kind === "video"))) ?? null;
   const page = visiblePosts?.slice(0, shown) ?? null;
   const more = visiblePosts ? visiblePosts.length - shown : 0;

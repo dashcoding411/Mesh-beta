@@ -69,6 +69,14 @@ describe("rankFeed", () => {
   });
 });
 
+describe("hiding posts made with AI", () => {
+  it("drops labelled posts when asked, except the viewer's own", () => {
+    const list = [post({ id: "ai", aiGenerated: true }), post({ id: "mine", authorId: "me", aiGenerated: true }), post({ id: "plain" })];
+    expect(screenForViewer(list, { myUid: "me", hideAi: true }).map((p) => p.id)).toEqual(["mine", "plain"]);
+    expect(screenForViewer(list, { myUid: "me" }).map((p) => p.id)).toEqual(["ai", "mine", "plain"]);
+  });
+});
+
 describe("latestFirst", () => {
   it("puts the newest activity first, counting a repost when it happened", () => {
     const list = [

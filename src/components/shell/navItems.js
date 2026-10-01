@@ -8,6 +8,7 @@ import { sidebarSection } from "../../lib/surfaces";
 export const MAIN_NAV = [
   { id: "foryou", label: "Home", icon: House, path: "/" },
   { id: "search", label: "Search", icon: Search, path: "/search" },
+  { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
   { id: "messages", label: "Messages", icon: MessageCircle, path: "/messages", badge: "unread", account: true },
   { id: "news", label: "News", icon: Newspaper, path: "/news" },
   { id: "circles", label: "Circles", icon: Blend, path: "/circles" },
@@ -15,7 +16,6 @@ export const MAIN_NAV = [
 ];
 
 export const MORE_NAV = [
-  { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
   { id: "settings", label: "Settings", icon: Settings, path: "/account/settings", account: true },
   { id: "brick", label: "Brick mode", icon: BrickWall, path: "/account/brick", account: true },
   { id: "saved", label: "Saved", icon: Bookmark, path: "/saved", account: true },

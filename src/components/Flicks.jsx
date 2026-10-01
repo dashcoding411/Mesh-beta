@@ -26,7 +26,7 @@ let soundOn = false;
 // Vertical video feed. Short Flicks loop in full; long ones loop their
 // trailer and link to the full player.
 export default function Flicks({ startId }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords, guest } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, guest } = useShell();
   const [topic, setTopic] = useState("all");
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
@@ -42,7 +42,7 @@ export default function Flicks({ startId }) {
         fetchAffinity().catch(() => new Map()),
       ]);
       const list = all.filter((p) => !hiddenAuthors.has(p.authorId));
-      let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords });
+      let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords, hideAi });
       if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
         if (start && (start.kind === "short" || start.kind === "video")) {
@@ -56,7 +56,7 @@ export default function Flicks({ startId }) {
     }
     // startId only matters on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following, hiddenAuthors, topic, interests, hiddenWords]);
+  }, [following, hiddenAuthors, topic, interests, hiddenWords, hideAi]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 

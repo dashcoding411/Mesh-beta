@@ -181,6 +181,10 @@ export async function saveHiddenWords(words) {
   return clean;
 }
 
+export async function setHideAi(on) {
+  await setDoc(doc(db, "users", me(), "private", "prefs"), { hideAi: on, updatedAt: serverTimestamp() }, { merge: true });
+}
+
 /** Muting hides someone's content client-side. Unlike a block, it isn't enforced by the rules. */
 export async function setMuted(uid, on) {
   await setDoc(doc(db, "users", me(), "private", "prefs"), {
