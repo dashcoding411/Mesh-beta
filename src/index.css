@@ -163,9 +163,19 @@ body {
 .anim-drawer { animation: mesh-drawer-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-toast { animation: mesh-toast-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-banner { animation: mesh-banner-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-/* A slow sheen across the founder badge. Stilled by the reduced-motion rule below. */
+/* Badge effects (components/ui/Badges.jsx), stilled by the reduced-motion rule below. */
 @keyframes mesh-shine { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+@keyframes mesh-glow {
+  0%, 100% { box-shadow: 0 0 10px rgb(244 114 182 / 0.45), 0 0 2px rgb(253 230 138 / 0.6); }
+  50% { box-shadow: 0 0 22px rgb(244 114 182 / 0.75), 0 0 6px rgb(253 230 138 / 0.9); }
+}
+@keyframes mesh-twinkle {
+  0%, 100% { opacity: 0.55; transform: scale(0.85) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.15) rotate(20deg); }
+}
 .badge-shine { background-size: 200% 100%; animation: mesh-shine 4s linear infinite; }
+.badge-glow { animation: mesh-shine 4s linear infinite, mesh-glow 2.4s ease-in-out infinite; }
+.badge-twinkle { animation: mesh-twinkle 1.6s ease-in-out infinite; }
 
 /* Feeds arrive in a short cascade so the eye reads top-down. Capped at five
    items: anything later is below the fold and shouldn't wait. */
