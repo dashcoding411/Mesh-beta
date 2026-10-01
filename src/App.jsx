@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
@@ -35,6 +35,7 @@ import HomeHeader from "./components/shell/HomeHeader";
 // Route-level code splitting; only the shell and home feed are in the entry chunk.
 const named = (load, name) => lazy(() => load().then((m) => ({ default: m[name] })));
 const Flicks = lazy(() => import("./components/Flicks"));
+const FlicksHome = lazy(() => import("./components/FlicksHome"));
 const Search = lazy(() => import("./components/Search"));
 const Saved = lazy(() => import("./components/Saved"));
 const News = lazy(() => import("./components/News"));
@@ -302,7 +303,7 @@ export default function App() {
   if (onAuthPage) return null;
 
   const query = overlay ? bgQuery : loc.query;
-  const immersive = page.tab === "home" && page.section === "flicks" && !overlay;
+  const immersive = page.tab === "home" && page.section === "flicks" && !!page.id && !overlay;
 
   let content;
   const joinFor = guest ? accountOnly(page) : null;
@@ -311,7 +312,9 @@ export default function App() {
   } else if (page.tab === "home") {
     switch (page.section) {
       case "following": content = <HomeFeed key={`following-${feedKey}`} mode="following" />; break;
-      case "flicks": content = <Flicks key={`flicks-${feedKey}`} startId={page.id} />; break;
+      case "flicks":
+        content = page.id ? <Flicks key={`flicks-${page.id}-${feedKey}`} startId={page.id} /> : <FlicksHome key={`flicks-${feedKey}`} />;
+        break;
       case "news": content = <News storyId={page.id} view={page.view} />; break;
       case "circles":
         content = page.gatheringId
@@ -392,7 +395,8 @@ export default function App() {
               setComposer(null);
               setFeedKey((k) => k + 1);
               if (composer.groupId) return;
-              navigate(post.kind === "short" || post.kind === "video" ? `/flicks/${post.id}` : "/");
+              if (post.kind === "video") return openWatch(post.id);
+              navigate(post.kind === "short" ? `/flicks/${post.id}` : "/");
             }} />
         )}
 

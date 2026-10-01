@@ -7,7 +7,7 @@ import { autoplayAllowed, useAppearance } from "../../lib/appearance";
 // segment (trailers). Respects reduced motion and the autoplay setting; tap
 // pauses (WCAG 2.2.2).
 export default function InlineVideo({
-  src, start = 0, length = 0, className = "", label = "Video", onOpen, onView, showMute = false, rounded = true,
+  src, poster, start = 0, length = 0, className = "", label = "Video", onOpen, onView, showMute = false, rounded = true,
 }) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -62,7 +62,7 @@ export default function InlineVideo({
 
   return (
     <div className={`group relative overflow-hidden bg-black ${rounded ? "rounded-card" : ""} ${className}`}>
-      <video ref={ref} muted={muted} loop={!length} playsInline preload="none"
+      <video ref={ref} muted={muted} loop={!length} playsInline preload="none" poster={poster || undefined}
         aria-label={label}
         onTimeUpdate={onTime} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
         onError={() => { if (ref.current?.getAttribute("src")) setFailed(true); }}

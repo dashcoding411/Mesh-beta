@@ -15,7 +15,7 @@ export const TABS = [
 const ALL = {
   search: { id: "search", path: "/search", label: "Search", icon: Search, blurb: "People, posts, news and circles" },
   foryou: { id: "foryou", path: "/", label: "For you", icon: Sparkles, blurb: "Flicks, Stills and Strands, ranked for you" },
-  flicks: { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard, blurb: "Short videos, and trailers for long ones" },
+  flicks: { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard, blurb: "Short ones to swipe, long ones to sit down with" },
   circles: { id: "circles", path: "/circles", label: "Circles", icon: Blend, blurb: "Communities and the gatherings they plan" },
   following: { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
   news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },

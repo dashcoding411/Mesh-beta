@@ -1,53 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   Heart, MessageCircle, Repeat2, Send, Bookmark, Play, Pause, Volume2, VolumeX, Plus, Check, Clapperboard, WandSparkles,
+  ArrowLeft, Ellipsis, Hourglass, CheckCheck,
 } from "lucide-react";
 import {
-  fetchVideos, fetchPost, fetchAffinity, toggleLike, toggleSave, toggleRepost, toggleFollow, fetchTopicPosts,
-  recordSignal, openUserProfile, openWatch, me, TRAILER_SECONDS,
+  fetchPostsByKind, fetchPost, fetchAffinity, fetchHiddenPostIds, toggleLike, toggleSave, toggleRepost, toggleFollow,
+  recordSignal, openUserProfile, me,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { usePostStates } from "../lib/usePostStates";
-import { formatDuration, shortTime, compact } from "../lib/format";
+import { goBack, navigate } from "../lib/router";
+import { shortTime, compact, plural } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
-import HomeHeader from "./shell/HomeHeader";
-import { InterestChips } from "./Interests";
-import { interestById } from "../lib/interests";
 import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
+import IconButton from "./ui/IconButton";
 import { EmptyState, ErrorState, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
-import { ShareSheet } from "./PostActions";
+import { ShareSheet, PostMenu } from "./PostActions";
 
 // Unmute persists for the session.
 let soundOn = false;
 
-// Vertical video feed. Short Flicks loop in full; long ones loop their
-// trailer and link to the full player.
+// Every CHECKPOINT Flicks a card says how long you've been watching.
+const CHECKPOINT = 10;
+
+// Short Flicks, one at a time, starting from the one picked on Flicks home.
+// Long Flicks live on Flicks home and the full player. The feed ends.
 export default function Flicks({ startId }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, guest } = useShell();
-  const [topic, setTopic] = useState("all");
+  const { following, hiddenAuthors, interests, hiddenWords, hideAi } = useShell();
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(false);
   const [viewer, setViewer] = usePostStates(videos);
   const [muted, setMuted] = useState(!soundOn);
+  const [startedAt] = useState(() => Date.now());
   const scroller = useRef(null);
 
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [all, affinity] = await Promise.all([
-        topic === "all" ? fetchVideos() : fetchTopicPosts(topic).then((l) => l.filter((p) => p.kind === "short" || p.kind === "video")),
+      const [all, affinity, hidden] = await Promise.all([
+        fetchPostsByKind("short"),
         fetchAffinity().catch(() => new Map()),
+        fetchHiddenPostIds().catch(() => new Set()),
       ]);
-      const list = all.filter((p) => !hiddenAuthors.has(p.authorId));
+      const list = all.filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId));
       let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords, hideAi });
       if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
-        if (start && (start.kind === "short" || start.kind === "video")) {
-          ordered = [start, ...ordered.filter((p) => p.id !== startId)];
-        }
+        if (start?.kind === "short") ordered = [start, ...ordered.filter((p) => p.id !== startId)];
       }
       setVideos(ordered);
     } catch (err) {
@@ -56,7 +58,7 @@ export default function Flicks({ startId }) {
     }
     // startId only matters on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following, hiddenAuthors, topic, interests, hiddenWords, hideAi]);
+  }, [following, hiddenAuthors, interests, hiddenWords, hideAi]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
@@ -79,12 +81,14 @@ export default function Flicks({ startId }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const next = () => scroller.current?.scrollBy({ top: scroller.current.clientHeight, behavior: "smooth" });
+
   return (
     <div data-theme="dark" className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
-      <HomeHeader section="flicks" transparent>
-        <InterestChips interests={interests} value={topic} onEdit={guest ? undefined : openInterests} overlay
-          onChange={(t) => { setTopic(t); setVideos(null); scroller.current?.scrollTo({ top: 0 }); }} />
-      </HomeHeader>
+      <div className="absolute inset-x-0 top-0 z-nav flex items-center gap-1 bg-gradient-to-b from-black/60 to-transparent px-2 pb-6 pt-safe md:static md:bg-none md:px-4 md:pb-0 md:pt-3">
+        <IconButton icon={ArrowLeft} label="Back to Flicks" tone="overlay" onClick={() => goBack("/flicks")} />
+        <h1 className="text-title-3">Short Flicks</h1>
+      </div>
 
       {error && <div className="flex flex-1 items-center justify-center"><ErrorState title="Couldn't load Flicks" onRetry={load} /></div>}
 
@@ -96,10 +100,8 @@ export default function Flicks({ startId }) {
 
       {!error && videos?.length === 0 && (
         <div className="flex flex-1 items-center justify-center">
-          <EmptyState icon={Clapperboard}
-            title={topic === "all" ? "No Flicks yet" : `No ${interestById(topic)?.label || ""} Flicks yet`}
-            body={topic === "all" ? "Short videos play here in full. Long ones play a trailer, then open to the whole thing." : "Flicks tagged with this interest show here."}
-            action={topic === "all" ? <CreateFlickButton /> : <Button onClick={() => setTopic("all")}>Show all Flicks</Button>} />
+          <EmptyState icon={Clapperboard} title="No short Flicks yet" body="Short videos play here in full, one at a time."
+            action={<Button onClick={() => goBack("/flicks")}>Back to Flicks</Button>} />
         </div>
       )}
 
@@ -107,21 +109,63 @@ export default function Flicks({ startId }) {
         <div ref={scroller} data-scroll aria-label="Flicks"
           className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto no-scrollbar overscroll-contain">
           {videos.map((p, i) => (
-            <FlickItem key={p.id} post={p} index={i} total={videos.length} viewer={viewer} onViewerChange={setViewer}
-              muted={muted} onToggleSound={toggleSound} />
+            <Fragment key={p.id}>
+              {i > 0 && i % CHECKPOINT === 0 && <Checkpoint count={i} startedAt={startedAt} onContinue={next} />}
+              <FlickItem post={p} index={i} total={videos.length} viewer={viewer} onViewerChange={setViewer}
+                muted={muted} onToggleSound={toggleSound} onRemoved={(id) => setVideos((l) => l.filter((x) => x.id !== id))} />
+            </Fragment>
           ))}
+          <EndCard count={videos.length} />
         </div>
       )}
     </div>
   );
 }
 
-function CreateFlickButton() {
-  const { openComposer } = useShell();
-  return <Button variant="brand" icon={Plus} onClick={() => openComposer({ kind: "video" })}>Post a Flick</Button>;
+const STOP = "flex h-full w-full shrink-0 snap-start snap-always flex-col items-center justify-center gap-2 px-8 text-center";
+
+// A natural stopping point: how many Flicks and roughly how long, with an easy way out.
+function Checkpoint({ count, startedAt, onContinue }) {
+  const ref = useRef(null);
+  const [minutes, setMinutes] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) setMinutes(Math.max(1, Math.round((Date.now() - startedAt) / 60000)));
+    }, { threshold: 0.6 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [startedAt]);
+  return (
+    <section ref={ref} aria-label="Check-in" className={STOP}>
+      <Hourglass size={30} className="mb-2 text-white/70 md:text-fg-muted" aria-hidden="true" />
+      <p className="text-title-2">You've watched {count} Flicks</p>
+      {minutes > 0 && <p className="text-callout text-white/70 md:text-fg-muted">About {plural(minutes, "minute")} so far.</p>}
+      <div className="mt-4 flex gap-2">
+        <Button variant="primary" onClick={onContinue}>Keep watching</Button>
+        <Button onClick={() => goBack("/flicks")}>I'm done</Button>
+      </div>
+      <button type="button" onClick={() => navigate("/account/brick")}
+        className="mt-2 inline-flex min-h-9 items-center text-caption text-white/70 underline underline-offset-2 hover:text-white md:text-fg-muted md:hover:text-fg">
+        Set a daily limit for Flicks
+      </button>
+    </section>
+  );
 }
 
-function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggleSound }) {
+function EndCard({ count }) {
+  return (
+    <section aria-label="End of Flicks" className={STOP}>
+      <CheckCheck size={30} className="mb-2 text-white/70 md:text-fg-muted" aria-hidden="true" />
+      <p className="text-title-2">You're all caught up</p>
+      <p className="text-callout text-white/70 md:text-fg-muted">That's all {plural(count, "short Flick")} for now.</p>
+      <Button className="mt-4" onClick={() => goBack("/flicks")}>Back to Flicks</Button>
+    </section>
+  );
+}
+
+function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggleSound, onRemoved }) {
   const { following, setFollowing, needsAccount } = useShell();
   const toast = useToast();
   const box = useRef(null);
@@ -141,8 +185,6 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
   const signals = useRef({ viewed: false, loops: 0, since: 0, last: 0 });
   const tapTimer = useRef(null);
 
-  const long = post.kind === "video";
-  const start = long ? post.trailerStart || 0 : 0;
   const liked = viewer.liked.has(post.id);
   const saved = viewer.saved.has(post.id);
   const reposted = viewer.reposted.has(post.id);
@@ -165,14 +207,14 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     const el = video.current;
     if (!el) return;
     if (near && !el.getAttribute("src")) {
-      el.setAttribute("src", `${post.mediaUrl}#t=${start}`);
+      el.setAttribute("src", post.mediaUrl);
       el.load();
     } else if (!near && el.getAttribute("src")) {
       el.pause();
       el.removeAttribute("src");
       el.load();
     }
-  }, [near, post.mediaUrl, start]);
+  }, [near, post.mediaUrl]);
 
   useEffect(() => {
     const el = video.current;
@@ -180,7 +222,6 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     const s = signals.current;
     if (active) {
       setPaused(false);
-      if (el.currentTime < start) el.currentTime = start;
       el.play().catch(() => {});
       s.since = Date.now();
       const t = setTimeout(() => {
@@ -192,7 +233,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     // Leaving within 1.5s counts as a skip signal.
     if (s.since && Date.now() - s.since < 1500 && !s.viewed) recordSignal(post, "skip").catch(() => {});
     s.since = 0;
-  }, [active, post, start]);
+  }, [active, post]);
 
   useEffect(() => {
     if (video.current) video.current.muted = muted;
@@ -202,15 +243,12 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
     const el = video.current;
     if (!el) return;
     const s = signals.current;
-    const end = long ? Math.min(start + TRAILER_SECONDS, el.duration || Infinity) : el.duration || 0;
-    if (long && el.currentTime >= end) el.currentTime = start;
-      if (!long && s.last > 1 && el.currentTime < s.last - 1) {
+    if (s.last > 1 && el.currentTime < s.last - 1) {
       s.loops += 1;
       recordSignal(post, s.loops === 1 ? "complete" : "replay").catch(() => {});
     }
     s.last = el.currentTime;
-    const span = end - start;
-    setProgress(span > 0 ? Math.min(1, (el.currentTime - start) / span) : 0);
+    setProgress(el.duration > 0 ? Math.min(1, el.currentTime / el.duration) : 0);
   };
 
   const togglePlay = () => {
@@ -279,11 +317,10 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
   const railBtn = "press flex h-12 w-12 items-center justify-center rounded-full bg-black/25 backdrop-blur-sm md:bg-surface-2 md:backdrop-blur-none hover:bg-black/40 md:hover:bg-surface-3";
 
   return (
-    <section ref={box} aria-roledescription="Flick" aria-label={`${index + 1} of ${total}: ${long ? post.title || "Long Flick" : `Flick by @${post.authorName}`}`}
+    <section ref={box} aria-roledescription="Flick" aria-label={`${index + 1} of ${total}: Flick by @${post.authorName}`}
       className="relative flex h-full w-full snap-start snap-always items-center justify-center md:gap-4 md:py-4">
       <div className="relative h-full w-full overflow-hidden bg-black md:aspect-[9/16] md:h-full md:w-auto md:max-w-full md:rounded-card">
-        <video ref={video} muted={muted} loop={!long} playsInline preload="none"
-          aria-label={long ? `Trailer for ${post.title || "a video"}` : `Flick by @${post.authorName}`}
+        <video ref={video} muted={muted} loop playsInline preload="none" poster={post.posterUrl || undefined} aria-label={`Flick by @${post.authorName}`}
           onTimeUpdate={onTime} onError={() => { if (video.current?.getAttribute("src")) setFailed(true); }}
           onClick={onTap} className="h-full w-full cursor-pointer object-contain" />
 
@@ -330,23 +367,10 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
                 <WandSparkles size={12} aria-hidden="true" /> Made with AI
               </span>
             )}
-            {long && (
-              <>
-                <span className="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-label font-semibold text-white">Trailer</span>
-                {post.title && <p className="mt-1 text-title-3 text-white">{post.title}</p>}
-              </>
-            )}
             {post.text && (
               <button type="button" onClick={() => setExpanded((x) => !x)} aria-expanded={expanded}
                 className={`mt-1 block text-left text-callout text-white/90 ${expanded ? "" : "line-clamp-2"}`}>
                 {post.text}
-              </button>
-            )}
-            {long && (
-              <button type="button" onClick={() => openWatch(post.id)}
-                className="press mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-callout font-semibold text-black hover:bg-white/90">
-                <Play size={16} fill="currentColor" aria-hidden="true" />
-                Watch the full video{post.duration > 0 ? ` · ${formatDuration(post.duration)}` : ""}
               </button>
             )}
           </div>
@@ -407,6 +431,11 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
             <Send size={24} aria-hidden="true" />
           </button>
         </div>
+        <div className={rail}>
+          <button type="button" onClick={() => setSheet("menu")} aria-label="More options" className={railBtn}>
+            <Ellipsis size={24} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {sheet === "comments" && (
@@ -414,6 +443,9 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
           onCountChange={(d) => setCounts((c) => ({ ...c, comment: Math.max(0, c.comment + d) }))} />
       )}
       {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
+      {sheet === "menu" && (
+        <PostMenu post={post} mine={mine} onClose={() => setSheet(null)} onRemoved={() => onRemoved?.(post.id)} />
+      )}
     </section>
   );
 }

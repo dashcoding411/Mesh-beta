@@ -40,7 +40,7 @@ export const MAX_SLIDES = 10;
 export async function createPost({
   kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
   duration = 0, trailerStart = 0, aiGenerated = false, topics = [], poll = null, gif = null, sensitive = false,
-  circleTopic = "", media = null, location = "",
+  circleTopic = "", media = null, location = "", posterUrl = "",
 }) {
   const user = auth.currentUser;
   const profile = await myProfile();
@@ -76,6 +76,8 @@ export async function createPost({
       media: media.slice(0, MAX_SLIDES).map((m) => ({ url: m.url, alt: (m.alt || "").slice(0, 500), w: Math.round(m.width || 0), h: Math.round(m.height || 0) })),
     } : {}),
     ...(location.trim() ? { location: location.trim().slice(0, 60) } : {}),
+    // Video thumbnail (a frame captured when posting).
+    ...(posterUrl ? { posterUrl } : {}),
     ...(groupId && circleTopic ? { circleTopic: circleTopic.slice(0, 40) } : {}),
     likeCount: 0,
     commentCount: 0,
@@ -231,10 +233,11 @@ export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
   await deleteInline(post.mediaUrl);
   for (const m of (post.media || []).slice(1)) await deleteInline(m.url).catch(() => {});
-  if (post.mediaPath) {
+  if (post.mediaPath || post.posterUrl) {
     try {
       const { deleteObject, ref, storage } = await loadStorage();
-      await deleteObject(ref(storage, post.mediaPath));
+      if (post.mediaPath) await deleteObject(ref(storage, post.mediaPath));
+      if (post.posterUrl) await deleteObject(ref(storage, post.posterUrl));
     } catch {
       // Already gone; the post itself is what matters.
     }

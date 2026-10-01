@@ -224,9 +224,11 @@ service cloud.firestore {
             'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'circleTopic',
             'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
             'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
-            'viewCount', 'completeCount', 'createdAt', 'media', 'location'
+            'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl'
           ])
           && validTopics(d.get('topics', []))
+          && (!('posterUrl' in d) || (d.kind in ['short', 'video'] && d.posterUrl is string
+              && d.posterUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')))
           && d.get('location', '') is string && d.get('location', '').size() <= 60
           && (!('media' in d) || (d.kind == 'post' && slidesOk(d.media) && d.media[0].url == d.mediaUrl))
           && d.get('circleTopic', '') is string && d.get('circleTopic', '').size() <= 40

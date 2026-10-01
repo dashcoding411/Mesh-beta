@@ -92,6 +92,23 @@ slots, met progressively to avoid clustering. A diversity pass limits
 repeated authors and formats. Borderline content is never recommended to
 non-followers and is spaced apart; reports reduce reach.
 
+## Flicks
+
+Flicks home is a chooser rather than a feed: a row of short Flicks and a grid
+of long ones, with today's Flicks time against the viewer's limit. Short Flicks
+play one at a time in a vertical player that starts at the one picked; every
+ten, a check-in card shows how many and for how long, and the feed ends rather
+than scrolling forever. Long Flicks open the full player: native controls, an
+ambient glow (a small blurred canvas copy of the current frame), chapters from
+`0:00 Title` lines in the description (`lib/chapters.js`), a speed picker, and
+Up next (same creator, then shared topics, then newest, leaving out hidden
+posts, muted authors and, if the viewer hides them, AI posts). Autoplay is off
+unless the viewer turns it on, per device.
+
+Videos carry a poster frame captured when posting (`posterUrl`, Cloud Storage
+only), since phones show no frame for an unplayed video. Older videos fall back
+to a frame from the file.
+
 ## Moderation (`lib/moderation.js`)
 
 `assessText` returns `block`, `borderline`, `quoted` or `ok`. Text is

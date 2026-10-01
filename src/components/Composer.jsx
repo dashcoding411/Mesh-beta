@@ -44,6 +44,50 @@ function readDuration(file) {
   });
 }
 
+// A JPEG of the frame at `at` seconds, used as the video's thumbnail. Phones
+// (iPhones especially) show no frame for an unplayed video without one.
+function capturePoster(file, at) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    const url = URL.createObjectURL(file);
+    let settled = false;
+    const done = (blob) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(blob);
+    };
+    setTimeout(() => done(null), 8000);
+    v.onloadeddata = () => { v.currentTime = Math.min(at, Math.max(0, (v.duration || 1) - 0.1)); };
+    v.onseeked = () => {
+      const scale = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight, 1));
+      const c = document.createElement("canvas");
+      c.width = Math.round(v.videoWidth * scale);
+      c.height = Math.round(v.videoHeight * scale);
+      if (!c.width || !c.height) return done(null);
+      c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+      c.toBlob(done, "image/jpeg", 0.82);
+    };
+    v.onerror = () => done(null);
+    v.src = url;
+  });
+}
+
+// Best effort: a post without a poster still works.
+async function uploadPoster(file, at) {
+  try {
+    const blob = await capturePoster(file, at);
+    if (!blob) return "";
+    const { url } = await uploadMedia(new File([blob], "poster.jpg", { type: "image/jpeg" }));
+    return url.startsWith("https://firebasestorage.googleapis.com/") ? url : "";
+  } catch {
+    return "";
+  }
+}
+
 // Composer for all formats. Videos longer than LONG_VIDEO_SECONDS become long
 // Flicks, which need a title and a trailer window.
 export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "", circleTopic: initialCircleTopic }) {
@@ -208,6 +252,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     try {
       let media = { url: "", path: "" };
       let slides = null;
+      let posterUrl = "";
       if (spec.media === "image") {
         setProgress(0);
         slides = (await uploadPhotos(photos.map((p) => p.file), setProgress))
@@ -216,6 +261,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       } else if (file) {
         setProgress(0);
         media = await uploadMedia(file, setProgress);
+        posterUrl = await uploadPoster(file, long ? trailerStart || 1 : 0.5);
       }
       const post = await createPost({
         kind: kind === "video" ? (long ? "video" : "short") : kind,
@@ -224,6 +270,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         alt: slides ? slides[0].alt : "",
         mediaUrl: media.url,
         mediaPath: media.path,
+        posterUrl,
         mediaType: spec.media === "image" ? photos[0].file.type : file ? file.type : "",
         media: slides,
         location: spec.media ? location : "",
