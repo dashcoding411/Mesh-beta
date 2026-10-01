@@ -39,8 +39,10 @@ export function NewsStory({ id }) {
     const [s, amAdmin] = await Promise.all([fetchNewsStory(id), isAdmin().catch(() => false)]);
     setStory(s);
     setAdmin(amAdmin);
-    if (amAdmin && s) setRequests(await fetchCorrectionRequests(id).catch(() => []));
+    const author = !!s && (s.authors || [s.authorId]).includes(me());
+    if ((amAdmin || author) && s) setRequests(await fetchCorrectionRequests(id).catch(() => []));
   }, [id]);
+  const mine = !!story && (story.authors || [story.authorId]).includes(me());
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
   const share = async () => {
@@ -96,11 +98,11 @@ export function NewsStory({ id }) {
               {story.status === "approved" ? (
                 <p className="mt-4 flex items-start gap-2 rounded-control bg-success-text/10 p-3 text-caption text-fg-muted">
                   <ShieldCheck size={16} className="mt-0.5 shrink-0 text-success-text" aria-hidden="true" />
-                  <span>Checked against its {plural((story.sources || []).length, "source")}{story.reviewedBy ? ` by @${story.reviewedBy}` : ""}{story.reviewedAt ? ` on ${fullTime(story.reviewedAt)}` : ""}. Review isn't a guarantee of truth, so read the sources too.</span>
+                  <span>Published by the journalist{story.authors?.length > 1 ? "s" : ""} named above, citing {plural((story.sources || []).length, "source")}, listed below. Read the sources and form your own view.</span>
                 </p>
               ) : (
                 <p className="mt-4 flex items-center gap-2 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">
-                  <Clock size={16} aria-hidden="true" /> Not published. Only you and reviewers can see this.
+                  <Clock size={16} aria-hidden="true" /> Not yet published. Only the story's journalists can see it.
                 </p>
               )}
 
@@ -128,11 +130,11 @@ export function NewsStory({ id }) {
                   <Button icon={PenLine} onClick={() => navigate(`/news/write/${story.id}`)}>Open in the newsroom</Button>
                 )}
                 {story.status !== "approved" && story.authorId === me() && (
-                  <Button variant="danger" icon={X} onClick={() => setDialog("withdraw")}>Withdraw submission</Button>
+                  <Button variant="danger" icon={X} onClick={() => setDialog("withdraw")}>Delete draft</Button>
                 )}
               </div>
 
-              {admin && story.status === "approved" && (
+              {(admin || mine) && story.status === "approved" && (
                 <section aria-labelledby="corr-admin-h" className="mt-8 rounded-card border border-line bg-surface p-4">
                   <h2 id="corr-admin-h" className="flex items-center gap-2 text-callout font-semibold">
                     <Inbox size={16} aria-hidden="true" /> Correction requests
@@ -160,12 +162,12 @@ export function NewsStory({ id }) {
 
       {dialog === "suggest" && <SuggestCorrectionDialog story={story} onClose={() => setDialog(null)} />}
       {dialog === "withdraw" && (
-        <ConfirmDialog title="Withdraw this submission?" confirmLabel="Withdraw and delete"
-          body="It's deleted, with its history, and reviewers won't see it. To keep working on it instead, open it in the Newsroom."
+        <ConfirmDialog title="Delete this draft?" confirmLabel="Delete draft"
+          body="The draft and its history will be permanently deleted. To continue working on it instead, open it in the Newsroom."
           onClose={() => setDialog(null)}
           onConfirm={async () => {
-            try { await deleteNews(story.id); toast({ title: "Submission withdrawn" }); navigate("/news", { replace: true }); }
-            catch { toast({ tone: "error", title: "Couldn't withdraw it" }); setDialog(null); }
+            try { await deleteNews(story.id); toast({ title: "Draft deleted" }); navigate("/news", { replace: true }); }
+            catch { toast({ tone: "error", title: "The draft could not be deleted" }); setDialog(null); }
           }} />
       )}
       {dialog === "correct" && (
@@ -209,7 +211,7 @@ function SuggestCorrectionDialog({ story, onClose }) {
     setBusy(true);
     try {
       await suggestCorrection(story.id, v.text);
-      toast({ title: "Thanks, a reviewer will look at it", body: "If it's right, a correction is added to the story publicly." });
+      toast({ title: "Correction request sent", body: "The journalist will review it. Accepted corrections are published on the story." });
       onClose();
     } catch {
       setError("Couldn't send that. Check your connection and try again.");
@@ -220,10 +222,10 @@ function SuggestCorrectionDialog({ story, onClose }) {
     <Dialog title="Suggest a correction" onClose={onClose}
       footer={<div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" form="suggest-form" variant="primary" loading={busy}>Send to reviewers</Button>
+        <Button type="submit" form="suggest-form" variant="primary" loading={busy}>Send request</Button>
       </div>}>
       <form id="suggest-form" onSubmit={submit} className="space-y-3" noValidate>
-        <p className="text-callout text-fg-muted">What's wrong, and how do you know? A link to a better source helps most. Only reviewers see this.</p>
+        <p className="text-callout text-fg-muted">Describe the error and how you know. A link to a reliable source is the most helpful. Only the story's journalists and Mesh administrators can see your request.</p>
         <Field label="Your note" error={error} count={text.length} max={1000}>
           <Textarea autoGrow rows={4} value={text} maxLength={1000} onChange={(e) => { setText(e.target.value); setError(""); }}
             placeholder="e.g. The second paragraph says 40%, but source 2 says 14%." />
@@ -243,7 +245,7 @@ function AddCorrectionDialog({ story, onClose, onAdded }) {
     if (t.length < 10) return setError("Describe the correction in a sentence.");
     setBusy(true);
     try { await addCorrection(story, t); onAdded(); }
-    catch { setError("Couldn't add it. Only reviewers can add corrections."); setBusy(false); }
+    catch { setError("The correction could not be added. Only the story's journalists and Mesh administrators can add corrections."); setBusy(false); }
   };
   return (
     <Dialog title="Add a public correction" onClose={onClose}

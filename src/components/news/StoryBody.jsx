@@ -3,7 +3,7 @@ import { CITE, hostOf } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
 
-// Shared by the story page and the review queue.
+// Shared by the story page and the editor preview.
 export function StoryBody({ story }) {
   const sources = story.sources || [];
   const uid = `n-${story.id}`;

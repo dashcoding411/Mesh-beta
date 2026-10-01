@@ -155,6 +155,16 @@ export default function Settings() {
               action={<Switch label="Hide posts made with AI" checked={hideAi} onChange={toggleAi} />} />
           </Group>
 
+          <Group title="Your data">
+            <DataExportRow />
+            <Row icon={FileText} label="Terms and Privacy Policy"
+              value={accepted ? `Version ${profile.termsVersion}, accepted ${new Date(accepted).toLocaleDateString()}` : "Accepted before this was recorded"}
+              help={outdated ? "They've been updated since you accepted them. Worth a read." : null}
+              onClick={() => navigate("/legal/privacy")} />
+            <Row icon={Scale} label="All policies" value="Privacy, terms, cookies, guidelines, refunds" onClick={() => navigate("/legal")} />
+            <Row icon={Trash2} label="Delete account" value="Permanently delete your account and everything you've posted" danger onClick={() => setDialog("delete")} />
+          </Group>
+
           <AppearanceGroup />
 
           {admin && (
@@ -172,18 +182,9 @@ export default function Settings() {
               action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
           </Group>
 
-          <Group title="Your data">
-            <DataExportRow />
-            <Row icon={FileText} label="Terms and Privacy Policy"
-              value={accepted ? `Version ${profile.termsVersion}, accepted ${new Date(accepted).toLocaleDateString()}` : "Accepted before this was recorded"}
-              help={outdated ? "They've been updated since you accepted them. Worth a read." : null}
-              onClick={() => navigate("/legal/privacy")} />
-            <Row icon={Scale} label="All policies" value="Privacy, terms, cookies, guidelines, refunds" onClick={() => navigate("/legal")} />
-          </Group>
 
           <Group title="Account">
             <Row icon={LogOut} label="Sign out" value="Of Mesh on this device" onClick={() => setDialog("signout")} />
-            <Row icon={Trash2} label="Delete account" value="Permanently remove your account and posts" danger onClick={() => setDialog("delete")} />
           </Group>
         </div>
       </div>

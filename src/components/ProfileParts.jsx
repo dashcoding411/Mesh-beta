@@ -17,6 +17,7 @@ import { Field, Input, Textarea } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { ProfileBadges } from "./ui/Badges";
+import { badgesOf } from "../lib/badges";
 import { Tile } from "./Search";
 
 // Only shown when both profiles name each other.
@@ -56,7 +57,7 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
             @{profile.username}
             {profile.pronouns && <span> · {profile.pronouns}</span>}
           </p>
-          {profile.badges?.length > 0 && <div className="mt-1.5"><ProfileBadges badges={profile.badges} /></div>}
+          {badgesOf(profile).length > 0 && <div className="mt-1.5"><ProfileBadges badges={badgesOf(profile)} /></div>}
           <dl className="mt-3 flex gap-5">
             <Stat label="Posts" value={postCount} />
             <Stat label="Followers" value={profile.followerCount || 0} onClick={onShowFollows ? () => onShowFollows("followers") : undefined} />

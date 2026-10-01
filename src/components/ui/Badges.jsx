@@ -1,7 +1,7 @@
 import { FlaskConical } from "lucide-react";
 
-// Badges admins award on profiles (users/{uid}.badges). Beta testers helped
-// shape Mesh before launch, so theirs stands out.
+// Profile badges (see lib/badges.js). Beta testers helped shape Mesh before
+// launch, so theirs stands out.
 const BADGES = {
   beta: { label: "Beta tester", description: "Helped test Mesh before launch" },
 };

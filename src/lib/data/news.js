@@ -1,4 +1,4 @@
-// Published news, review decisions and corrections.
+// Published news, correction requests and corrections.
 import {
   addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
@@ -16,16 +16,6 @@ export async function isAdmin() {
   if (!me()) return false;
   const snap = await getDoc(doc(db, "admins", me()));
   return snap.exists();
-}
-
-export async function reviewNews(id, status, reviewNote = "") {
-  const profile = await myProfile();
-  await updateDoc(doc(db, "news", id), {
-    status,
-    reviewNote,
-    reviewedBy: profile?.username || "",
-    reviewedAt: serverTimestamp(),
-  });
 }
 
 export async function deleteNews(id) {

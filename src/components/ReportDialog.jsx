@@ -25,13 +25,13 @@ export default function ReportDialog({ target, onClose, onReported, report = rep
     try {
       const res = await report(target, reason.id, details.trim());
       toast(res?.duplicate
-        ? { tone: "info", title: `You've already reported this ${noun}`, body: "A moderator will look at it." }
-        : { title: "Thanks, a moderator will look at it", body: target.type === "message" ? "They see only this message, not the rest of the conversation." : undefined });
+        ? { tone: "info", title: `You have already reported this ${noun}`, body: "It is awaiting review by a moderator." }
+        : { title: "Report submitted", body: target.type === "message" ? "A moderator will review it. Only this message is shared, not the rest of the conversation." : "A moderator will review it against the Community Guidelines." });
       onReported?.();
       onClose();
     } catch (err) {
       console.error(err);
-      setError("Couldn't send the report. Check your connection and try again.");
+      setError("The report could not be sent. Check your connection and try again.");
       setBusy(false);
     }
   };
@@ -66,9 +66,9 @@ export default function ReportDialog({ target, onClose, onReported, report = rep
           <span>If someone is in immediate danger, call 000. Lifeline is on 13 11 14, any time, and Kids Helpline on 1800 55 1800.</span>
         </p>
       )}
-      <Field label="Anything else we should know?" optional count={details.length} max={500}>
+      <Field label="Additional details" optional count={details.length} max={500}>
         <Textarea autoGrow rows={3} value={details} maxLength={500} onChange={(e) => setDetails(e.target.value)}
-          placeholder={reason.id === "hate" ? "e.g. It's one of many posts mocking the same group" : "Context helps a moderator decide faster"} />
+          placeholder={reason.id === "hate" ? "For example, that it is one of several posts targeting the same group" : "Any context that will help a moderator assess the report"} />
       </Field>
       <div aria-live="polite" className="mt-2"><InlineMessage>{error}</InlineMessage></div>
     </Dialog>

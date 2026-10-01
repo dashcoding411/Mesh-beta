@@ -13,9 +13,7 @@ import { EmptyState, Skeleton } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
 const STAGES = [
-  { id: "draft", title: "Drafts", match: (s) => s.status === "draft" && !s.reviewNote },
-  { id: "back", title: "Sent back to you", match: (s) => (s.status === "draft" && s.reviewNote) || s.status === "rejected" },
-  { id: "pending", title: "With the reviewers", match: (s) => s.status === "pending" },
+  { id: "draft", title: "Drafts", match: (s) => s.status !== "approved" },
   { id: "approved", title: "Published", match: (s) => s.status === "approved" },
 ];
 
@@ -49,13 +47,13 @@ export default function Newsroom() {
         <div className="mx-auto max-w-3xl px-4 pb-16 pt-5 md:px-6">
           <header className="mb-5 hidden md:block">
             <h1 className="text-title-1">Newsroom</h1>
-            <p className="text-callout text-fg-muted">Write, co-write and send stories for review.</p>
+            <p className="text-callout text-fg-muted">Write, co-write and publish your stories.</p>
           </header>
 
           {writer === undefined && <Skeleton className="h-32 !rounded-card" />}
           {writer === false && (
-            <EmptyState icon={Newspaper} title="Writing for Mesh News is by invitation"
-              body="Every story on Mesh News has a named writer the Mesh team has approved, who's accountable for it. Anyone can still read, flag errors and suggest corrections."
+            <EmptyState icon={Newspaper} title="Mesh News is written by verified journalists"
+              body="Publishing on Mesh News is limited to journalists whose identity Mesh has verified. Anyone can read stories and request corrections."
               action={<Button onClick={() => navigate("/news")}>Read the news</Button>} />
           )}
           {writer && (
@@ -93,7 +91,7 @@ export default function Newsroom() {
                             <span className="flex flex-wrap items-center gap-x-2 text-caption text-fg-subtle">
                               <span>{shortTime(tsMillis(s.updatedAt) || tsMillis(s.createdAt))}</span>
                               {(s.authors || []).length > 1 && <span className="inline-flex items-center gap-1"><Users size={12} aria-hidden="true" />{(s.authorNames || []).map((n) => `@${n}`).join(", ")}</span>}
-                              {s.legalHold && <span className="text-warning-text">Legal read needed</span>}
+                              {s.legalHold && <span className="text-warning-text">Legal review required</span>}
                               {s.reviewNote && stage.id === "back" && <span className="text-warning-text">“{s.reviewNote}”</span>}
                             </span>
                           </button>

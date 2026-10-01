@@ -3,9 +3,10 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { fetchProfile } from "./db";
+import { badgesOf } from "./badges";
 
 const cards = new Map(); // uid -> { name, username, photoURL, badges } | null
-const cardOf = (p) => ({ name: p.name || "", username: p.username || "", photoURL: p.photoURL || "", badges: p.badges || [] });
+const cardOf = (p) => ({ name: p.name || "", username: p.username || "", photoURL: p.photoURL || "", badges: badgesOf(p) });
 const pending = new Map(); // uid -> Promise
 const listeners = new Set();
 let version = 0;

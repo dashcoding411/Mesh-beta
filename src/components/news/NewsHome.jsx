@@ -1,10 +1,9 @@
 import { ChevronDown, MapPin, Newspaper, PenLine, ShieldCheck, Radio } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { clearLegalHold, fetchNews, isAdmin, isNewsWriter, reviewNews } from "../../lib/db";
+import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
 import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
-import { ReviewCard } from "./Review";
 import { Meta, TopicLabel } from "./parts";
 import { AuthorLine } from "./Journalist";
 import { summaryOf } from "./text";
@@ -12,29 +11,24 @@ import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import MediaImg from "../ui/MediaImg";
 import { EmptyState, ErrorState, Skeleton } from "../ui/States";
-import { useToast } from "../ui/toast-context";
+
+const publishedAt = (s) => tsMillis(s.publishedAt) || tsMillis(s.createdAt);
 
 export function NewsHome() {
-  const toast = useToast();
   const [items, setItems] = useState(null);
   const [error, setError] = useState(false);
-  const [pending, setPending] = useState([]);
-  const [admin, setAdmin] = useState(false);
   const [writer, setWriter] = useState(false);
   const [topic, setTopic] = useState("all");
 
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [approved, amAdmin, amWriter] = await Promise.all([
+      const [published, amWriter] = await Promise.all([
         fetchNews("approved"),
-        isAdmin().catch(() => false),
         isNewsWriter().catch(() => false),
       ]);
-      setItems(approved);
-      setAdmin(amAdmin);
+      setItems(published.sort((a, b) => publishedAt(b) - publishedAt(a)));
       setWriter(amWriter);
-      if (amAdmin) setPending(await fetchNews("pending").catch(() => []));
     } catch (err) {
       console.error(err);
       setError(true);
@@ -42,23 +36,6 @@ export function NewsHome() {
   }, []);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
-
-  const review = async (item, status, note = "") => {
-    try {
-      if (status === "hold-cleared") {
-        await clearLegalHold(item.id);
-        setPending((prev) => prev.map((n) => (n.id === item.id ? { ...n, legalHold: false, legalNote: "" } : n)));
-        toast({ title: "Legal hold cleared" });
-        return;
-      }
-      await reviewNews(item.id, status, note);
-      setPending((prev) => prev.filter((n) => n.id !== item.id));
-      toast({ title: status === "approved" ? "Published" : status === "draft" ? "Sent back with your notes" : "Returned to the author" });
-      if (status === "approved") load();
-    } catch {
-      toast({ tone: "error", title: "Couldn't save that review" });
-    }
-  };
 
   const shown = useMemo(() => (items || []).filter((n) => topic === "all" || (n.topic || "world") === topic), [items, topic]);
   const liveTopics = useMemo(() => {
@@ -92,17 +69,6 @@ export function NewsHome() {
 
           <HowItWorks writer={writer} />
 
-          {admin && pending.length > 0 && (
-            <section aria-labelledby="queue-h" className="mt-6">
-              <h2 id="queue-h" className="mb-3 flex items-center gap-2 text-title-3">
-                Review queue <Badge tone="warning">{pending.length}</Badge>
-              </h2>
-              <div className="space-y-4">
-                {pending.map((n) => <ReviewCard key={n.id} item={n} onReview={review} />)}
-              </div>
-            </section>
-          )}
-
           <section aria-labelledby="stories-h" className="mt-6">
             <h2 id="stories-h" className="sr-only">{topic === "all" ? "Top stories" : `${newsTopicById(topic)?.label} stories`}</h2>
             {error && <ErrorState title="Couldn't load the news" onRetry={load} />}
@@ -114,7 +80,7 @@ export function NewsHome() {
             )}
             {items?.length === 0 && (
               <EmptyState icon={Newspaper} title="No stories published yet"
-                body="Stories appear here once a reviewer has checked them against their sources."
+                body="Stories published by Mesh News journalists will appear here."
                 action={writer ? <Button variant="primary" icon={PenLine} onClick={() => navigate("/news/desk")}>Write the first story</Button> : null} />
             )}
             {items?.length > 0 && shown.length === 0 && (
@@ -189,17 +155,17 @@ function HowItWorks({ writer }) {
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <ShieldCheck size={20} className="shrink-0 text-success-text" aria-hidden="true" />
         <span className="min-w-0 flex-1">
-          <span className="block text-callout font-semibold">Every story is checked against its sources</span>
-          <span className="block text-caption text-fg-subtle">How News works on Mesh</span>
+          <span className="block text-callout font-semibold">Reported by verified journalists</span>
+          <span className="block text-caption text-fg-subtle">How Mesh News works</span>
         </span>
         <ChevronDown size={18} className="shrink-0 text-fg-subtle transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="space-y-2 border-t border-line px-4 py-4 text-callout text-fg-muted">
-        <p>Stories are written by writers the Mesh team has approved, each named on what they write. Nobody can publish their own.</p>
-        <p>Every story needs at least two sources, cited by number in the text. A reviewer checks it against those sources before it goes up, and anything marked for a legal read waits until it's had one.</p>
-        <p>AI can't be used to fabricate evidence: no generated photos, footage, audio or quotes presented as real.</p>
-        <p>Spot a mistake? Every story has "Suggest a correction". Corrections are added publicly and never quietly edited away.</p>
-        <p className="text-fg">Review isn't a guarantee of truth. Read the sources and make up your own mind.</p>
+        <p>Mesh News is written by journalists whose identity Mesh has verified, whether they work for an outlet or independently. Each story carries the journalist's name, outlet, region and any declared political affiliation.</p>
+        <p>Journalists publish their own work. Mesh does not edit or approve stories before publication.</p>
+        <p>Every story must cite at least two sources by number in the text, and the journalist confirms its accuracy when publishing. AI may not be used to fabricate evidence, such as generated images, footage, audio or quotations presented as genuine.</p>
+        <p>Readers can request a correction on any story. Corrections are published on the story itself and are never removed.</p>
+        <p className="text-fg">Read the sources and form your own view.</p>
         {writer && <Button size="sm" variant="primary" icon={PenLine} className="mt-2 md:hidden" onClick={() => navigate("/news/desk")}>Open the newsroom</Button>}
       </div>
     </details>

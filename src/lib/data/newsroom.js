@@ -87,6 +87,7 @@ export function storyFromDoc(snap) {
     version: d.version || 0,
     reviewNote: d.reviewNote || "",
     live: !!d.live,
+    publishedAt: d.publishedAt || null,
     updatedAt: d.updatedAt,
   };
 }
@@ -168,9 +169,11 @@ export async function saveStory(id, base, local, extra = {}) {
   });
 }
 
-export async function submitStory(id, base, local) {
-  const result = await saveStory(id, base, local, { status: "pending", submittedAt: serverTimestamp(), attestedAt: serverTimestamp() });
-  await saveRevision(id, result.story, "Sent for review").catch(() => {});
+/** Journalists publish their own stories; the rules check sources and the attestation. */
+export async function publishStory(id, base, local) {
+  const at = serverTimestamp();
+  const result = await saveStory(id, base, local, { status: "approved", submittedAt: at, attestedAt: at, publishedAt: at });
+  await saveRevision(id, result.story, "Published").catch(() => {});
   return result;
 }
 
@@ -218,12 +221,6 @@ export async function setStoryPresence(id, blockId, username) {
 
 export async function clearStoryPresence(id) {
   await deleteDoc(doc(db, "news", id, "presence", me())).catch(() => {});
-}
-
-// Review
-
-export async function clearLegalHold(id) {
-  await updateDoc(storyRef(id), { legalHold: false, legalNote: "" });
 }
 
 // Live blogs

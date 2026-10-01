@@ -23,6 +23,7 @@ import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
+import { betaByJoinDate } from "../lib/badges";
 
 export default function UserProfile({ uid }) {
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
@@ -253,7 +254,7 @@ export default function UserProfile({ uid }) {
               Report @{profile.username}
             </MenuItem>
           </MenuGroup>
-          {admin && (
+          {admin && !betaByJoinDate(profile) && (
             <MenuGroup>
               <MenuItem icon={FlaskConical} onClick={toggleBeta} description="Admins only. Shows on their profile and posts">
                 {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}

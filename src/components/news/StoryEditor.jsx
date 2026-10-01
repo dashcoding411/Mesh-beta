@@ -4,7 +4,7 @@ import {
   Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, ListChecks,
 } from "lucide-react";
 import {
-  listenStory, saveStory, submitStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
+  listenStory, saveStory, publishStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
   clearStoryPresence, coAuthorFor, uploadMedia, me,
 } from "../../lib/db";
 import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS } from "../../lib/storyDoc";
@@ -45,7 +45,7 @@ export default function StoryEditor({ id }) {
   const [saveError, setSaveError] = useState("");
   const [presence, setPresenceList] = useState([]);
   const [now, setNow] = useState(() => Date.now());
-  const [dialog, setDialog] = useState(null); // "submit" | "history" | "preview"
+  const [dialog, setDialog] = useState(null); // "publish" | "history" | "preview"
   const baseRef = useRef(null);
   const localRef = useRef(null);
   useEffect(() => { baseRef.current = base; }, [base]);
@@ -68,7 +68,7 @@ export default function StoryEditor({ id }) {
     return () => { clearInterval(t); clearStoryPresence(id); };
   }, [id]);
 
-  const editable = local && ["draft", "rejected"].includes(local.status);
+  const editable = local && ["draft", "rejected", "pending"].includes(local.status);
   const dirty = !!local && !!base && !same(local, base);
   const lead = local?.authorId === me();
 
@@ -166,7 +166,7 @@ export default function StoryEditor({ id }) {
         <AuthorsStrip names={local.authorNames} uids={local.authors} presence={presence} now={now} />
         <Button size="sm" variant="ghost" icon={History} onClick={() => setDialog("history")}>History</Button>
         <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDialog("preview")}>Preview</Button>
-        {editable && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("submit")}>Send for review</Button>}
+        {editable && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("publish")}>Publish</Button>}
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-24 pt-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -174,13 +174,12 @@ export default function StoryEditor({ id }) {
           {!editable && (
             <p role="status" className="mb-4 flex items-start gap-2 rounded-card border border-line bg-surface-2 p-3 text-callout text-fg-muted">
               <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-              {local.status === "pending" ? "With the reviewers. Editing is paused until it's published or sent back."
-                : "Published. Changes now go through public corrections, which reviewers add."}
+              Published. Changes to a published story are made as public corrections, from the story page.
             </p>
           )}
           {local.status === "draft" && local.reviewNote && (
             <p role="status" className="mb-4 rounded-card border border-warning-text/30 bg-warning-text/10 p-3 text-callout text-warning-text">
-              <strong>Sent back by a reviewer:</strong> {local.reviewNote}
+              <strong>Note from Mesh:</strong> {local.reviewNote}
             </p>
           )}
           {local.status === "rejected" && (
@@ -225,13 +224,14 @@ export default function StoryEditor({ id }) {
         </aside>
       </div>
 
-      {dialog === "submit" && (
-        <SubmitDialog story={local} onClose={() => setDialog(null)} onSubmit={async () => {
+      {dialog === "publish" && (
+        <PublishDialog story={local} onClose={() => setDialog(null)} onPublish={async () => {
           await save();
-          const { story } = await submitStory(id, baseRef.current, localRef.current);
+          const { story } = await publishStory(id, baseRef.current, localRef.current);
           setBase(story); setLocal(story);
           setDialog(null);
-          toast({ title: "Sent for review", body: "A reviewer checks it against its sources before it's published." });
+          toast({ title: "Published", body: "Your story is now live on Mesh News." });
+          navigate(`/news/${id}`);
         }} />
       )}
       {dialog === "history" && (
@@ -462,14 +462,14 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
         <div className="flex items-start gap-3">
           <Scale size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
           <span className="min-w-0 flex-1">
-            <label htmlFor="legal-hold" className="block text-callout font-medium">Needs a legal read</label>
-            <span className="block text-caption text-fg-subtle">Reviewers can't publish until someone clears it.</span>
+            <label htmlFor="legal-hold" className="block text-callout font-medium">Requires legal review</label>
+            <span className="block text-caption text-fg-subtle">Publishing is blocked while this is on. Turn it off once the legal review is complete.</span>
           </span>
           <Switch id="legal-hold" checked={story.legalHold} disabled={!editable} onChange={(v) => update({ legalHold: v })} />
         </div>
         {story.legalHold && (
           <Textarea className="mt-3" aria-label="What needs checking" autoGrow rows={2} value={story.legalNote} readOnly={!editable} maxLength={300}
-            placeholder="What needs checking, and why" onChange={(e) => update({ legalNote: e.target.value })} />
+            placeholder="What requires review, and why" onChange={(e) => update({ legalNote: e.target.value })} />
         )}
       </section>
 
@@ -487,7 +487,7 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
   );
 }
 
-function SubmitDialog({ story, onClose, onSubmit }) {
+function PublishDialog({ story, onClose, onPublish }) {
   const [attest, setAttest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -495,31 +495,31 @@ function SubmitDialog({ story, onClose, onSubmit }) {
   const words = checkContent(`${story.title}\n${story.standfirst}\n${story.blocks.map((b) => b.text).join("\n")}`, { key: "news", skipCooldown: true, allowQuoted: true });
   const all = words.error ? [...problems, words.error] : problems;
   return (
-    <Dialog title="Send for review" onClose={busy ? undefined : onClose} size="md"
+    <Dialog title="Publish this story" onClose={busy ? undefined : onClose} size="md"
       footer={
         <div className="space-y-2">
           <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} disabled={busy}>Keep editing</Button>
-            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest} onClick={async () => {
+            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest || story.legalHold} onClick={async () => {
               setBusy(true); setError("");
-              try { await onSubmit(); } catch (err) { console.error(err); setBusy(false); setError("Couldn't send it. Check your connection, and that the story is saved."); }
-            }}>Send for review</Button>
+              try { await onPublish(); } catch (err) { console.error(err); setBusy(false); setError("The story could not be published. Check your connection and that the story has saved, then try again."); }
+            }}>Publish</Button>
           </div>
         </div>
       }>
       {all.length > 0 ? (
         <>
-          <p className="text-callout text-fg-muted">A couple of things first:</p>
+          <p className="text-callout text-fg-muted">Before publishing, the following must be resolved:</p>
           <ul className="mt-2 space-y-1.5">{all.map((p) => <li key={p} className="flex gap-2 text-callout"><X size={16} className="mt-0.5 shrink-0 text-danger-text" aria-hidden="true" />{p}</li>)}</ul>
         </>
       ) : (
-        <p className="flex items-center gap-2 text-callout text-success-text"><Check size={16} aria-hidden="true" /> Headline, body, sources and citations are all there.</p>
+        <p className="flex items-center gap-2 text-callout text-success-text"><Check size={16} aria-hidden="true" /> The headline, body, sources and citations are complete.</p>
       )}
-      {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">It's marked as needing a legal read, so it can't be published until a reviewer clears that.</p>}
+      {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">This story is marked as requiring legal review. Clear that mark in the story details once the review is complete, then publish.</p>}
       <div className="mt-4 rounded-card border border-line bg-surface p-3">
-        <Checkbox checked={attest} onChange={setAttest} description="Your confirmation is recorded with the submission.">
-          This story is accurate to the best of my knowledge, and nothing in it (images, footage, audio or quotes) was generated or altered by AI to look real.
+        <Checkbox checked={attest} onChange={setAttest} description="Your confirmation is recorded with the story.">
+          I confirm this story is accurate to the best of my knowledge, that its sources are cited, and that no image, footage, audio or quotation in it was generated or altered by AI to appear genuine.
         </Checkbox>
       </div>
     </Dialog>
@@ -535,7 +535,7 @@ function HistoryDialog({ id, onClose, onRestore, canRestore }) {
     <Dialog title="History" onClose={onClose}>
       <p className="mb-3 text-caption text-fg-subtle">Saved versions can't be changed or deleted, so this is a true record.</p>
       {list === null ? <Skeleton className="h-20" /> : list.length === 0 ? (
-        <p className="text-callout text-fg-subtle">No saved versions yet. One is kept when you send it for review, and whenever you choose "Save this version".</p>
+        <p className="text-callout text-fg-subtle">No saved versions yet. One is kept when you publish, and whenever you choose "Save this version".</p>
       ) : (
         <ul className="divide-y divide-line">
           {list.map((r) => (

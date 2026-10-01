@@ -71,8 +71,8 @@ export default function Moderation() {
 
           {admin === null && <Skeleton className="h-24 !rounded-card" />}
           {admin === false && (
-            <EmptyState icon={ShieldCheck} title="Moderators only"
-              body="This page is for Mesh's moderators. To report something, use Report on the post, comment, message or profile." />
+            <EmptyState icon={ShieldCheck} title="Restricted to moderators"
+              body="This page is available to Mesh moderators only. To report content, use the Report option on the post, comment, message or profile." />
           )}
 
           {admin && (
@@ -80,21 +80,21 @@ export default function Moderation() {
               <p className="flex gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
                 <Gavel size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
                 <span>
-                  Decide by the <button type="button" className="font-semibold text-accent-text hover:underline" onClick={() => navigate("/legal/guidelines")}>Community Guidelines</button>,
-                  the same way whichever group is targeted and whichever side is speaking. Criticism of ideas, religions, countries and
-                  governments stays up. Attacks on people for who they are come down.
+                  Decisions must follow the <button type="button" className="font-semibold text-accent-text hover:underline" onClick={() => navigate("/legal/guidelines")}>Community Guidelines</button> and
+                  be applied consistently, regardless of which group is targeted or which viewpoint is expressed. Criticism of ideas, religions,
+                  countries and governments is permitted. Attacks on people for who they are are removed.
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open" }, { id: "closed", label: "Decided" }, { id: "suspended", label: "Suspended accounts" }, { id: "writers", label: "News writers" }]} />
+                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }]} />
 
               {tab === "writers" ? <Writers /> : tab === "suspended" ? <Suspensions /> : (
                 <>
-                  {error && <ErrorState title="Couldn't load reports" onRetry={load} />}
+                  {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
                   {reports?.length === 0 && (
-                    <EmptyState icon={ShieldCheck} title={tab === "open" ? "Nothing waiting" : "No decisions yet"}
-                      body={tab === "open" ? "New reports appear here." : "Decided reports appear here, with who decided and what was done."} />
+                    <EmptyState icon={ShieldCheck} title={tab === "open" ? "No open reports" : "No resolved reports"}
+                      body={tab === "open" ? "New reports will appear here for review." : "Resolved reports are listed here with the decision, the moderator and the date."} />
                   )}
                   <ul className="space-y-4">
                     {cases.map((c) => <li key={c.key}><Case item={c} readOnly={tab !== "open"} onDone={() => done(c.key)} /></li>)}
@@ -144,20 +144,20 @@ function Case({ item, readOnly, onDone }) {
         if (item.type === "comment") await removeComment(first.postId, item.targetId);
         if (item.type === "message") await removeMessage(first.chatId, item.targetId);
         await resolveReports(item.reports, "actioned", "removed");
-        toast({ title: `${T.label} removed` });
+        toast({ title: `${T.label} removed`, body: "The reports have been marked as actioned." });
       } else if (kind === "label") {
         await labelPostAi(item.targetId);
         await resolveReports(item.reports, "actioned", "labelled");
-        toast({ title: "Labelled as made with AI", body: "People who hide AI posts won't see it in their feeds." });
+        toast({ title: "Labelled as made with AI", body: "The post is now hidden from members who exclude AI content." });
       } else {
         if (item.type === "post" && target) await clearPost(item.targetId);
         await resolveReports(item.reports, "dismissed", "kept");
-        toast({ title: "Kept up", body: item.type === "post" ? "Reports won't hold it back again." : undefined });
+        toast({ title: "Reports dismissed", body: item.type === "post" ? "The content remains available and will not be held for these reports again." : "The content remains available." });
       }
       onDone();
     } catch (err) {
       console.error(err);
-      toast({ tone: "error", title: "Couldn't do that", body: "Check that your account is in the admins collection." });
+      toast({ tone: "error", title: "The action could not be completed", body: "Confirm that your account has administrator access, then try again." });
       setBusy("");
     }
   };
@@ -173,7 +173,7 @@ function Case({ item, readOnly, onDone }) {
 
       <div className="mt-3 rounded-control bg-surface-2 p-3">
         {target === undefined && <Skeleton className="h-12" />}
-        {target === null && <p className="text-callout text-fg-muted">It's already gone (deleted by its author or another moderator).</p>}
+        {target === null && <p className="text-callout text-fg-muted">This content is no longer available. It was deleted by its author or by another moderator.</p>}
         {target && item.type === "user" && (
           <button type="button" onClick={() => openUserProfile(item.targetId)} className="text-left">
             <span className="block text-callout font-semibold">{target.name} <span className="font-normal text-fg-subtle">@{target.username}</span></span>
@@ -184,7 +184,7 @@ function Case({ item, readOnly, onDone }) {
           <>
             {target.title && <p className="text-callout font-semibold">{target.title}</p>}
             {target.text ? <p className="whitespace-pre-wrap break-words text-callout">{target.text}</p>
-              : <p className="text-callout italic text-fg-muted">{item.type === "message" ? "A voice message, GIF or shared post (moderators can't open these)" : "No text"}</p>}
+              : <p className="text-callout italic text-fg-muted">{item.type === "message" ? "A voice message, GIF or shared post. Moderators cannot open private media." : "No text"}</p>}
             {target.mediaUrl && item.type === "post" && target.mediaType?.startsWith("image") !== false && target.kind === "post" && (
               <MediaImg src={target.mediaUrl} alt={target.alt || "Reported photo"} className="mt-2 max-h-60 rounded-control object-contain" placeholderClass="mt-2 h-40 w-full rounded-control" />
             )}
@@ -204,7 +204,7 @@ function Case({ item, readOnly, onDone }) {
           </button>
         )}
         {filter.level !== "ok" && (
-          <span>The automatic filter rates this <strong className="text-warning-text">{filter.level}</strong> ({filter.category})</span>
+          <span>Automated assessment: <strong className="text-warning-text">{filter.level}</strong> ({filter.category})</span>
         )}
       </div>
 
@@ -218,7 +218,7 @@ function Case({ item, readOnly, onDone }) {
 
       {readOnly ? (
         <p className="mt-3 border-t border-line pt-3 text-caption text-fg-subtle">
-          {{ removed: "Removed", suspended: "Author suspended", labelled: "Labelled as made with AI" }[first.action] || "Kept up"}
+          {{ removed: "Removed", suspended: "Author suspended", labelled: "Labelled as made with AI" }[first.action] || "Reports dismissed"}
           {first.reviewedBy ? ` by @${first.reviewedBy}` : ""}{first.reviewedAt ? `, ${shortTime(first.reviewedAt)}` : ""}
         </p>
       ) : (
@@ -234,10 +234,10 @@ function Case({ item, readOnly, onDone }) {
             </Button>
           )}
           <Button size="sm" icon={Check} loading={busy === "keep"} disabled={!!busy} onClick={() => act("keep")}>
-            {target === null ? "Close" : "Keep it up"}
+            {target === null ? "Close report" : "Dismiss reports"}
           </Button>
           {authorId && (
-            <Button size="sm" icon={UserX} disabled={!!busy} onClick={() => setSuspending(true)}>Suspend the author</Button>
+            <Button size="sm" icon={UserX} disabled={!!busy} onClick={() => setSuspending(true)}>Suspend author</Button>
           )}
         </div>
       )}
@@ -262,7 +262,7 @@ function SuspendDialog({ uid, defaultReason, onClose, onDone }) {
   const [error, setError] = useState("");
 
   const submit = async () => {
-    if (reason.trim().length < 5) return setError("Say why, in a sentence. The person sees this.");
+    if (reason.trim().length < 5) return setError("State the reason in at least one sentence. The account holder will see it.");
     setBusy(true);
     try {
       const l = SUSPENSION_LENGTHS.find((x) => x.id === length);
@@ -271,7 +271,7 @@ function SuspendDialog({ uid, defaultReason, onClose, onDone }) {
       onDone();
     } catch (err) {
       console.error(err);
-      setError("Couldn't suspend the account.");
+      setError("The account could not be suspended. Try again.");
       setBusy(false);
     }
   };
@@ -286,7 +286,7 @@ function SuspendDialog({ uid, defaultReason, onClose, onDone }) {
         They can still sign in and read, but can't post, comment, message or create anything until it ends. They see the reason and how to appeal.
       </p>
       <fieldset className="mb-4">
-        <legend className="mb-2 text-callout font-medium">For how long?</legend>
+        <legend className="mb-2 text-callout font-medium">Duration</legend>
         <div className="flex flex-wrap gap-2">
           {SUSPENSION_LENGTHS.map((l) => (
             <label key={l.id} className={`press inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-callout ${
@@ -297,7 +297,7 @@ function SuspendDialog({ uid, defaultReason, onClose, onDone }) {
           ))}
         </div>
       </fieldset>
-      <Field label="Reason (they'll see this)" error={error} count={reason.length} max={500}>
+      <Field label="Reason (shown to the account holder)" error={error} count={reason.length} max={500}>
         <Textarea autoGrow rows={3} value={reason} maxLength={500} onChange={(e) => { setReason(e.target.value); setError(""); }} />
       </Field>
     </Dialog>
@@ -311,20 +311,20 @@ function Suspensions() {
   useEffect(() => {
     fetchSuspensions()
       .then(async (items) => setList(await Promise.all(items.map(async (s) => ({ ...s, profile: await fetchProfile(s.id).catch(() => null) })))))
-      .catch(() => setError("Couldn't load suspensions."));
+      .catch(() => setError("Suspensions could not be loaded."));
   }, []);
 
   const lift = async (s) => {
     try {
       await liftSuspension(s.id);
       setList((l) => l.filter((x) => x.id !== s.id));
-      toast({ title: `Lifted @${s.profile?.username || "account"}'s suspension` });
-    } catch { toast({ tone: "error", title: "Couldn't lift it" }); }
+      toast({ title: `Suspension lifted for @${s.profile?.username || "account"}` });
+    } catch { toast({ tone: "error", title: "The suspension could not be lifted" }); }
   };
 
   if (error) return <InlineMessage>{error}</InlineMessage>;
   if (list === null) return <Skeleton className="h-24 !rounded-card" />;
-  if (!list.length) return <EmptyState icon={UserX} title="No one is suspended" />;
+  if (!list.length) return <EmptyState icon={UserX} title="No active suspensions" />;
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
       {list.map((s) => (
@@ -338,7 +338,7 @@ function Suspensions() {
               {new Date(tsMillis(s.until)).getFullYear() > 9000 ? "Permanent" : `Until ${fullTime(s.until)}`}{s.by ? ` · by @${s.by}` : ""}
             </p>
           </div>
-          <Button size="sm" icon={Undo2} onClick={() => lift(s)}>Lift</Button>
+          <Button size="sm" icon={Undo2} onClick={() => lift(s)}>Lift suspension</Button>
         </li>
       ))}
     </ul>
@@ -359,16 +359,16 @@ function Writers() {
     setError("");
     try {
       const w = await addWriter(handle.trim().replace(/^@/, "").toLowerCase());
-      toast({ title: `@${w.username} can now write for Mesh News` });
+      toast({ title: `@${w.username} has been added as a journalist`, body: "They can now publish on Mesh News." });
       setHandle("");
       load();
-    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins can add writers." : err.message); }
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only administrators can add journalists." : err.message); }
     finally { setBusy(false); }
   };
   return (
     <section className="space-y-4">
       <p className="text-caption text-fg-muted">
-        Writers can start, co-write and send stories for review. Every story still needs a reviewer to check it against its sources before it's published.
+        Add journalists whose identity you have verified. Journalists publish their own stories on Mesh News under their name and byline, without review. Each story must cite at least two sources, and readers can request corrections.
       </p>
       <form onSubmit={add} className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
@@ -377,10 +377,10 @@ function Writers() {
             className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
           <InlineMessage>{error}</InlineMessage>
         </div>
-        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add writer</Button>
+        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add journalist</Button>
       </form>
       {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
-        <EmptyState compact icon={ShieldCheck} title="No writers yet" body="Add someone by their handle." />
+        <EmptyState compact icon={ShieldCheck} title="No journalists yet" body="Add a verified journalist by their handle." />
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
           {list.map((w) => (
@@ -388,8 +388,8 @@ function Writers() {
               <span className="min-w-0 flex-1 truncate text-callout">@{w.username}</span>
               <span className="text-caption text-fg-subtle">since {shortTime(w.addedAt)}</span>
               <Button size="sm" variant="ghost" onClick={async () => {
-                try { await removeWriter(w.id); setList((l) => l.filter((x) => x.id !== w.id)); toast({ title: `@${w.username} is no longer a writer` }); }
-                catch { toast({ tone: "error", title: "Couldn't remove them" }); }
+                try { await removeWriter(w.id); setList((l) => l.filter((x) => x.id !== w.id)); toast({ title: `@${w.username} has been removed as a journalist` }); }
+                catch { toast({ tone: "error", title: "The journalist could not be removed" }); }
               }}>Remove</Button>
             </li>
           ))}

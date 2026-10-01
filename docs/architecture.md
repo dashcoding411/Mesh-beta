@@ -205,10 +205,12 @@ political affiliation they declare, shown as the byline on every story and on
 their profile, which opens on their published stories. Drafts are private to their authors (a
 lead plus up to three co-authors). Saves run in a transaction on `version`,
 with a three-way block merge on conflict (`storyDoc.mergeStory`) and per-block
-presence locks. Submission records a revision and an attestation; admins
-approve, reject or send back, and approval is blocked under legal hold.
-Published stories accept correction requests and append-only corrections;
-live blogs post updates to a subcollection.
+presence locks. Journalists publish their own stories; there is no review
+step. Publishing (`readyToPublish`) requires a headline, body, two sources and
+the journalist's attestation, records a revision, and is blocked while the
+story is marked for legal review. Readers send correction requests to the
+story's journalists, who (or an admin) add append-only corrections; live
+blogs post updates to a subcollection.
 
 ## Stories
 

@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { auth } from "../firebase";
-import { signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
+import { signInWithPhoneNumber, RecaptchaVerifier, signOut } from "firebase/auth";
 import {
   signInEmail, signUpEmail, signInGoogle, signInApple,
   resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
@@ -8,12 +8,12 @@ import {
 import { validateUsername, validBirthYear } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../lib/db";
-import { Eye, EyeOff, AlertTriangle, Check, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, Check, ArrowLeft, Loader2 } from "lucide-react";
 import { authPath, goBack, navigate } from "../lib/router";
 import { LogoMark } from "./shell/Sidebar";
 import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
-import Tabs from "./ui/Tabs";
+import Segmented from "./ui/Segmented";
 
 // Inputs are 16px so iOS Safari doesn't zoom on focus.
 const FIELD =
@@ -24,6 +24,7 @@ const SOCIAL =
   "press w-full min-h-12 rounded-control px-4 font-semibold text-body flex items-center justify-center gap-3 " +
   "disabled:opacity-50 transition-colors";
 const PRIMARY = "bg-accent text-white hover:bg-accent-hover shadow-raised";
+const LINK = "font-semibold text-accent-text underline underline-offset-2";
 
 function GoogleMark() {
   return (
@@ -46,7 +47,9 @@ function AppleMark() {
   );
 }
 
-// `pendingUser` is signed in without a profile; `onCreated` runs once the profile exists.
+// Log in, or sign up in two steps: how you sign in (Google, email or phone),
+// then your name, handle and birth year. `pendingUser` is signed in without a
+// profile (step two); `onCreated` runs once the profile exists.
 export default function AuthPage({ initialMode = "login", pendingUser: signedInUser = null, onCreated }) {
   const [mode, setMode] = useState(initialMode); // 'login' | 'signup'
   const [method, setMethod] = useState("email"); // 'email' | 'phone'
@@ -56,9 +59,6 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   const [capsOn, setCapsOn] = useState(false);
   const [remember, setRemember] = useState(true);
   const [noStorage] = useState(storageBlocked);
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [birthYear, setBirthYear] = useState("");
   const [phone, setPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [confirmation, setConfirmation] = useState(null);
@@ -66,78 +66,62 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
-  const [pendingUser, setPendingUser] = useState(signedInUser); // signed in via OAuth/phone, no profile yet
-  const [consent, setConsent] = useState(false);
+  const [pendingUser, setPendingUser] = useState(signedInUser);
 
   const recaptchaRef = useRef(null);
-  const ids = {
-    email: useId(), password: useId(), username: useId(), displayName: useId(),
-    birthYear: useId(), phone: useId(), code: useId(), remember: useId(), consent: useId(),
-  };
+  const ids = { email: useId(), password: useId(), phone: useId(), code: useId(), remember: useId() };
 
   useEffect(() => { applyPersistence(remember).catch(() => {}); }, [remember]);
 
-  const fail = (err) => {
-    if (isCancellation(err)) {
-      setError("");
-      return;
-    }
-    setError(authMessage(err));
-  };
-
+  const fail = (err) => setError(isCancellation(err) ? "" : authMessage(err));
   const onPasswordKey = (e) => setCapsOn(e.getModifierState?.("CapsLock") ?? false);
+  const signup = mode === "signup";
 
-  const validateNewUsername = async (raw) => {
-    const v = validateUsername(raw);
-    if (v.error) throw new Error(v.error);
-    const nameCheck = checkName(v.username);
-    if (nameCheck.error) throw new Error(nameCheck.error);
-    if (await usernameTaken(v.username)) throw new Error("That username is already taken.");
-    return v.username;
+  const switchMode = (next) => {
+    setMode(next);
+    setError(""); setNotice(""); setConfirmation(null);
+    navigate(authPath(next), { replace: true });
   };
 
-  const afterProviderSignIn = async (cred) => {
-    const profile = await fetchProfile(cred.user.uid);
+  // Signed in without a profile yet: on to step two.
+  const afterSignIn = async (cred) => {
+    if (!cred) return; // redirecting to the provider
+    const profile = await fetchProfile(cred.user.uid).catch(() => null);
     if (!profile) setPendingUser(cred.user);
   };
 
   const handleEmail = async (e) => {
     e.preventDefault();
-    setError(""); setNotice(""); setBusy(true);
+    setError(""); setNotice("");
+    if (!email.trim()) return setError("Enter your email address.");
+    if (signup && password.length < 8) return setError("Choose a password of at least 8 characters.");
+    if (!password) return setError("Enter your password.");
+    setBusy(true);
     try {
-      if (mode === "signup") {
-        if (!consent) throw new Error("Please accept the Terms and Privacy Policy to create an account.");
-        if (password.length < 8) throw new Error("Password must be at least 8 characters.");
-        const vYear = validBirthYear(birthYear);
-        if (vYear.error) throw new Error(vYear.error);
-        const uname = await validateNewUsername(username);
-        const cred = await signUpEmail(email, password, remember);
-        await claimUsernameAndCreateProfile(cred.user, uname, vYear.year, displayName.trim());
-        onCreated();
-      } else {
-        await signInEmail(email, password, remember);
-      }
+      if (signup) setPendingUser((await signUpEmail(email, password, remember)).user);
+      else await afterSignIn(await signInEmail(email, password, remember));
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
 
-  const handleProvider = async (fn) => {
+  // The provider call must start in the tap itself, or phones block its popup.
+  const handleProvider = (fn) => {
+    const started = fn(remember);
     setError(""); setNotice(""); setBusy(true);
-    try { await afterProviderSignIn(await fn(remember)); }
-    catch (err) { fail(err); } finally { setBusy(false); }
+    started.then(afterSignIn).catch(fail).finally(() => setBusy(false));
   };
 
   const sendSms = async (e) => {
     e.preventDefault();
     setError(""); setBusy(true);
     try {
-      if (!/^\+[1-9]\d{6,14}$/.test(phone.trim())) {
-        throw new Error("Enter your number in international format, e.g. +61 412 345 678");
+      if (!/^\+[1-9]\d{6,14}$/.test(phone.replace(/\s/g, ""))) {
+        throw new Error("Enter your number in international format, like +61 412 345 678.");
       }
       await applyPersistence(remember);
       if (!recaptchaRef.current) {
         recaptchaRef.current = new RecaptchaVerifier(auth, "recaptcha-container", { size: "invisible" });
       }
-      setConfirmation(await signInWithPhoneNumber(auth, phone.trim(), recaptchaRef.current));
+      setConfirmation(await signInWithPhoneNumber(auth, phone.replace(/\s/g, ""), recaptchaRef.current));
     } catch (err) {
       fail(err);
       recaptchaRef.current?.clear?.();
@@ -148,21 +132,8 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   const verifySms = async (e) => {
     e.preventDefault();
     setError(""); setBusy(true);
-    try { await afterProviderSignIn(await confirmation.confirm(smsCode.trim())); }
+    try { await afterSignIn(await confirmation.confirm(smsCode.trim())); }
     catch (err) { fail(err); } finally { setBusy(false); }
-  };
-
-  const finishProfile = async (e) => {
-    e.preventDefault();
-    setError(""); setBusy(true);
-    try {
-      if (!consent) throw new Error("Please accept the Terms and Privacy Policy to create an account.");
-      const vYear = validBirthYear(birthYear);
-      if (vYear.error) throw new Error(vYear.error);
-      const uname = await validateNewUsername(username);
-      await claimUsernameAndCreateProfile(pendingUser, uname, vYear.year, displayName.trim());
-      onCreated();
-    } catch (err) { fail(err); setBusy(false); }
   };
 
   const doReset = async (e) => {
@@ -175,124 +146,55 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
 
-  const openDoc = (id) => (e) => { e.preventDefault(); navigate(`/legal/${id}`); };
-
-  const consentBox = (
-    <div className="flex items-start gap-3 py-1">
-      <input id={ids.consent} type="checkbox" checked={consent} required
-        onChange={(e) => setConsent(e.target.checked)}
-        className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
-      <label htmlFor={ids.consent} className="cursor-pointer select-none text-callout text-fg-muted">
-        I've read and accept the{" "}
-        <a href="/legal/terms" onClick={openDoc("terms")} className="font-medium text-accent-text underline underline-offset-2">
-          Terms of Service
-        </a>{" "}
-        and{" "}
-        <a href="/legal/privacy" onClick={openDoc("privacy")} className="font-medium text-accent-text underline underline-offset-2">
-          Privacy Policy
-        </a>.
-      </label>
-    </div>
-  );
-
-  // Profile completion for OAuth/phone sign-ups
   if (pendingUser) {
     return (
       <Shell finishing>
-        <form onSubmit={finishProfile} className="space-y-4 anim-rise" noValidate>
-          <div>
-            <h2 className="text-title-1 font-display">Finish setting up</h2>
-            <p className="mt-1 text-callout text-fg-muted">Choose how you'll appear on Mesh.</p>
-          </div>
-          <Field id={ids.displayName} label="Name" hint="How you'll appear. Names can repeat.">
-            <input id={ids.displayName} className={FIELD} value={displayName} autoComplete="name"
-              onChange={(e) => setDisplayName(e.target.value)} maxLength={50} placeholder="Alex Nguyen" />
-          </Field>
-          <Field id={ids.username} label="Handle" hint="Unique to you. Changeable once every 30 days.">
-            <input id={ids.username} className={FIELD} value={username} autoFocus autoComplete="username"
-              onChange={(e) => setUsername(e.target.value)} maxLength={30} placeholder="yourname" />
-          </Field>
-          <Field id={ids.birthYear} label="Birth year" hint="Used only to apply age protections.">
-            <input id={ids.birthYear} className={FIELD} type="number" inputMode="numeric"
-              value={birthYear} onChange={(e) => setBirthYear(e.target.value)} placeholder="2001" />
-          </Field>
-          {consentBox}
-          <Alert error={error} />
-          <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>
-            {busy ? "Saving…" : "Enter Mesh"}
-          </button>
-        </form>
+        <FinishProfile user={pendingUser} onCreated={onCreated} />
       </Shell>
     );
   }
 
-  const signup = mode === "signup";
-
   return (
     <Shell>
       <div className="anim-fade">
-        <h2 className="text-title-1 font-display">
-          {signup ? "Create your account" : "Welcome back"}
-        </h2>
+        <Segmented label="Log in or sign up" value={mode} onChange={switchMode} className="mb-6"
+          options={[{ id: "login", label: "Log in" }, { id: "signup", label: "Sign up" }]} />
+
+        <h2 className="text-title-1 font-display">{signup ? "Create your account" : "Welcome back"}</h2>
         <p className="mb-6 mt-1 text-callout text-fg-muted">
-          {signup ? "It takes about a minute." : "Log in to pick up where you left off."}
+          {signup ? "Step 1 of 2: choose how you'll sign in." : "Log in to pick up where you left off."}
         </p>
 
         <div className="space-y-2.5">
-          <button onClick={() => handleProvider(signInGoogle)} disabled={busy}
+          <button type="button" onClick={() => handleProvider(signInGoogle)} disabled={busy}
             className={`${SOCIAL} border border-line-strong bg-white text-zinc-900 hover:bg-zinc-100`}>
             <GoogleMark /> Continue with Google
           </button>
           {/* Apple sign-in is disabled until a Services ID is configured in Firebase. */}
           {APPLE_ENABLED && (
-            <button onClick={() => handleProvider(signInApple)} disabled={busy}
-              className={`${SOCIAL} bg-black text-white border border-line-strong hover:bg-zinc-800`}>
+            <button type="button" onClick={() => handleProvider(signInApple)} disabled={busy}
+              className={`${SOCIAL} border border-line-strong bg-black text-white hover:bg-zinc-800`}>
               <AppleMark /> Continue with Apple
             </button>
           )}
         </div>
-        <p className="mt-3 text-center text-caption text-fg-subtle">
-          We only use this to verify who you are. Mesh will never post without your permission.
-        </p>
 
         <div className="my-6 flex items-center gap-3 text-caption text-fg-subtle">
           <div className="h-px flex-1 bg-line" />
-          <span>or {signup ? "sign up" : "log in"} with</span>
+          <span>or</span>
           <div className="h-px flex-1 bg-line" />
         </div>
 
-        <Tabs label="Sign-in method" value={method} className="mb-5 flex w-full"
-          onChange={(m) => { setMethod(m); setError(""); setConfirmation(null); }}
-          tabs={[{ id: "email", label: "Email" }, { id: "phone", label: "Phone" }]} />
-
         {method === "email" ? (
           <form onSubmit={handleEmail} className="space-y-4" noValidate>
-            {signup && (
-              <>
-                <Field id={ids.displayName} label="Name" hint="How you'll appear. Names can repeat.">
-                  <input id={ids.displayName} className={FIELD} value={displayName} autoComplete="name"
-                    onChange={(e) => setDisplayName(e.target.value)} maxLength={50} placeholder="Alex Nguyen" />
-                </Field>
-                <Field id={ids.username} label="Handle" hint="Unique to you. Changeable once every 30 days.">
-                  <input id={ids.username} className={FIELD} value={username} autoComplete="username"
-                    onChange={(e) => setUsername(e.target.value)} maxLength={30} placeholder="yourname" />
-                </Field>
-                <Field id={ids.birthYear} label="Birth year" hint="Under-16 accounts can't post publicly.">
-                  <input id={ids.birthYear} className={FIELD} type="number" inputMode="numeric"
-                    value={birthYear} onChange={(e) => setBirthYear(e.target.value)} placeholder="2001" />
-                </Field>
-              </>
-            )}
-
             <Field id={ids.email} label="Email address">
-              <input id={ids.email} className={`${FIELD} ${error ? FIELD_BAD : ""}`} type="email"
-                value={email} onChange={(e) => setEmail(e.target.value)}
-                autoComplete={signup ? "email" : "username"} placeholder="name@example.com"
-                aria-invalid={error ? "true" : undefined} />
+              <input id={ids.email} className={`${FIELD} ${error ? FIELD_BAD : ""}`} type="email" inputMode="email"
+                value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                autoComplete={signup ? "email" : "username"} placeholder="name@example.com" aria-invalid={error ? "true" : undefined} />
             </Field>
 
             <div>
-              <div className="flex items-baseline justify-between mb-1.5">
+              <div className="mb-1.5 flex items-baseline justify-between">
                 <label htmlFor={ids.password} className="block text-callout font-medium text-fg">Password</label>
                 {!signup && (
                   <button type="button" onClick={() => { setShowReset(true); setError(""); }}
@@ -304,17 +206,19 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
               <div className="relative">
                 <input id={ids.password} className={`${FIELD} pr-12 ${error ? FIELD_BAD : ""}`}
                   type={showPassword ? "text" : "password"} value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
                   onKeyUp={onPasswordKey} onKeyDown={onPasswordKey}
                   autoComplete={signup ? "new-password" : "current-password"}
-                  placeholder={signup ? "At least 8 characters" : "Your password"}
-                  aria-invalid={error ? "true" : undefined} />
+                  placeholder={signup ? "At least 8 characters" : "Your password"} aria-invalid={error ? "true" : undefined} />
                 <button type="button" onClick={() => setShowPassword((s) => !s)}
                   aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
                   className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-fg-subtle hover:text-fg">
                   {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
                 </button>
               </div>
+              {signup && password.length > 0 && password.length < 8 && (
+                <p className="mt-1.5 text-caption text-fg-subtle">{8 - password.length} more character{8 - password.length === 1 ? "" : "s"} to go.</p>
+              )}
               {capsOn && (
                 <p role="status" className="mt-1.5 flex items-center gap-1.5 text-caption text-warning-text">
                   <AlertTriangle size={14} aria-hidden="true" /> Caps Lock is on.
@@ -322,40 +226,22 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
               )}
             </div>
 
-            <label htmlFor={ids.remember} className="flex min-h-11 cursor-pointer select-none items-center gap-3">
-              <input id={ids.remember} type="checkbox" checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
-              <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
-            </label>
-            {noStorage && (
-              <p role="note" className="rounded-control bg-warning-text/10 px-3 py-2 text-caption text-warning-text">
-                This browser is blocking storage for Mesh, so you&apos;ll be signed out when you reload or open another tab.
-                In Brave, open Shields for this site and allow cookies.
-              </p>
-            )}
-
-            {signup && consentBox}
-
+            <RememberMe id={ids.remember} remember={remember} setRemember={setRemember} noStorage={noStorage} />
             <Alert error={error} notice={notice} />
 
-            <button disabled={busy}
-              className={`${SOCIAL} ${PRIMARY}`}>
-              {busy ? "One moment…" : signup ? "Create account" : "Log in"}
+            <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>
+              {busy ? "One moment…" : signup ? "Continue" : "Log in"}
             </button>
           </form>
         ) : confirmation ? (
           <form onSubmit={verifySms} className="space-y-4 anim-rise" noValidate>
-            <Field id={ids.code} label="Verification code" hint={`Sent by SMS to ${phone}.`}>
+            <Field id={ids.code} label="Verification code" hint={`Sent by text message to ${phone}.`}>
               <input id={ids.code} className={`${FIELD} text-center text-2xl tracking-[0.4em]`}
                 inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus
                 value={smsCode} onChange={(e) => setSmsCode(e.target.value)} placeholder="······" />
             </Field>
             <Alert error={error} />
-            <button disabled={busy}
-              className={`${SOCIAL} ${PRIMARY}`}>
-              {busy ? "Verifying…" : "Verify and continue"}
-            </button>
+            <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>{busy ? "Checking…" : "Continue"}</button>
             <button type="button" onClick={() => { setConfirmation(null); setSmsCode(""); }}
               className="min-h-11 w-full text-callout font-medium text-fg-muted hover:text-fg">
               Use a different number
@@ -363,43 +249,26 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           </form>
         ) : (
           <form onSubmit={sendSms} className="space-y-4" noValidate>
-            <Field id={ids.phone} label="Phone number" hint="Include your country code. We'll text you a code.">
+            <Field id={ids.phone} label="Phone number" hint="Include your country code. We'll text you a 6-digit code.">
               <input id={ids.phone} className={FIELD} type="tel" autoComplete="tel"
                 value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+61 412 345 678" />
             </Field>
+            <RememberMe id={ids.remember} remember={remember} setRemember={setRemember} noStorage={noStorage} />
             <Alert error={error} />
-            <button disabled={busy}
-              className={`${SOCIAL} ${PRIMARY}`}>
-              {busy ? "Sending…" : "Send code"}
-            </button>
+            <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>{busy ? "Sending…" : "Text me a code"}</button>
           </form>
         )}
 
-        <p className="mt-6 text-center text-callout text-fg-muted">
-          {signup ? "Already have an account? " : "New to Mesh? "}
-          <button type="button" onClick={() => {
-            const next = signup ? "login" : "signup";
-            setMode(next); setError(""); setNotice("");
-            navigate(authPath(next), { replace: true });
-          }}
-            className="inline-flex min-h-11 items-center font-semibold text-accent-text hover:underline underline-offset-2">
-            {signup ? "Log in" : "Create an account"}
-          </button>
-        </p>
+        <button type="button" onClick={() => { setMethod(method === "email" ? "phone" : "email"); setError(""); setConfirmation(null); }}
+          className="mt-3 inline-flex min-h-11 w-full items-center justify-center text-callout font-medium text-fg-muted hover:text-fg">
+          {method === "email" ? "Use your phone number instead" : "Use your email instead"}
+        </button>
 
-        <p className="mt-6 text-center text-caption text-fg-subtle">
-          <a href="/legal/terms" onClick={openDoc("terms")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Terms</a>
-          {" · "}
-          <a href="/legal/privacy" onClick={openDoc("privacy")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Privacy</a>
-          {" · "}
-          <a href="/legal/cookies" onClick={openDoc("cookies")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Cookies</a>
-          {" · "}
-          <a href="/legal/guidelines" onClick={openDoc("guidelines")} className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">Guidelines</a>
-          <span className="mt-2 block">
-            We filter hate speech against every group. No automated filter catches everything, so
-            report what slips through.
-          </span>
-        </p>
+        {signup && (
+          <p className="mt-2 text-center text-caption text-fg-subtle">Next, you&apos;ll choose your name and handle.</p>
+        )}
+
+        <PolicyLinks />
       </div>
 
       {showReset && (
@@ -408,6 +277,153 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
       )}
       <div id="recaptcha-container" />
     </Shell>
+  );
+}
+
+function RememberMe({ id, remember, setRemember, noStorage }) {
+  return (
+    <>
+      <label htmlFor={id} className="flex min-h-11 cursor-pointer select-none items-center gap-3">
+        <input id={id} type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
+          className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
+        <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
+      </label>
+      {noStorage && (
+        <p role="note" className="rounded-control bg-warning-text/10 px-3 py-2 text-caption text-warning-text">
+          This browser is blocking storage for Mesh, so you&apos;ll be signed out when you reload or open another tab.
+          In Brave, open Shields for this site and allow cookies.
+        </p>
+      )}
+    </>
+  );
+}
+
+// Policies open in a new tab so a half-finished sign-up isn't lost.
+function PolicyLinks() {
+  const link = (id, label) => (
+    <a href={`/legal/${id}`} target="_blank" rel="noopener" className="inline-flex min-h-8 items-center underline underline-offset-2 hover:text-fg">{label}</a>
+  );
+  return (
+    <p className="mt-6 text-center text-caption text-fg-subtle">
+      {link("terms", "Terms")} · {link("privacy", "Privacy")} · {link("cookies", "Cookies")} · {link("guidelines", "Guidelines")}
+    </p>
+  );
+}
+
+/** Lower-case letters, numbers and underscores from a name or email, at least 3 long. */
+function handleFrom(text) {
+  const base = String(text || "").split("@")[0].normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9_]+/g, "").slice(0, 20);
+  return base.length >= 3 ? base : "";
+}
+
+// Step two: how you appear. The handle is suggested from the name and checked as you type.
+function FinishProfile({ user, onCreated }) {
+  const [displayName, setDisplayName] = useState(user.displayName || "");
+  const [username, setUsername] = useState(() => handleFrom(user.displayName) || handleFrom(user.email));
+  const [handleEdited, setHandleEdited] = useState(false);
+  const [handleState, setHandleState] = useState({ for: "", ok: false, message: "" });
+  const [birthYear, setBirthYear] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ids = { name: useId(), handle: useId(), year: useId(), consent: useId() };
+
+  const changeName = (v) => {
+    setDisplayName(v);
+    if (!handleEdited) setUsername(handleFrom(v) || username);
+  };
+
+  // Availability, checked shortly after typing stops.
+  const wanted = username.trim().toLowerCase();
+  useEffect(() => {
+    if (!wanted) return undefined;
+    const v = validateUsername(wanted);
+    const named = v.error ? null : checkName(v.username);
+    if (v.error || named?.error) {
+      const t = setTimeout(() => setHandleState({ for: wanted, ok: false, message: v.error || named.error }), 0);
+      return () => clearTimeout(t);
+    }
+    let alive = true;
+    const t = setTimeout(() => {
+      usernameTaken(v.username)
+        .then((taken) => { if (alive) setHandleState({ for: wanted, ok: !taken, message: taken ? "That handle is taken." : "Available" }); })
+        .catch(() => { if (alive) setHandleState({ for: wanted, ok: true, message: "" }); });
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+  }, [wanted]);
+  const checked = handleState.for === wanted ? handleState : null;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!displayName.trim()) return setError("Add your name. It's how you'll appear on Mesh.");
+    const v = validateUsername(wanted);
+    if (v.error) return setError(v.error);
+    const named = checkName(v.username);
+    if (named.error) return setError(named.error);
+    const year = validBirthYear(birthYear);
+    if (year.error) return setError(year.error);
+    if (!consent) return setError("Accept the Terms and Privacy Policy to create your account.");
+    setBusy(true);
+    try {
+      if (await usernameTaken(v.username)) throw new Error("That handle is taken. Try another.");
+      await claimUsernameAndCreateProfile(user, v.username, year.year, displayName.trim());
+      onCreated();
+    } catch (err) {
+      setError(err?.code === "permission-denied"
+        ? "Your account couldn't be set up. Refresh the page and try again."
+        : err?.message || "Something went wrong. Try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4 anim-rise" noValidate>
+      <div>
+        <h2 className="text-title-1 font-display">Set up your profile</h2>
+        <p className="mt-1 text-callout text-fg-muted">Step 2 of 2: how you&apos;ll appear on Mesh. You can change these later.</p>
+      </div>
+      <Field id={ids.name} label="Name" hint="Your name or a nickname. Names don't have to be unique.">
+        <input id={ids.name} className={FIELD} value={displayName} autoComplete="name" autoFocus
+          onChange={(e) => changeName(e.target.value)} maxLength={50} placeholder="Alex Nguyen" />
+      </Field>
+      <div>
+        <label htmlFor={ids.handle} className="mb-1.5 block text-callout font-medium text-fg">Handle</label>
+        <div className="relative">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-input text-fg-subtle" aria-hidden="true">@</span>
+          <input id={ids.handle} className={`${FIELD} pl-9 ${checked && !checked.ok ? FIELD_BAD : ""}`} value={username}
+            autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={30} placeholder="yourname"
+            aria-describedby={`${ids.handle}-status`}
+            onChange={(e) => { setUsername(e.target.value.replace(/\s/g, "").toLowerCase()); setHandleEdited(true); }} />
+        </div>
+        <p id={`${ids.handle}-status`} aria-live="polite"
+          className={`mt-1.5 flex items-center gap-1.5 text-caption ${checked ? (checked.ok ? "text-success-text" : "text-danger-text") : "text-fg-subtle"}`}>
+          {!wanted ? "Letters, numbers and underscores. This is your unique @name."
+            : !checked ? <><Loader2 size={13} className="animate-spin" aria-hidden="true" /> Checking…</>
+            : checked.ok ? <><Check size={13} aria-hidden="true" /> {checked.message || "Looks good"}</>
+            : checked.message}
+        </p>
+      </div>
+      <Field id={ids.year} label="Birth year" hint="Only used to apply age protections. It's never shown on your profile.">
+        <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
+          value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2001" />
+      </Field>
+      <div className="flex items-start gap-3 py-1">
+        <input id={ids.consent} type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
+        <label htmlFor={ids.consent} className="cursor-pointer select-none text-callout text-fg-muted">
+          I accept the <a href="/legal/terms" target="_blank" rel="noopener" className={LINK}>Terms of Service</a> and
+          the <a href="/legal/privacy" target="_blank" rel="noopener" className={LINK}>Privacy Policy</a>.
+        </label>
+      </div>
+      <Alert error={error} />
+      <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>{busy ? "Setting up…" : "Join Mesh"}</button>
+      <button type="button" onClick={() => signOut(auth)}
+        className="min-h-11 w-full text-callout font-medium text-fg-muted hover:text-fg">
+        Use a different account
+      </button>
+    </form>
   );
 }
 

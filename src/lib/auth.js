@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -62,13 +63,17 @@ export async function restoreSession() {
   markTab();
 }
 
-export async function applyPersistence(remember) {
-  await setPersistence(auth, browserLocalPersistence);
+function markPersistence(remember) {
   try {
     if (remember) localStorage.removeItem(EPHEMERAL_KEY);
     else localStorage.setItem(EPHEMERAL_KEY, "1");
   } catch { /* storage blocked */ }
   markTab();
+}
+
+export async function applyPersistence(remember) {
+  await setPersistence(auth, browserLocalPersistence);
+  markPersistence(remember);
 }
 
 /** True when the browser refuses site storage (e.g. cookies blocked), so sign-in can't persist. */
@@ -92,21 +97,31 @@ export async function signUpEmail(email, password, remember) {
   return createUserWithEmailAndPassword(auth, email.trim(), password);
 }
 
-export async function signInGoogle(remember) {
-  await applyPersistence(remember);
-  const provider = new GoogleAuthProvider();
-    provider.addScope("profile");
-  provider.addScope("email");
-  provider.setCustomParameters({ prompt: "select_account" });
-  return signInWithPopup(auth, provider);
+// Provider sign-in opens its popup in the same tick as the tap: phones
+// (iPhones especially) block popups opened after an await. Persistence is
+// already local by default. If the popup is blocked anyway, fall back to a
+// full-page redirect.
+function withPopup(provider, remember) {
+  markPersistence(remember);
+  return signInWithPopup(auth, provider).catch((err) => {
+    if (err?.code === "auth/popup-blocked") return signInWithRedirect(auth, provider);
+    throw err;
+  });
 }
 
-export async function signInApple(remember) {
-  await applyPersistence(remember);
+export function signInGoogle(remember) {
+  const provider = new GoogleAuthProvider();
+  provider.addScope("profile");
+  provider.addScope("email");
+  provider.setCustomParameters({ prompt: "select_account" });
+  return withPopup(provider, remember);
+}
+
+export function signInApple(remember) {
   const provider = new OAuthProvider("apple.com");
   provider.addScope("email");
   provider.addScope("name");
-  return signInWithPopup(auth, provider);
+  return withPopup(provider, remember);
 }
 
 export function resetPassword(email) {

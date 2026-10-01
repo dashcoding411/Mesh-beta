@@ -1448,9 +1448,11 @@ service cloud.firestore {
                     + d.get('keyPoints', []).join(' ') + ' ' + d.get('blockAlts', []).join(' '));
     }
     // Submittable: headline, body, two or more sources, and an accuracy attestation.
-    function readyForReview(d) {
+    // Approved journalists publish their own stories; there's no review step.
+    function readyToPublish(d) {
       return d.title.size() >= 10 && d.script.size() >= 100 && d.sources.size() >= 2
-        && d.attestedAt == request.time && d.submittedAt == request.time;
+        && d.attestedAt == request.time && d.submittedAt == request.time && d.publishedAt == request.time
+        && d.get('legalHold', false) != true;
     }
     function isStoryAuthor(d) {
       return d.authorId == request.auth.uid || request.auth.uid in d.get('authors', []);
@@ -1511,14 +1513,14 @@ service cloud.firestore {
         && notSuspended()
         && isAdult();
       allow update: if
-        // Author saves and submission.
+        // Author saves and publishing.
         (isNewsWriter()
           && isStoryAuthor(resource.data)
-          && resource.data.status in ['draft', 'rejected']
+          && resource.data.status in ['draft', 'rejected', 'pending']
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
                'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'format',
                'legalHold', 'legalNote', 'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
-               'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'version', 'updatedAt'])
+               'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'publishedAt', 'version', 'updatedAt'])
           && incomingData().version == resource.data.version + 1
           && incomingData().updatedAt == request.time
           // Only the lead edits co-authors, and all authors must be writers.
@@ -1532,19 +1534,10 @@ service cloud.firestore {
           && storyContentOk(incomingData())
           && notSuspended()
           && (incomingData().status == resource.data.status
-              || (resource.data.status == 'rejected' && incomingData().status == 'draft')
-              || (incomingData().status == 'pending' && readyForReview(incomingData()))))
-        // Reviewers approve, reject or send back; approval is blocked under legal hold.
-        || (isAdmin()
-          && resource.data.status == 'pending'
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt'])
-          && incomingData().status in ['approved', 'rejected', 'draft']
-          && (incomingData().status != 'approved' || resource.data.get('legalHold', false) != true))
-        || (isAdmin()
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['legalHold', 'legalNote'])
-          && incomingData().legalHold == false)
-        // Corrections are append-only.
-        || (isAdmin()
+              || (resource.data.status in ['rejected', 'pending'] && incomingData().status == 'draft')
+              || (incomingData().status == 'approved' && readyToPublish(incomingData()))))
+        // Corrections are append-only, by the story's journalists or an admin.
+        || ((isAdmin() || isStoryAuthor(resource.data))
           && resource.data.status == 'approved'
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['corrections'])
           && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1)
@@ -1609,7 +1602,7 @@ service cloud.firestore {
 
       // Correction requests: readable by reviewers only.
       match /correctionRequests/{requestId} {
-        allow read, delete: if isAdmin();
+        allow read, delete: if isAdmin() || isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data);
         allow create: if signedIn()
           && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt'])
