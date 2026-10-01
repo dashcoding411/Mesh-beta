@@ -18,7 +18,7 @@ import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { ProfileBadges, VerifiedTick } from "./ui/Badges";
 import { useJournalist } from "../lib/journalists";
-import { badgesOf, tickOf } from "../lib/badges";
+import { badgesOf, tickOf, hasPinkCheck } from "../lib/badges";
 import { Tile } from "./Search";
 
 // Only shown when both profiles name each other.
@@ -36,17 +36,34 @@ function useVerifiedSpouse(profile) {
   return claimed && verified.for === claimed && verified.ok ? claimed : "";
 }
 
+// Girlfriend privilege's banner behind the profile photo.
+const HEARTS = [[8, 22, 18], [22, 62, 12], [44, 18, 14], [63, 58, 20], [80, 26, 13], [92, 66, 16]];
+function PinkBanner() {
+  return (
+    <div aria-hidden="true" className="profile-pink-banner relative -mx-4 h-28 overflow-hidden md:-mx-6 md:h-36 md:rounded-b-card">
+      {HEARTS.map(([x, y, s], i) => (
+        <Heart key={i} size={s} fill="currentColor" strokeWidth={0} className="absolute text-white/30"
+          style={{ left: `${x}%`, top: `${y}%`, transform: `rotate(${(i % 2 ? 1 : -1) * 14}deg)` }} />
+      ))}
+    </div>
+  );
+}
+
 // Same layout for own and other profiles; only the actions differ.
 export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar }) {
   const joined = tsMillis(profile.createdAt);
   const spouse = useVerifiedSpouse(profile);
   const journalist = useJournalist(profile.id);
+  const pink = hasPinkCheck(profile.badges);
 
   return (
-    <section aria-label="Profile" className="px-4 pb-4 pt-5 md:px-6">
+    <section aria-label="Profile" className={`px-4 pb-4 md:px-6 ${pink ? "" : "pt-5"}`}>
+      {pink && <PinkBanner />}
       <div className="flex items-start gap-4 md:gap-6">
-        {avatar || <Avatar profile={profile} size={88} />}
-        <div className="min-w-0 flex-1 pt-1">
+        {pink ? (
+          <div className="relative z-[1] -mt-11 shrink-0 rounded-full bg-canvas p-1 ring-2 ring-pink-400">{avatar || <Avatar profile={profile} size={88} />}</div>
+        ) : avatar || <Avatar profile={profile} size={88} />}
+        <div className={`min-w-0 flex-1 ${pink ? "pt-3" : "pt-1"}`}>
           <h1 className="flex min-w-0 items-center gap-2 text-title-1">
             <span className="truncate">{profile.name || profile.username}</span>
             {tickOf(profile.badges) === "pink" ? <VerifiedTick size={22} pink />

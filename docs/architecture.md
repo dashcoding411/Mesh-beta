@@ -62,8 +62,10 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Verification.** Admins verify accounts (`verified` in `users/{uid}.badges`)
   from a profile's menu or the Verified tab in moderation. Verified accounts
   and journalists get a purple tick beside their name on profiles, posts,
-  comments and search results. The founder alone can give a pink check
-  instead, to one account at a time: `badges/pink` names the holder, and the
+  comments and search results. The founder alone can give girlfriend
+  privilege, to one account at a time: a pink check in place of the purple
+  tick, a pink profile (`.theme-pink` re-tints the surface tokens) and a pink
+  banner behind the profile photo. `badges/pink` names the holder, and the
   rules require the holder's badges (and only theirs) to carry `pink`.
 - **Notification banners.** Notifications that arrive during a visit drop in
   as a short banner (not on the Notifications page, not from muted or blocked

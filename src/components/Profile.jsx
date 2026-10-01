@@ -18,6 +18,7 @@ import { useToast } from "./ui/toast-context";
 import { ProfileHeader, FollowListDialog, PostGrid, EditProfileDialog } from "./ProfileParts";
 import { JournalistCard, JournalistSettings, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
+import { hasPinkCheck } from "../lib/badges";
 
 export default function Profile() {
   const { profile, setProfile, openComposer } = useShell();
@@ -82,7 +83,7 @@ export default function Profile() {
   };
 
   return (
-    <>
+    <div className={`flex min-h-0 flex-1 flex-col ${hasPinkCheck(profile.badges) ? "theme-pink bg-canvas" : ""}`}>
       <TopBar title={`@${profile.username}`}
         right={<IconButton icon={Settings} label="Settings" onClick={() => navigate("/account/settings")} />} />
 
@@ -167,6 +168,6 @@ export default function Profile() {
           onSaved={(p, opts) => { setProfile(p); if (!opts?.keepOpen) setEditing(false); }} />
       )}
       {follows && <FollowListDialog uid={me()} kind={follows} onClose={() => setFollows(null)} />}
-    </>
+    </div>
   );
 }

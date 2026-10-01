@@ -24,7 +24,11 @@ export function badgesOf(profile) {
 /** Admins verify accounts (users/{uid}.badges), shown as a purple tick. */
 export const isVerified = (badges) => !!badges?.includes("verified");
 
-/** The founder's pink check: one account at a time. It replaces the purple tick. */
+/**
+ * Girlfriend privilege, which only the founder gives, to one account at a
+ * time ('pink' in badges): a pink check in place of the purple tick, a pink
+ * profile and a pink banner behind the profile photo.
+ */
 export const hasPinkCheck = (badges) => !!badges?.includes("pink");
 
 /** Which tick goes beside a name: "pink", "verified" or null. */

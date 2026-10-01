@@ -70,6 +70,50 @@
   }
 }
 
+/* Girlfriend privilege: a pink profile. Re-tints the surfaces inside it;
+   text tokens are unchanged and keep their contrast. */
+.theme-pink {
+  --canvas: 31 10 22;          /* #1f0a16 */
+  --surface: 42 14 30;         /* #2a0e1e */
+  --surface-2: 54 18 39;       /* #361227 */
+  --surface-3: 70 24 51;       /* #461833 */
+  --surface-raised: 70 24 51;
+  --line: 72 26 54;            /* #481a36 */
+  --line-strong: 112 40 82;    /* #702852 */
+  --accent-text: 249 168 212;  /* pink-300 */
+  --accent-ring: 251 207 232;  /* pink-200 */
+  --accent-soft: rgb(236 72 153 / 0.18);
+}
+:root[data-theme="light"] .theme-pink {
+  --canvas: 253 242 248;       /* pink-50 */
+  --surface: 255 250 253;
+  --surface-2: 252 231 243;    /* pink-100 */
+  --surface-3: 251 207 232;    /* pink-200 */
+  --surface-raised: 255 255 255;
+  --line: 251 207 232;
+  --line-strong: 249 168 212;
+  --accent-text: 190 24 93;    /* pink-700 */
+  --accent-ring: 219 39 119;
+  --accent-soft: rgb(236 72 153 / 0.12);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .theme-pink {
+    --canvas: 253 242 248; --surface: 255 250 253; --surface-2: 252 231 243; --surface-3: 251 207 232; --surface-raised: 255 255 255;
+    --line: 251 207 232; --line-strong: 249 168 212;
+    --accent-text: 190 24 93; --accent-ring: 219 39 119; --accent-soft: rgb(236 72 153 / 0.12);
+  }
+}
+/* The accent itself is a fixed colour; pink-600 keeps white text at 4.9:1. */
+.theme-pink .bg-accent { background-color: #db2777; }
+.theme-pink .hover\:bg-accent-hover:hover { background-color: #be185d; }
+
+.profile-pink-banner {
+  background:
+    radial-gradient(circle at 18% 28%, rgb(255 255 255 / 0.35), transparent 38%),
+    radial-gradient(circle at 82% 72%, rgb(255 255 255 / 0.22), transparent 42%),
+    linear-gradient(135deg, #f9a8d4, #ec4899 55%, #db2777);
+}
+
 :root {
   /* Tabular figures keep counts from jittering as they tick up. */
   font-feature-settings: "cv11", "ss01";

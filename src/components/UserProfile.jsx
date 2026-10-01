@@ -23,7 +23,7 @@ import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
-import { betaByJoinDate, FOUNDER_UID } from "../lib/badges";
+import { betaByJoinDate, FOUNDER_UID, hasPinkCheck } from "../lib/badges";
 import { primeCard } from "../lib/profileCache";
 
 export default function UserProfile({ uid }) {
@@ -157,9 +157,10 @@ export default function UserProfile({ uid }) {
       const badges = on ? [...(profile.badges || []), "pink"] : (profile.badges || []).filter((b) => b !== "pink");
       setProfile((p) => ({ ...p, badges }));
       primeCard(uid, { ...profile, badges });
-      toast({ title: on ? `@${profile.username} has the pink check` : "Pink check removed" });
+      toast({ title: on ? `@${profile.username} has girlfriend privilege` : "Girlfriend privilege removed",
+        body: on ? "Pink check, pink profile and a pink banner." : undefined });
     } catch {
-      toast({ tone: "error", title: "Couldn't change the pink check" });
+      toast({ tone: "error", title: "Couldn't change girlfriend privilege" });
     }
   };
 
@@ -173,7 +174,7 @@ export default function UserProfile({ uid }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
-      className="fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64">
+      className={`fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64 ${hasPinkCheck(profile?.badges) ? "theme-pink" : ""}`}>
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>
@@ -273,8 +274,8 @@ export default function UserProfile({ uid }) {
           </MenuGroup>
           {me() === FOUNDER_UID && (
             <MenuGroup>
-              <MenuItem icon={Heart} onClick={togglePink} description="Only you can give this, to one person at a time">
-                {profile.badges?.includes("pink") ? "Remove pink check" : "Give pink check"}
+              <MenuItem icon={Heart} onClick={togglePink} description="Pink check, pink profile and a pink banner. Only you can give it, to one person at a time">
+                {profile.badges?.includes("pink") ? "Remove girlfriend privilege" : "Give girlfriend privilege"}
               </MenuItem>
             </MenuGroup>
           )}
