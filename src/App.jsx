@@ -23,6 +23,7 @@ import StorageNotice from "./components/StorageNotice";
 import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
 import UpdateBanner from "./components/UpdateBanner";
+import NotificationBanner from "./components/NotificationBanner";
 import Shortcuts from "./components/Shortcuts";
 import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
@@ -401,6 +402,10 @@ export default function App() {
         )}
 
         {joinReason && <JoinDialog reason={joinReason} onClose={() => setJoinReason(null)} />}
+        {signedIn && (
+          <NotificationBanner notices={notices} hidden={hiddenAuthors}
+            onNotificationsPage={page.tab === "home" && page.section === "notifications"} />
+        )}
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
         <Shortcuts onCreate={openComposer} />
         <ExternalLinkDialog />

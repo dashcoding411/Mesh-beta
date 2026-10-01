@@ -4,7 +4,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import {
   addCorrection, deleteNews, fetchCorrectionRequests, fetchNewsStory, isAdmin, me,
-  openUserProfile, suggestCorrection, tsMillis,
+  suggestCorrection, tsMillis,
 } from "../../lib/db";
 import { fullTime, isoTime, plural, shortTime } from "../../lib/format";
 import { checkContent } from "../../lib/moderation";
@@ -15,6 +15,7 @@ import HomeHeader from "../shell/HomeHeader";
 import { useShell } from "../shell/ShellContext";
 import { StoryBody } from "./StoryBody";
 import { LiveUpdates } from "./LiveUpdates";
+import { Byline } from "./Journalist";
 import { TopicLabel } from "./parts";
 import { readMinutes, storyUrl } from "./text";
 import Badge from "../ui/Badge";
@@ -81,18 +82,12 @@ export function NewsStory({ id }) {
               </p>
               <h1 id="story-title" className="mt-2 font-display text-title-1 leading-tight md:text-[2.25rem]">{story.title}</h1>
               {story.standfirst && <p className="mt-2 text-title-3 font-normal leading-snug text-fg-muted">{story.standfirst}</p>}
+              <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3">
+                {(story.authors || [story.authorId]).map((uid, i) => (
+                  <Byline key={uid} uid={uid} username={(story.authorNames || [story.authorName])[i]} />
+                ))}
+              </div>
               <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-subtle">
-                <span>By{" "}
-                  {(story.authors || [story.authorId]).map((uid, i, all) => (
-                    <span key={uid}>
-                      <button type="button" onClick={() => openUserProfile(uid)} className="font-semibold text-fg-muted hover:underline">
-                        @{(story.authorNames || [story.authorName])[i]}
-                      </button>
-                      {i < all.length - 2 ? ", " : i === all.length - 2 ? " and " : ""}
-                    </span>
-                  ))}
-                </span>
-                <span aria-hidden="true">·</span>
                 <time dateTime={isoTime(story.createdAt)} title={fullTime(story.createdAt)}>{fullTime(story.createdAt)}</time>
                 <span aria-hidden="true">·</span>
                 <span>{readMinutes(story.script)} min read</span>

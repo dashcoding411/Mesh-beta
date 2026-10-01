@@ -6,6 +6,7 @@ import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { ReviewCard } from "./Review";
 import { Meta, TopicLabel } from "./parts";
+import { AuthorLine } from "./Journalist";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
@@ -153,7 +154,8 @@ function LeadStory({ item }) {
           </span>
           <h3 id={`lead-${item.id}`} className="mt-2 font-display text-title-1 leading-tight group-hover:underline decoration-fg-subtle underline-offset-4">{item.title}</h3>
           <span className="mt-2 line-clamp-3 block text-body text-fg-muted">{summaryOf(item)}</span>
-          <span className="mt-3 block"><Meta item={item} /></span>
+          <span className="mt-3 block"><AuthorLine item={item} /></span>
+          <span className="mt-1.5 block"><Meta item={item} /></span>
         </span>
       </button>
     </article>
@@ -169,7 +171,8 @@ function StoryRow({ item }) {
           <span className="flex items-center gap-2 text-label"><TopicLabel id={item.topic} />{item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}</span>
           <h3 id={`row-${item.id}`} className="mt-1 line-clamp-2 text-title-3 group-hover:underline decoration-fg-subtle underline-offset-2">{item.title}</h3>
           <span className="mt-1 line-clamp-2 block text-callout text-fg-muted">{summaryOf(item)}</span>
-          <span className="mt-2 block"><Meta item={item} /></span>
+          <span className="mt-2 block"><AuthorLine item={item} /></span>
+          <span className="mt-1 block"><Meta item={item} /></span>
         </span>
         {item.coverUrl && (
           <MediaImg src={item.coverUrl} alt="" loading="lazy"

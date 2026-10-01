@@ -4,7 +4,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { fetchProfile } from "./db";
 
-const cards = new Map(); // uid -> { name, username, photoURL } | null
+const cards = new Map(); // uid -> { name, username, photoURL, badges } | null
+const cardOf = (p) => ({ name: p.name || "", username: p.username || "", photoURL: p.photoURL || "", badges: p.badges || [] });
 const pending = new Map(); // uid -> Promise
 const listeners = new Set();
 let version = 0;
@@ -14,14 +15,14 @@ const emit = () => { version += 1; listeners.forEach((fn) => fn()); };
 function load(uid) {
   if (!uid || cards.has(uid) || pending.has(uid)) return;
   pending.set(uid, fetchProfile(uid)
-    .then((p) => { cards.set(uid, p ? { name: p.name || "", username: p.username || "", photoURL: p.photoURL || "" } : null); })
+    .then((p) => { cards.set(uid, p ? cardOf(p) : null); })
     .catch(() => {})
     .finally(() => { pending.delete(uid); emit(); }));
 }
 
 export function primeCard(uid, profile) {
   if (!uid || !profile) return;
-  cards.set(uid, { name: profile.name || "", username: profile.username || "", photoURL: profile.photoURL || "" });
+  cards.set(uid, cardOf(profile));
   emit();
 }
 
@@ -31,5 +32,5 @@ export function useLiveCard(uid, fallback) {
   useEffect(() => { load(uid); }, [uid]);
   const live = cards.get(uid);
   if (!live) return fallback;
-  return { ...fallback, name: live.name || fallback.name, username: live.username || fallback.username, photoURL: live.photoURL };
+  return { ...fallback, name: live.name || fallback.name, username: live.username || fallback.username, photoURL: live.photoURL, badges: live.badges };
 }

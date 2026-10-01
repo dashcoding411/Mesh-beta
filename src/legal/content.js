@@ -80,6 +80,8 @@ export const PRIVACY = {
         ["Your notifications", "Visible only to you. The person who caused one can take it back (for example by unliking)."],
         ["Brick mode", "Your limits and minutes are visible only to you, and to a parent you've agreed to link to. That parent sees your limits and today's minutes per section, never your messages, posts you haven't shared with them, or who you talk to."],
         ["Bricked time", "Private unless you choose to share it. If you switch on 'Show on my profile and the leaderboard', anyone can see your bricked totals and streak on your profile and on the leaderboard. Switching it off hides them again."],
+        ["Journalist profiles", "If you write News, your outlet (or that you're independent), logo, region and any political affiliation you choose to declare are public, on your profile and with every story you write. Declaring an affiliation is up to you, and you can change or remove it at any time."],
+        ["Badges", "Badges Mesh gives an account, like Beta tester, are public on its profile and posts."],
         ["News drafts", "A draft is visible only to its authors. Once sent for review, admins can see it too. Earlier versions are visible to the authors and admins, and are deleted with the story. Published stories show every author's handle."],
         ["Circle guides and strikes", "A circle's admins and moderators can see how far members have got through its guides, and whether a member's post was removed in the last 28 days."],
         ["Messages", "Visible only to the people in that conversation. We can technically access message records to respond to a lawful request or a safety report; we do not read them otherwise."],

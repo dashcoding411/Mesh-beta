@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2,
+  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2, FlaskConical,
 } from "lucide-react";
 import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
-  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser,
+  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, isAdmin, setBadge,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { MenuItem, MenuGroup } from "./ui/Menu";
@@ -21,6 +21,8 @@ import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import BrickHighlight from "./BrickHighlight";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
+import { JournalistCard, JournalistStories } from "./news/Journalist";
+import { useJournalist, useJournalistStories } from "../lib/journalists";
 
 export default function UserProfile({ uid }) {
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
@@ -29,11 +31,16 @@ export default function UserProfile({ uid }) {
   usePageTitle(profile ? `@${profile.username}` : null, 2);
   const [posts, setPosts] = useState(null);
   const [reposts, setReposts] = useState(null);
-  const [tab, setTab] = useState("posts");
+  const [tab, setTab] = useState(null);
+  const journalist = useJournalist(uid);
+  const stories = useJournalistStories(uid, !!journalist);
+  // Journalists' profiles open on their stories.
+  const current = tab ?? (journalist ? "stories" : "posts");
   const [busy, setBusy] = useState(false);
   const [messaging, setMessaging] = useState(false);
   const [follows, setFollows] = useState(null);
   const [requested, setRequested] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const [dialog, setDialog] = useState(null); // "menu" | "block"
   const followed = following.has(uid);
   const isBlocked = blocked.has(uid);
@@ -46,6 +53,7 @@ export default function UserProfile({ uid }) {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
     if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
+    if (!guest) isAdmin().then((a) => { if (!cancelled) setAdmin(a); }).catch(() => {});
     fetchPostsByAuthor(uid, { follower: following.has(uid) })
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
@@ -55,8 +63,8 @@ export default function UserProfile({ uid }) {
   }, [uid]);
 
   useEffect(() => {
-    if (tab === "reposts" && reposts === null) fetchRepostedPosts(uid).then(setReposts).catch(() => setReposts([]));
-  }, [tab, reposts, uid]);
+    if (current === "reposts" && reposts === null) fetchRepostedPosts(uid).then(setReposts).catch(() => setReposts([]));
+  }, [current, reposts, uid]);
 
   useEffect(() => {
     const opener = document.activeElement;
@@ -125,6 +133,18 @@ export default function UserProfile({ uid }) {
     }
   };
 
+  const toggleBeta = async () => {
+    const on = !profile.badges?.includes("beta");
+    setDialog(null);
+    try {
+      await setBadge(uid, "beta", on);
+      setProfile((p) => ({ ...p, badges: on ? [...(p.badges || []), "beta"] : (p.badges || []).filter((b) => b !== "beta") }));
+      toast({ title: on ? `@${profile.username} is a beta tester` : "Badge removed" });
+    } catch {
+      toast({ tone: "error", title: "Couldn't change the badge", body: "Check that your account is in the admins collection." });
+    }
+  };
+
   const share = async () => {
     const url = `${window.location.origin}/u/${uid}`;
     try {
@@ -175,6 +195,7 @@ export default function UserProfile({ uid }) {
               )} />
 
             {!isBlocked && <BrickHighlight uid={uid} />}
+            {!isBlocked && journalist && <JournalistCard uid={uid} journalist={journalist} stories={stories} />}
             {isMuted && !isBlocked && (
               <p role="status" className="mx-4 mb-3 flex items-center gap-3 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted md:mx-6">
                 <VolumeX size={16} className="shrink-0" aria-hidden="true" />
@@ -190,13 +211,15 @@ export default function UserProfile({ uid }) {
                 body={requested ? "Your request is waiting for their approval." : `Follow @${profile.username} to see their posts. They'll need to approve you.`} />
             ) : (
               <>
-                <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
-                  tabs={[{ id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
+                <Tabs variant="underline" label="Profile content" value={current} onChange={setTab} className="px-2 md:px-4"
+                  tabs={[...(journalist ? [{ id: "stories", label: "Stories" }] : []), { id: "posts", label: "Posts" }, { id: "reposts", label: "Reposts" }]} />
                 {feedLock ? (
                   <LockScreen compact section="feed" lock={feedLock} opensAt={brick.opensAt("feed")} now={brick.now} parentName={brick.policy?.parent?.parentName} />
                 ) : (
                   <div role="tabpanel" className="pt-0.5">
-                    {tab === "posts" ? (
+                    {current === "stories" ? (
+                      <JournalistStories stories={stories} />
+                    ) : current === "posts" ? (
                       <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="No posts yet"
                         emptyBody={followed ? `When @${profile.username} posts, it'll show up here.` : `Follow @${profile.username} to see followers-only posts too.`} />
                     ) : (
@@ -230,6 +253,13 @@ export default function UserProfile({ uid }) {
               Report @{profile.username}
             </MenuItem>
           </MenuGroup>
+          {admin && (
+            <MenuGroup>
+              <MenuItem icon={FlaskConical} onClick={toggleBeta} description="Admins only. Shows on their profile and posts">
+                {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}
+              </MenuItem>
+            </MenuGroup>
+          )}
         </Dialog>
       )}
       {dialog === "report" && profile && (

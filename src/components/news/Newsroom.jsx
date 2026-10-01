@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { FilePen, Newspaper, Plus, Radio, Users } from "lucide-react";
-import { createNewsStory, fetchMyStories, isNewsWriter, setLive, tsMillis } from "../../lib/db";
+import { createNewsStory, fetchMyStories, isNewsWriter, setLive, tsMillis, me } from "../../lib/db";
+import { useJournalist, useJournalistStories } from "../../lib/journalists";
+import { JournalistCard, JournalistSettings } from "./Journalist";
 import { shortTime } from "../../lib/format";
 import { navigate } from "../../lib/router";
 import { usePageTitle } from "../../lib/usePageTitle";
@@ -23,6 +25,11 @@ export default function Newsroom() {
   const [writer, setWriter] = useState(undefined);
   const [stories, setStories] = useState(null);
   const [busy, setBusy] = useState("");
+  const loadedJournalist = useJournalist(me());
+  const [editedJournalist, setEditedJournalist] = useState(null);
+  const journalist = editedJournalist || loadedJournalist;
+  const published = useJournalistStories(me(), !!journalist);
+  const [editingByline, setEditingByline] = useState(false);
 
   const load = () => fetchMyStories().then(setStories).catch(() => setStories([]));
   useEffect(() => {
@@ -53,6 +60,16 @@ export default function Newsroom() {
           )}
           {writer && (
             <>
+              {journalist && (
+                <div className="-mx-4 md:-mx-6">
+                  {!journalist.region && (
+                    <p className="mx-4 mb-2 text-callout text-fg-muted md:mx-6">
+                      Set up your byline: readers see your outlet, region and any political affiliation on every story.
+                    </p>
+                  )}
+                  <JournalistCard uid={me()} journalist={journalist} stories={published} onEdit={() => setEditingByline(true)} />
+                </div>
+              )}
               <div className="mb-6 flex flex-wrap gap-2">
                 <Button variant="primary" icon={Plus} loading={busy === "story"} onClick={() => start("story")}>New story</Button>
                 <Button icon={Radio} loading={busy === "live"} onClick={() => start("live")}>New live blog</Button>
@@ -97,6 +114,10 @@ export default function Newsroom() {
           )}
         </div>
       </div>
+      {editingByline && journalist && (
+        <JournalistSettings journalist={journalist} onClose={() => setEditingByline(false)}
+          onSaved={(j) => { setEditedJournalist(j); setEditingByline(false); }} />
+      )}
     </>
   );
 }

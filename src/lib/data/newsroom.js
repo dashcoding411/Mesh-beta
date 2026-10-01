@@ -36,6 +36,32 @@ export async function removeWriter(uid) {
   await deleteDoc(doc(db, "newsWriters", uid));
 }
 
+// Journalist profiles: the byline on every story a writer publishes.
+
+/** { outlet ('' = independent), logoUrl, region, affiliation } or null when not a journalist. */
+export async function fetchJournalist(uid) {
+  const snap = await getDoc(doc(db, "newsWriters", uid));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function saveJournalist({ outlet, logoUrl, region, affiliation }) {
+  const fields = {
+    outlet: outlet.trim().slice(0, 80),
+    logoUrl: logoUrl || "",
+    region: region.trim().slice(0, 80),
+    affiliation: affiliation.trim().slice(0, 80),
+    updatedAt: serverTimestamp(),
+  };
+  await updateDoc(doc(db, "newsWriters", me()), fields);
+  return fields;
+}
+
+/** A journalist's published stories, newest first. */
+export async function fetchStoriesBy(uid) {
+  const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(100)));
+  return snapToList(snap).filter((s) => (s.authors || [s.authorId]).includes(uid));
+}
+
 // Stories
 
 export function storyFromDoc(snap) {

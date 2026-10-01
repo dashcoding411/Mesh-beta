@@ -75,9 +75,10 @@ describe("app and security rules agree", () => {
   it("on how many photos a carousel can hold, and that the rules check every one", () => {
     const posts = readFileSync(new URL("../data/posts.js", import.meta.url), "utf8");
     const max = Number(posts.match(/export const MAX_SLIDES = (\d+);/)[1]);
-    const rule = rules.match(/function slidesOk[\s\S]*?;\n/)[0];
-    expect(rule).toContain(`list.size() <= ${max}`);
-    for (let i = 0; i < max; i++) expect(rule).toContain(`slideOk(list[${i}])`);
+    const rule = rules.match(/function slidesOk[\s\S]*?\n {4}\}/)[0];
+    expect(rule).toContain(`n <= ${max}`);
+    expect(rule).toContain("slideOk(list[0])");
+    for (let i = 1; i < max; i++) expect(rule).toContain(`list[${i}].url.matches(re)`);
   });
 
   it("on what counts as contact details in a circle post", () => {

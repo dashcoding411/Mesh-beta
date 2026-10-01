@@ -16,13 +16,21 @@ import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import { useToast } from "./ui/toast-context";
 import { ProfileHeader, FollowListDialog, PostGrid, EditProfileDialog } from "./ProfileParts";
+import { JournalistCard, JournalistSettings, JournalistStories } from "./news/Journalist";
+import { useJournalist, useJournalistStories } from "../lib/journalists";
 
 export default function Profile() {
   const { profile, setProfile, openComposer } = useShell();
   const brick = useBrick();
   const feedLock = brick.state("feed");
   const toast = useToast();
-  const [tab, setTab] = useState("posts");
+  const [tab, setTab] = useState(null);
+  const loadedJournalist = useJournalist(me());
+  const [editedJournalist, setEditedJournalist] = useState(null);
+  const journalist = editedJournalist || loadedJournalist;
+  const stories = useJournalistStories(me(), !!journalist);
+  const [editingByline, setEditingByline] = useState(false);
+  const current = tab ?? (journalist ? "stories" : "posts");
   const [posts, setPosts] = useState(null);
   const [reposts, setReposts] = useState(null);
   const [saved, setSaved] = useState(null);
@@ -50,9 +58,9 @@ export default function Profile() {
   }, [pending, setProfile]);
 
   useEffect(() => {
-    if (tab === "reposts" && reposts === null) fetchRepostedPosts(me()).then(setReposts).catch(() => setReposts([]));
-    if (tab === "saved" && saved === null) fetchSavedPosts().then(setSaved).catch(() => setSaved([]));
-  }, [tab, reposts, saved]);
+    if (current === "reposts" && reposts === null) fetchRepostedPosts(me()).then(setReposts).catch(() => setReposts([]));
+    if (current === "saved" && saved === null) fetchSavedPosts().then(setSaved).catch(() => setSaved([]));
+  }, [current, reposts, saved]);
 
   const shareProfile = async () => {
     const url = `${window.location.origin}/u/${me()}`;
@@ -105,6 +113,7 @@ export default function Profile() {
           </div>
 
           <BrickHighlight uid={profile.id} own />
+          {journalist && <JournalistCard uid={profile.id} journalist={journalist} stories={stories} onEdit={() => setEditingByline(true)} />}
           {isMinor(profile) && (
             <p className="mx-4 mb-3 flex items-start gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted md:mx-6">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -112,8 +121,9 @@ export default function Profile() {
             </p>
           )}
 
-          <Tabs variant="underline" label="Profile content" value={tab} onChange={setTab} className="px-2 md:px-4"
+          <Tabs variant="underline" label="Profile content" value={current} onChange={setTab} className="px-2 md:px-4"
             tabs={[
+              ...(journalist ? [{ id: "stories", label: "Stories" }] : []),
               { id: "posts", label: "Posts" },
               { id: "reposts", label: "Reposts" },
               { id: "saved", label: "Saved" },
@@ -123,16 +133,17 @@ export default function Profile() {
             <LockScreen compact section="feed" lock={feedLock} opensAt={brick.opensAt("feed")} now={brick.now} parentName={brick.policy?.parent?.parentName} />
           ) : (
           <div role="tabpanel" className="pt-0.5">
-            {tab === "posts" && (
+            {current === "stories" && <JournalistStories stories={stories} />}
+            {current === "posts" && (
               <PostGrid posts={posts} emptyIcon={Grid3x3} emptyTitle="Share your first post"
                 emptyBody="Flicks, Stills and Strands you post show up here."
                 emptyAction={<Button variant="primary" icon={Plus} onClick={() => openComposer()}>Create</Button>} />
             )}
-            {tab === "reposts" && (
+            {current === "reposts" && (
               <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet"
                 emptyBody="When you repost something, it's shown to your followers and kept here." />
             )}
-            {tab === "saved" && (
+            {current === "saved" && (
               <>
                 <p className="flex items-center gap-2 px-4 py-3 text-caption text-fg-subtle md:px-6">
                   <Lock size={14} aria-hidden="true" /> Only you can see this tab.
@@ -147,6 +158,10 @@ export default function Profile() {
         </div>
       </div>
 
+      {editingByline && journalist && (
+        <JournalistSettings journalist={journalist} onClose={() => setEditingByline(false)}
+          onSaved={(j) => { setEditedJournalist(j); setEditingByline(false); }} />
+      )}
       {editing && (
         <EditProfileDialog profile={profile} onClose={() => setEditing(false)}
           onSaved={(p, opts) => { setProfile(p); if (!opts?.keepOpen) setEditing(false); }} />

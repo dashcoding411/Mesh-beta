@@ -66,7 +66,7 @@ export function myProfile() {
 }
 
 // Bump on material policy changes. Profiles keep the version they accepted.
-export const POLICY_VERSION = "2026-10-01.1";
+export const POLICY_VERSION = "2026-10-01.2";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -179,6 +179,11 @@ export async function saveHiddenWords(words) {
   const clean = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))].slice(0, 200).map((w) => w.slice(0, 60));
   await setDoc(doc(db, "users", me(), "private", "prefs"), { hiddenWords: clean, updatedAt: serverTimestamp() }, { merge: true });
   return clean;
+}
+
+/** Admins only (the rules check). */
+export async function setBadge(uid, badge, on) {
+  await updateDoc(doc(db, "users", uid), { badges: on ? arrayUnion(badge) : arrayRemove(badge) });
 }
 
 export async function setHideAi(on) {

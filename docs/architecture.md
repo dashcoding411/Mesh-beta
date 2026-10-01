@@ -38,7 +38,7 @@
 | `calls/{id}` | WebRTC signalling with `callerCandidates` / `calleeCandidates`; deleted after the call. |
 | `groups/{id}` | Circles. `members`, `joinRequests`, `guides/{id}/progress`. |
 | `events/{id}` | Gatherings. `rsvps`, `discussion`, legacy `announcements`. |
-| `news/{id}` | Stories as parallel block arrays plus `script`. `revisions`, `presence`, `updates` (live blog), `correctionRequests`. `newsWriters/{uid}` lists writers. |
+| `news/{id}` | Stories as parallel block arrays plus `script`. `revisions`, `presence`, `updates` (live blog), `correctionRequests`. `newsWriters/{uid}` lists writers and holds their bylines. |
 | `locks/{uid}`, `usage/{uid}_{year}-{day}`, `familyLinks/{teenUid}`, `brickStats/{uid}` | Brick mode. |
 | `reports/{type}_{id}_{uid}`, `suspensions/{uid}` | Moderation. |
 | `media/{id}` | Inline images (Spark plan), referenced as `mesh-media:<id>`. |
@@ -57,8 +57,11 @@ Composite indexes are declared in `firestore.indexes.json`.
   account-only pages to a join prompt. Actions call `needsAccount(reason)`
   from the shell context, which explains what needs an account. Signing in
   or out reloads the page so no state carries between the two.
-- **Profile cards.** `profileCache` overlays authors' current name and photo on
-  denormalised content.
+- **Profile cards.** `profileCache` overlays authors' current name, photo and
+  badges (admin-awarded, e.g. Beta tester) on denormalised content.
+- **Notification banners.** Notifications that arrive during a visit drop in
+  as a short banner (not on the Notifications page, not from muted or blocked
+  people).
 - **Feed state** is kept per feed for the session so returning restores the
   scroll position without refetching.
 - **Updates.** `UpdateBanner` compares the deployed entry chunk with the
@@ -196,7 +199,10 @@ export (`.ics`) provides reminders.
 
 ## News
 
-Only `newsWriters` create stories. Drafts are private to their authors (a
+Only `newsWriters` create stories. Each writer's doc doubles as their
+journalist profile: outlet (empty for independents), logo, region and any
+political affiliation they declare, shown as the byline on every story and on
+their profile, which opens on their published stories. Drafts are private to their authors (a
 lead plus up to three co-authors). Saves run in a transaction on `version`,
 with a three-way block merge on conflict (`storyDoc.mergeStory`) and per-block
 presence locks. Submission records a revision and an attestation; admins

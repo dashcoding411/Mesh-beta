@@ -1,36 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Bell, CheckCheck } from "lucide-react";
 import {
-  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, Bell, CheckCheck, UserCheck, Waves,
-} from "lucide-react";
-import { openStory } from "../lib/openStory";
-import {
-  markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, openPost, openUserProfile, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis,
+  markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis,
 } from "../lib/db";
+import { openNotice } from "../lib/notices";
+import { NoticeAvatar, NoticeLine } from "./NoticeParts";
 import { navigate } from "../lib/router";
-import { shortTime, fullTime, plural, whenLabel, spanLabel } from "../lib/format";
+import { shortTime, fullTime, whenLabel, spanLabel } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
-import LiveAvatar from "./ui/LiveAvatar";
 import Button from "./ui/Button";
 import { EmptyState, Skeleton, Loading } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
-const ICONS = {
-  like: { icon: Heart, className: "bg-like/15 text-like" },
-  repost: { icon: Repeat2, className: "bg-success-text/15 text-success-text" },
-  comment: { icon: MessageCircle, className: "bg-accent-soft text-accent-text" },
-  mention: { icon: AtSign, className: "bg-accent-soft text-accent-text" },
-  follow: { icon: UserPlus, className: "bg-accent-soft text-accent-text" },
-  request: { icon: UserPlus, className: "bg-warning-text/15 text-warning-text" },
-  accept: { icon: UserCheck, className: "bg-success-text/15 text-success-text" },
-  family: { icon: ShieldCheck, className: "bg-accent-soft text-accent-text" },
-  familyok: { icon: ShieldCheck, className: "bg-success-text/15 text-success-text" },
-  familyask: { icon: ShieldCheck, className: "bg-warning-text/15 text-warning-text" },
-  invite: { icon: CalendarDays, className: "bg-accent-soft text-accent-text" },
-  joined: { icon: Blend, className: "bg-success-text/15 text-success-text" },
-  storylike: { icon: Heart, className: "bg-like/15 text-like" },
-  echo: { icon: Waves, className: "bg-accent-soft text-accent-text" },
-};
 const KEEP_DAYS = 90;
 
 function bucketOf(ms, now) {
@@ -150,36 +132,7 @@ function NoticeRow({ group, fresh, following }) {
   const [done, setDone] = useState("");
   const n = group.items[0];
   const others = new Set(group.items.map((x) => x.actorId)).size - 1;
-  const who = <strong className="font-semibold text-fg">@{n.actorName}</strong>;
-  const rest = others > 0 ? <> and {plural(others, "other")}</> : null;
-  const quote = n.text ? <span className="text-fg-muted"> “{n.text}{n.text.length >= 140 ? "…" : ""}”</span> : null;
-  const { icon: Icon, className } = ICONS[n.type] || ICONS.follow;
-
-  const line = {
-    like: <>{who}{rest} liked your post</>,
-    repost: <>{who}{rest} reposted your post</>,
-    comment: <>{who} commented:{quote}</>,
-    mention: <>{who} mentioned you:{quote}</>,
-    follow: <>{who} started following you</>,
-    request: <>{who} asked to follow you</>,
-    accept: <>{who} accepted your follow request</>,
-    family: <>{who} wants to add parental controls to your account</>,
-    familyok: <>{who} accepted parental controls</>,
-    familyask: <>{who} asked you to change their limits{quote ? ":" : ""}{quote}</>,
-    invite: <>{who} invited you to a gathering</>,
-    joined: <>You&apos;re in: {who} let you into a circle</>,
-    storylike: <>{who}{rest} liked your story</>,
-    echo: <>{who} echoed your story:{quote}</>,
-  }[n.type] || <>{who} did something new. Reload Mesh to see what.</>;
-
-  const open = () => {
-    if (["like", "repost", "comment", "mention"].includes(n.type) && n.postId) return openPost(n.postId);
-    if (["family", "familyok", "familyask"].includes(n.type)) return navigate("/account/brick");
-    if (n.type === "invite") return navigate(`/gatherings/${n.ref}`);
-    if (n.type === "joined") return navigate(`/circles/${n.ref}`);
-    if (n.type === "storylike" || n.type === "echo") return openStory(n.ref, { panel: "activity", tab: n.type === "echo" ? "echoes" : "viewers" });
-    openUserProfile(n.actorId);
-  };
+  const open = () => openNotice(n);
 
   const act = async (fn, label) => {
     try { await fn(); setDone(label); } catch { toast({ tone: "error", title: "That didn't work", body: "Try again in a moment." }); }
@@ -215,14 +168,9 @@ function NoticeRow({ group, fresh, following }) {
   return (
     <li className={`relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface ${fresh ? "bg-accent-soft/40" : ""}`}>
       <button type="button" onClick={open} className="absolute inset-0" aria-label={`${n.actorName}: open`} tabIndex={-1} />
-      <span className="relative shrink-0">
-        <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={44} />
-        <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
-          <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" || n.type === "storylike" ? "currentColor" : "none"} />
-        </span>
-      </span>
+      <span className="relative shrink-0"><NoticeAvatar n={n} /></span>
       <button type="button" onClick={open} className="relative min-w-0 flex-1 text-left">
-        <span className="line-clamp-3 text-callout text-fg-muted">{line}</span>
+        <span className="line-clamp-3 text-callout text-fg-muted"><NoticeLine n={n} others={others} /></span>
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={fullTime(at)} className="text-caption text-fg-subtle">{shortTime(at)}</time>}
       </button>
       {action && <span className="relative shrink-0">{action}</span>}

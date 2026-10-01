@@ -10,6 +10,8 @@ import { assessText } from "../lib/moderation";
 import { useInView } from "../lib/useInView";
 import { useShell } from "./shell/ShellContext";
 import LiveAvatar from "./ui/LiveAvatar";
+import { BadgeMark } from "./ui/Badges";
+import { useLiveCard } from "../lib/profileCache";
 import IconButton from "./ui/IconButton";
 import Badge from "./ui/Badge";
 import { useToast } from "./ui/toast-context";
@@ -55,6 +57,7 @@ export default function PostCard({
     return "";
   }, [mineNow, post.title, post.text]);
   const titleId = `post-${post.id}-author`;
+  const authorCard = useLiveCard(post.authorId, {});
 
   const liked = viewer?.liked.has(post.id) || false;
   const saved = viewer?.saved.has(post.id) || false;
@@ -144,6 +147,7 @@ export default function PostCard({
               className="truncate text-left text-callout font-semibold text-fg hover:opacity-70">
               {author}
             </button>
+            <BadgeMark badges={authorCard.badges} />
             <span className="shrink-0 text-caption text-fg-subtle" aria-hidden="true">·</span>
             <time dateTime={isoTime(post.createdAt)} title={fullTime(post.createdAt)}
               className="shrink-0 text-caption text-fg-subtle tabular">

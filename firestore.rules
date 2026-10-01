@@ -83,13 +83,15 @@ service cloud.firestore {
     function myBirthYear() {
       return birthYearOf(request.auth.uid);
     }
-    // Public posting requires 16+.
+    // Public posting requires 16+. The birth year is looked up once.
     function isAdult() {
-      return myBirthYear() > 0 && request.time.year() - myBirthYear() >= 16;
+      let y = myBirthYear();
+      return y > 0 && request.time.year() - y >= 16;
     }
     // Circle age limit: 0 = none; otherwise requires a qualifying birth year.
     function oldEnoughFor(limitYears) {
-      return limitYears == 0 || (myBirthYear() > 0 && request.time.year() - myBirthYear() >= limitYears);
+      let y = myBirthYear();
+      return limitYears == 0 || (y > 0 && request.time.year() - y >= limitYears);
     }
     function guest() {
       return request.auth == null;
@@ -198,23 +200,24 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/groups/$(n.ref)/members/$(uid)));
     }
 
-    // Carousel slide: an inline or Storage URL, never external. Only slide 0's
-    // ownership is checked; checking all ten would exceed the lookup budget.
+    // Carousel slides. The first gets the full check (it's the post's mediaUrl,
+    // whose ownership is checked too); the rest only need an inline or Storage
+    // URL, never an external one. Every check counts against the per-write
+    // expression budget, which a full check per slide exceeded.
     function slideOk(m) {
-      return m is map
-        && m.keys().hasOnly(['url', 'alt', 'w', 'h'])
-        && m.url is string
-        && (m.url.matches('^mesh-media:[A-Za-z0-9]{20}$') || m.url.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
+      return m.keys().hasOnly(['url', 'alt', 'w', 'h'])
         && m.get('alt', '') is string && m.get('alt', '').size() <= 500
         && m.get('w', 0) is int && m.get('h', 0) is int;
     }
     function slidesOk(list) {
-      return list is list && list.size() >= 2 && list.size() <= 10
-        && slideOk(list[0]) && slideOk(list[1])
-        && (list.size() < 3 || slideOk(list[2])) && (list.size() < 4 || slideOk(list[3]))
-        && (list.size() < 5 || slideOk(list[4])) && (list.size() < 6 || slideOk(list[5]))
-        && (list.size() < 7 || slideOk(list[6])) && (list.size() < 8 || slideOk(list[7]))
-        && (list.size() < 9 || slideOk(list[8])) && (list.size() < 10 || slideOk(list[9]));
+      let re = '^(mesh-media:[A-Za-z0-9]{20}|https://firebasestorage[.]googleapis[.]com/.*)$';
+      let n = list.size();
+      return n >= 2 && n <= 10 && slideOk(list[0])
+        && list[1].url.matches(re)
+        && (n < 3 || list[2].url.matches(re)) && (n < 4 || list[3].url.matches(re))
+        && (n < 5 || list[4].url.matches(re)) && (n < 6 || list[5].url.matches(re))
+        && (n < 7 || list[6].url.matches(re)) && (n < 8 || list[7].url.matches(re))
+        && (n < 9 || list[8].url.matches(re)) && (n < 10 || list[9].url.matches(re));
     }
 
     function postCreateOk(d, circleMod) {
@@ -680,6 +683,9 @@ service cloud.firestore {
         // Moderators may set only suspendedUntil.
         || (isAdmin() && incomingData().diff(resource.data).affectedKeys().hasOnly(['suspendedUntil'])
           && incomingData().suspendedUntil is timestamp)
+        // Admins award badges; nobody awards their own.
+        || (isAdmin() && incomingData().diff(resource.data).affectedKeys().hasOnly(['badges'])
+          && incomingData().badges is list && incomingData().badges.hasOnly(['beta']))
         // Handle change: unique, once per 30 days.
         || (isUser(uid)
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['username', 'usernameChangedAt'])
@@ -1450,13 +1456,27 @@ service cloud.firestore {
       return d.authorId == request.auth.uid || request.auth.uid in d.get('authors', []);
     }
 
+    // Journalists: admins add them; each keeps the byline shown on their stories
+    // and profile: outlet ('' = independent), logo, region and any political
+    // affiliation they declare. Public, like the stories.
     match /newsWriters/{uid} {
-      allow read: if signedIn();
+      allow read: if true;
       allow create: if isAdmin()
         && incomingData().keys().hasOnly(['username', 'addedBy', 'addedAt'])
         && incomingData().username == profileOf(uid).username
         && incomingData().addedBy == request.auth.uid
         && incomingData().addedAt == request.time;
+      allow update: if (isUser(uid) || isAdmin())
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['outlet', 'logoUrl', 'region', 'affiliation', 'updatedAt'])
+        && incomingData().get('outlet', '') is string && incomingData().get('outlet', '').size() <= 80
+        && incomingData().get('region', '') is string && incomingData().get('region', '').size() <= 80
+        && incomingData().get('affiliation', '') is string && incomingData().get('affiliation', '').size() <= 80
+        && incomingData().get('logoUrl', '') is string
+        && (incomingData().get('logoUrl', '') in ['', resource.data.get('logoUrl', '')]
+            || ownInlineImage(incomingData().logoUrl)
+            || incomingData().logoUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
+        && incomingData().updatedAt == request.time
+        && hateFree(incomingData().get('outlet', '') + ' ' + incomingData().get('region', '') + ' ' + incomingData().get('affiliation', ''));
       allow delete: if isAdmin() || isUser(uid);
     }
 
