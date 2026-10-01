@@ -265,22 +265,26 @@ function ThoughtsRail({ chats }) {
     } finally { setBusy(false); }
   };
 
+  // Room above the avatars for the tallest bubble in the row.
+  const lines = Math.max(1, ...[mine?.text, ...thoughts.map((n) => n.text)].map((t) => Math.min(5, Math.ceil((t || "").length / 14))));
+  const room = { height: lines * 16 - 4 };
+
   return (
     <div className="border-b border-line">
-      <ul className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-3 pt-4" aria-label="Thoughts">
-        <li className="flex w-[76px] shrink-0 flex-col items-center gap-1.5">
+      <ul className="flex gap-2 overflow-x-auto no-scrollbar px-3 pb-3 pt-3" aria-label="Thoughts">
+        <li className="flex w-[120px] shrink-0 flex-col items-center gap-1.5">
           <button type="button" onClick={() => { setText(mine?.text || ""); setEditing(true); }}
-            aria-label={mine ? `Your thought: ${mine.text}. Edit` : "Share a thought"} className="press relative pt-3">
+            aria-label={mine ? `Your thought: ${mine.text}. Edit` : "Share a thought"} className="press flex flex-col items-center">
+            <span className="flex items-end justify-center" style={room}><Bubble muted={!mine}>{mine?.text || "Thought…"}</Bubble></span>
             <Avatar profile={profile} size={56} />
-            <Bubble muted={!mine}>{mine?.text || "Thought…"}</Bubble>
           </button>
           <span className="text-label text-fg-subtle">Your thought</span>
         </li>
         {thoughts.map((n) => (
-          <li key={n.uid} className="flex w-[76px] shrink-0 flex-col items-center gap-1.5">
-            <span className="relative pt-3" aria-label={`@${n.username}: ${n.text}`}>
+          <li key={n.uid} className="flex w-[120px] shrink-0 flex-col items-center gap-1.5">
+            <span className="flex flex-col items-center" aria-label={`@${n.username}: ${n.text}`}>
+              <span className="flex items-end justify-center" style={room}><Bubble>{n.text}</Bubble></span>
               <LiveAvatar uid={n.uid} profile={{ username: n.username }} size={56} />
-              <Bubble>{n.text}</Bubble>
             </span>
             <span className="w-full truncate text-center text-label text-fg-subtle">{n.username}</span>
           </li>
@@ -305,10 +309,12 @@ function ThoughtsRail({ chats }) {
   );
 }
 
+// Wraps over up to five lines, so a full 60-character thought shows, and
+// overlaps the top of the avatar.
 function Bubble({ children, muted }) {
   return (
-    <span className={`absolute -top-2 left-1/2 max-w-[84px] -translate-x-1/2 truncate rounded-full border border-line-strong bg-surface-3 px-2 py-0.5 text-label shadow-raised ${muted ? "text-fg-subtle" : "text-fg"}`}>
-      {children}
+    <span className={`relative z-10 -mb-3 max-w-full rounded-2xl border border-line-strong bg-surface-3 px-2 py-1 text-center text-label shadow-raised ${muted ? "text-fg-subtle" : "text-fg"}`}>
+      <span className="line-clamp-5 break-words">{children}</span>
     </span>
   );
 }

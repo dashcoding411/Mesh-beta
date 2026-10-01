@@ -90,13 +90,17 @@ const PATTERNS = Object.fromEntries(Object.entries(HINTS).map(([id, words]) => [
   id, new RegExp(`(^|[^a-z0-9])(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})${FORMS}(?=[^a-z0-9]|$)`, "g"),
 ]));
 
+// A topic needs two signals: a hashtag, or more than one of its words (a clear
+// word plus at least a weak one). One word alone is too often a figure of
+// speech ("the internet is the greatest album"). Repeating a word doesn't count.
 export function suggestTopics(text) {
   const t = String(text || "").toLowerCase();
   const scored = INTERESTS.map((i) => {
     const tagged = t.includes(`#${i.id}`) ? 4 : 0;
     const re = PATTERNS[i.id];
-    const hits = re ? [...t.matchAll(re)].reduce((n, m) => n + (WEAK.has(m[2]) ? 1 : 2), 0) : 0;
+    const words = new Set(re ? [...t.matchAll(re)].map((m) => m[2]) : []);
+    const hits = [...words].reduce((n, w) => n + (WEAK.has(w) ? 1 : 2), 0);
     return { id: i.id, score: tagged + hits };
-  }).filter((s) => s.score >= 2);
+  }).filter((s) => s.score >= 3);
   return scored.sort((a, b) => b.score - a.score).slice(0, MAX_POST_TOPICS).map((s) => s.id);
 }
