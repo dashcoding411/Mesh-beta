@@ -701,7 +701,7 @@ service cloud.firestore {
           && incomingData().suspendedUntil is timestamp)
         // Admins award badges; nobody awards their own.
         || (isAdmin() && incomingData().diff(resource.data).affectedKeys().hasOnly(['badges'])
-          && incomingData().badges is list && incomingData().badges.hasOnly(['beta']))
+          && incomingData().badges is list && incomingData().badges.hasOnly(['beta', 'verified']))
         // Handle change: unique, once per 30 days.
         || (isUser(uid)
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['username', 'usernameChangedAt'])

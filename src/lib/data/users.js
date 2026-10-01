@@ -181,6 +181,12 @@ export async function saveHiddenWords(words) {
   return clean;
 }
 
+/** Accounts an admin has verified. */
+export async function fetchVerified() {
+  const snap = await getDocs(query(collection(db, "users"), where("badges", "array-contains", "verified"), limit(200)));
+  return snapToList(snap);
+}
+
 /** Admins only (the rules check). */
 export async function setBadge(uid, badge, on) {
   await updateDoc(doc(db, "users", uid), { badges: on ? arrayUnion(badge) : arrayRemove(badge) });

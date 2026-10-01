@@ -1,4 +1,5 @@
 import { BadgeCheck, Crown, FlaskConical, Gem, Sparkles } from "lucide-react";
+import { isVerified } from "../../lib/badges";
 
 // Profile badges (see lib/badges.js), most distinguished first. The founders'
 // shimmer (gold and silver); the queen's shimmers, glows and twinkles; beta
@@ -22,12 +23,12 @@ const BADGES = [
   },
 ];
 
-/** The purple tick by a verified journalist's name. */
-export function VerifiedTick({ size = 16, className = "", decorative = false }) {
+/** The purple tick by a verified account's name (admin-verified, or a journalist). */
+export function VerifiedTick({ size = 16, className = "", decorative = false, label = "Verified" }) {
   return (
-    <span title={decorative ? undefined : "Verified journalist"} className={`inline-flex shrink-0 ${className}`}>
+    <span title={decorative ? undefined : label} className={`inline-flex shrink-0 ${className}`}>
       <BadgeCheck size={size} strokeWidth={2.2} className="fill-accent text-white" aria-hidden="true" />
-      {!decorative && <span className="sr-only">Verified journalist</span>}
+      {!decorative && <span className="sr-only">{label}</span>}
     </span>
   );
 }
@@ -51,15 +52,21 @@ export function ProfileBadges({ badges }) {
   );
 }
 
-/** The most distinguished badge as a small mark beside a name, for posts. */
+/** Beside a name, for posts and comments: the verified tick, then the most distinguished badge. */
 export function BadgeMark({ badges }) {
   const [top] = held(badges);
-  if (!top) return null;
-  const Icon = top.icon;
+  const tick = isVerified(badges);
+  if (!top && !tick) return null;
+  const Icon = top?.icon;
   return (
-    <span title={top.label} className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${top.className}`}>
-      <Icon size={10} strokeWidth={2.6} aria-hidden="true" />
-      <span className="sr-only">{top.label}</span>
-    </span>
+    <>
+      {tick && <VerifiedTick size={16} />}
+      {top && (
+        <span title={top.label} className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${top.className}`}>
+          <Icon size={10} strokeWidth={2.6} aria-hidden="true" />
+          <span className="sr-only">{top.label}</span>
+        </span>
+      )}
+    </>
   );
 }

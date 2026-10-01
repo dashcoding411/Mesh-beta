@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, Trash2, Check, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
+  ShieldCheck, BadgeCheck, Trash2, Check, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
 } from "lucide-react";
 import {
   isAdmin, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
-  fetchWriters, addWriter, removeWriter,
+  fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername,
 } from "../lib/db";
 import { assessText } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -40,7 +40,7 @@ export default function Moderation() {
     setError(false);
     setReports(null);
     try {
-      setReports(tab === "suspended" || tab === "writers" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
+      setReports(tab === "suspended" || tab === "writers" || tab === "verified" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
         .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
     } catch (err) {
       console.error(err);
@@ -86,9 +86,9 @@ export default function Moderation() {
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }]} />
+                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" }]} />
 
-              {tab === "writers" ? <Writers /> : tab === "suspended" ? <Suspensions /> : (
+              {tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
@@ -342,6 +342,68 @@ function Suspensions() {
         </li>
       ))}
     </ul>
+  );
+}
+
+function Verified() {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const [handle, setHandle] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetchVerified().then((l) => setList(l.sort((a, b) => a.username.localeCompare(b.username)))).catch(() => setList([]));
+  useEffect(() => { load(); }, []);
+  const add = async (e) => {
+    e.preventDefault();
+    const name = handle.trim().replace(/^@/, "").toLowerCase();
+    setBusy(true);
+    setError("");
+    try {
+      const uid = await uidForUsername(name);
+      if (!uid) throw new Error(`No account has the handle @${name}.`);
+      await setBadge(uid, "verified", true);
+      toast({ title: `@${name} is verified`, body: "A purple tick now shows beside their name." });
+      setHandle("");
+      load();
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only administrators can verify accounts." : err.message); }
+    finally { setBusy(false); }
+  };
+  const remove = async (p) => {
+    try {
+      await setBadge(p.id, "verified", false);
+      setList((l) => l.filter((x) => x.id !== p.id));
+      toast({ title: `Verification removed from @${p.username}` });
+    } catch { toast({ tone: "error", title: "The verification could not be removed" }); }
+  };
+  return (
+    <section className="space-y-4">
+      <p className="text-caption text-fg-muted">
+        Verify accounts whose identity you have confirmed, such as public figures, organisations and creators people may impersonate. Verified accounts show a purple tick beside their name on their profile, posts, comments and in search. Journalists show the tick automatically.
+      </p>
+      <form onSubmit={add} className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <label htmlFor="verify-handle" className="sr-only">Handle</label>
+          <input id="verify-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+          <InlineMessage>{error}</InlineMessage>
+        </div>
+        <Button type="submit" variant="primary" icon={BadgeCheck} loading={busy} disabled={handle.trim().length < 3}>Verify</Button>
+      </form>
+      {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
+        <EmptyState compact icon={BadgeCheck} title="No verified accounts yet" body="Verify an account by its handle, or from the menu on their profile." />
+      ) : (
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+          {list.map((p) => (
+            <li key={p.id} className="flex min-h-12 items-center gap-3 px-4">
+              <button type="button" onClick={() => openUserProfile(p.id)} className="min-w-0 flex-1 truncate text-left text-callout hover:underline">
+                {p.name || p.username} <span className="text-fg-subtle">@{p.username}</span>
+              </button>
+              <Button size="sm" variant="ghost" onClick={() => remove(p)}>Remove</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

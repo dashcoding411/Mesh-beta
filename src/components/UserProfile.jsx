@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2, FlaskConical,
+  ArrowLeft, MessageCircle, UserPlus, UserCheck, Lock, Grid3x3, Repeat2, UserX, Link2, Clock, Ellipsis, Ban, Flag, VolumeX, Volume2, FlaskConical, BadgeCheck,
 } from "lucide-react";
 import ReportDialog from "./ReportDialog";
 import {
@@ -24,6 +24,7 @@ import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { betaByJoinDate } from "../lib/badges";
+import { primeCard } from "../lib/profileCache";
 
 export default function UserProfile({ uid }) {
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
@@ -134,13 +135,15 @@ export default function UserProfile({ uid }) {
     }
   };
 
-  const toggleBeta = async () => {
-    const on = !profile.badges?.includes("beta");
+  const toggleBadge = async (badge) => {
+    const on = !profile.badges?.includes(badge);
     setDialog(null);
     try {
-      await setBadge(uid, "beta", on);
-      setProfile((p) => ({ ...p, badges: on ? [...(p.badges || []), "beta"] : (p.badges || []).filter((b) => b !== "beta") }));
-      toast({ title: on ? `@${profile.username} is a beta tester` : "Badge removed" });
+      await setBadge(uid, badge, on);
+      const badges = on ? [...(profile.badges || []), badge] : (profile.badges || []).filter((b) => b !== badge);
+      setProfile((p) => ({ ...p, badges }));
+      primeCard(uid, { ...profile, badges }); // so their posts and comments update now
+      toast({ title: on ? (badge === "verified" ? `@${profile.username} is verified` : `@${profile.username} is a beta tester`) : badge === "verified" ? "Verification removed" : "Badge removed" });
     } catch {
       toast({ tone: "error", title: "Couldn't change the badge", body: "Check that your account is in the admins collection." });
     }
@@ -254,11 +257,17 @@ export default function UserProfile({ uid }) {
               Report @{profile.username}
             </MenuItem>
           </MenuGroup>
-          {admin && !betaByJoinDate(profile) && (
+          {admin && (
             <MenuGroup>
-              <MenuItem icon={FlaskConical} onClick={toggleBeta} description="Admins only. Shows on their profile and posts">
-                {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}
+              <MenuItem icon={BadgeCheck} onClick={() => toggleBadge("verified")}
+                description="Admins only. A purple tick by their name everywhere">
+                {profile.badges?.includes("verified") ? "Remove verification" : `Verify @${profile.username}`}
               </MenuItem>
+              {!betaByJoinDate(profile) && (
+                <MenuItem icon={FlaskConical} onClick={() => toggleBadge("beta")} description="Admins only. Shows on their profile and posts">
+                  {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}
+                </MenuItem>
+              )}
             </MenuGroup>
           )}
         </Dialog>

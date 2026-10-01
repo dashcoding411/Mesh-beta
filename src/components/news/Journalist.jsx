@@ -86,7 +86,7 @@ export function Byline({ uid, username }) {
       <div className="min-w-0">
         <button type="button" onClick={() => openUserProfile(uid)} className="flex min-w-0 items-center gap-1 text-left text-callout font-semibold text-fg hover:underline">
           <span className="truncate">{card.name || `@${username}`}</span>
-          {journalist && <VerifiedTick size={15} />}
+          {journalist && <VerifiedTick size={15} label="Verified journalist" />}
         </button>
         <p className="flex flex-wrap items-center gap-x-1.5 text-caption text-fg-subtle">
           <span>{outletOf(journalist)}</span>
@@ -111,7 +111,7 @@ export function AuthorLine({ item }) {
       <Mark uid={uid} journalist={journalist} username={username} size={20} />
       <span className="min-w-0 truncate">
         <span className="font-semibold text-fg">{card.name || `@${username}`}</span>
-        {journalist && <VerifiedTick size={13} className="ml-0.5 align-[-2px]" />}
+        {journalist && <VerifiedTick size={13} label="Verified journalist" className="ml-0.5 align-[-2px]" />}
         {more > 0 && ` and ${more} more`}
         <span className="text-fg-subtle"> · {outletOf(journalist)}</span>
         {journalist?.affiliation && <span className="text-warning-text"> · {journalist.affiliation}</span>}

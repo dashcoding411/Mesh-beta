@@ -59,6 +59,10 @@ Composite indexes are declared in `firestore.indexes.json`.
   or out reloads the page so no state carries between the two.
 - **Profile cards.** `profileCache` overlays authors' current name, photo and
   badges (admin-awarded, e.g. Beta tester) on denormalised content.
+- **Verification.** Admins verify accounts (`verified` in `users/{uid}.badges`)
+  from a profile's menu or the Verified tab in moderation. Verified accounts
+  and journalists get a purple tick beside their name on profiles, posts,
+  comments and search results.
 - **Notification banners.** Notifications that arrive during a visit drop in
   as a short banner (not on the Notifications page, not from muted or blocked
   people).

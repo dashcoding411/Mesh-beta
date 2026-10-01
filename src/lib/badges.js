@@ -19,6 +19,9 @@ export function badgesOf(profile) {
   return [...badges];
 }
 
+/** Admins verify accounts (users/{uid}.badges), shown as a purple tick. */
+export const isVerified = (badges) => !!badges?.includes("verified");
+
 /** Joined during the beta, so the badge comes with the account rather than an admin. */
 export function betaByJoinDate(profile) {
   const joined = tsMillis(profile?.createdAt);

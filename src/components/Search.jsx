@@ -15,6 +15,8 @@ import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
 import Tabs from "./ui/Tabs";
 import Avatar from "./ui/Avatar";
+import { VerifiedTick } from "./ui/Badges";
+import { isVerified } from "../lib/badges";
 import MediaImg from "./ui/MediaImg";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
@@ -229,7 +231,10 @@ function SuggestedPeople() {
           <li key={p.id} className="flex w-36 shrink-0 flex-col items-center rounded-card border border-line bg-surface p-3 text-center">
             <button type="button" onClick={() => openUserProfile(p.id)} className="press flex flex-col items-center" aria-label={`${p.name || p.username}'s profile`}>
               <Avatar profile={p} size={56} />
-              <span className="mt-2 w-full truncate text-callout font-semibold">{p.name || p.username}</span>
+              <span className="mt-2 flex w-full items-center justify-center gap-1 text-callout font-semibold">
+                <span className="truncate">{p.name || p.username}</span>
+                {isVerified(p.badges) && <VerifiedTick size={14} />}
+              </span>
               <span className="w-full truncate text-caption text-fg-subtle">@{p.username}</span>
             </button>
             <span className="mt-1 line-clamp-2 min-h-8 text-label text-fg-subtle">{p.reason}</span>
@@ -398,7 +403,10 @@ function TopResult({ hit, q }) {
             <Avatar profile={item} size={64} />
           </button>
           <button type="button" onClick={() => openUserProfile(item.id)} className="min-w-0 flex-1 text-left">
-            <span className="block truncate text-title-3"><Highlight text={item.name || item.username} query={q} /></span>
+            <span className="flex items-center gap-1.5 text-title-3">
+              <span className="truncate"><Highlight text={item.name || item.username} query={q} /></span>
+              {isVerified(item.badges) && <VerifiedTick size={18} />}
+            </span>
             <span className="block truncate text-callout text-fg-subtle">@<Highlight text={item.username} query={q} /></span>
             <span className="mt-1 block text-caption text-fg-muted">{plural(item.followerCount || 0, "follower")}</span>
           </button>
@@ -459,7 +467,10 @@ function ResultRow({ section, item, q, big = false }) {
         <button type="button" onClick={() => openUserProfile(item.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <Avatar profile={item} size={44} />
           <span className="min-w-0">
-            <span className="block truncate text-callout font-semibold"><Highlight text={item.name || item.username} query={q} /></span>
+            <span className="flex items-center gap-1 text-callout font-semibold">
+              <span className="truncate"><Highlight text={item.name || item.username} query={q} /></span>
+              {isVerified(item.badges) && <VerifiedTick size={14} />}
+            </span>
             <span className="block truncate text-caption text-fg-subtle">
               @<Highlight text={item.username} query={q} />
               {item.bio && <> · <Highlight text={item.bio.slice(0, 80)} query={q} /></>}

@@ -10,6 +10,8 @@ import {
   fetchProfile, me, StorageUnavailableError,
 } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
+import { useLiveCard } from "../lib/profileCache";
+import { BadgeMark } from "./ui/Badges";
 import { buildCommentTree, countReplies, likesHidden } from "../lib/commentTree";
 import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
@@ -260,6 +262,13 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   );
 }
 
+// The author's verified tick and badge, from their current profile.
+function AuthorMarks({ uid, username }) {
+  const card = useLiveCard(uid, { username });
+  if (!card.badges?.length) return null;
+  return <span className="inline-flex items-center gap-1 self-center"><BadgeMark badges={card.badges} /></span>;
+}
+
 function CommentNode({ node, depth, ctx, replyingTo }) {
   const { hiddenAuthors, hiddenWords } = useShell();
   const mine = node.authorId === me();
@@ -291,6 +300,7 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
         <button type="button" onClick={() => openUserProfile(node.authorId)} className="truncate text-callout font-semibold hover:underline">
           {node.authorDisplayName || `@${node.authorName}`}
         </button>
+        <AuthorMarks uid={node.authorId} username={node.authorName} />
         {node.authorId === ctx.post.authorId && <span className="rounded bg-accent-soft px-1.5 text-label font-semibold text-accent-text">Author</span>}
         <time dateTime={isoTime(node.createdAt)} title={fullTime(node.createdAt)} className="text-caption text-fg-subtle">{shortTime(node.createdAt)}</time>
       </p>
