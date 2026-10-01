@@ -518,7 +518,8 @@ export async function fetchTopComment(postId) {
   return d ? { id: d.id, ...d.data() } : null;
 }
 
-export async function addComment(post, text, gif = null, sensitive = false) {
+/** `parent` is the comment being replied to; `image` is { url, w, h } from uploadMedia. */
+export async function addComment(post, text, { gif = null, image = null, parent = null, sensitive = false } = {}) {
   const user = auth.currentUser;
   const profile = await myProfile();
   const comment = {
@@ -528,7 +529,10 @@ export async function addComment(post, text, gif = null, sensitive = false) {
     authorPhoto: profile?.photoURL || "",
     text,
     ...(gif ? { gif } : {}),
+    ...(image ? { image } : {}),
+    ...(parent ? { parentId: parent.id } : {}),
     ...(sensitive ? { sensitive: true } : {}),
+    likeCount: 0,
     createdAt: serverTimestamp(),
   };
   // lastCommentId lets the rules tie the count change to this comment.
@@ -539,8 +543,32 @@ export async function addComment(post, text, gif = null, sensitive = false) {
   batch.update(doc(db, "posts", post.id), { commentCount: increment(1), lastCommentId: ref_.id });
   await batch.commit();
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
-  notify(post.authorId, "comment", { postId: post.id, commentId: ref_.id, text: text.slice(0, 140) });
+  const notice = { postId: post.id, commentId: ref_.id, text: text.slice(0, 140) };
+  if (parent) notify(parent.authorId, "reply", notice);
+  if (!parent || parent.authorId !== post.authorId) notify(post.authorId, "comment", notice);
   return { id: ref_.id, ...comment, createdAt: Timestamp.now() };
+}
+
+export async function toggleCommentLike(post, comment, liked) {
+  const uid = me();
+  const ref_ = doc(db, "posts", post.id, "comments", comment.id);
+  const batch = writeBatch(db);
+  if (liked) batch.delete(doc(ref_, "likes", uid));
+  else batch.set(doc(ref_, "likes", uid), { createdAt: serverTimestamp() });
+  batch.update(ref_, { likeCount: increment(liked ? -1 : 1), lastLiker: uid });
+  await batch.commit();
+}
+
+/** Ids of the comments the viewer has liked. Only comments with likes are checked. */
+export async function fetchMyCommentLikes(postId, comments) {
+  const uid = me();
+  if (!uid) return new Set();
+  const liked = new Set();
+  await Promise.all(comments.filter((c) => (c.likeCount || 0) > 0).map(async (c) => {
+    const snap = await getDoc(doc(db, "posts", postId, "comments", c.id, "likes", uid)).catch(() => null);
+    if (snap?.exists()) liked.add(c.id);
+  }));
+  return liked;
 }
 
 export async function deleteCommentAndCount(postId, commentId) {
@@ -555,6 +583,7 @@ export async function deleteCommentAndCount(postId, commentId) {
   }
 }
 
-export async function deleteComment(post, commentId) {
-  await deleteCommentAndCount(post.id, commentId);
+export async function deleteComment(post, comment) {
+  await deleteCommentAndCount(post.id, comment.id);
+  if (comment.image?.url) await deleteInline(comment.image.url).catch(() => {});
 }

@@ -1,10 +1,11 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
-  fetchFeed, fetchFollowersPosts, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
+  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
 import { latestFirst } from "../lib/algorithm";
+import { hitsHiddenWords } from "../lib/moderation";
 import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
 import { useShell } from "./shell/ShellContext";
@@ -15,6 +16,7 @@ import Button from "./ui/Button";
 import { EmptyState, ErrorState, Skeleton, Loading, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import PostCard, { POST_LIST } from "./PostCard";
+import NewsFeedCard from "./news/NewsFeedCard";
 import StoryRail from "./StoryRail";
 import { PhotoNudge } from "./ProfilePhoto";
 
@@ -26,7 +28,10 @@ const KEEP_MS = 15 * 60 * 1000;
 let lastTopic = "all";
 
 // For you: everyone's public posts plus followers-only posts from people you
-// follow. Following: only people you follow. Both newest first.
+// follow. Following: only people you follow. Both newest first, with stories
+// from journalists you follow mixed in by when they were published.
+const postTime = (p) => (p.kind === "news" ? p.at : Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at)));
+
 export default function HomeFeed({ mode }) {
   const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, feedKey, guest } = useShell();
   const toast = useToast();
@@ -45,7 +50,7 @@ export default function HomeFeed({ mode }) {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [shown, setShown] = useState(restored?.shown ?? PAGE);
-  const [viewer, setViewerState] = usePostStates(posts?.slice(0, shown), keepKey);
+  const [viewer, setViewerState] = usePostStates(posts?.slice(0, shown).filter((p) => p.kind !== "news"), keepKey);
 
   const setTopic = (t) => {
     lastTopic = t;
@@ -67,11 +72,12 @@ export default function HomeFeed({ mode }) {
     setError(false);
     if (quiet) setRefreshing(true);
     try {
-      const [list, followersOnly, hidden, reposts] = await Promise.all([
+      const [list, followersOnly, hidden, reposts, news] = await Promise.all([
         topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
         following.size ? fetchFollowersPosts(following) : [],
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
+        following.size && topic === "all" ? fetchFollowedNews(following).catch(() => []) : [],
       ]);
       const pool = [...list, ...followersOnly.filter((p) => topic === "all" || p.topics?.includes(topic))];
 
@@ -89,7 +95,11 @@ export default function HomeFeed({ mode }) {
       const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !hiddenAuthors.has(p.authorId));
 
       const ordered = latestFirst(visible, { followingSet: following, myUid: me(), hiddenWords, hideAi });
-      setPosts(mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered);
+      const stories = news
+        .filter((s) => !hiddenAuthors.has(s.authorId) && !hitsHiddenWords(`${s.title} ${s.standfirst || ""}`, hiddenWords))
+        .map((s) => ({ id: `news:${s.id}`, kind: "news", story: s, authorId: s.authorId, at: tsMillis(s.publishedAt) || tsMillis(s.createdAt) }));
+      const feed = mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered;
+      setPosts([...feed, ...stories].sort((a, b) => postTime(b) - postTime(a)));
       loadedAt.current = Date.now();
     } catch (err) {
       console.error(err);
@@ -138,10 +148,13 @@ export default function HomeFeed({ mode }) {
 
   const remove = (id) => setPosts((prev) => prev.filter((p) => p.id !== id));
   // Apply blocks, mutes and the AI setting immediately; drop Flicks once the Flicks cap is reached.
-  const flicksLocked = !!useBrick().state("flicks");
+  const brick = useBrick();
+  const flicksLocked = !!brick.state("flicks");
+  const newsLocked = !!brick.state("news");
   const visiblePosts = posts?.filter((p) => !hiddenAuthors.has(p.authorId)
     && !(hideAi && p.aiGenerated && p.authorId !== me())
-    && !(flicksLocked && (p.kind === "short" || p.kind === "video"))) ?? null;
+    && !(flicksLocked && (p.kind === "short" || p.kind === "video"))
+    && !(newsLocked && p.kind === "news")) ?? null;
   const page = visiblePosts?.slice(0, shown) ?? null;
   const more = visiblePosts ? visiblePosts.length - shown : 0;
 
@@ -193,10 +206,10 @@ export default function HomeFeed({ mode }) {
 
           {page?.length > 0 && (
             <div className={`stagger ${POST_LIST}`}>
-              {page.map((p) => (
+              {page.map((p) => (p.kind === "news" ? <NewsFeedCard key={p.id} story={p.story} /> : (
                 <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove}
                   onChanged={(id, changes) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, ...changes } : x)))} />
-              ))}
+              )))}
             </div>
           )}
 

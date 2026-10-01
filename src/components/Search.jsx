@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search as SearchIcon, X, History, Clapperboard, Newspaper, Blend, CalendarDays,
-  UserPlus, UserCheck, ShieldCheck, ArrowRight, SearchX, Play, Type, Lock,
+  UserPlus, UserCheck, BadgeCheck, ArrowRight, SearchX, Play, Type, Lock,
 } from "lucide-react";
 import { search, recentSearches, rememberSearch, forgetSearch, clearRecentSearches, loadPool } from "../lib/search";
 import { toggleFollow, openUserProfile, openPost, openWatch, me } from "../lib/db";
@@ -498,7 +498,7 @@ function ResultRow({ section, item, q, big = false }) {
         <span className={`block ${big ? "text-title-3" : "text-callout font-semibold"}`}><Highlight text={title} query={q} /></span>
         <span className="mt-0.5 block truncate text-caption text-fg-subtle">{meta}</span>
         {body && <span className="mt-1 line-clamp-2 text-caption text-fg-muted"><Highlight text={body.slice(0, 200)} query={q} /></span>}
-        {section === "news" && <Badge tone="success" icon={ShieldCheck} className="mt-2">Reviewed against sources</Badge>}
+        {section === "news" && <Badge tone="accent" icon={BadgeCheck} className="mt-2">Verified journalist</Badge>}
       </span>
     </button>
   );

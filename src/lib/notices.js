@@ -4,7 +4,7 @@ import { openStory } from "./openStory";
 import { navigate } from "./router";
 
 export function openNotice(n) {
-  if (["like", "repost", "comment", "mention"].includes(n.type) && n.postId) return openPost(n.postId);
+  if (["like", "repost", "comment", "reply", "mention"].includes(n.type) && n.postId) return openPost(n.postId);
   if (["family", "familyok", "familyask"].includes(n.type)) return navigate("/account/brick");
   if (n.type === "invite") return navigate(`/gatherings/${n.ref}`);
   if (n.type === "joined") return navigate(`/circles/${n.ref}`);

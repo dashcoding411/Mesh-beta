@@ -1,4 +1,4 @@
-import { Crown, FlaskConical, Gem, Sparkles } from "lucide-react";
+import { BadgeCheck, Crown, FlaskConical, Gem, Sparkles } from "lucide-react";
 
 // Profile badges (see lib/badges.js), most distinguished first. The founders'
 // shimmer (gold and silver); the queen's shimmers, glows and twinkles; beta
@@ -21,6 +21,16 @@ const BADGES = [
     className: "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-[0_0_12px_rgb(217_70_239_/_0.35)]",
   },
 ];
+
+/** The purple tick by a verified journalist's name. */
+export function VerifiedTick({ size = 16, className = "", decorative = false }) {
+  return (
+    <span title={decorative ? undefined : "Verified journalist"} className={`inline-flex shrink-0 ${className}`}>
+      <BadgeCheck size={size} strokeWidth={2.2} className="fill-accent text-white" aria-hidden="true" />
+      {!decorative && <span className="sr-only">Verified journalist</span>}
+    </span>
+  );
+}
 
 const held = (badges) => BADGES.filter((b) => badges?.includes(b.id));
 

@@ -1,4 +1,4 @@
-import { ChevronDown, MapPin, Newspaper, PenLine, ShieldCheck, Radio } from "lucide-react";
+import { ChevronDown, MapPin, Newspaper, PenLine, Radio } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
@@ -8,6 +8,7 @@ import { Meta, TopicLabel } from "./parts";
 import { AuthorLine } from "./Journalist";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
+import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
 import MediaImg from "../ui/MediaImg";
 import { EmptyState, ErrorState, Skeleton } from "../ui/States";
@@ -153,7 +154,7 @@ function HowItWorks({ writer }) {
   return (
     <details className="group rounded-card border border-line bg-surface">
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <ShieldCheck size={20} className="shrink-0 text-success-text" aria-hidden="true" />
+        <VerifiedTick size={22} decorative />
         <span className="min-w-0 flex-1">
           <span className="block text-callout font-semibold">Reported by verified journalists</span>
           <span className="block text-caption text-fg-subtle">How Mesh News works</span>

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Plus, Menu, Keyboard, LogIn, UserPlus } from "lucide-react";
+import { Plus, Menu, LogIn, UserPlus } from "lucide-react";
 import { authPath, navigate } from "../../lib/router";
 import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 import Avatar from "../ui/Avatar";
@@ -74,10 +74,7 @@ function MoreMenu({ page, guest }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef(null);
   const button = useRef(null);
-  const entries = [
-    ...navFor(MORE_NAV, guest).map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) })),
-    { label: "Keyboard shortcuts", icon: Keyboard, run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })) },
-  ];
+  const entries = navFor(MORE_NAV, guest).map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) }));
 
   useEffect(() => {
     if (!open) return;

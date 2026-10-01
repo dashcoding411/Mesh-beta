@@ -16,7 +16,8 @@ import RichText from "./ui/RichText";
 import { Field, Input, Textarea } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
-import { ProfileBadges } from "./ui/Badges";
+import { ProfileBadges, VerifiedTick } from "./ui/Badges";
+import { useJournalist } from "../lib/journalists";
 import { badgesOf } from "../lib/badges";
 import { Tile } from "./Search";
 
@@ -39,6 +40,7 @@ function useVerifiedSpouse(profile) {
 export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar }) {
   const joined = tsMillis(profile.createdAt);
   const spouse = useVerifiedSpouse(profile);
+  const journalist = useJournalist(profile.id);
 
   return (
     <section aria-label="Profile" className="px-4 pb-4 pt-5 md:px-6">
@@ -47,6 +49,7 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
         <div className="min-w-0 flex-1 pt-1">
           <h1 className="flex min-w-0 items-center gap-2 text-title-1">
             <span className="truncate">{profile.name || profile.username}</span>
+            {journalist && <VerifiedTick size={22} />}
             {profile.isPrivate && (
               <span title="Private account" className="shrink-0 text-fg-muted">
                 <Lock size={18} aria-hidden="true" /><span className="sr-only">Private account</span>

@@ -130,7 +130,7 @@ export function QuickComment({ post, onAdded }) {
     setBusy(true);
     setError("");
     try {
-      const c = await addComment(post, v.text, null, mod.sensitive);
+      const c = await addComment(post, v.text, { sensitive: mod.sensitive });
       markPosted("comment", v.text);
       setText("");
       onAdded(c);

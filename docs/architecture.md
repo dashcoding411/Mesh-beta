@@ -31,7 +31,7 @@
 | --- | --- |
 | `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
 | `usernames/{handle}` | Handle registry; claimed and released only together with the profile. |
-| `posts/{id}` | `kind`: `post` (Still), `text` (Strand), `short` / `video` (Flicks). Carousels store `media[]` (2–10 slides; `media[0]` mirrors `mediaUrl`). Subcollections: `likes`, `saves`, `sends`, `votes`, `comments`. |
+| `posts/{id}` | `kind`: `post` (Still), `text` (Strand), `short` / `video` (Flicks). Carousels store `media[]` (2–10 slides; `media[0]` mirrors `mediaUrl`). Subcollections: `likes`, `saves`, `sends`, `votes`, `comments` (each with `likes`). |
 | `reposts/{postId}_{uid}` | One per user per post; public posts by others only. |
 | `stories/{id}` | 24h media. `views/{uid}` and `likes/{uid}` are author-only; `echoes/` are public replies. |
 | `chats/{id}` | 1:1 ids are the sorted uid pair. Subcollections: `messages`, `media` (voice notes, photos), `typing`, `reads`. |
@@ -81,6 +81,10 @@ report.
 
 Followers-only posts are fetched with a query per followed author (up to 100),
 because the rules have to check each author's follower list.
+
+Published stories by journalists the viewer follows are mixed into both Home
+feeds by publication time (not in interest topics, and not while News is
+bricked).
 
 Flicks and Search's Explore grid are ranked. Posts are scored as expected value per minute of viewer attention so formats
 of very different lengths are comparable. Components: author affinity
@@ -211,6 +215,16 @@ the journalist's attestation, records a revision, and is blocked while the
 story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
+
+## Comments
+
+Threaded like Reddit: a reply stores `parentId`, which the rules require to
+exist, and its parent's author is notified (`reply`, verified against both
+comments). Threads nest four levels, then continue at that level naming who
+they answer; a deleted comment leaves a placeholder over its replies. Sorted
+Top (likes, then oldest) or New. Comment likes are `comments/{id}/likes/{uid}`
+tied to `likeCount` with `lastLiker`. A comment can carry one photo (`image`:
+Cloud Storage or the author's own inline media) or a GIF.
 
 ## Stories
 

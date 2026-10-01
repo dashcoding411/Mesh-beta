@@ -121,6 +121,12 @@ service cloud.firestore {
     function gifOk(g) {
       return g is map && g.url is string && g.url.matches('^https://media[0-9]*[.]giphy[.]com/.*$');
     }
+    function commentImageOk(img) {
+      return img is map && img.keys().hasOnly(['url', 'w', 'h'])
+        && img.get('w', 0) is int && img.get('h', 0) is int
+        && img.url is string
+        && (img.url.matches('^https://firebasestorage[.]googleapis[.]com/.*') || ownInlineImage(img.url));
+    }
     // Inline photos: mesh-media:<id>, owned by the caller.
     function ownInlineImage(url) {
       return url.matches('^mesh-media:[A-Za-z0-9]{20}$')
@@ -174,9 +180,19 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/users/$(uid)/followRequests/$(actor)))
         || (n.type == 'accept' && id == 'accept_' + actor && n.text == ''
             && exists(/databases/$(database)/documents/users/$(actor)/followers/$(uid)))
+        || (n.type == 'reply' && replyNotice(uid, id, n, actor))
         || familyNotice(uid, id, n, actor)
         || inviteNotice(uid, id, n, actor)
         || storyNotice(uid, id, n, actor);
+    }
+    // A reply to `uid`'s comment.
+    function replyNotice(uid, id, n, actor) {
+      let reply = get(/databases/$(database)/documents/posts/$(n.postId)/comments/$(n.commentId)).data;
+      return id == 'reply_' + n.commentId
+        && reply.authorId == actor
+        && reply.get('parentId', '') != ''
+        && get(/databases/$(database)/documents/posts/$(n.postId)/comments/$(reply.parentId)).data.authorId == uid
+        && reply.text[0:n.text.size()] == n.text;
     }
     // Story likes and echoes (`ref` is the story id).
     function storyNotice(uid, id, n, actor) {
@@ -1176,16 +1192,23 @@ service cloud.firestore {
         }
         allow read: if (guest() && parentPost().visibility == 'public')
           || (signedIn() && canReadPost(parentPost()) && !lockedFor(''));
+        // Replies name their parent comment (parentId); a comment can carry one
+        // photo (an owned inline image or a Storage URL).
         allow create: if signedIn()
-          && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive', 'createdAt'])
+          && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive',
+                                            'parentId', 'image', 'likeCount', 'createdAt'])
           && authorIsMe(incomingData())
           && incomingData().createdAt == request.time
           && rateOk('comment', 3)
           && incomingData().get('sensitive', false) is bool
+          && incomingData().get('likeCount', 0) == 0
           && incomingData().text is string
           && incomingData().text.size() <= 2000
-          && (incomingData().text.size() > 0 || 'gif' in incomingData())
+          && (incomingData().text.size() > 0 || 'gif' in incomingData() || 'image' in incomingData())
           && (!('gif' in incomingData()) || gifOk(incomingData().gif))
+          && (incomingData().get('parentId', '') == ''
+              || exists(/databases/$(database)/documents/posts/$(postId)/comments/$(incomingData().parentId)))
+          && (!('image' in incomingData()) || commentImageOk(incomingData().image))
           && (incomingData().get('sensitive', false) == true || hateFree(incomingData().text))
           && notSuspended()
           && canReadPost(parentPost())
@@ -1196,11 +1219,28 @@ service cloud.firestore {
                   && (profileOf(parentPost().authorId).get('commentPolicy', 'everyone') == 'everyone'
                       || (profileOf(parentPost().authorId).get('commentPolicy', 'everyone') == 'following'
                           && follows(parentPost().authorId, request.auth.uid)))));
-        allow update: if false;
+        // Like counts move only with the liker's record.
+        allow update: if signedIn()
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['likeCount', 'lastLiker'])
+          && incomingData().lastLiker == request.auth.uid
+          && tiedCount(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId), 'likeCount',
+                       /databases/$(database)/documents/posts/$(postId)/comments/$(commentId)/likes/$(request.auth.uid));
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
               || isAdmin());
+
+        match /likes/{uid} {
+          allow read: if (guest() && get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public')
+            || (signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data));
+          allow create: if isUser(uid)
+            && incomingData().keys().hasOnly(['createdAt'])
+            && incomingData().createdAt == request.time
+            && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data)
+            && notSuspended();
+          allow update: if false;
+          allow delete: if isUser(uid);
+        }
       }
     }
 

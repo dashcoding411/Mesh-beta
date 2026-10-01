@@ -1,14 +1,16 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { ImagePlus, Landmark, MapPin, Newspaper, PenLine, Trash2 } from "lucide-react";
+import { ImagePlus, Landmark, MapPin, Newspaper, PenLine, Trash2, UserCheck, UserPlus } from "lucide-react";
 import { newsTopicById } from "../../lib/interests";
 import { forgetJournalist, useJournalist } from "../../lib/journalists";
 import { useLiveCard } from "../../lib/profileCache";
-import { openUserProfile, saveJournalist, uploadMedia, me } from "../../lib/db";
+import { openUserProfile, saveJournalist, toggleFollow, uploadMedia, me } from "../../lib/db";
+import { useShell } from "../shell/ShellContext";
 import { navigate } from "../../lib/router";
 import { Meta, TopicLabel } from "./parts";
 import LiveAvatar from "../ui/LiveAvatar";
 import MediaImg from "../ui/MediaImg";
 import Badge from "../ui/Badge";
+import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { Field, Input } from "../ui/Field";
@@ -36,6 +38,42 @@ function Affiliation({ value }) {
   return <Badge tone="warning" icon={Landmark}>Political affiliation: {value}</Badge>;
 }
 
+/** Follow from a byline, so their stories show up in Home. */
+function FollowJournalist({ uid, username }) {
+  const toast = useToast();
+  const { following, setFollowing, needsAccount } = useShell();
+  const [busy, setBusy] = useState(false);
+  if (uid === me()) return null;
+  const on = following.has(uid);
+  const toggle = async () => {
+    if (needsAccount("follow journalists")) return;
+    setBusy(true);
+    try {
+      const result = await toggleFollow({ id: uid, username }, on);
+      if (result === "requested") {
+        toast({ title: "Request sent", body: `@${username} will decide whether to approve it.` });
+        return;
+      }
+      setFollowing((prev) => {
+        const next = new Set(prev);
+        if (on) next.delete(uid); else next.add(uid);
+        return next;
+      });
+      if (!on) toast({ title: `Following @${username}`, body: "Their stories will show up in Home." });
+    } catch {
+      toast({ tone: "error", title: "Couldn't update follow" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button size="sm" variant={on ? "secondary" : "primary"} icon={on ? UserCheck : UserPlus} loading={busy}
+      onClick={toggle} className="shrink-0" aria-label={`${on ? "Unfollow" : "Follow"} @${username}`}>
+      {on ? "Following" : "Follow"}
+    </Button>
+  );
+}
+
 /** One author on a story: logo, name, outlet, region and any affiliation. */
 export function Byline({ uid, username }) {
   const journalist = useJournalist(uid);
@@ -46,8 +84,9 @@ export function Byline({ uid, username }) {
         <Mark uid={uid} journalist={journalist} username={username} size={40} />
       </button>
       <div className="min-w-0">
-        <button type="button" onClick={() => openUserProfile(uid)} className="block truncate text-left text-callout font-semibold text-fg hover:underline">
-          {card.name || `@${username}`}
+        <button type="button" onClick={() => openUserProfile(uid)} className="flex min-w-0 items-center gap-1 text-left text-callout font-semibold text-fg hover:underline">
+          <span className="truncate">{card.name || `@${username}`}</span>
+          {journalist && <VerifiedTick size={15} />}
         </button>
         <p className="flex flex-wrap items-center gap-x-1.5 text-caption text-fg-subtle">
           <span>{outletOf(journalist)}</span>
@@ -55,6 +94,7 @@ export function Byline({ uid, username }) {
         </p>
         {journalist?.affiliation && <div className="mt-1"><Affiliation value={journalist.affiliation} /></div>}
       </div>
+      <span className="ml-auto pl-2"><FollowJournalist uid={uid} username={username} /></span>
     </div>
   );
 }
@@ -71,6 +111,7 @@ export function AuthorLine({ item }) {
       <Mark uid={uid} journalist={journalist} username={username} size={20} />
       <span className="min-w-0 truncate">
         <span className="font-semibold text-fg">{card.name || `@${username}`}</span>
+        {journalist && <VerifiedTick size={13} className="ml-0.5 align-[-2px]" />}
         {more > 0 && ` and ${more} more`}
         <span className="text-fg-subtle"> · {outletOf(journalist)}</span>
         {journalist?.affiliation && <span className="text-warning-text"> · {journalist.affiliation}</span>}
@@ -92,7 +133,7 @@ export function JournalistCard({ uid, journalist, stories, onEdit }) {
         <Mark uid={uid} journalist={journalist} username={journalist.username} size={48} />
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-accent-text">
-            <Newspaper size={12} aria-hidden="true" /> Journalist
+            <VerifiedTick size={14} decorative /> Verified journalist
           </p>
           <p className="truncate text-title-3">{outletOf(journalist)}</p>
         </div>

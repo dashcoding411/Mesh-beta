@@ -62,6 +62,12 @@ export async function fetchStoriesBy(uid) {
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).includes(uid));
 }
 
+/** Published stories by journalists in `following`, for Home. */
+export async function fetchFollowedNews(following) {
+  const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(50)));
+  return snapToList(snap).filter((s) => (s.authors || [s.authorId]).some((uid) => following.has(uid)));
+}
+
 // Stories
 
 export function storyFromDoc(snap) {

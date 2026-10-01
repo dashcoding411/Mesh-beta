@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
@@ -91,7 +91,7 @@ export default function Settings() {
 
           <Group title="Sign-in">
             <Row icon={Mail} label="Email" value={user?.email || "Not set"}
-              meta={user?.email ? (user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null}
+              meta={user?.email ? (user.emailVerified ? <Badge tone="accent">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null}
               help={user?.email && !user.emailVerified ? "Verifying lets you recover your account if you lose access." : null}
               action={user?.email && !user.emailVerified && <VerifyEmailButton email={user.email} />} />
             <Row icon={Phone} label="Phone" value={user?.phoneNumber || "Not set"} />
@@ -181,7 +181,6 @@ export default function Settings() {
                 : "Set it once to post publicly. It's used only for age protections and never shown to anyone."}
               action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
           </Group>
-
 
           <Group title="Account">
             <Row icon={LogOut} label="Sign out" value="Of Mesh on this device" onClick={() => setDialog("signout")} />
@@ -305,6 +304,11 @@ function AppearanceGroup() {
             onChange={(v) => setAppearance({ [key]: v })} />
         </div>
       ))}
+      {/* Shortcuts need a keyboard, so not on phones. */}
+      <div className="hidden md:block">
+        <Row icon={Keyboard} label="Keyboard shortcuts" value="Post, search and move around without the mouse. Press ? anywhere to see them."
+          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))} />
+      </div>
       <p className="px-4 py-3 text-caption text-fg-subtle">Saved on this device only.</p>
     </Group>
   );

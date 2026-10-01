@@ -1,47 +1,69 @@
-import { useEffect, useRef, useState } from "react";
-import { MessageCircle, SendHorizontal, Trash2, Lock, Sticker, X, Flag, EyeOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  MessageCircle, SendHorizontal, Trash2, Lock, Sticker, X, Flag, EyeOff, Heart, Reply, ImagePlus, Plus,
+} from "lucide-react";
 import ReportDialog from "./ReportDialog";
 import { gifsEnabled } from "../lib/gifs";
 import GifPicker, { GifView } from "./GifPicker";
-import { fetchComments, addComment, deleteComment, openUserProfile, fetchProfile, me } from "../lib/db";
+import {
+  fetchComments, addComment, deleteComment, toggleCommentLike, fetchMyCommentLikes, uploadPhotos, openUserProfile,
+  fetchProfile, me, StorageUnavailableError,
+} from "../lib/db";
 import { useShell } from "./shell/ShellContext";
+import { buildCommentTree, countReplies } from "../lib/commentTree";
 import { authPath, navigate } from "../lib/router";
-import { LIMITS, validateText } from "../lib/validate";
+import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
-import { shortTime, fullTime, isoTime } from "../lib/format";
+import { shortTime, fullTime, isoTime, compact, plural } from "../lib/format";
 import Dialog from "./ui/Dialog";
 import LiveAvatar from "./ui/LiveAvatar";
 import IconButton from "./ui/IconButton";
+import MediaImg from "./ui/MediaImg";
 import RichText from "./ui/RichText";
+import Segmented from "./ui/Segmented";
 import { Textarea } from "./ui/Field";
 import { Skeleton, EmptyState, ErrorState, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
+// Replies nest under the comment they answer, Reddit-style, up to MAX_DEPTH
+// levels; deeper replies continue at that level. A thread line collapses
+// its replies.
+const MAX_DEPTH = 4;
+
 export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const toast = useToast();
-  const { hiddenAuthors, hiddenWords, guest } = useShell();
+  const { guest, needsAccount } = useShell();
   const [reporting, setReporting] = useState(null);
-  const [revealed, setRevealed] = useState(new Set());
   const [closedReason, setClosedReason] = useState("");
   const [comments, setComments] = useState(null);
+  const [liked, setLiked] = useState(new Set());
+  const [sort, setSort] = useState("top");
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [revealed, setRevealed] = useState(new Set());
   const [loadError, setLoadError] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [gif, setGif] = useState(null);
+  const [photo, setPhoto] = useState(null); // { file, url }
   const [picking, setPicking] = useState(false);
-  const listEnd = useRef(null);
+  const fileInput = useRef(null);
   const inputRef = useRef(null);
   const isAuthor = post.authorId === me();
 
   const load = () => {
     setLoadError(false);
     setComments(null);
-    fetchComments(post.id).then(setComments).catch(() => setLoadError(true));
+    fetchComments(post.id)
+      .then((list) => {
+        setComments(list);
+        fetchMyCommentLikes(post.id, list).then(setLiked).catch(() => {});
+      })
+      .catch(() => setLoadError(true));
   };
-  useEffect(() => {
-    fetchComments(post.id).then(setComments).catch(() => setLoadError(true));
-  }, [post.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [post.id]);
 
   useEffect(() => {
     if (post.authorId === me()) return;
@@ -51,11 +73,31 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     }).catch(() => {});
   }, [post.authorId, post.authorName]);
 
+  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
+
+  const tree = useMemo(() => (comments ? buildCommentTree(comments, sort) : null), [comments, sort]);
+
+  const pickPhoto = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const v = validateMediaFile(file, "image");
+    if (v.error) return setError(v.error);
+    setGif(null);
+    setPhoto({ file, url: URL.createObjectURL(file) });
+  };
+
+  const startReply = (c) => {
+    if (needsAccount("reply to comments")) return;
+    setReplyTo(c);
+    inputRef.current?.focus();
+  };
+
   const submit = async (e) => {
     e?.preventDefault();
     const v = validateText(text, LIMITS.comment, "Comment");
     if (v.error) return setError(v.error);
-    if (!v.text && !gif) return;
+    if (!v.text && !gif && !photo) return;
     let flagged = null;
     if (v.text) {
       const mod = checkContent(v.text, { key: "comment", allowQuoted: true });
@@ -65,30 +107,41 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     setBusy(true);
     setError("");
     try {
-      const c = await addComment(post, v.text, gif && { url: gif.url, width: gif.width, height: gif.height, title: gif.title }, !!flagged);
+      let image = null;
+      if (photo) {
+        const [up] = await uploadPhotos([photo.file]);
+        image = { url: up.url, w: Math.round(up.width || 0), h: Math.round(up.height || 0) };
+      }
+      const c = await addComment(post, v.text, {
+        gif: gif && { url: gif.url, width: gif.width, height: gif.height, title: gif.title },
+        image, parent: replyTo, sensitive: !!flagged,
+      });
       markPosted("comment", v.text);
       setComments((prev) => [...(prev || []), c]);
+      if (replyTo) setCollapsed((s) => { const n = new Set(s); n.delete(replyTo.id); return n; });
       setText("");
       setGif(null);
+      setPhoto(null);
+      setReplyTo(null);
       onCountChange?.(1);
       onAdded?.(c);
       if (flagged) toast({ tone: "info", title: "Posted", body: flagged.quoted ? "Others will see a warning and tap to read it, as it quotes offensive language." : "It may be folded away for others, as it could come across as mocking a group." });
-      requestAnimationFrame(() => listEnd.current?.scrollIntoView({ behavior: "smooth" }));
     } catch (err) {
-      setError(err?.code === "permission-denied"
-        ? `@${post.authorName} only takes comments from people they follow.`
+      setError(err instanceof StorageUnavailableError ? "Photos can't be uploaded right now."
+        : err?.code === "permission-denied" ? `@${post.authorName} only takes comments from people they follow.`
         : "Couldn't post your comment. It's still here, so try again.");
     } finally {
       setBusy(false);
     }
   };
 
+  // A comment with replies leaves a placeholder so the thread holds together.
   const remove = async (c) => {
     const prev = comments;
     setComments((list) => list.filter((x) => x.id !== c.id));
     onCountChange?.(-1);
     try {
-      await deleteComment(post, c.id);
+      await deleteComment(post, c);
       toast({ title: "Comment deleted" });
     } catch {
       setComments(prev);
@@ -96,6 +149,22 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       toast({ tone: "error", title: "Couldn't delete that comment" });
     }
   };
+
+  const like = async (c) => {
+    if (needsAccount("like comments")) return;
+    const was = liked.has(c.id);
+    const bump = (d) => setComments((list) => list.map((x) => (x.id === c.id ? { ...x, likeCount: Math.max(0, (x.likeCount || 0) + d) } : x)));
+    setLiked((s) => { const n = new Set(s); if (was) n.delete(c.id); else n.add(c.id); return n; });
+    bump(was ? -1 : 1);
+    try { await toggleCommentLike(post, c, was); }
+    catch {
+      setLiked((s) => { const n = new Set(s); if (was) n.add(c.id); else n.delete(c.id); return n; });
+      bump(was ? 1 : -1);
+      toast({ tone: "error", title: "Couldn't update your like" });
+    }
+  };
+
+  const toggleThread = (id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const onKey = (e) => {
     // Enter submits on desktop; newline on touch.
@@ -106,6 +175,11 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   };
 
   const count = comments?.length ?? post.commentCount ?? 0;
+  const ctx = {
+    post, isAuthor, liked, collapsed, revealed, onLike: like, onReply: startReply, onRemove: remove,
+    onReport: (c) => (needsAccount("report comments") ? null : setReporting(c)),
+    onToggle: toggleThread, onReveal: (id) => setRevealed((r) => new Set(r).add(id)),
+  };
 
   return (
     <Dialog title={count ? `Comments (${count})` : "Comments"} onClose={onClose} size="lg" initialFocusRef={inputRef}
@@ -121,23 +195,33 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
         </p>
       ) : (
         <form onSubmit={submit} className="space-y-2">
-          {gif && (
+          {replyTo && (
+            <p className="flex items-center gap-2 text-caption text-fg-muted">
+              <Reply size={14} aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">Replying to <strong className="text-fg">@{replyTo.authorName}</strong></span>
+              <IconButton icon={X} label="Cancel reply" size={14} onClick={() => setReplyTo(null)} />
+            </p>
+          )}
+          {(gif || photo) && (
             <div className="relative w-28">
-              <GifView gif={gif} />
-              <IconButton icon={X} label="Remove GIF" tone="overlay" size={16} className="absolute -right-1 -top-1" onClick={() => setGif(null)} />
+              {gif ? <GifView gif={gif} /> : <img src={photo.url} alt="" className="max-h-28 w-28 rounded-control object-cover" />}
+              <IconButton icon={X} label={gif ? "Remove GIF" : "Remove photo"} tone="overlay" size={16} className="absolute -right-1 -top-1"
+                onClick={() => { setGif(null); setPhoto(null); }} />
             </div>
           )}
-          <div className="flex items-end gap-2">
-            {gifsEnabled && <IconButton icon={Sticker} label="Add a GIF" className="-ml-2 shrink-0" onClick={() => setPicking(true)} />}
-            <label htmlFor="comment-box" className="sr-only">Add a comment</label>
+          <div className="flex items-end gap-1">
+            <IconButton icon={ImagePlus} label="Add a photo" className="-ml-2 shrink-0" onClick={() => fileInput.current?.click()} />
+            {gifsEnabled && <IconButton icon={Sticker} label="Add a GIF" className="shrink-0" onClick={() => setPicking(true)} />}
+            <label htmlFor="comment-box" className="sr-only">{replyTo ? `Reply to @${replyTo.authorName}` : "Add a comment"}</label>
             <Textarea id="comment-box" ref={inputRef} autoGrow rows={1} maxRows={5} value={text}
               onChange={(e) => { setText(e.target.value); if (error) setError(""); }} onKeyDown={onKey}
-              placeholder={`Reply to @${post.authorName}…`} maxLength={LIMITS.comment}
+              placeholder={replyTo ? `Reply to @${replyTo.authorName}…` : `Comment on @${post.authorName}'s post…`} maxLength={LIMITS.comment}
               aria-invalid={error ? "true" : undefined} aria-describedby={error ? "comment-error" : undefined}
-              className="min-h-11" />
-            <IconButton type="submit" icon={SendHorizontal} label="Post comment" tone="primary"
-              disabled={busy || (!text.trim() && !gif)} />
+              className="ml-1 min-h-11" />
+            <IconButton type="submit" icon={SendHorizontal} label={replyTo ? "Post reply" : "Post comment"} tone="primary"
+              disabled={busy || (!text.trim() && !gif && !photo)} />
           </div>
+          <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={pickPhoto} aria-hidden="true" tabIndex={-1} />
           <div aria-live="polite"><InlineMessage id="comment-error">{error}</InlineMessage></div>
         </form>
       )}>
@@ -152,71 +236,130 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
           ))}
         </div>
       )}
-      {comments?.length === 0 && (
+      {tree?.length === 0 && (
         <EmptyState compact icon={MessageCircle} title="No comments yet"
           body={post.locked ? "Comments are paused on this post." : "Start the conversation. Say what you think."} />
       )}
-      {comments?.length > 0 && (
-        <ul className="divide-y divide-line">
-          {comments.filter((c) => !hiddenAuthors.has(c.authorId)).map((c) => {
-            // Collapsed behind a tap (never for the viewer's own comments).
-            const level = c.authorId === me() || revealed.has(c.id) ? "ok" : assessText(c.text).level;
-            const why = c.authorId === me() || revealed.has(c.id) ? ""
-              : hitsHiddenWords(c.text, hiddenWords) ? "Contains a word you've hidden"
-              : level === "quoted" ? "Quotes offensive language, to report or call it out"
-              : level === "block" ? "May break the Community Guidelines"
-              : level === "borderline" ? "Hidden because it may come across as mocking a group" : "";
-            if (why) {
-              return (
-                <li key={c.id} className="flex items-center gap-3 px-5 py-3 text-caption text-fg-subtle">
-                  <EyeOff size={16} aria-hidden="true" />
-                  <span className="flex-1">{why}</span>
-                  <button type="button" onClick={() => setRevealed((r) => new Set(r).add(c.id))}
-                    className="min-h-9 rounded-full px-3 font-semibold text-accent-text hover:bg-surface-2">Show</button>
-                </li>
-              );
-            }
-            return (
-            <li key={c.id} className="group flex gap-3 px-5 py-3">
-              <button type="button" onClick={() => c.authorId && openUserProfile(c.authorId)} className="h-fit shrink-0"
-                aria-label={`@${c.authorName}'s profile`}>
-                <LiveAvatar uid={c.authorId} profile={{ name: c.authorDisplayName, username: c.authorName, photoURL: c.authorPhoto }} size={32} />
-              </button>
-              <div className="min-w-0 flex-1">
-                <p className="flex items-baseline gap-1.5">
-                  <button type="button" onClick={() => c.authorId && openUserProfile(c.authorId)}
-                    className="truncate text-callout font-semibold hover:underline">
-                    {c.authorDisplayName || `@${c.authorName}`}
-                  </button>
-                  {c.authorId === post.authorId && (
-                    <span className="rounded bg-surface-3 px-1.5 text-label font-semibold text-fg-muted">Author</span>
-                  )}
-                  <time dateTime={isoTime(c.createdAt)} title={fullTime(c.createdAt)} className="shrink-0 text-caption text-fg-subtle">
-                    {shortTime(c.createdAt)}
-                  </time>
-                </p>
-                {c.text && <RichText text={c.text} className="mt-0.5 text-callout text-fg" />}
-                {c.gif && <GifView gif={c.gif} className="mt-1.5 max-w-[220px]" />}
-              </div>
-              {(c.authorId === me() || isAuthor) && c.id && (
-                <IconButton icon={Trash2} label="Delete comment" size={16} className="-mr-2 shrink-0 opacity-70 hover:opacity-100"
-                  onClick={() => remove(c)} />
-              )}
-              {!guest && c.authorId !== me() && c.id && (
-                <IconButton icon={Flag} label={`Report @${c.authorName}'s comment`} size={16}
-                  className="-mr-2 shrink-0 opacity-60 hover:opacity-100" onClick={() => setReporting(c)} />
-              )}
-            </li>
-            );
-          })}
-        </ul>
+      {tree?.length > 0 && (
+        <>
+          <div className="px-5 pb-2">
+            <Segmented label="Sort comments" value={sort} onChange={setSort} className="w-44"
+              options={[{ id: "top", label: "Top" }, { id: "new", label: "New" }]} />
+          </div>
+          <ul className="space-y-4 px-4 pb-4">
+            {tree.map((n) => <CommentNode key={n.id} node={n} depth={0} ctx={ctx} />)}
+          </ul>
+        </>
       )}
-      <div ref={listEnd} />
       {reporting && (
         <ReportDialog onClose={() => setReporting(null)}
           target={{ type: "comment", id: reporting.id, authorId: reporting.authorId, postId: post.id, text: reporting.text }} />
       )}
-      {picking && <GifPicker onClose={() => setPicking(false)} onPick={(g) => { setGif(g); setPicking(false); }} />}
+      {picking && <GifPicker onClose={() => setPicking(false)} onPick={(g) => { setGif(g); setPhoto(null); setPicking(false); }} />}
     </Dialog>
+  );
+}
+
+function CommentNode({ node, depth, ctx, replyingTo }) {
+  const { hiddenAuthors, hiddenWords } = useShell();
+  const mine = node.authorId === me();
+  const isOpen = !ctx.collapsed.has(node.id);
+  const nest = depth < MAX_DEPTH;
+  const replies = node.children;
+
+  // Folded behind a tap: muted or blocked authors, hidden words, flagged wording.
+  const level = node.deleted || mine || ctx.revealed.has(node.id) ? "ok" : assessText(node.text).level;
+  const why = node.deleted || mine || ctx.revealed.has(node.id) ? ""
+    : hiddenAuthors.has(node.authorId) ? "From an account you've muted or blocked"
+    : hitsHiddenWords(node.text, hiddenWords) ? "Contains a word you've hidden"
+    : level === "quoted" ? "Quotes offensive language, to report or call it out"
+    : level === "block" ? "May break the Community Guidelines"
+    : level === "borderline" ? "Hidden because it may come across as mocking a group" : "";
+
+  const body = node.deleted ? (
+    <p className="py-1 text-callout italic text-fg-subtle">This comment was deleted.</p>
+  ) : why ? (
+    <p className="flex items-center gap-2 py-1 text-caption text-fg-subtle">
+      <EyeOff size={14} aria-hidden="true" /><span className="flex-1">{why}</span>
+      <button type="button" onClick={() => ctx.onReveal(node.id)} className="min-h-8 rounded-full px-2.5 font-semibold text-accent-text hover:bg-surface-2">Show</button>
+    </p>
+  ) : (
+    <>
+      <p className="flex flex-wrap items-baseline gap-x-1.5">
+        <button type="button" onClick={() => openUserProfile(node.authorId)} className="truncate text-callout font-semibold hover:underline">
+          {node.authorDisplayName || `@${node.authorName}`}
+        </button>
+        {node.authorId === ctx.post.authorId && <span className="rounded bg-accent-soft px-1.5 text-label font-semibold text-accent-text">Author</span>}
+        <time dateTime={isoTime(node.createdAt)} title={fullTime(node.createdAt)} className="text-caption text-fg-subtle">{shortTime(node.createdAt)}</time>
+      </p>
+      {replyingTo && <p className="text-caption text-fg-subtle">Replying to @{replyingTo}</p>}
+      {node.text && <RichText text={node.text} className="mt-0.5 text-callout text-fg" />}
+      {node.gif && <GifView gif={node.gif} className="mt-1.5 max-w-[220px]" />}
+      {node.image && (
+        <MediaImg src={node.image.url} alt="Photo in a comment" loading="lazy"
+          className="mt-1.5 max-h-72 max-w-[260px] rounded-control object-cover" placeholderClass="mt-1.5 h-40 w-[200px] rounded-control" />
+      )}
+      <div className="-ml-2 mt-0.5 flex items-center" role="group" aria-label="Comment actions">
+        <button type="button" onClick={() => ctx.onLike(node)} aria-pressed={ctx.liked.has(node.id)}
+          aria-label={`${ctx.liked.has(node.id) ? "Unlike" : "Like"}, ${plural(node.likeCount || 0, "like")}`}
+          className={`press inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-caption font-semibold ${ctx.liked.has(node.id) ? "text-like" : "text-fg-muted hover:text-fg"}`}>
+          <Heart size={15} fill={ctx.liked.has(node.id) ? "currentColor" : "none"} aria-hidden="true" />
+          {node.likeCount > 0 && <span className="tabular">{compact(node.likeCount)}</span>}
+        </button>
+        <button type="button" onClick={() => ctx.onReply(node)}
+          className="press inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-caption font-semibold text-fg-muted hover:text-fg">
+          <Reply size={15} aria-hidden="true" /> Reply
+        </button>
+        {(mine || ctx.isAuthor) && (
+          <IconButton icon={Trash2} label="Delete comment" size={15} className="opacity-70 hover:opacity-100" onClick={() => ctx.onRemove(node)} />
+        )}
+        {!mine && (
+          <IconButton icon={Flag} label={`Report @${node.authorName}'s comment`} size={15} className="opacity-60 hover:opacity-100" onClick={() => ctx.onReport(node)} />
+        )}
+      </div>
+    </>
+  );
+
+  const self = (
+    <li className="flex gap-2.5">
+      <div className="flex shrink-0 flex-col items-center">
+        {node.deleted ? (
+          <span className="h-7 w-7 rounded-full bg-surface-2" aria-hidden="true" />
+        ) : (
+          <button type="button" onClick={() => openUserProfile(node.authorId)} aria-label={`@${node.authorName}'s profile`}>
+            <LiveAvatar uid={node.authorId} profile={{ name: node.authorDisplayName, username: node.authorName, photoURL: node.authorPhoto }} size={depth ? 24 : 30} />
+          </button>
+        )}
+        {/* The thread line: tap to fold this comment's replies. */}
+        {nest && replies.length > 0 && isOpen && (
+          <button type="button" onClick={() => ctx.onToggle(node.id)} aria-label={`Hide ${plural(countReplies(replies), "reply", "replies")}`}
+            className="group mt-1 flex w-5 flex-1 justify-center">
+            <span className="w-0.5 rounded-full bg-line-strong transition-colors group-hover:bg-accent-text" />
+          </button>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        {body}
+        {nest && replies.length > 0 && (isOpen ? (
+          <ul className="mt-3 space-y-3">
+            {replies.map((r) => <CommentNode key={r.id} node={r} depth={depth + 1} ctx={ctx} />)}
+          </ul>
+        ) : (
+          <button type="button" onClick={() => ctx.onToggle(node.id)}
+            className="press mt-1 inline-flex min-h-8 items-center gap-1 rounded-full px-1 text-caption font-semibold text-accent-text hover:underline">
+            <Plus size={13} aria-hidden="true" /> {plural(countReplies(replies), "more reply", "more replies")}
+          </button>
+        ))}
+      </div>
+    </li>
+  );
+
+  if (nest || !replies.length) return self;
+  // At the deepest level, replies continue alongside with who they answer.
+  return (
+    <>
+      {self}
+      {replies.map((r) => <CommentNode key={r.id} node={r} depth={depth} ctx={ctx} replyingTo={node.authorName} />)}
+    </>
   );
 }

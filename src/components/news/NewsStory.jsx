@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, ShieldCheck, X, Radio,
+  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, X, Radio,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -19,6 +19,7 @@ import { Byline } from "./Journalist";
 import { TopicLabel } from "./parts";
 import { readMinutes, storyUrl } from "./text";
 import Badge from "../ui/Badge";
+import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
 import Dialog, { ConfirmDialog } from "../ui/Dialog";
 import { Field, Textarea } from "../ui/Field";
@@ -96,8 +97,8 @@ export function NewsStory({ id }) {
               </div>
 
               {story.status === "approved" ? (
-                <p className="mt-4 flex items-start gap-2 rounded-control bg-success-text/10 p-3 text-caption text-fg-muted">
-                  <ShieldCheck size={16} className="mt-0.5 shrink-0 text-success-text" aria-hidden="true" />
+                <p className="mt-4 flex items-start gap-2 rounded-control bg-accent-soft p-3 text-caption text-fg-muted">
+                  <VerifiedTick size={16} decorative className="mt-0.5" />
                   <span>Published by the journalist{story.authors?.length > 1 ? "s" : ""} named above, citing {plural((story.sources || []).length, "source")}, listed below. Read the sources and form your own view.</span>
                 </p>
               ) : (
