@@ -22,17 +22,17 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-y-auto py-4 no-scrollbar">
         {navFor(MAIN_NAV, guest).map((s) => (
-          <NavRow key={s.id} icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
+          <NavRow key={s.id} tour={`nav-${s.id}`} icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
         ))}
         {guest ? (
           <>
             <NavRow icon={LogIn} label="Log in" onClick={() => navigate(authPath("login"))} />
-            <NavRow icon={UserPlus} label="Sign up" onClick={() => navigate(authPath("signup"))} />
+            <NavRow tour="login" icon={UserPlus} label="Sign up" onClick={() => navigate(authPath("signup"))} />
           </>
         ) : (
           <>
-            <NavRow icon={Plus} label="Create" onClick={onCreate} />
-            <button type="button" onClick={() => navigate("/account")} title="Profile"
+            <NavRow tour="create" icon={Plus} label="Create" onClick={onCreate} />
+            <button type="button" onClick={() => navigate("/account")} title="Profile" data-tour="profile"
               aria-current={page.tab === "account" && page.view === "profile" ? "page" : undefined}
               className={`press flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors justify-center xl:justify-start ${
                 page.tab === "account" && page.view === "profile" ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
@@ -50,9 +50,9 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
   );
 }
 
-function NavRow({ icon: Icon, label, active = false, onClick, badge = 0 }) {
+function NavRow({ icon: Icon, label, active = false, onClick, badge = 0, tour }) {
   return (
-    <button type="button" onClick={onClick} aria-current={active ? "page" : undefined}
+    <button type="button" onClick={onClick} aria-current={active ? "page" : undefined} data-tour={tour}
       aria-label={badge > 0 ? `${label}, ${badge} new` : undefined} title={label}
       className={`press relative flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors ${
         active ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
@@ -108,7 +108,7 @@ function MoreMenu({ page, guest }) {
           ))}
         </div>
       )}
-      <button ref={button} type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="More"
+      <button ref={button} type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="More" data-tour="more"
         className={`press flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors justify-center xl:justify-start ${
           open || inSettings ? "bg-surface-2 font-semibold text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
         }`}>

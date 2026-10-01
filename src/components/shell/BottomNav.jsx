@@ -38,7 +38,7 @@ export default function BottomNav({ page, profile, unread, immersive }) {
           const Icon = t.icon;
           return (
             <li key={t.id} className="flex">
-              <button type="button" onClick={() => tap(t.id, t.path)}
+              <button type="button" onClick={() => tap(t.id, t.path)} data-tour={t.id === "auth" ? "login" : `tab-${t.id}`}
                 aria-current={active ? "page" : undefined}
                 aria-label={t.badge > 0 ? `${t.label}, ${t.badge} unread` : t.label}
                 className={`press relative flex flex-1 flex-col items-center justify-center gap-0.5 ${

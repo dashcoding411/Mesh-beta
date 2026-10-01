@@ -24,6 +24,7 @@ import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
 import UpdateBanner from "./components/UpdateBanner";
 import NotificationBanner from "./components/NotificationBanner";
+import Tour from "./components/Tour";
 import Shortcuts from "./components/Shortcuts";
 import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
@@ -107,6 +108,7 @@ export default function App() {
   const [interests, setInterests] = useState([]);
   const [hiddenWords, setHiddenWords] = useState([]);
   const [hideAi, setHideAi] = useState(false);
+  const [tourDone, setTourDone] = useState(null); // from private prefs; null until known
   const [muted, setMutedSet] = useState(() => new Set());
   const [interestsDialog, setInterestsDialog] = useState(null); // null | "first" | "edit"
   const [incoming, setIncoming] = useState([]);
@@ -149,6 +151,7 @@ export default function App() {
           setInterests(prefs.interests || []);
           setHiddenWords(prefs.hiddenWords || []);
           setHideAi(!!prefs.hideAi);
+          setTourDone(!!prefs.tourDone);
           setMutedSet(new Set(prefs.muted || []));
           // Prompt once per account per device.
           let asked = true;
@@ -408,6 +411,10 @@ export default function App() {
             onNotificationsPage={page.tab === "home" && page.section === "notifications"} />
         )}
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+        {(signedIn || guest) && (
+          <Tour uid={user?.uid} guest={guest} profile={profile} prefsDone={tourDone} onSeen={() => setTourDone(true)}
+            ready={page.tab === "home" && page.section === "foryou" && !overlay && !composer && !drawerOpen && !interestsDialog && !joinReason} />
+        )}
         <Shortcuts onCreate={openComposer} />
         <ExternalLinkDialog />
         <StoryOpener />

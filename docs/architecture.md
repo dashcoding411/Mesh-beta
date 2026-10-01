@@ -70,6 +70,13 @@ Composite indexes are declared in `firestore.indexes.json`.
   tick, a pink profile (`.theme-pink` re-tints the surface tokens) and a pink
   banner behind the profile photo. `badges/pink` names the holder, and the
   rules require the holder's badges (and only theirs) to carry `pink`.
+- **First-run tour.** `Tour.jsx` spotlights the main controls one at a time
+  (elements marked `data-tour`; phones and computers mark different ones, and
+  steps with nothing visible to point at are left out). It starts by itself
+  for guests on their first visit and for accounts made since it arrived,
+  once the Home feed is showing with nothing else open; `tourDone` in private
+  prefs (and a local flag) stops it repeating. Settings → Take the tour
+  replays it.
 - **Notification banners.** Notifications that arrive during a visit drop in
   as a short banner (not on the Notifications page, not from muted or blocked
   people).

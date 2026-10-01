@@ -3,13 +3,14 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
 import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
+import { replayTour } from "../lib/tour";
 import { clearAllDrafts } from "../lib/drafts";
 import { useBrick } from "../lib/useBrick";
 import { hasAnyLimit, parentActive } from "../lib/brick";
@@ -166,6 +167,10 @@ export default function Settings() {
           </Group>
 
           <AppearanceGroup />
+
+          <Group title="Help">
+            <Row icon={Compass} label="Take the tour" value="A quick look at where everything is in Mesh" onClick={replayTour} />
+          </Group>
 
           {admin && (
             <Group title="Moderation">

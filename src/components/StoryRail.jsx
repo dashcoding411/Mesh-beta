@@ -81,7 +81,7 @@ export default function StoryRail() {
   const current = viewing && viewing.list[viewing.at];
 
   return (
-    <section aria-label="Stories" className="border-b border-line">
+    <section aria-label="Stories" data-tour="stories" className="border-b border-line">
       <ul className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
         <li className="relative flex w-[68px] shrink-0 flex-col items-center gap-1.5">
           <button type="button"

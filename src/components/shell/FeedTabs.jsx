@@ -31,7 +31,7 @@ export default function FeedTabs({ mode, topic, interests = [], onTopic, onEdit,
   };
 
   return (
-    <div role="radiogroup" aria-label="Feed" className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4 py-2">
+    <div role="radiogroup" aria-label="Feed" data-tour="feed-tabs" className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4 py-2">
       {feeds.map((t) => chip(t.id, t.label))}
       {feeds.length > 0 && (topics.length > 0 || onEdit) && <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-line-strong" />}
       {topics.map((t) => chip(t.id, t.label))}

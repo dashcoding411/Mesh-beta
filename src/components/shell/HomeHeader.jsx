@@ -19,7 +19,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
         : `sticky bg-canvas/90 backdrop-blur ${isFeed ? "" : "border-b border-line"}`
     }`}>
       <div className="flex h-14 items-center gap-1 px-2 pt-safe md:hidden">
-        <IconButton icon={Menu} label="Open Home sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />
+        <IconButton icon={Menu} label="Open Home sections" data-tour="sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />
         <div className="min-w-0 flex-1 px-1">
           {isFeed ? (
             <h1 className="flex items-center gap-2">
@@ -32,17 +32,17 @@ export default function HomeHeader({ section, children, actions, transparent = f
           )}
         </div>
         {section !== "search" && (
-          <IconButton icon={Search} label="Search" onClick={() => navigate("/search")} tone={transparent ? "overlay" : "ghost"} />
+          <IconButton icon={Search} label="Search" data-tour="search" onClick={() => navigate("/search")} tone={transparent ? "overlay" : "ghost"} />
         )}
         {guest ? (
-          <button type="button" onClick={() => navigate(authPath("login"))}
+          <button type="button" onClick={() => navigate(authPath("login"))} data-tour="login"
             className={`press ml-1 mr-1 min-h-9 shrink-0 rounded-full px-3.5 text-callout font-semibold ${
               transparent ? "bg-white/15 text-white" : "bg-surface-2 text-fg"
             }`}>
             Log in
           </button>
         ) : section !== "notifications" && (
-          <span className="relative">
+          <span className="relative" data-tour="notifications">
             <IconButton icon={Bell} label={noticesUnread > 0 ? `Notifications, ${noticesUnread} new` : "Notifications"}
               onClick={() => navigate("/notifications")} tone={transparent ? "overlay" : "ghost"} />
             {noticesUnread > 0 && (
@@ -51,7 +51,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
           </span>
         )}
         {actions}
-        {!guest && <IconButton icon={Plus} label="Create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
+        {!guest && <IconButton icon={Plus} label="Create" data-tour="create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
       </div>
 
       {isFeed ? (

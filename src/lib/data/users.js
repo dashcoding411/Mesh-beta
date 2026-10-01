@@ -238,6 +238,11 @@ export async function setBadge(uid, badge, on) {
   await updateDoc(doc(db, "users", uid), { badges: on ? arrayUnion(badge) : arrayRemove(badge) });
 }
 
+/** The first-run tour has been seen (or skipped) on this account. */
+export async function setTourDone() {
+  await setDoc(doc(db, "users", me(), "private", "prefs"), { tourDone: true, updatedAt: serverTimestamp() }, { merge: true });
+}
+
 export async function setHideAi(on) {
   await setDoc(doc(db, "users", me(), "private", "prefs"), { hideAi: on, updatedAt: serverTimestamp() }, { merge: true });
 }
