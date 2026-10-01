@@ -67,6 +67,17 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Updates.** `UpdateBanner` compares the deployed entry chunk with the
   running one and offers a reload; stale-chunk import errors reload once.
 
+## Creating
+
+Stills, Flicks and stories can be captured in the app (`Camera.jsx`): a
+full-screen viewfinder with the shutter, library and camera flip at the bottom
+where a thumb reaches. Tap for a photo; hold to record when video uploads are
+on. The photo is cropped to what the viewfinder showed. On phones, adding to
+your story opens the camera first, and the preview offers "Your story" (one
+tap) or "Post" (into the composer with the capture attached). In the composer,
+location and photo descriptions stay folded until asked for; the share button
+sits bottom-right.
+
 ## Feeds (`lib/algorithm.js`)
 
 Home is newest first (`latestFirst`; a repost counts when it was reposted).
@@ -221,10 +232,17 @@ blogs post updates to a subcollection.
 Threaded like Reddit: a reply stores `parentId`, which the rules require to
 exist, and its parent's author is notified (`reply`, verified against both
 comments). Threads nest four levels, then continue at that level naming who
-they answer; a deleted comment leaves a placeholder over its replies. Sorted
-Top (likes, then oldest) or New. Comment likes are `comments/{id}/likes/{uid}`
-tied to `likeCount` with `lastLiker`. A comment can carry one photo (`image`:
-Cloud Storage or the author's own inline media) or a GIF.
+they answer; a deleted comment leaves a placeholder over its replies. Comment
+likes are `comments/{id}/likes/{uid}` tied to `likeCount` with `lastLiker`. A
+comment can carry one photo (`image`: Cloud Storage or the author's own inline
+media) or a GIF.
+
+Sorting (`lib/commentTree.js`): Best (the default) is the lower bound of the
+Wilson score interval, as on Reddit. With likes and no downvotes, a comment's
+likes are weighed against the other people who commented after it, standing in
+for who has seen it, so being early doesn't win by itself and one like isn't
+proof. Top is raw likes; New is newest first. Like counts stay hidden for a
+comment's first hour so early likes don't sway later readers.
 
 ## Stories
 

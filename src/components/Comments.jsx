@@ -10,7 +10,7 @@ import {
   fetchProfile, me, StorageUnavailableError,
 } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
-import { buildCommentTree, countReplies } from "../lib/commentTree";
+import { buildCommentTree, countReplies, likesHidden } from "../lib/commentTree";
 import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
@@ -37,7 +37,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const [closedReason, setClosedReason] = useState("");
   const [comments, setComments] = useState(null);
   const [liked, setLiked] = useState(new Set());
-  const [sort, setSort] = useState("top");
+  const [sort, setSort] = useState("best");
   const [collapsed, setCollapsed] = useState(new Set());
   const [revealed, setRevealed] = useState(new Set());
   const [loadError, setLoadError] = useState(false);
@@ -243,8 +243,8 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       {tree?.length > 0 && (
         <>
           <div className="px-5 pb-2">
-            <Segmented label="Sort comments" value={sort} onChange={setSort} className="w-44"
-              options={[{ id: "top", label: "Top" }, { id: "new", label: "New" }]} />
+            <Segmented label="Sort comments" value={sort} onChange={setSort} className="w-60"
+              options={[{ id: "best", label: "Best" }, { id: "top", label: "Top" }, { id: "new", label: "New" }]} />
           </div>
           <ul className="space-y-4 px-4 pb-4">
             {tree.map((n) => <CommentNode key={n.id} node={n} depth={0} ctx={ctx} />)}
@@ -266,6 +266,8 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
   const isOpen = !ctx.collapsed.has(node.id);
   const nest = depth < MAX_DEPTH;
   const replies = node.children;
+  const isLiked = ctx.liked.has(node.id);
+  const hideCount = likesHidden(node);
 
   // Folded behind a tap: muted or blocked authors, hidden words, flagged wording.
   const level = node.deleted || mine || ctx.revealed.has(node.id) ? "ok" : assessText(node.text).level;
@@ -300,11 +302,12 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
           className="mt-1.5 max-h-72 max-w-[260px] rounded-control object-cover" placeholderClass="mt-1.5 h-40 w-[200px] rounded-control" />
       )}
       <div className="-ml-2 mt-0.5 flex items-center" role="group" aria-label="Comment actions">
-        <button type="button" onClick={() => ctx.onLike(node)} aria-pressed={ctx.liked.has(node.id)}
-          aria-label={`${ctx.liked.has(node.id) ? "Unlike" : "Like"}, ${plural(node.likeCount || 0, "like")}`}
-          className={`press inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-caption font-semibold ${ctx.liked.has(node.id) ? "text-like" : "text-fg-muted hover:text-fg"}`}>
-          <Heart size={15} fill={ctx.liked.has(node.id) ? "currentColor" : "none"} aria-hidden="true" />
-          {node.likeCount > 0 && <span className="tabular">{compact(node.likeCount)}</span>}
+        <button type="button" onClick={() => ctx.onLike(node)} aria-pressed={isLiked}
+          title={hideCount ? "Likes show once a comment is an hour old" : undefined}
+          aria-label={hideCount ? `${isLiked ? "Unlike" : "Like"}. Likes show once a comment is an hour old` : `${isLiked ? "Unlike" : "Like"}, ${plural(node.likeCount || 0, "like")}`}
+          className={`press inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-caption font-semibold ${isLiked ? "text-like" : "text-fg-muted hover:text-fg"}`}>
+          <Heart size={15} fill={isLiked ? "currentColor" : "none"} aria-hidden="true" />
+          {!hideCount && node.likeCount > 0 && <span className="tabular">{compact(node.likeCount)}</span>}
         </button>
         <button type="button" onClick={() => ctx.onReply(node)}
           className="press inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-caption font-semibold text-fg-muted hover:text-fg">

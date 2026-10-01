@@ -1,3 +1,5 @@
+export const cameraSupported = () => typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+
 // facingMode: "environment" can select an iPhone virtual multi-lens camera
 // that starts on the ultra-wide lens. Once labels are available (after the
 // first permission grant), prefer the plain lens by name.

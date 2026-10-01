@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags, ChevronLeft, ChevronRight, MapPin, Plus, Camera as CameraIcon, Accessibility } from "lucide-react";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
@@ -10,6 +10,7 @@ import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
 import { suggestTopics, MAX_POST_TOPICS, interestById } from "../lib/interests";
 import { gifsEnabled } from "../lib/gifs";
 import { readDraft, useDraft } from "../lib/drafts";
+import { cameraSupported } from "../lib/cameras";
 import { InterestToggles } from "./Interests";
 import GifPicker, { GifView } from "./GifPicker";
 import { PollBuilder } from "./Poll";
@@ -27,6 +28,10 @@ const KINDS = [
   { id: "post", label: "Still", icon: Image, media: "image" },
   { id: "text", label: "Strand", icon: Type, media: null },
 ];
+
+const Camera = lazy(() => import("./Camera"));
+
+const photoEntry = (f) => ({ id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, url: URL.createObjectURL(f), alt: "" });
 
 // Last-used format, per session.
 let lastKind = "text";
@@ -90,25 +95,30 @@ async function uploadPoster(file, at) {
 
 // Composer for all formats. Videos longer than LONG_VIDEO_SECONDS become long
 // Flicks, which need a title and a trailer window.
-export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, text: initialText = "", circleTopic: initialCircleTopic }) {
+// `files`: media captured before the composer opened (from the story camera).
+export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, files: initialFiles, text: initialText = "", circleTopic: initialCircleTopic }) {
   const toast = useToast();
   // Under-16 and private accounts are followers-only (also enforced by the rules).
   const minor = isMinor(profile) || !!profile?.isPrivate;
   // Restore the draft unless opened with explicit content.
   const draftScope = groupId ? `circle:${groupId}` : "post";
-  const [draft] = useState(() => (initialText || attach ? null : readDraft(draftScope)));
+  const [draft] = useState(() => (initialText || attach || initialFiles?.length ? null : readDraft(draftScope)));
   const d = draft?.data || {};
   const [kind, setKind] = useState(initialKind || d.kind || lastKind);
   const [text, setText] = useState(d.text ?? initialText);
   const [title, setTitle] = useState(d.title || "");
   // [{ id, file, url: object URL, alt }]
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState(() => (initialKind === "post" ? (initialFiles || []).map(photoEntry) : []));
   const [activePhoto, setActivePhoto] = useState(0);
   const [location, setLocation] = useState(d.location || "");
   const [ai, setAi] = useState(false);
   const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
   const [restored, setRestored] = useState(!!draft);
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState(() => (initialKind === "video" ? initialFiles?.[0] || null : null));
+  const [camera, setCamera] = useState(false);
+  // Secondary details stay folded until wanted.
+  const [showLocation, setShowLocation] = useState(!!d.location);
+  const [showAlt, setShowAlt] = useState(false);
   const [duration, setDuration] = useState(0);
   const [trailerStart, setTrailerStart] = useState(0);
   const [errors, setErrors] = useState({});
@@ -134,9 +144,16 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const busy = progress !== null;
 
   useEffect(() => { storageAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
+  useEffect(() => {
+    if (initialKind === "video" && initialFiles?.[0]) readDuration(initialFiles[0]).then(setDuration);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Drafts persist text and choices only, not media.
   const alt = photos.map((p) => p.alt).join("\n");
+  const altShown = showAlt || !!alt.trim();
+  // Unfold a detail and put the cursor in it.
+  const reveal = (show, id) => { show(true); requestAnimationFrame(() => document.getElementById(id)?.focus()); };
   const picked = spec.media === "image" ? photos.length > 0 : !!file;
   const hasWords = !!(text.trim() || title.trim() || location.trim() || gif || poll?.options.some((o) => o.trim()));
   const finishDraft = useDraft(draftScope, hasWords ? {
@@ -175,7 +192,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       const v = validateMediaFile(f, "image");
       if (v.error) { error = v.error; continue; }
       if (fresh.length >= room) { error = `A Still can have up to ${MAX_SLIDES} photos.`; break; }
-      fresh.push({ id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, url: URL.createObjectURL(f), alt: "" });
+      fresh.push(photoEntry(f));
     }
     setErrors(error ? { file: error } : {});
     if (!fresh.length) return;
@@ -389,10 +406,17 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                     ? `Up to ${MAX_SLIDES}, swiped through in order · JPG, PNG, WebP or GIF · up to 10 MB each`
                     : `Up to 200 MB. Over ${LONG_VIDEO_SECONDS / 60} minutes becomes a long Flick with a trailer.`}
                 </p>
-                <Button id="composer-file" className="mt-4" onClick={() => fileInput.current?.click()}
-                  aria-describedby={errors.file ? `${fileId}-err` : undefined}>
-                  Choose {spec.media === "image" ? "photos" : "a video"}
-                </Button>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {cameraSupported() && (
+                    <Button variant="primary" icon={CameraIcon} onClick={() => setCamera(true)}>
+                      {spec.media === "image" ? "Take a photo" : "Record"}
+                    </Button>
+                  )}
+                  <Button id="composer-file" icon={spec.media === "image" ? ImagePlus : FileVideo} onClick={() => fileInput.current?.click()}
+                    aria-describedby={errors.file ? `${fileId}-err` : undefined}>
+                    Choose {spec.media === "image" ? "photos" : "a video"}
+                  </Button>
+                </div>
                 <p className="mt-2 hidden text-label text-fg-subtle md:block">or drag it here</p>
                 <input ref={fileInput} type="file" accept={spec.media === "image" ? "image/*" : "video/*"} className="hidden"
                   multiple={spec.media === "image"} tabIndex={-1} aria-hidden="true"
@@ -400,7 +424,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
               </div>
             ) : spec.media === "image" ? (
               <PhotoSet photos={photos} active={activePhoto} onActive={setActivePhoto} busy={busy}
-                onRemove={removePhoto} onMove={movePhoto} onAdd={addPhotos} />
+                onRemove={removePhoto} onMove={movePhoto} onAdd={addPhotos} onCamera={cameraSupported() ? () => setCamera(true) : null} />
             ) : (
               <div className="relative overflow-hidden rounded-card border border-line bg-black">
                 <video src={preview} controls playsInline className="max-h-80 w-full" aria-label="The video you picked" />
@@ -473,21 +497,34 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           )
         )}
 
-        {picked && spec.media && (
+        {picked && spec.media && (!(showLocation || location) || (spec.media === "image" && !altShown)) && (
+          <div className="flex flex-wrap gap-2">
+            {!(showLocation || location) && (
+              <Button size="sm" icon={MapPin} onClick={() => reveal(setShowLocation, "composer-location")}>Add location</Button>
+            )}
+            {spec.media === "image" && !altShown && (
+              <Button size="sm" icon={Accessibility} onClick={() => reveal(setShowAlt, "composer-alt")}>
+                Describe {photos.length > 1 ? "photos" : "photo"}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {picked && spec.media && (showLocation || location) && (
           <Field label="Location" optional count={location.length} max={60}>
             <div className="relative">
               <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60}
+              <Input id="composer-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60}
                 placeholder="Where was this?" className="!pl-9" />
             </div>
           </Field>
         )}
 
-        {picked && spec.media === "image" && (
+        {picked && spec.media === "image" && altShown && (
           <Field label={photos.length > 1 ? `Describe photo ${activePhoto + 1}` : "Describe this photo"} optional
             count={(photos[activePhoto]?.alt || "").length} max={LIMITS.alt}
             hint="Read aloud to people using screen readers. Leave it blank and your caption is used instead.">
-            <Textarea autoGrow rows={2} maxRows={5} value={photos[activePhoto]?.alt || ""} onChange={(e) => setPhotoAlt(e.target.value)} maxLength={LIMITS.alt}
+            <Textarea id="composer-alt" autoGrow rows={2} maxRows={5} value={photos[activePhoto]?.alt || ""} onChange={(e) => setPhotoAlt(e.target.value)} maxLength={LIMITS.alt}
               placeholder="e.g. Two friends laughing on a beach at sunset" />
           </Field>
         )}
@@ -538,6 +575,15 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         )}
       </form>
       {gifPicker && <GifPicker onClose={() => setGifPicker(false)} onPick={(g) => { setGif(g); setGifPicker(false); }} />}
+      {camera && (
+        <Suspense fallback={null}>
+          <Camera title={spec.media === "image" ? "Take a photo" : "Record a Flick"} photo={spec.media === "image"} video={spec.media === "video"}
+            actions={[{ id: "use", label: spec.media === "image" ? "Use photo" : "Use video", primary: true }]}
+            onClose={() => setCamera(false)}
+            onLibrary={(list) => { setCamera(false); if (spec.media === "image") addPhotos(list); else choose(list[0]); }}
+            onDone={(_, f) => { setCamera(false); if (spec.media === "image") addPhotos([f]); else choose(f); }} />
+        </Suspense>
+      )}
     </Dialog>
   );
 }
@@ -610,7 +656,7 @@ function TrailerPicker({ src, duration, value, onChange }) {
 }
 
 // Selected photo preview plus the ordered strip. Index 0 is the cover.
-function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd }) {
+function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd, onCamera }) {
   const addRef = useRef(null);
   const current = photos[active] || photos[0];
   return (
@@ -647,6 +693,14 @@ function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd }) {
             </button>
             <input ref={addRef} type="file" accept="image/*" multiple className="hidden" tabIndex={-1} aria-hidden="true"
               onChange={(e) => { onAdd(e.target.files); e.target.value = ""; }} />
+          </li>
+        )}
+        {photos.length < MAX_SLIDES && !busy && onCamera && (
+          <li className="shrink-0">
+            <button type="button" onClick={onCamera} aria-label="Take another photo"
+              className="press flex h-16 w-16 items-center justify-center rounded-control border-2 border-dashed border-field text-fg-muted hover:text-fg">
+              <CameraIcon size={20} aria-hidden="true" />
+            </button>
           </li>
         )}
       </ul>

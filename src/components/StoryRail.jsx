@@ -1,12 +1,17 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { fetchActiveStories, uploadMedia, createStory, me, storySeen, StorageUnavailableError } from "../lib/db";
+import { fetchActiveStories, uploadMedia, createStory, me, storySeen, storageAvailable, StorageUnavailableError } from "../lib/db";
+import { cameraSupported } from "../lib/cameras";
 import { validateMediaFile } from "../lib/validate";
 import { useShell } from "./shell/ShellContext";
 import Avatar from "./ui/Avatar";
 import { Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 const StoryViewer = lazy(() => import("./StoryViewer"));
+const Camera = lazy(() => import("./Camera"));
+
+// Phones open the camera first, like Instagram and Snapchat; computers pick a file.
+const cameraFirst = () => cameraSupported() && window.matchMedia("(pointer: coarse)").matches;
 
 const seenAll = (t) => t.items.every(storySeen);
 // Others' stories, unseen first, like Instagram. Seen ones stay, with a grey ring.
@@ -16,13 +21,14 @@ const lineUp = (threads) => {
 };
 
 export default function StoryRail() {
-  const { profile, following, hiddenAuthors } = useShell();
+  const { profile, following, hiddenAuthors, openComposer } = useShell();
   const toast = useToast();
   const [threads, setThreads] = useState([]);
   // Rail order, refreshed when stories load and when the viewer closes, not mid-viewing.
   const [queue, setQueue] = useState([]);
   const [viewing, setViewing] = useState(null); // { list, at }
   const [uploading, setUploading] = useState(false);
+  const [camera, setCamera] = useState(null); // { video }
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -36,10 +42,19 @@ export default function StoryRail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [following, hiddenAuthors]);
 
-  const addStory = async (e) => {
+  const startStory = async () => {
+    if (!cameraFirst()) return fileRef.current?.click();
+    // Hold-to-record only when videos can be uploaded.
+    setCamera({ video: await storageAvailable().catch(() => false) });
+  };
+
+  const addStory = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
-    if (!file) return;
+    if (file) publishStory(file);
+  };
+
+  const publishStory = async (file) => {
     const kind = file.type.startsWith("video/") ? "video" : "image";
     const v = validateMediaFile(file, kind);
     if (v.error) return toast({ tone: "error", title: v.error });
@@ -70,12 +85,12 @@ export default function StoryRail() {
       <ul className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
         <li className="relative flex w-[68px] shrink-0 flex-col items-center gap-1.5">
           <button type="button"
-            onClick={() => (mine ? setViewing({ list: [mine], at: 0 }) : fileRef.current?.click())}
+            onClick={() => (mine ? setViewing({ list: [mine], at: 0 }) : startStory())}
             aria-label={mine ? "View your story" : "Add to your story"}
             className="press rounded-full">
             <Avatar profile={profile} size={60} ring={!!mine} />
           </button>
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+          <button type="button" onClick={startStory} disabled={uploading}
             aria-label="Add to your story"
             className="press absolute right-0 top-[40px] flex h-7 w-7 items-center justify-center rounded-full border-2 border-canvas bg-accent text-white">
             {uploading ? <Spinner size={12} /> : <Plus size={14} strokeWidth={3} aria-hidden="true" />}
@@ -98,6 +113,19 @@ export default function StoryRail() {
       </ul>
       <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory}
         aria-hidden="true" tabIndex={-1} />
+
+      {camera && (
+        <Suspense fallback={null}>
+          <Camera title="Add to your story" photo video={camera.video}
+            actions={[{ id: "post", label: "Post" }, { id: "story", label: "Your story", primary: true }]}
+            onClose={() => setCamera(null)}
+            onDone={(action, file) => {
+              setCamera(null);
+              if (action === "story") publishStory(file);
+              else openComposer({ kind: file.type.startsWith("video/") ? "video" : "post", files: [file] });
+            }} />
+        </Suspense>
+      )}
 
       {current && (
         <Suspense fallback={null}>
