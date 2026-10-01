@@ -58,7 +58,7 @@ src/
   lib/
     db.js             data-layer entry point (re-exports lib/data/*)
     data/             Firestore access by domain
-    algorithm.js      feed ranking
+    algorithm.js      feed order and ranking
     moderation.js     content filter
     brick.js          brick mode policy engine (mirrors the rules)
     calls.js          WebRTC call sessions

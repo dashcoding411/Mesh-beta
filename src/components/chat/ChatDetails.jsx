@@ -11,6 +11,7 @@ import { navigate } from "../../lib/router";
 import { LIMITS } from "../../lib/validate";
 import { useShell } from "../shell/ShellContext";
 import Avatar from "../ui/Avatar";
+import LiveAvatar from "../ui/LiveAvatar";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import Dialog, { ConfirmDialog } from "../ui/Dialog";
@@ -103,7 +104,7 @@ export function ChatDetails({ chat, onClose }) {
                   <li key={uid} className="flex min-h-14 flex-wrap items-center gap-3 px-3 py-2">
                     <button type="button" onClick={() => { if (uid !== me()) { onClose(); openUserProfile(uid); } }}
                       className="press flex min-w-0 flex-1 items-center gap-3 text-left">
-                      <Avatar profile={{ username: chat.memberNames?.[uid] || "?" }} size={36} />
+                      <LiveAvatar uid={uid} profile={{ username: chat.memberNames?.[uid] || "?" }} size={36} />
                       <span className="truncate text-callout">{nameOf(uid)}</span>
                       {isAdmin && <Badge tone="accent" icon={ShieldCheck}>Admin</Badge>}
                     </button>

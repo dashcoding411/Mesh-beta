@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { listenChats, fetchMyReadTimes, markRead, markUnread, isRequest, me, tsMillis } from "./db";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listenChats, fetchMyReadTimes, markRead, markUnread, markDelivered, isRequest, me, tsMillis } from "./db";
 
 // Single app-wide inbox subscription shared by the unread badge and Messages.
+// It also sends delivery receipts: a chat updated by someone else since this
+// account last received or read it is marked delivered.
 export function useInbox(following, enabled = true) {
   const [chats, setChats] = useState(null);
   const [reads, setReads] = useState(new Map());
+  const delivered = useRef(new Map()); // chatId -> latest update acknowledged
 
   useEffect(() => {
     if (!enabled) return;
@@ -19,9 +22,12 @@ export function useInbox(following, enabled = true) {
     fetchMyReadTimes(ids.split(","))
       .then((fetched) => {
         if (cancelled) return;
+        for (const [id, m] of fetched) {
+          delivered.current.set(id, Math.max(delivered.current.get(id) ?? 0, m.at, m.deliveredAt));
+        }
         // Local markers set since the fetch started win.
         setReads((prev) => {
-          const next = new Map(fetched);
+          const next = new Map([...fetched].map(([id, m]) => [id, m.at]));
           for (const [id, at] of prev) if (at > (next.get(id) ?? 0)) next.set(id, at);
           return next;
         });
@@ -29,6 +35,17 @@ export function useInbox(following, enabled = true) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [ids]);
+
+  useEffect(() => {
+    for (const chat of chats || []) {
+      const known = delivered.current.get(chat.id);
+      const at = tsMillis(chat.updatedAt);
+      // Unknown until the markers load.
+      if (known === undefined || !chat.lastSenderId || chat.lastSenderId === me() || at <= known) continue;
+      delivered.current.set(chat.id, at);
+      markDelivered(chat.id).catch(() => {});
+    }
+  }, [chats, reads]);
 
   const isUnread = useCallback((chat) => {
     const readAt = reads.get(chat.id) ?? 0;

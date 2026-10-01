@@ -4,13 +4,13 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { callsSupported } from "../lib/calls";
-import { chatAvatar, chatTitle } from "../lib/chat";
+import { chatAvatar, chatPeer, chatTitle } from "../lib/chat";
 import {
   CHAT_THEMES, clearTyping, editMessage, listenMessages, listenPresence, listenReads,
   listenTyping, me, openUserProfile, presenceLabel, sendMessage, sendPhotoMessage, sendVoiceMessage, setTyping,
   tsMillis,
 } from "../lib/db";
-import { clockTime, dayLabel, plural } from "../lib/format";
+import { clockTime, dayLabel, plural, shortTime } from "../lib/format";
 import { gifsEnabled } from "../lib/gifs";
 import { checkContent } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -24,7 +24,7 @@ import { MessageRow } from "./chat/MessageRow";
 import { PollDialog } from "./chat/PollDialog";
 import { readDraft, useDraft } from "../lib/drafts";
 import { useShell } from "./shell/ShellContext";
-import Avatar from "./ui/Avatar";
+import LiveAvatar from "./ui/LiveAvatar";
 import Button from "./ui/Button";
 import { Textarea } from "./ui/Field";
 import IconButton from "./ui/IconButton";
@@ -53,6 +53,23 @@ function buildRows(messages) {
     rows.push({ type: "msg", key: m.id, m, first: breaksBefore, last: breaksAfter });
   });
   return rows;
+}
+
+// Status of the viewer's latest message: Sending, Sent, Delivered, then Seen.
+function receiptFor(m, chat, others, reads) {
+  if (m.pending) return "Sending…";
+  const sent = tsMillis(m.createdAt);
+  const seenBy = others.filter((uid) => (reads.get(uid)?.at || 0) >= sent);
+  if (seenBy.length && !chat.isGroup) {
+    const t = shortTime(reads.get(seenBy[0]).at);
+    return t === "now" ? "Seen" : /^\d+[mhd]$/.test(t) ? `Seen ${t} ago` : `Seen ${t}`;
+  }
+  if (seenBy.length === others.length && seenBy.length) return "Seen by everyone";
+  if (seenBy.length) {
+    const names = seenBy.map((uid) => chat.nicknames?.[uid] || chat.memberNames?.[uid] || "someone");
+    return `Seen by ${names.slice(0, 2).join(", ")}${names.length > 2 ? ` and ${names.length - 2} more` : ""}`;
+  }
+  return others.some((uid) => (reads.get(uid)?.deliveredAt || 0) >= sent) ? "Delivered" : "Sent";
 }
 
 // Auto-scrolls only when already at the bottom; otherwise shows a "new
@@ -253,8 +270,7 @@ export default function ChatView({ chat }) {
 
   const rows = useMemo(() => buildRows(messages || []), [messages]);
   const last = messages?.[messages.length - 1];
-  const seen = last && last.senderId === me() && !last.deleted &&
-    others.some((uid) => (reads.get(uid) || 0) >= tsMillis(last.createdAt));
+  const receipt = last && last.senderId === me() && !last.deleted ? receiptFor(last, chat, others, reads) : "";
   const status = typing.length
     ? (chat.isGroup ? `${typing.map((u) => chat.memberNames?.[u] || "Someone").slice(0, 2).join(", ")} typing…` : "Typing…")
     : chat.isGroup ? plural(chat.members.length, "member") : presenceLabel(presence.get(others[0]));
@@ -266,7 +282,7 @@ export default function ChatView({ chat }) {
         <button type="button" onClick={() => (chat.isGroup ? setDialog("info") : openUserProfile(others[0]))}
           className="press flex min-w-0 flex-1 items-center gap-3 rounded-control px-2 py-1 text-left hover:bg-surface">
           <span className="relative">
-            <Avatar profile={chatAvatar(chat)} size={40} />
+            <LiveAvatar uid={chatPeer(chat)} profile={chatAvatar(chat)} size={40} />
             {status === "Active now" && (
               <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-canvas bg-success-text" aria-hidden="true" />
             )}
@@ -297,7 +313,7 @@ export default function ChatView({ chat }) {
 
           {messages?.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center text-center">
-              <Avatar profile={chatAvatar(chat)} size={80} />
+              <LiveAvatar uid={chatPeer(chat)} profile={chatAvatar(chat)} size={80} />
               <p className="mt-3 text-title-3">{title}</p>
               <p className="mt-1 text-callout text-fg-muted">
                 {chat.isGroup ? "The group's been made. Say hello." : "This is the start of your conversation."}
@@ -329,7 +345,7 @@ export default function ChatView({ chat }) {
               </span>
             </div>
           )}
-          {seen && <p className="mt-1 pr-1 text-right text-label text-fg-subtle">Seen</p>}
+          {receipt && <p className="mt-1 pr-1 text-right text-label text-fg-subtle">{receipt}</p>}
         </div>
 
         {unseen > 0 && (

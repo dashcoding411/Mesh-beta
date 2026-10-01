@@ -13,6 +13,7 @@ import { useShell } from "./shell/ShellContext";
 import TopBar from "./shell/TopBar";
 import Tabs from "./ui/Tabs";
 import Avatar from "./ui/Avatar";
+import LiveAvatar from "./ui/LiveAvatar";
 import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import Dialog from "./ui/Dialog";
@@ -22,7 +23,7 @@ import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import ChatView from "./ChatView";
 import { NewChatDialog } from "./chat/NewChatDialog";
-import { chatTitle, chatAvatar } from "../lib/chat";
+import { chatTitle, chatAvatar, chatPeer } from "../lib/chat";
 
 // Two-pane on desktop; on mobile the open chat is its own route.
 export default function Messages({ chatId }) {
@@ -178,7 +179,7 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
           active ? "bg-surface-2" : "hover:bg-surface"
         }`}>
         <span className="relative shrink-0">
-          <Avatar profile={chatAvatar(chat)} size={52} />
+          <LiveAvatar uid={chatPeer(chat)} profile={chatAvatar(chat)} size={52} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
@@ -278,7 +279,7 @@ function ThoughtsRail({ chats }) {
         {thoughts.map((n) => (
           <li key={n.uid} className="flex w-[76px] shrink-0 flex-col items-center gap-1.5">
             <span className="relative pt-3" aria-label={`@${n.username}: ${n.text}`}>
-              <Avatar profile={{ username: n.username }} size={56} />
+              <LiveAvatar uid={n.uid} profile={{ username: n.username }} size={56} />
               <Bubble>{n.text}</Bubble>
             </span>
             <span className="w-full truncate text-center text-label text-fg-subtle">{n.username}</span>

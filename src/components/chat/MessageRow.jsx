@@ -14,7 +14,7 @@ import { navigate } from "../../lib/router";
 import { GifView } from "../GifPicker";
 import ReportDialog from "../ReportDialog";
 import { VoiceNote } from "../Voice";
-import Avatar from "../ui/Avatar";
+import LiveAvatar from "../ui/LiveAvatar";
 import Dialog, { ConfirmDialog } from "../ui/Dialog";
 import IconButton from "../ui/IconButton";
 import MediaImg from "../ui/MediaImg";
@@ -73,7 +73,7 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
         <span className="w-7 shrink-0">
           {last && (
             <button type="button" onClick={() => openUserProfile(m.senderId)} aria-label={`${name}'s profile`}>
-              <Avatar profile={{ username: chat.memberNames?.[m.senderId] || "?", name }} size={28} />
+              <LiveAvatar uid={m.senderId} profile={{ username: chat.memberNames?.[m.senderId] || "?", name }} size={28} />
             </button>
           )}
         </span>

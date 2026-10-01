@@ -142,6 +142,14 @@ const MAX_PER_AUTHOR_IN_WINDOW = 2;
 const AUTHOR_WINDOW = 6;
 const BORDERLINE_GAP = 8;
 
+/** Home feeds: newest activity first (a repost counts when it was reposted), screened like rankFeed. */
+export function latestFirst(posts, ctx) {
+  const at = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
+  return screenForViewer(posts, ctx)
+    .filter((p) => !borderline(p) || p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId))
+    .sort((a, b) => at(b) - at(a));
+}
+
 export function rankFeed(posts, ctx) {
   // Borderline posts are never recommended to non-followers.
   const pool = screenForViewer(posts, ctx)

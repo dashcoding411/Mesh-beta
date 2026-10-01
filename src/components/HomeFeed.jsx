@@ -1,10 +1,10 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
-  fetchFeed, fetchAffinity, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
+  fetchFeed, fetchFollowersPosts, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
-import { rankFeed, screenForViewer } from "../lib/algorithm";
+import { latestFirst } from "../lib/algorithm";
 import { navigate } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
 import { useShell } from "./shell/ShellContext";
@@ -25,8 +25,8 @@ const kept = new Map(); // `${uid}:${mode}:${topic}` -> { posts, shown, top, at,
 const KEEP_MS = 15 * 60 * 1000;
 let lastTopic = "all";
 
-// For you: ranked mix of all formats (lib/algorithm.js). Following:
-// chronological, unranked.
+// For you: everyone's public posts plus followers-only posts from people you
+// follow. Following: only people you follow. Both newest first.
 export default function HomeFeed({ mode }) {
   const { following, hiddenAuthors, interests, openInterests, hiddenWords, feedKey, guest } = useShell();
   const toast = useToast();
@@ -67,15 +67,16 @@ export default function HomeFeed({ mode }) {
     setError(false);
     if (quiet) setRefreshing(true);
     try {
-      const [list, affinity, hidden, reposts] = await Promise.all([
-          topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
-        fetchAffinity().catch(() => new Map()),
+      const [list, followersOnly, hidden, reposts] = await Promise.all([
+        topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
+        following.size ? fetchFollowersPosts(following) : [],
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
       ]);
+      const pool = [...list, ...followersOnly.filter((p) => topic === "all" || p.topics?.includes(topic))];
 
       // Annotate reposted posts and fetch any that aren't in the pool.
-      const byId = new Map(list.map((p) => [p.id, { ...p }]));
+      const byId = new Map(pool.map((p) => [p.id, { ...p }]));
       const missing = [...new Set(reposts.map((r) => r.postId))].filter((id) => !byId.has(id)).slice(0, 20);
       const extra = await Promise.all(missing.map((id) => fetchPost(id).catch(() => null)));
       extra.filter(Boolean).forEach((p) => byId.set(p.id, { ...p }));
@@ -87,15 +88,8 @@ export default function HomeFeed({ mode }) {
 
       const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !hiddenAuthors.has(p.authorId));
 
-      if (mode === "following") {
-        const mine = screenForViewer(visible, { myUid: me(), hiddenWords })
-          .filter((p) => following.has(p.authorId) || p.repostedBy?.length);
-        // A repost counts as activity at repost time.
-        const when = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
-        setPosts(mine.sort((a, b) => when(b) - when(a)));
-      } else {
-        setPosts(rankFeed(visible, { followingSet: following, affinity, myUid: me(), interests, hiddenWords }));
-      }
+      const ordered = latestFirst(visible, { followingSet: following, myUid: me(), hiddenWords });
+      setPosts(mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered);
       loadedAt.current = Date.now();
     } catch (err) {
       console.error(err);
@@ -104,7 +98,7 @@ export default function HomeFeed({ mode }) {
     } finally {
       setRefreshing(false);
     }
-  }, [mode, following, hiddenAuthors, topic, interests, hiddenWords, toast]);
+  }, [mode, following, hiddenAuthors, topic, hiddenWords, toast]);
 
   // Deliberately not reloaded on follow changes, to avoid reshuffling mid-scroll.
   useEffect(() => {

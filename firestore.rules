@@ -1032,6 +1032,9 @@ service cloud.firestore {
         || (signedIn()
           && (resource.data.visibility == 'public'
               || resource.data.authorId == request.auth.uid
+              // Queries constrain authorId, so the follower check resolves.
+              || (resource.data.visibility == 'followers'
+                  && exists(/databases/$(database)/documents/users/$(resource.data.authorId)/followers/$(request.auth.uid)))
               || (resource.data.visibility == 'circle' && isMemberOf(resource.data.groupId))
               || (resource.data.visibility == 'pending' && isModOf(resource.data.groupId)))
           && (resource.data.authorId == request.auth.uid || !lockedFor('')));
@@ -1829,11 +1832,17 @@ service cloud.firestore {
         allow delete: if isUser(uid);
       }
       // Read markers: now, or epoch for "mark unread".
+      // `at`: last read (now, or zero to mark unread). `deliveredAt`: when the
+      // member's app last received a message here.
       match /reads/{uid} {
+        function markersOk() {
+          let changed = incomingData().diff(resource == null ? {} : resource.data).affectedKeys();
+          return incomingData().keys().hasOnly(['at', 'deliveredAt'])
+            && (!changed.hasAny(['at']) || incomingData().at == request.time || incomingData().at == timestamp.value(0))
+            && (!changed.hasAny(['deliveredAt']) || incomingData().deliveredAt == request.time);
+        }
         allow read: if inChat();
-        allow create, update: if isUser(uid) && inChat()
-          && incomingData().keys().hasOnly(['at'])
-          && (incomingData().at == request.time || incomingData().at == timestamp.value(0));
+        allow create, update: if isUser(uid) && inChat() && markersOk();
         allow delete: if isUser(uid);
       }
     }

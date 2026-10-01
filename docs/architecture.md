@@ -64,9 +64,18 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Updates.** `UpdateBanner` compares the deployed entry chunk with the
   running one and offers a reload; stale-chunk import errors reload once.
 
-## Feed ranking (`lib/algorithm.js`)
+## Feeds (`lib/algorithm.js`)
 
-Posts are scored as expected value per minute of viewer attention so formats
+Home is newest first (`latestFirst`; a repost counts when it was reposted).
+For you takes everyone's public posts plus followers-only posts from accounts
+the viewer follows; Following keeps only the accounts they follow. Both are
+screened the same way: held posts, hidden words and blocked text are removed,
+and borderline posts from accounts the viewer doesn't follow are left out.
+
+Followers-only posts are fetched with a query per followed author (up to 100),
+because the rules have to check each author's follower list.
+
+Flicks and Search's Explore grid are ranked. Posts are scored as expected value per minute of viewer attention so formats
 of very different lengths are comparable. Components: author affinity
 (accumulated from interaction weights, `SIGNAL`), social proof (follows,
 reposts by followed accounts, comments), endorsements (saves and sends above
@@ -79,16 +88,20 @@ slots, met progressively to avoid clustering. A diversity pass limits
 repeated authors and formats. Borderline content is never recommended to
 non-followers and is spaced apart; reports reduce reach.
 
-The Following feed is chronological and unranked.
-
 ## Moderation (`lib/moderation.js`)
 
 `assessText` returns `block`, `borderline`, `quoted` or `ok`. Text is
 normalised (homoglyphs, accents, zero-width characters, leetspeak, stretching,
 separators) and each match is evaluated in its sentence for negation,
-condemnation, reporting, in-group use and endorsement. The same group list and
-templates apply to every group; political identities are only protected from
-violence and dehumanisation.
+condemnation, reporting, in-group use and endorsement. Condemnation is read
+from the words around a match, never the match itself, and only clears a post
+when the claim is framed as someone else's (reported, quoted, or condemned
+before it's stated); otherwise it softens a block to borderline. Threats
+against a person are blocked unless they read as a joke (laughter, a playful
+condition, a game), which makes them borderline. Words with innocent senses
+("retarded growth", "spic and span") are judged by the words around them. The
+same group list and templates apply to every group; political identities are
+only protected from violence and dehumanisation.
 
 - `block`: not posted.
 - `borderline`: posted after confirmation, never recommended to
@@ -141,7 +154,8 @@ avoid iPhone virtual multi-lens devices that default to the ultra-wide lens.
 ## Messaging
 
 1:1 and group chats with replies, reactions, a 15-minute edit window, unsend
-(tombstones), typing, presence, read receipts, polls, GIFs, voice notes and
+(tombstones), typing, presence, receipts (Sending, Sent, Delivered once the
+recipient's app has received it, then Seen, or who has seen it in a group), polls, GIFs, voice notes and
 photos. Media is stored under the chat so only members can read it. A chat
 started by someone the user doesn't follow lands in Requests. Group members
 are added one write at a time so each add is vetted.

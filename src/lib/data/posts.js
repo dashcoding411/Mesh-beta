@@ -160,18 +160,27 @@ export async function fetchVideos() {
   return [...shorts, ...longs].sort(byNewest);
 }
 
-export async function fetchPostsByAuthor(uid) {
-  const q =
-    uid === me()
-      ? query(collection(db, "posts"), where("authorId", "==", uid), orderBy("createdAt", "desc"), limit(100))
-      : query(
-          collection(db, "posts"),
-          where("visibility", "==", "public"),
-          where("authorId", "==", uid),
-          orderBy("createdAt", "desc"),
-          limit(100)
-        );
-  return snapToList(await getDocs(q));
+/** Someone's posts: all of them for the author, public ones plus followers-only for a `follower`. */
+export async function fetchPostsByAuthor(uid, { follower = false } = {}) {
+  if (uid === me()) {
+    return snapToList(await getDocs(query(collection(db, "posts"), where("authorId", "==", uid), orderBy("createdAt", "desc"), limit(100))));
+  }
+  const [open, followersOnly] = await Promise.all([
+    getDocs(query(collection(db, "posts"), where("visibility", "==", "public"), where("authorId", "==", uid),
+      orderBy("createdAt", "desc"), limit(100))).then(snapToList),
+    follower ? fetchFollowersPosts([uid], { perAuthor: 100 }) : [],
+  ]);
+  return [...open, ...followersOnly].sort(byNewest);
+}
+
+// Followers-only posts by accounts the viewer follows. The rules check each
+// author's follower list, so it's a query per author.
+export async function fetchFollowersPosts(uids, { perAuthor = 10, maxAuthors = 100 } = {}) {
+  const lists = await Promise.all([...uids].slice(0, maxAuthors).map((uid) => getDocs(query(
+    collection(db, "posts"), where("visibility", "==", "followers"), where("authorId", "==", uid),
+    orderBy("createdAt", "desc"), limit(perAuthor),
+  )).then(snapToList).catch(() => [])));
+  return lists.flat();
 }
 
 // Private circles post with visibility "circle"; posts from before a circle

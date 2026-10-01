@@ -6,7 +6,7 @@ vi.mock("../db", () => ({
   tsMillis: (t) => (typeof t === "number" ? t : 0),
   isHeld: (p) => (p?.reportCount || 0) >= 3 && p?.modStatus !== "cleared",
 }));
-const { rankFeed, screenForViewer } = await import("../algorithm");
+const { latestFirst, rankFeed, screenForViewer } = await import("../algorithm");
 
 const now = Date.now();
 let n = 0;
@@ -66,5 +66,17 @@ describe("rankFeed", () => {
   it("returns every post it was given that the viewer may see", () => {
     const list = Array.from({ length: 12 }, () => post());
     expect(rankFeed(list, ctx)).toHaveLength(12);
+  });
+});
+
+describe("latestFirst", () => {
+  it("puts the newest activity first, counting a repost when it happened", () => {
+    const list = [
+      post({ id: "old", createdAt: now - 3 * 3600_000 }),
+      post({ id: "new", createdAt: now - 60_000 }),
+      post({ id: "middle", createdAt: now - 3600_000 }),
+      post({ id: "reposted", createdAt: now - 5 * 3600_000, repostedBy: [{ uid: "f", at: now - 30_000 }] }),
+    ];
+    expect(latestFirst(list, ctx).map((p) => p.id)).toEqual(["reposted", "new", "middle", "old"]);
   });
 });

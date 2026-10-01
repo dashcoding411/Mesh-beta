@@ -46,7 +46,7 @@ export default function UserProfile({ uid }) {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
     if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
-    fetchPostsByAuthor(uid)
+    fetchPostsByAuthor(uid, { follower: following.has(uid) })
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
     return () => { cancelled = true; };

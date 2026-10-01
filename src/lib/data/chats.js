@@ -140,9 +140,12 @@ export function listenChats(callback) {
   });
 }
 
+// `pending` marks messages not yet on the server.
 export function listenMessages(chatId, callback) {
   const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), limit(300));
-  return onSnapshot(q, (snap) => callback(snapToList(snap)));
+  return onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: d.metadata.hasPendingWrites })));
+  });
 }
 
 export async function sendVoiceMessage(chatId, blob, duration, peaks) {
@@ -279,31 +282,39 @@ export function presenceLabel(atMs) {
   return "";
 }
 
-// Read state
+// Read state. reads/{uid} holds when each member last read the chat (`at`)
+// and when their app last received a message in it (`deliveredAt`).
 
 export async function markRead(chatId) {
   await setDoc(doc(db, "chats", chatId, "reads", me()), { at: serverTimestamp() }, { merge: true });
 }
 
 export async function markUnread(chatId) {
-    await setDoc(doc(db, "chats", chatId, "reads", me()), { at: Timestamp.fromMillis(0) });
+  await setDoc(doc(db, "chats", chatId, "reads", me()), { at: Timestamp.fromMillis(0) }, { merge: true });
 }
 
+export async function markDelivered(chatId) {
+  await setDoc(doc(db, "chats", chatId, "reads", me()), { deliveredAt: serverTimestamp() }, { merge: true });
+}
+
+/** uid -> { at, deliveredAt } in millis. */
 export function listenReads(chatId, callback) {
   return onSnapshot(collection(db, "chats", chatId, "reads"), (snap) => {
     const map = new Map();
-    snap.docs.forEach((d) => map.set(d.id, tsMillis(d.data().at)));
+    snap.docs.forEach((d) => map.set(d.id, { at: tsMillis(d.data().at), deliveredAt: tsMillis(d.data().deliveredAt) }));
     callback(map);
   });
 }
 
+/** chatId -> { at, deliveredAt } in millis for the signed-in user. */
 export async function fetchMyReadTimes(chatIds) {
   const uid = me();
   const map = new Map();
   await Promise.all(
     chatIds.map(async (id) => {
       const snap = await getDoc(doc(db, "chats", id, "reads", uid));
-      map.set(id, snap.exists() ? tsMillis(snap.data().at) : 0);
+      const data = snap.exists() ? snap.data() : {};
+      map.set(id, { at: tsMillis(data.at), deliveredAt: tsMillis(data.deliveredAt) });
     })
   );
   return map;
