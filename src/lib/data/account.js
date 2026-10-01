@@ -82,6 +82,7 @@ export async function deleteMyAccountData() {
   }
   await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
   await deleteDoc(doc(db, "users", uid, "private", "prefs")).catch(() => {});
+  await deleteDoc(doc(db, "users", uid, "private", "desk")).catch(() => {});
   const mine = async (col, field) => {
     const snap = await getDocs(query(collection(db, col), where(field, "==", uid), limit(500))).catch(() => null);
     return snap?.docs || [];

@@ -1,12 +1,12 @@
 import {
-  ArrowDown, ArrowLeft, ChartBar, Check, ImagePlus, Info, Mic, Pencil, Phone, Reply, SendHorizontal,
+  ArrowDown, ArrowLeft, Ban, ChartBar, Check, ImagePlus, Info, Mic, Pencil, Phone, Reply, SendHorizontal,
   Sticker, Trash2, Video, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { callsSupported } from "../lib/calls";
 import { chatAvatar, chatPeer, chatTitle } from "../lib/chat";
 import {
-  CHAT_THEMES, clearTyping, editMessage, listenMessages, listenPresence, listenReads,
+  CHAT_THEMES, answerRequest, blockUser, clearTyping, editMessage, isRequest, listenMessages, listenPresence, listenReads,
   listenTyping, me, openUserProfile, presenceLabel, sendMessage, sendPhotoMessage, sendVoiceMessage, setTyping,
   tsMillis,
 } from "../lib/db";
@@ -75,7 +75,9 @@ function receiptFor(m, chat, others, reads) {
 // Auto-scrolls only when already at the bottom; otherwise shows a "new
 // messages" pill. Enter sends on desktop, inserts a newline on touch.
 export default function ChatView({ chat }) {
-  const { inbox, blocked, startCall, inCall } = useShell();
+  const { inbox, blocked, setBlocked, following, startCall, inCall } = useShell();
+  const request = isRequest(chat, following);
+  const [answering, setAnswering] = useState("");
   const recorder = useVoiceRecorder();
   const [voiceBusy, setVoiceBusy] = useState(false);
   const stopping = useRef(false);
@@ -112,10 +114,33 @@ export default function ChatView({ chat }) {
   useEffect(() => listenPresence(others, (uid, at) => setPresence((prev) => new Map(prev).set(uid, at))), [others]);
   useEffect(() => () => { clearTyping(chat.id).catch(() => {}); }, [chat.id]);
 
+  // Requests stay unread for the sender until accepted.
   useEffect(() => {
-    if (messages?.length) inbox.markChatRead(chat.id);
+    if (messages?.length && !request) inbox.markChatRead(chat.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages?.length, chat.id]);
+  }, [messages?.length, chat.id, request]);
+
+  const answer = async (choice) => {
+    setAnswering(choice);
+    try {
+      if (choice === "block") {
+        await blockUser({ id: others[0], username: chat.memberNames?.[others[0]] || "" });
+        setBlocked((prev) => new Set(prev).add(others[0]));
+      }
+      await answerRequest(chat, choice === "accept");
+      if (choice === "accept") {
+        inbox.markChatRead(chat.id);
+        toast({ title: "Request accepted", body: "This conversation is in General now." });
+      } else {
+        toast({ title: choice === "block" ? `${title} is blocked` : chat.isGroup ? "You left the group" : "Request deleted" });
+        navigate("/messages", { replace: true });
+      }
+    } catch {
+      toast({ tone: "error", title: "Couldn't update the request", body: "Check your connection and try again." });
+    } finally {
+      setAnswering("");
+    }
+  };
 
   const scrollToBottom = useCallback((smooth) => {
     const el = scroller.current;
@@ -356,7 +381,23 @@ export default function ChatView({ chat }) {
         )}
       </div>
 
-      {blockedOther ? (
+      {request ? (
+        <div className="shrink-0 border-t border-line bg-canvas px-4 pb-4 pt-3 text-center md:px-6" role="region" aria-label="Message request">
+          <p className="text-callout font-semibold">
+            {chat.isGroup ? `@${chat.memberNames?.[chat.createdBy] || "Someone"} added you to this group` : `${title} wants to message you`}
+          </p>
+          <p className="mx-auto mt-1 max-w-sm text-caption text-fg-muted">
+            They won't know you've seen their messages until you accept. {chat.isGroup ? "Delete to leave the group." : "Delete removes it from your inbox."}
+          </p>
+          <div className="mt-3 flex justify-center gap-2">
+            {!chat.isGroup && (
+              <Button size="sm" variant="ghost" icon={Ban} loading={answering === "block"} disabled={!!answering} onClick={() => answer("block")}>Block</Button>
+            )}
+            <Button size="sm" icon={Trash2} loading={answering === "delete"} disabled={!!answering} onClick={() => answer("delete")}>Delete</Button>
+            <Button size="sm" variant="primary" icon={Check} loading={answering === "accept"} disabled={!!answering} onClick={() => answer("accept")}>Accept</Button>
+          </div>
+        </div>
+      ) : blockedOther ? (
         <div className="shrink-0 border-t border-line bg-canvas px-4 py-4 text-center md:px-6">
           <p className="text-callout text-fg-muted">You've blocked {title}. Unblock them in this conversation's details to message them.</p>
           <Button size="sm" className="mt-2" icon={Info} onClick={() => setDialog("info")}>Conversation details</Button>

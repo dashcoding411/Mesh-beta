@@ -68,6 +68,20 @@ export async function fetchFollowedNews(following) {
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).some((uid) => following.has(uid)));
 }
 
+// The desk: each journalist's own folders for their stories (see lib/desk.js).
+
+const deskRef = () => doc(db, "users", me(), "private", "desk");
+
+export async function fetchDesk() {
+  const snap = await getDoc(deskRef());
+  const d = snap.exists() ? snap.data() : {};
+  return { folders: d.folders || {}, placements: d.placements || {} };
+}
+
+export async function saveDesk(desk) {
+  await setDoc(deskRef(), { folders: desk.folders, placements: desk.placements, updatedAt: serverTimestamp() });
+}
+
 // Stories
 
 export function storyFromDoc(snap) {

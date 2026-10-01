@@ -51,9 +51,10 @@ export default function Messages({ chatId }) {
   const visible = buckets[tab].filter((c) => !q || chatTitle(c).toLowerCase().includes(q));
   const unreadIn = (id) => buckets[id].filter((c) => inbox.isUnread(c)).length;
 
+  // A request isn't marked read until it's accepted, so the sender doesn't see "Seen".
   useEffect(() => {
-    if (active && inbox.isUnread(active)) inbox.markChatRead(active.id);
-  }, [active, inbox]);
+    if (active && inbox.isUnread(active) && !isRequest(active, following)) inbox.markChatRead(active.id);
+  }, [active, inbox, following]);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -100,7 +101,7 @@ export default function Messages({ chatId }) {
               <EmptyState compact icon={SearchIcon} title={`No conversations match “${filter.trim()}”`} />
             ) : tab === "requests" ? (
               <EmptyState compact icon={Mail} title="No message requests"
-                body="Messages from people you don't follow wait here until you reply, so strangers can't land in General." />
+                body="Messages from people you don't follow wait here until you accept them, so strangers can't land in General." />
             ) : (
               <EmptyState compact icon={MessageCircle} title="No messages yet"
                 body="Message someone, or start a group."

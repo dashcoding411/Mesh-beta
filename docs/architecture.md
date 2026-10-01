@@ -29,7 +29,7 @@
 
 | Path | Notes |
 | --- | --- |
-| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
+| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once), `private/desk` (newsroom folders). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
 | `usernames/{handle}` | Handle registry; claimed and released only together with the profile. |
 | `posts/{id}` | `kind`: `post` (Still), `text` (Strand), `short` / `video` (Flicks). Carousels store `media[]` (2–10 slides; `media[0]` mirrors `mediaUrl`). Subcollections: `likes`, `saves`, `sends`, `votes`, `comments` (each with `likes`). |
 | `reposts/{postId}_{uid}` | One per user per post; public posts by others only. |
@@ -207,7 +207,11 @@ avoid iPhone virtual multi-lens devices that default to the ultra-wide lens.
 (tombstones), typing, presence, receipts (Sending, Sent, Delivered once the
 recipient's app has received it, then Seen, or who has seen it in a group), polls, GIFs, voice notes and
 photos. Media is stored under the chat so only members can read it. A chat
-started by someone the user doesn't follow lands in Requests. Group members
+started by someone the user doesn't follow lands in Requests, where it can be
+accepted (`acceptedBy`), deleted (`declinedBy`, hidden from that member's
+inbox; a group is left instead) or the sender blocked. Each member changes only
+their own entry. A request isn't marked read until it's accepted, so the
+sender doesn't see "Seen". Group members
 are added one write at a time so each add is vetted.
 
 ## Circles and gatherings
@@ -237,6 +241,13 @@ the journalist's attestation, records a revision, and is blocked while the
 story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
+
+The newsroom files stories like OneDrive (`news/Desk.jsx`, `lib/desk.js`):
+folders and subfolders with breadcrumbs, list or grid, multi-select, drag and
+drop, Move to, rename, and My stories / Recent / Shared with me views. Folders
+live in `users/{uid}/private/desk`, so co-authors each file a shared story
+their own way. Deleting a folder moves its contents up a level; the lead
+journalist can delete a draft from the desk or the editor.
 
 ## Comments
 

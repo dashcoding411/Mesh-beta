@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listenChats, fetchMyReadTimes, markRead, markUnread, markDelivered, isRequest, me, tsMillis } from "./db";
+import { listenChats, fetchMyReadTimes, markRead, markUnread, markDelivered, isRequest, isDeclined, me, tsMillis } from "./db";
 
 // Single app-wide inbox subscription shared by the unread badge and Messages.
 // It also sends delivery receipts: a chat updated by someone else since this
@@ -11,7 +11,8 @@ export function useInbox(following, enabled = true) {
 
   useEffect(() => {
     if (!enabled) return;
-    return listenChats(setChats);
+    // Deleted requests leave the inbox entirely.
+    return listenChats((list) => setChats(list && list.filter((c) => !isDeclined(c))));
   }, [enabled]);
 
   // Read markers are per-chat subcollections: fetched on chat-set change, not streamed.

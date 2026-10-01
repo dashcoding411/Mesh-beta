@@ -848,6 +848,15 @@ service cloud.firestore {
           && incomingData().get('muted', []).size() <= 500
           && incomingData().get('hideAi', false) is bool;
       }
+      // The newsroom's folders and where each story is filed: private to the journalist.
+      match /private/desk {
+        allow read, delete: if isUser(uid);
+        allow create, update: if isUser(uid)
+          && incomingData().keys().hasOnly(['folders', 'placements', 'updatedAt'])
+          && incomingData().folders is map && incomingData().folders.size() <= 300
+          && incomingData().placements is map && incomingData().placements.size() <= 1000
+          && incomingData().updatedAt == request.time;
+      }
       // Set once: at signup, when migrating off the profile (same value), or
       // for legacy accounts that never set one. Removed only with the profile.
       match /private/age {
@@ -1716,6 +1725,12 @@ service cloud.firestore {
       function changed() {
         return incomingData().diff(resource.data).affectedKeys();
       }
+      // Only the caller's own uid is added to or removed from a list field.
+      function onlyMeToggled(field) {
+        return incomingData().get(field, []).toSet().difference(resource.data.get(field, []).toSet())
+          .union(resource.data.get(field, []).toSet().difference(incomingData().get(field, []).toSet()))
+          .hasOnly([request.auth.uid]);
+      }
       function blockedInDm() {
         let m = chatData().members;
         return chatData().get('isGroup', false) != true
@@ -1738,6 +1753,8 @@ service cloud.firestore {
         // No pre-set pins/mutes or previews; member names must match profiles.
         && incomingData().get('pinnedBy', []) == []
         && incomingData().get('mutedBy', []) == []
+        && incomingData().get('acceptedBy', []) == []
+        && incomingData().get('declinedBy', []) == []
         && incomingData().get('nicknames', {}) == {}
         && incomingData().get('lastMessage', '') == ''
         && incomingData().get('lastSenderId', '') == ''
@@ -1777,6 +1794,9 @@ service cloud.firestore {
               && incomingData().mutedBy.toSet().difference(resource.data.get('mutedBy', []).toSet())
                    .union(resource.data.get('mutedBy', []).toSet().difference(incomingData().mutedBy.toSet()))
                    .hasOnly([request.auth.uid]))
+          // Message requests: each member accepts or deletes for themselves.
+          || (changed().hasOnly(['acceptedBy', 'declinedBy'])
+              && onlyMeToggled('acceptedBy') && onlyMeToggled('declinedBy'))
           // Add one member to a group; the new member must be reachable and correctly named.
           || (resource.data.get('isGroup', false) == true
               && changed().hasOnly(['members', 'memberNames'])

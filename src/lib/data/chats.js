@@ -30,7 +30,11 @@ export async function openDirectChat(target) {
   const chatId = [uid, target.id].sort().join("_");
   const ref = chatDoc(chatId);
   const snap = await getDoc(ref);
-  if (snap.exists()) return chatId;
+  if (snap.exists()) {
+    // Messaging someone whose request you deleted brings the chat back.
+    if ((snap.data().declinedBy || []).includes(uid)) await answerRequest({ id: chatId, isGroup: false }, true);
+    return chatId;
+  }
   const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(target.id)]);
   try {
     await setDoc(ref, {
@@ -350,9 +354,22 @@ export async function setNickname(chatId, uid, nickname) {
 }
 
 // A request is a chat started by someone the user doesn't follow.
+/** Started by someone you don't follow, and not yet accepted. */
 export function isRequest(chat, followingSet) {
   const uid = me();
-  return chat.createdBy !== uid && !followingSet.has(chat.createdBy);
+  return chat.createdBy !== uid && !followingSet.has(chat.createdBy) && !(chat.acceptedBy || []).includes(uid);
+}
+
+/** A request this account deleted: hidden from its inbox. */
+export const isDeclined = (chat) => (chat.declinedBy || []).includes(me());
+
+/** Accept moves a request into General; delete hides it (and leaves a group). */
+export async function answerRequest(chat, accept) {
+  const uid = me();
+  if (!accept && chat.isGroup) return leaveGroupChat(chat);
+  await updateDoc(chatDoc(chat.id), accept
+    ? { acceptedBy: arrayUnion(uid), declinedBy: arrayRemove(uid) }
+    : { declinedBy: arrayUnion(uid), acceptedBy: arrayRemove(uid) });
 }
 
 // Polls

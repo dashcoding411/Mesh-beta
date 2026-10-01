@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   listenStory, saveStory, publishStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
-  clearStoryPresence, coAuthorFor, uploadMedia, me,
+  clearStoryPresence, coAuthorFor, uploadMedia, deleteNews, me,
 } from "../../lib/db";
 import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS } from "../../lib/storyDoc";
 import { NEWS_TOPICS } from "../../lib/interests";
@@ -18,7 +18,7 @@ import { TopicLabel } from "./parts";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import Badge from "../ui/Badge";
-import Dialog from "../ui/Dialog";
+import Dialog, { ConfirmDialog } from "../ui/Dialog";
 import Segmented from "../ui/Segmented";
 import Switch from "../ui/Switch";
 import MediaImg from "../ui/MediaImg";
@@ -166,6 +166,9 @@ export default function StoryEditor({ id }) {
         <AuthorsStrip names={local.authorNames} uids={local.authors} presence={presence} now={now} />
         <Button size="sm" variant="ghost" icon={History} onClick={() => setDialog("history")}>History</Button>
         <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDialog("preview")}>Preview</Button>
+        {editable && local.authorId === me() && (
+          <IconButton icon={Trash2} label="Delete draft" onClick={() => setDialog("delete")} />
+        )}
         {editable && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("publish")}>Publish</Button>}
       </header>
 
@@ -239,6 +242,15 @@ export default function StoryEditor({ id }) {
           onRestore={(rev) => { update({ title: rev.title, standfirst: rev.standfirst, blocks: rev.blocks, sources: rev.sources }); setDialog(null); toast({ title: "Restored", body: "It saves in a moment, as the next version." }); }} />
       )}
       {dialog === "preview" && <PreviewDialog story={local} onClose={() => setDialog(null)} />}
+      {dialog === "delete" && (
+        <ConfirmDialog title="Delete this draft?" confirmLabel="Delete draft"
+          body="The draft and its history will be permanently deleted for you and any co-authors. This can't be undone."
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            try { await deleteNews(id); toast({ title: "Draft deleted" }); navigate("/news/desk", { replace: true }); }
+            catch { toast({ tone: "error", title: "The draft could not be deleted" }); setDialog(null); }
+          }} />
+      )}
     </div>
   );
 }
