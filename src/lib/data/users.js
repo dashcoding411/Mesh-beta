@@ -4,6 +4,7 @@ import {
   onSnapshot, orderBy, query, serverTimestamp, setDoc, startAt, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import { navigate } from "../router";
 import { me, snapToList, tsMillis } from "./core.js";
 import { bumpAffinity, deleteInline, fetchPostsByAuthor, SIGNAL } from "./posts.js";
 import { uploadMedia } from "./uploads.js";
@@ -11,7 +12,7 @@ import { notify, unnotify } from "./notifications.js";
 
 export async function fetchProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  return snap.exists() ? rememberHandle({ id: snap.id, ...snap.data() }) : null;
 }
 
 // Birth year is owner-only so profiles can be read without an account.
@@ -99,6 +100,33 @@ export async function fetchProfileByUsername(username) {
 }
 
 const handleCache = new Map(); // handle -> uid | null
+const handleOf = new Map(); // uid -> handle, for profiles read this session
+
+function rememberHandle(profile) {
+  if (profile?.username) {
+    handleOf.set(profile.id, profile.username);
+    handleCache.set(profile.username, profile.id);
+  }
+  return profile;
+}
+
+/** A profile's address: /@handle when the handle is known, else /u/<uid> (which then shows the handle). */
+export function profilePath(uid) {
+  const handle = handleOf.get(uid);
+  return handle ? `/@${handle}` : `/u/${encodeURIComponent(uid)}`;
+}
+
+export function openUserProfile(uid) {
+  if (!uid) return;
+  if (uid === me()) navigate("/account");
+  else navigate(profilePath(uid), { overlay: true });
+}
+
+/** uid for a handle already looked up: the uid, null (no such handle) or undefined (not looked up yet). */
+export function cachedUidFor(username) {
+  const handle = String(username || "").toLowerCase();
+  return handleCache.has(handle) ? handleCache.get(handle) : undefined;
+}
 
 export async function uidForUsername(username) {
   const handle = String(username || "").toLowerCase().replace(/^@/, "");

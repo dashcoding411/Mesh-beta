@@ -51,6 +51,9 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Code splitting.** Screens, overlays, the story viewer, the photo cropper
   and the Storage SDK load on demand. Firebase is a single vendor chunk
   because its packages have circular imports.
+- **Profile addresses.** Profiles live at `/@handle`. Handles of profiles
+  read this session are cached, so links go straight there; an older
+  `/u/<uid>` link resolves and swaps its address for the handle.
 - **Own profile.** `myProfile()` (`lib/data/users.js`) keeps the signed-in
   profile current with one snapshot listener instead of a read per write.
 - **Visitors.** Signed out, the shell shows public sections and routes

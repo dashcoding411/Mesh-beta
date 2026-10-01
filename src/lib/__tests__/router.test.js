@@ -26,6 +26,9 @@ describe("matchPage", () => {
 describe("overlays", () => {
   it("opens profiles, posts and videos over the page underneath", () => {
     expect(matchOverlay("/u/uid1")).toEqual({ overlay: "user", id: "uid1" });
+    expect(matchOverlay("/@Clementine")).toEqual({ overlay: "user", handle: "clementine" });
+    expect(matchOverlay("/@ab")).toBeNull();
+    expect(matchOverlay("/@not.a-handle")).toBeNull();
     expect(matchOverlay("/p/post1")).toEqual({ overlay: "post", id: "post1" });
     const r = resolve({ path: "/p/post1", bg: "/search?q=cats" });
     expect(r.overlay).toEqual({ overlay: "post", id: "post1" });

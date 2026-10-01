@@ -64,7 +64,7 @@ export default function Profile() {
   }, [current, reposts, saved]);
 
   const shareProfile = async () => {
-    const url = `${window.location.origin}/u/${me()}`;
+    const url = `${window.location.origin}/@${profile.username}`;
     try {
       if (navigator.share) await navigator.share({ title: `@${profile.username} on Mesh`, url });
       else { await navigator.clipboard.writeText(url); toast({ title: "Profile link copied" }); }

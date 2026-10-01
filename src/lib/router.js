@@ -17,7 +17,7 @@ const depth = () => window.history.state?.depth || 0;
 
 /**
  * navigate("/messages")                       push a page
- * navigate("/u/abc", { overlay: true })       push an overlay over the current page
+ * navigate("/@ana", { overlay: true })        push an overlay over the current page
  * navigate("/search?q=x", { replace: true })  update without a new history entry
  */
 export function navigate(to, { replace = false, overlay = false } = {}) {
@@ -27,6 +27,12 @@ export function navigate(to, { replace = false, overlay = false } = {}) {
   const state = { depth: replace ? depth() : depth() + 1, ...(bg ? { bg } : {}) };
   if (replace) window.history.replaceState(state, "", to);
   else window.history.pushState(state, "", to);
+  emit();
+}
+
+/** Swap the address for an equivalent one, keeping history state (overlay background, depth). */
+export function replacePath(to) {
+  window.history.replaceState(window.history.state, "", to);
   emit();
 }
 
@@ -55,6 +61,8 @@ export function useLocation() {
 // Routes
 
 const OVERLAYS = [
+  // Profiles are /@handle; /u/<uid> still works for older links.
+  [/^\/@([a-z0-9_]{3,30})$/i, (m) => ({ overlay: "user", handle: m[1].toLowerCase() })],
   [/^\/u\/([^/]+)$/, (m) => ({ overlay: "user", id: decodeURIComponent(m[1]) })],
   [/^\/p\/([^/]+)$/, (m) => ({ overlay: "post", id: decodeURIComponent(m[1]) })],
   [/^\/watch\/([^/]+)$/, (m) => ({ overlay: "watch", id: decodeURIComponent(m[1]) })],

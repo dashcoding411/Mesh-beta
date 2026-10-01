@@ -6,15 +6,16 @@ import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
   hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, isAdmin, setBadge, setPinkCheck, me,
+  uidForUsername, cachedUidFor,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { MenuItem, MenuGroup } from "./ui/Menu";
-import { goBack, navigate } from "../lib/router";
+import { goBack, navigate, replacePath } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
-import { EmptyState, Skeleton } from "./ui/States";
+import { EmptyState, Skeleton, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useBrick } from "../lib/useBrick";
@@ -26,10 +27,38 @@ import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { betaByJoinDate, FOUNDER_UID, hasPinkCheck } from "../lib/badges";
 import { primeCard } from "../lib/profileCache";
 
-export default function UserProfile({ uid }) {
+const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64";
+
+/** A profile overlay from /@handle (or an older /u/<uid> link). */
+export default function UserProfile({ uid: givenUid, handle }) {
+  const [lookup, setLookup] = useState({ handle: null, uid: undefined });
+  const uid = givenUid || (lookup.handle === handle ? lookup.uid : cachedUidFor(handle));
+
+  useEffect(() => {
+    if (uid !== undefined) return undefined;
+    let alive = true;
+    uidForUsername(handle)
+      .then((found) => { if (alive) setLookup({ handle, uid: found || null }); })
+      .catch(() => { if (alive) setLookup({ handle, uid: null }); });
+    return () => { alive = false; };
+  }, [uid, handle]);
+
+  useEffect(() => { if (uid && uid === me()) navigate("/account", { replace: true }); }, [uid]);
+
+  if (uid === undefined) {
+    return (
+      <div role="dialog" aria-modal="true" aria-label={`@${handle}`} className={`${OVERLAY} flex items-center justify-center`}>
+        <Spinner />
+      </div>
+    );
+  }
+  return <ProfileView key={uid || "missing"} uid={uid} />;
+}
+
+function ProfileView({ uid }) {
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
   const toast = useToast();
-  const [profile, setProfile] = useState(undefined);
+  const [profile, setProfile] = useState(uid ? undefined : null);
   usePageTitle(profile ? `@${profile.username}` : null, 2);
   const [posts, setPosts] = useState(null);
   const [reposts, setReposts] = useState(null);
@@ -51,7 +80,14 @@ export default function UserProfile({ uid }) {
   const feedLock = brick.state("feed");
   const locked = !!profile?.isPrivate && !following.has(uid);
 
+  // The address shows the handle, never the account ID.
+  const username = profile?.username;
   useEffect(() => {
+    if (username && window.location.pathname !== `/@${username}`) replacePath(`/@${username}${window.location.search}`);
+  }, [username]);
+
+  useEffect(() => {
+    if (!uid) return undefined;
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
     if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
@@ -165,7 +201,7 @@ export default function UserProfile({ uid }) {
   };
 
   const share = async () => {
-    const url = `${window.location.origin}/u/${uid}`;
+    const url = `${window.location.origin}/@${profile.username}`;
     try {
       if (navigator.share) await navigator.share({ title: `@${profile.username} on Mesh`, url });
       else { await navigator.clipboard.writeText(url); toast({ title: "Profile link copied" }); }
@@ -174,7 +210,7 @@ export default function UserProfile({ uid }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
-      className={`fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64 ${hasPinkCheck(profile?.badges) ? "theme-pink" : ""}`}>
+      className={`${OVERLAY} ${hasPinkCheck(profile?.badges) ? "theme-pink" : ""}`}>
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>

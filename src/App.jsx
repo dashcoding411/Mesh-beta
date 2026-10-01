@@ -375,7 +375,8 @@ export default function App() {
 
         {/* Overlays render over the current page, so a null fallback avoids flashing it. */}
         <Suspense fallback={null}>
-        {overlay?.overlay === "user" && <UserProfile key={overlay.id} uid={overlay.id} />}
+        {/* One instance: swapping /u/<uid> for /@handle mustn't remount it. Each account remounts inside. */}
+        {overlay?.overlay === "user" && <UserProfile uid={overlay.id} handle={overlay.handle} />}
         {overlayLock ? (
           <LockedOverlay section={overlay.overlay === "watch" ? "flicks" : "feed"} lock={overlayLock} brick={brick} />
         ) : (
