@@ -434,7 +434,7 @@ function Shell({ finishing = false, children }) {
         <div className="relative max-w-md px-12">
           <LogoMark size={56} />
           <p className="mt-8 font-display text-[3rem] font-extrabold leading-[1.05] tracking-tight">
-            Making Every<br />Story Heard.
+            Let&rsquo;s mesh<br />together again.
           </p>
           <p className="mt-6 text-body text-fg-muted">
             Posts, short and long video, communities and news that has to cite its sources, in one place.
@@ -457,7 +457,7 @@ function Shell({ finishing = false, children }) {
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
             <LogoMark size={52} />
             <h1 className="mt-3 font-display text-display font-extrabold tracking-tight">Mesh</h1>
-            <p className="mt-1 text-callout text-fg-muted">Making Every Story Heard</p>
+            <p className="mt-1 text-callout text-fg-muted">Let&rsquo;s mesh together again</p>
           </div>
           <h1 className="sr-only lg:not-sr-only lg:hidden">Mesh</h1>
           {children}

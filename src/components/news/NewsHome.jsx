@@ -52,6 +52,11 @@ export function NewsHome() {
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-4 pb-16 pt-4 md:px-6">
+          {/* The masthead: News's own slogan, not the app's. */}
+          <div className="mb-4 border-b border-line pb-3">
+            <p className="font-display text-title-2 font-extrabold tracking-tight">Mesh News</p>
+            <p className="text-callout text-fg-muted">Making Every Story Heard.</p>
+          </div>
           {liveTopics.length > 1 && (
             <div role="radiogroup" aria-label="News topics" className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:px-0">
               {[{ id: "all", label: "Top stories" }, ...liveTopics].map((t) => {

@@ -1,0 +1,57 @@
+<!doctype html>
+<!--
+  The link-preview image (public/og-image.png, 1200x630). After editing, regenerate with:
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+    --window-size=1200,630 --screenshot=public/og-image.png scripts/og-image.html
+-->
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background-color: #0b0b0f;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #fafafa;
+    position: relative;
+  }
+  .logo {
+    position: absolute; left: 96px; top: 96px; width: 112px; height: 112px;
+    border-radius: 24px; background: #1c1c21;
+    display: flex; align-items: center; justify-content: center;
+  }
+  h1 {
+    position: absolute; left: 96px; top: 262px; margin: 0;
+    font-size: 92px; line-height: 1.06; font-weight: 700; letter-spacing: -1.5px;
+  }
+  p {
+    position: absolute; left: 96px; top: 500px; margin: 0;
+    font-size: 32px; color: #a1a1aa;
+  }
+  .bar { position: absolute; left: 96px; top: 568px; width: 96px; height: 6px; border-radius: 3px; background: #8b5cf6; }
+</style>
+</head>
+<body>
+  <div class="logo">
+    <svg width="72" height="72" viewBox="10 10 44 44" aria-hidden="true">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#a78bfa"/>
+          <stop offset="1" stop-color="#e879f9"/>
+        </linearGradient>
+      </defs>
+      <g stroke="url(#g)" stroke-width="3.5" stroke-linecap="round" fill="none">
+        <path d="M14 20h36M14 32h36M14 44h36"/>
+        <path d="M20 14v36M32 14v36M44 14v36"/>
+      </g>
+    </svg>
+  </div>
+  <h1>Let&rsquo;s mesh<br>together again.</h1>
+  <p>Posts, video, communities and sourced news. No ads.</p>
+  <div class="bar"></div>
+</body>
+</html>
