@@ -16,7 +16,7 @@ export function Caption({ post, highlight }) {
   const long = text.length > 125 || text.split("\n").length > 2;
   const shown = open || !long ? text : `${text.slice(0, 110).split("\n").slice(0, 2).join("\n").trimEnd()}…`;
   return (
-    <div className="text-callout text-fg">
+    <div className="text-callout leading-6 text-fg">
       {post.title && <p className="font-semibold">{post.title}</p>}
       {text && (
         <p className="whitespace-pre-wrap break-words">
@@ -72,7 +72,7 @@ export function SocialProof({ post, counts, seen, hiddenAuthors, mine, hiddenWor
   if (!counts.like && !counts.comment && !stats && !caption && !tags) return null;
 
   return (
-    <div className="space-y-1 text-callout">
+    <div className="space-y-1 text-callout leading-6">
       {counts.like > 0 && (
         <p className="text-fg-muted">
           {shownLiker ? (

@@ -5,6 +5,7 @@ import { setTourDone, tsMillis } from "../lib/db";
 import { motionReduced } from "../lib/appearance";
 import { TOUR_EVENT } from "../lib/tour";
 import Button from "./ui/Button";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 // New accounts from this date see the tour once by themselves; anyone can
 // replay it from Settings.
@@ -72,6 +73,7 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
   const [rect, setRect] = useState(null);
   const [matched, setMatched] = useState(null);
   const cardRef = useRef(null);
+  useFocusTrap({ ref: cardRef, active: !!steps });
 
   // Replays from Settings.
   useEffect(() => {

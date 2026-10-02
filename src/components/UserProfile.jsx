@@ -26,8 +26,10 @@ import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { betaByJoinDate, FOUNDER_UID, hasPinkCheck } from "../lib/badges";
 import { primeCard } from "../lib/profileCache";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
-const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64";
+// scroll-pt keeps keyboard focus clear of the sticky header.
+const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto scroll-pt-16 bg-canvas anim-fade md:left-[76px] xl:left-64";
 
 /** A profile overlay from /@handle (or an older /u/<uid> link). */
 export default function UserProfile({ uid: givenUid, handle }) {
@@ -56,6 +58,7 @@ export default function UserProfile({ uid: givenUid, handle }) {
 }
 
 function ProfileView({ uid }) {
+  const trap = useFocusTrap({ restore: false });
   const { following, setFollowing, blocked, setBlocked, muted, toggleMute, guest, needsAccount } = useShell();
   const toast = useToast();
   const [profile, setProfile] = useState(uid ? undefined : null);
@@ -209,7 +212,7 @@ function ProfileView({ uid }) {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
+    <div ref={trap} role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
       className={`${OVERLAY} ${hasPinkCheck(profile?.badges) ? "theme-pink" : ""}`}>
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />

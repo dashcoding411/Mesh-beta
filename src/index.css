@@ -52,7 +52,7 @@
   --accent-soft: rgb(124 58 237 / 0.10);
   --danger-text: 185 28 28;    /* red-700, 5.5–6.5:1 */
   --success-text: 4 120 87;    /* emerald-700, 4.7–5.5:1 */
-  --warning-text: 180 83 9;    /* amber-700, 4.5–5.0:1 */
+  --warning-text: 146 64 14;   /* amber-800, 6.1–7.0:1 (badge tints included) */
   --like: 192 38 211;          /* fuchsia-600 */
   --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.04);
   --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.06);
@@ -64,7 +64,7 @@
     --line: 228 228 231; --line-strong: 212 212 216; --field: 128 128 138;
     --fg: 24 24 27; --fg-muted: 82 82 91; --fg-subtle: 101 101 110;
     --accent-text: 109 40 217; --accent-ring: 124 58 237; --accent-soft: rgb(124 58 237 / 0.10);
-    --danger-text: 185 28 28; --success-text: 4 120 87; --warning-text: 180 83 9; --like: 192 38 211;
+    --danger-text: 185 28 28; --success-text: 4 120 87; --warning-text: 146 64 14; --like: 192 38 211;
     --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.04);
     --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.06);
   }
@@ -112,6 +112,39 @@
     radial-gradient(circle at 18% 28%, rgb(255 255 255 / 0.35), transparent 38%),
     radial-gradient(circle at 82% 72%, rgb(255 255 255 / 0.22), transparent 42%),
     linear-gradient(135deg, #f9a8d4, #ec4899 55%, #db2777);
+}
+
+/* High contrast (Settings > Appearance > Contrast, or the device's "increase
+   contrast" setting): secondary text close to primary, stronger borders and
+   field outlines, and a brighter accent. Text tokens stay above 7:1. */
+:root[data-contrast="more"],
+:root[data-contrast="more"] [data-theme="dark"] {
+  --fg-muted: 212 212 216;     /* zinc-300 */
+  --fg-subtle: 196 196 204;
+  --line: 82 82 91;            /* zinc-600 */
+  --line-strong: 113 113 122;  /* zinc-500 */
+  --field: 161 161 170;        /* zinc-400 */
+  --accent-text: 196 181 253;  /* violet-300 */
+  --accent-ring: 221 214 254;  /* violet-200 */
+  --accent-soft: rgb(139 92 246 / 0.26);
+}
+:root[data-contrast="more"][data-theme="light"] {
+  --fg-muted: 39 39 42;        /* zinc-800 */
+  --fg-subtle: 63 63 70;       /* zinc-700 */
+  --line: 161 161 170;         /* zinc-400 */
+  --line-strong: 113 113 122;
+  --field: 82 82 91;           /* zinc-600 */
+  --accent-text: 91 33 182;    /* violet-800 */
+  --accent-ring: 91 33 182;
+  --accent-soft: rgb(124 58 237 / 0.18);
+}
+:root[data-contrast="more"] :focus-visible { outline-width: 3px; }
+
+/* Windows High Contrast and other forced-colour modes: keep focus and
+   control edges visible when backgrounds are stripped. */
+@media (forced-colors: active) {
+  :focus-visible { outline: 3px solid CanvasText; }
+  .press, .field { border: 1px solid ButtonText; }
 }
 
 :root {

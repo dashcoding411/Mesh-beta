@@ -5,6 +5,7 @@ import Avatar from "./ui/Avatar";
 import { relayConfigured } from "../lib/calls";
 import { endTone, startTone } from "../lib/callTones";
 import { formatDuration } from "../lib/format";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 function useSession(session) {
   const [, force] = useState(0);
@@ -67,6 +68,7 @@ export function CallScreen({ session, onClose }) {
   const [soundBlocked, setSoundBlocked] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const rootRef = useRef(null);
+  useFocusTrap({ ref: rootRef, active: !minimized, restore: false });
   const remoteVideoRef = useRef(null);
   const endBtn = useRef(null);
   const { state } = session;
@@ -236,6 +238,7 @@ export function CallScreen({ session, onClose }) {
 
 export function IncomingCall({ call, onAnswer, onDecline }) {
   const answerRef = useRef(null);
+  const trap = useFocusTrap({ restore: false });
   useEffect(() => {
     answerRef.current?.focus();
     navigator.vibrate?.([400, 200, 400, 200, 400]);
@@ -245,7 +248,7 @@ export function IncomingCall({ call, onAnswer, onDecline }) {
     return () => { stop(); navigator.vibrate?.(0); document.title = title; };
   }, [call.callerName]);
   return createPortal(
-    <div role="alertdialog" aria-modal="true" aria-label={`Incoming ${call.video ? "video" : "voice"} call from @${call.callerName}`} data-theme="dark"
+    <div ref={trap} role="alertdialog" aria-modal="true" aria-label={`Incoming ${call.video ? "video" : "voice"} call from @${call.callerName}`} data-theme="dark"
       className="fixed inset-0 z-toast flex flex-col items-center justify-between bg-zinc-950 px-6 py-16 text-white anim-fade">
       <div className="flex flex-col items-center gap-4 pt-safe text-center">
         <Avatar profile={{ username: call.callerName, photoURL: call.callerPhoto }} size={120} />

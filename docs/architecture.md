@@ -96,6 +96,36 @@ tap) or "Post" (into the composer with the capture attached). In the composer,
 location and photo descriptions stay folded until asked for; the share button
 sits bottom-right.
 
+## Accessibility
+
+The target is WCAG 2.2 AA, checked with axe-core on every main screen and
+dialog, at phone and desktop widths, in light, dark, high contrast and the pink
+profile theme.
+
+- **Colour.** Text tokens meet 4.5:1 on every surface in both themes; links in
+  text are underlined, not told apart by colour alone. Appearance > Contrast >
+  High (or the device's "increase contrast" setting) strengthens secondary
+  text, borders, field outlines and focus rings. Forced-colour modes keep focus
+  and control edges.
+- **Keyboard.** A skip link, a visible focus ring, and shortcuts that pause
+  while typing or while a dialog is open. `ui/Dialog` and `lib/useFocusTrap`
+  keep Tab inside whatever layer is in front (profiles, posts, players,
+  stories, calls, the camera, the tour) and return focus when it closes;
+  sticky headers leave room (`scroll-pt`) so focus is never hidden under them.
+- **Size and reflow.** Targets are at least 24px (most are 44px). Text scales
+  to 125% (Appearance > Text size) and nothing scrolls sideways at 320px.
+- **Time and motion.** Toasts and notification banners pause on hover and
+  focus, and every notification stays on the Notifications page. Reduced
+  motion (setting or system) stops animations and autoplay; playing video
+  always has a pause button.
+- **Alternatives to gestures.** Swipes, holds and drags all have buttons:
+  carousel and story arrows, Video mode in the camera, Move to in the
+  newsroom, and keyboard controls in the cropper and players.
+- **Content.** Photos take descriptions (alt text), video and audio have
+  labelled controls, and screens name themselves with a heading and a title.
+
+Not yet covered: captions for uploaded video and transcripts for voice notes.
+
 ## Feeds (`lib/algorithm.js`)
 
 Home is newest first (`latestFirst`; a repost counts when it was reposted).

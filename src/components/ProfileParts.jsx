@@ -107,18 +107,22 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
   );
 }
 
+// A label and count in the stats list. When it opens a list, the whole stat
+// is the button's hit area, while the list keeps valid dt/dd pairs.
 function Stat({ label, value, onClick }) {
-  const inner = (
-    <>
-      <dd className="text-title-3 tabular">{value === null || value === undefined ? "–" : compact(value)}</dd>
-      <dt className="text-caption text-fg-subtle">{label}</dt>
-    </>
-  );
-  if (!onClick) return <div className="flex flex-col-reverse">{inner}</div>;
+  const shown = value === null || value === undefined ? "–" : compact(value);
   return (
-    <button type="button" onClick={onClick} className="press -m-1 flex flex-col-reverse rounded-control p-1 text-left hover:bg-surface-2">
-      {inner}
-    </button>
+    <div className={`relative flex flex-col ${onClick ? "-m-1 rounded-control p-1 hover:bg-surface-2" : ""}`}>
+      <dt className="text-caption text-fg-subtle">{label}</dt>
+      <dd className="text-title-3 tabular">
+        {onClick ? (
+          <button type="button" onClick={onClick} aria-label={`${shown} ${label}. Show the list`}
+            className="press rounded-control after:absolute after:inset-0 after:content-['']">
+            {shown}
+          </button>
+        ) : shown}
+      </dd>
+    </div>
   );
 }
 

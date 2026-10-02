@@ -56,7 +56,7 @@ export default function RichText({ text, className = "", highlight, as: Tag = "p
         if (p.t === "url") {
           return (
             <a key={i} href={hrefOf(p.v)} target="_blank" rel="ugc nofollow noopener noreferrer" onClick={(e) => followLink(hrefOf(p.v), e)}
-              className="text-accent-text underline-offset-2 hover:underline">
+              className="text-accent-text underline decoration-accent-text/50 underline-offset-2 hover:decoration-current">
               {shortLabel(p.v)}
             </a>
           );
@@ -72,7 +72,7 @@ export default function RichText({ text, className = "", highlight, as: Tag = "p
         };
         return (
           <a key={i} href={`/search?q=${encodeURIComponent(q)}`} onClick={open}
-            className="text-accent-text hover:underline underline-offset-2">
+            className="text-accent-text underline decoration-accent-text/50 underline-offset-2 hover:decoration-current">
             {q}
           </a>
         );

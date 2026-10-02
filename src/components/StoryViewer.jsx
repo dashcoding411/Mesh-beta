@@ -13,12 +13,14 @@ import { shortTime, plural } from "../lib/format";
 import LiveAvatar from "./ui/LiveAvatar";
 import MediaImg from "./ui/MediaImg";
 import IconButton from "./ui/IconButton";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 const IMAGE_MS = 5000;
 
 // Auto-advance is pausable (WCAG 2.2.2) via button, press-and-hold, space.
 // Viewers can reply (DM), react, like and echo; authors see activity.
 export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null, startAt = 0 }) {
+  const trap = useFocusTrap();
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
   const [idx, setIdx] = useState(Math.min(startAt, thread.items.length - 1));
@@ -147,7 +149,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const expired = storyExpired(item);
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={`@${thread.authorName}'s story`} data-theme="dark"
+    <div ref={trap} role="dialog" aria-modal="true" aria-label={`@${thread.authorName}'s story`} data-theme="dark"
       className="fixed inset-0 z-sheet flex items-center justify-center bg-black anim-fade">
       <div className="relative h-full w-full max-w-md md:h-[92dvh] md:overflow-hidden md:rounded-sheet">
         <div className="absolute inset-x-3 top-3 z-10 flex gap-1 pt-safe" aria-hidden="true">
@@ -187,11 +189,11 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
           )}
         </div>
 
-        <button type="button" onClick={prev} aria-label="Previous"
+        <button type="button" onClick={prev} aria-label="Previous story"
           className="absolute inset-y-20 left-0 flex w-1/3 items-center justify-start pl-2 text-white/0 hover:text-white/80 focus-visible:text-white/80">
           <ChevronLeft size={32} aria-hidden="true" />
         </button>
-        <button type="button" onClick={next} aria-label="Next"
+        <button type="button" onClick={next} aria-label="Next story"
           className="absolute inset-y-20 right-0 flex w-1/3 items-center justify-end pr-2 text-white/0 hover:text-white/80 focus-visible:text-white/80">
           <ChevronRight size={32} aria-hidden="true" />
         </button>

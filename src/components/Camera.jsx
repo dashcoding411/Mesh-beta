@@ -6,6 +6,7 @@ import { motionReduced } from "../lib/appearance";
 import { formatDuration } from "../lib/format";
 import Button from "./ui/Button";
 import { Spinner } from "./ui/States";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 const HOLD_MS = 280; // a press longer than this records
 const MAX_VIDEO_S = 60;
@@ -49,6 +50,10 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
   const [elapsed, setElapsed] = useState(0);
   const [flash, setFlash] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // With both on, Video mode lets a tap start and stop recording, for anyone
+  // who can't press and hold.
+  const [mode, setMode] = useState(photo ? "photo" : "video");
+  const tapRecords = !photo || (video && mode === "video");
   const videoRef = useRef(null);
   const boxRef = useRef(null);
   const streamRef = useRef(null);
@@ -57,6 +62,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
   const libraryRef = useRef(null);
   const shutterRef = useRef(null);
   const mirrored = facing === "user";
+  const trap = useFocusTrap();
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -151,26 +157,27 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
     return () => clearInterval(id);
   }, [recording]);
 
-  // Pointer: tap for a photo, hold to record. Keyboard: Enter or Space.
+  // Pointer: tap for a photo, hold to record (or tap to start and stop in
+  // Video mode). Keyboard: Enter or Space.
   const press = () => {
     if (status !== "live") return;
     if (recorderRef.current) return;
-    if (video) holdRef.current = setTimeout(() => { holdRef.current = null; startRecording(); }, photo ? HOLD_MS : 0);
+    if (video) holdRef.current = setTimeout(() => { holdRef.current = null; startRecording(); }, tapRecords ? 0 : HOLD_MS);
   };
   const release = () => {
     if (status !== "live") return;
     if (recorderRef.current) {
-      // Video-only: the press that started it doesn't stop it.
-      if (!photo && Date.now() - (recording?.at || 0) < HOLD_MS) return;
+      // Tap to record: the press that started it doesn't stop it.
+      if (tapRecords && Date.now() - (recording?.at || 0) < HOLD_MS) return;
       stopRecording();
       return;
     }
     if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; }
-    if (photo) takePhoto();
+    if (!tapRecords) takePhoto();
   };
   const keyShutter = () => {
     if (status !== "live") return;
-    if (photo) takePhoto();
+    if (!tapRecords) takePhoto();
     else if (recorderRef.current) stopRecording();
     else startRecording();
   };
@@ -198,11 +205,11 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
 
   const accept = [photo && "image/*", video && "video/*"].filter(Boolean).join(",");
   const hint = recording ? `Recording · ${formatDuration(Math.floor(elapsed))}`
-    : photo && video ? "Tap for a photo, hold for a video" : photo ? "Tap to take a photo" : "Tap to start recording";
+    : tapRecords ? "Tap to start recording" : video ? "Tap for a photo, hold for a video" : "Tap to take a photo";
   const ring = recording ? Math.min(1, elapsed / MAX_VIDEO_S) : 0;
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[55] flex flex-col bg-black text-white anim-fade">
+    <div ref={trap} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[55] flex flex-col bg-black text-white anim-fade">
       <div ref={boxRef} className="relative mx-auto min-h-0 w-full flex-1 overflow-hidden md:my-4 md:aspect-[3/4] md:w-auto md:max-w-full md:flex-none md:rounded-card md:[height:calc(100%-10rem)]">
         {shot ? (
           shot.kind === "image"
@@ -265,6 +272,16 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
           </div>
         ) : (
           <>
+            {photo && video && !recording && (
+              <div className="flex justify-center pt-3" role="radiogroup" aria-label="Camera mode">
+                {["photo", "video"].map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)}
+                    className={`min-h-8 rounded-full px-4 text-caption font-semibold ${mode === m ? "bg-white text-black" : "text-white/80"}`}>
+                    {m === "photo" ? "Photo" : "Video"}
+                  </button>
+                ))}
+              </div>
+            )}
             <p className="h-[30px] pt-3 text-center text-caption text-white/80" aria-live="polite">{status === "live" ? hint : " "}</p>
             <div className="grid h-[112px] grid-cols-3 items-center">
               <button type="button" onClick={() => libraryRef.current?.click()} disabled={!!recording}
@@ -273,8 +290,8 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
                 <Images size={22} aria-hidden="true" />
               </button>
               <button ref={shutterRef} type="button" disabled={status !== "live"}
-                aria-label={recording ? "Stop recording" : photo ? (video ? "Take a photo, or hold to record" : "Take a photo") : "Start recording"}
-                onPointerDown={press} onPointerUp={release} onPointerLeave={() => { if (recorderRef.current && photo) stopRecording(); else if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+                aria-label={recording ? "Stop recording" : tapRecords ? "Start recording" : video ? "Take a photo, or hold to record" : "Take a photo"}
+                onPointerDown={press} onPointerUp={release} onPointerLeave={() => { if (recorderRef.current && !tapRecords) stopRecording(); else if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onClick={(e) => { if (e.detail === 0) keyShutter(); }} onContextMenu={(e) => e.preventDefault()}
                 style={{ WebkitTouchCallout: "none", touchAction: "none" }}
                 className="relative h-[78px] w-[78px] select-none justify-self-center rounded-full disabled:opacity-40">

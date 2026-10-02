@@ -303,6 +303,8 @@ export default function ChatView({ chat }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="sticky top-0 z-nav flex h-16 shrink-0 items-center gap-1 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+        {/* On phones the list (and its "Messages" heading) is hidden, so the chat names the page. */}
+        <h1 className="sr-only md:hidden">Conversation with {title}</h1>
         <IconButton icon={ArrowLeft} label="Back to Messages" className="md:hidden" onClick={() => navigate("/messages")} />
         <button type="button" onClick={() => (chat.isGroup ? setDialog("info") : openUserProfile(others[0]))}
           className="press flex min-w-0 flex-1 items-center gap-3 rounded-control px-2 py-1 text-left hover:bg-surface">

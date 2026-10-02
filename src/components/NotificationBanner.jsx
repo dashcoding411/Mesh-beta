@@ -3,7 +3,9 @@ import { X } from "lucide-react";
 import { openNotice } from "../lib/notices";
 import { NoticeAvatar, NoticeLine } from "./NoticeParts";
 
-const SHOW_MS = 4500;
+// Long enough to read, and paused while hovered or focused. Every
+// notification is also kept on the Notifications page.
+const SHOW_MS = 7000;
 
 // A new notification drops in as a short banner, then goes. Only for ones that
 // arrive during this visit, not from muted or blocked people, and not while
@@ -11,6 +13,9 @@ const SHOW_MS = 4500;
 export default function NotificationBanner({ notices, hidden, onNotificationsPage }) {
   const known = useRef(null);
   const [shown, setShown] = useState(null);
+  // Paused per banner, so a dismissed one never holds up the next.
+  const [pausedId, setPausedId] = useState(null);
+  const paused = !!shown && pausedId === shown.id;
 
   useEffect(() => {
     if (!notices) return;
@@ -24,22 +29,24 @@ export default function NotificationBanner({ notices, hidden, onNotificationsPag
   }, [notices, hidden, onNotificationsPage]);
 
   useEffect(() => {
-    if (!shown) return undefined;
+    if (!shown || paused) return undefined;
     const t = setTimeout(() => setShown(null), SHOW_MS);
     return () => clearTimeout(t);
-  }, [shown]);
+  }, [shown, paused]);
 
   if (!shown) return null;
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-toast flex justify-center px-3 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
       <div role="status" key={shown.id}
+        onMouseEnter={() => setPausedId(shown.id)} onMouseLeave={() => setPausedId(null)}
+        onFocus={() => setPausedId(shown.id)} onBlur={() => setPausedId(null)}
         className="pointer-events-auto flex w-full max-w-md items-center gap-1 rounded-2xl border border-line-strong bg-surface-2/95 py-2 pl-3 pr-1 shadow-overlay backdrop-blur anim-banner">
         <button type="button" onClick={() => { setShown(null); openNotice(shown); }}
           className="press flex min-w-0 flex-1 items-center gap-3 text-left">
           <NoticeAvatar n={shown} size={36} />
           <span className="line-clamp-2 text-callout text-fg-muted"><NoticeLine n={shown} /></span>
         </button>
-        <button type="button" onClick={() => setShown(null)} aria-label="Dismiss"
+        <button type="button" onClick={() => setShown(null)} aria-label="Dismiss notification"
           className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-fg-subtle hover:text-fg">
           <X size={16} aria-hidden="true" />
         </button>

@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from "react";
 
 const KEY = "mesh:appearance";
-export const DEFAULTS = { theme: "system", text: "default", motion: "system", autoplay: "on" };
+export const DEFAULTS = { theme: "system", text: "default", contrast: "system", motion: "system", autoplay: "on" };
 
 export const OPTIONS = {
   theme: [
@@ -16,6 +16,10 @@ export const OPTIONS = {
     { id: "default", label: "Default" },
     { id: "large", label: "Large" },
     { id: "larger", label: "Larger" },
+  ],
+  contrast: [
+    { id: "system", label: "Follow system" },
+    { id: "more", label: "High" },
   ],
   motion: [
     { id: "system", label: "Follow system" },
@@ -31,6 +35,7 @@ let prefs = read();
 const listeners = new Set();
 const systemDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const systemReduce = typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+const systemMoreContrast = typeof window !== "undefined" ? window.matchMedia("(prefers-contrast: more)") : null;
 
 function read() {
   try {
@@ -45,6 +50,10 @@ function read() {
 export function resolvedTheme(p = prefs) {
   if (p.theme !== "system") return p.theme;
   return systemDark?.matches === false ? "light" : "dark";
+}
+
+export function contrastMore(p = prefs) {
+  return p.contrast === "more" || !!systemMoreContrast?.matches;
 }
 
 export function motionReduced(p = prefs) {
@@ -62,6 +71,8 @@ function apply() {
   root.dataset.theme = resolvedTheme();
   if (prefs.text === "default") delete root.dataset.text;
   else root.dataset.text = prefs.text;
+  if (contrastMore()) root.dataset.contrast = "more";
+  else delete root.dataset.contrast;
   if (prefs.motion === "reduce") root.dataset.motion = "reduce";
   else delete root.dataset.motion;
   const bar = document.querySelector('meta[name="theme-color"]');
@@ -90,4 +101,5 @@ export function useAppearance() {
 
 systemDark?.addEventListener?.("change", emit);
 systemReduce?.addEventListener?.("change", emit);
+systemMoreContrast?.addEventListener?.("change", emit);
 apply();

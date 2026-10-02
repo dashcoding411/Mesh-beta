@@ -24,6 +24,7 @@ import Comments from "./Comments";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareSheet } from "./PostActions";
 import VideoFrame from "./post/VideoFrame";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 const AUTOPLAY_KEY = "mesh:autoplay";
@@ -43,6 +44,7 @@ function upNext(current, list, hidden, { hiddenAuthors, hideAi }) {
 // The long-form player. Native controls give keyboard, captions, fullscreen
 // and picture-in-picture. Autoplay is off unless the viewer turns it on.
 export default function Watch({ postId }) {
+  const trap = useFocusTrap();
   const { following, setFollowing, needsAccount, hiddenAuthors, hideAi } = useShell();
   const toast = useToast();
   const [post, setPost] = useState(undefined);
@@ -175,8 +177,8 @@ export default function Watch({ postId }) {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={post?.title || "Video"}
-      className="fixed inset-0 z-overlay overflow-y-auto overflow-x-hidden bg-canvas anim-fade">
+    <div ref={trap} role="dialog" aria-modal="true" aria-label={post?.title || "Video"}
+      className="fixed inset-0 z-overlay overflow-y-auto overflow-x-hidden scroll-pt-16 bg-canvas anim-fade">
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/flicks")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{post?.title || "Watch"}</p>

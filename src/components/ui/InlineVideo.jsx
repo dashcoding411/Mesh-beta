@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Volume2, VolumeX } from "lucide-react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { autoplayAllowed, useAppearance } from "../../lib/appearance";
 
 // Muted, looping preview that plays only while visible. Leaving the viewport
@@ -79,6 +79,15 @@ export default function InlineVideo({
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur">
             <Play size={26} fill="currentColor" aria-hidden="true" />
           </span>
+        </button>
+      )}
+
+      {/* Playing video can always be paused, by keyboard too. Shown on hover or
+          focus with a mouse, and always on touch screens. */}
+      {playing && !failed && (
+        <button type="button" onClick={toggle} aria-label={`Pause ${label}`}
+          className="absolute bottom-2 left-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+          <Pause size={18} fill="currentColor" aria-hidden="true" />
         </button>
       )}
 

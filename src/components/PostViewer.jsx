@@ -9,8 +9,10 @@ import { EmptyState } from "./ui/States";
 import PostCard, { POST_LIST } from "./PostCard";
 import { usePageTitle } from "../lib/usePageTitle";
 import { FeedSkeleton } from "./HomeFeed";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 export default function PostViewer({ postId }) {
+  const trap = useFocusTrap({ restore: false });
   const [post, setPost] = useState(undefined); // undefined: loading, null: gone
   usePageTitle(post ? `Post by @${post.authorName}` : null, 2);
   const [viewer, setViewer] = usePostStates(post ? [post] : null);
@@ -29,8 +31,8 @@ export default function PostViewer({ postId }) {
   }, []);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Post"
-      className="fixed inset-0 z-overlay overflow-y-auto bg-canvas anim-fade md:left-[76px] xl:left-64">
+    <div ref={trap} role="dialog" aria-modal="true" aria-label="Post"
+      className="fixed inset-0 z-overlay overflow-y-auto scroll-pt-16 bg-canvas anim-fade md:left-[76px] xl:left-64">
       <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <h1 className="text-title-3">Post</h1>

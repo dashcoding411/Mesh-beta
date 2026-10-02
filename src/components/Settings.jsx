@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
@@ -291,6 +291,7 @@ function AppearanceGroup() {
   const rows = [
     { key: "theme", icon: SunMoon, label: "Theme", help: "System follows your device's light or dark setting." },
     { key: "text", icon: Type, label: "Text size", help: "Scales all text and spacing in Mesh." },
+    { key: "contrast", icon: Contrast, label: "Contrast", help: "High makes text, borders and outlines stronger. Follow system uses your device's setting." },
     { key: "motion", icon: Waves, label: "Motion", help: "Reduce turns off animations, and videos wait for you to press play." },
     { key: "autoplay", icon: PlayCircle, label: "Videos in feeds", help: "Autoplayed videos start muted. Tap to play saves data." },
   ];
