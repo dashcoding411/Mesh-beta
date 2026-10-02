@@ -13,6 +13,7 @@ import {
 import { clockTime, dayLabel, plural, shortTime } from "../lib/format";
 import { gifsEnabled } from "../lib/gifs";
 import { checkContent } from "../lib/moderation";
+import { checkFile, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { navigate } from "../lib/router";
 import { usePageTitle } from "../lib/usePageTitle";
 import { LIMITS } from "../lib/validate";
@@ -175,8 +176,17 @@ export default function ChatView({ chat }) {
     const files = [...(e.target.files || [])].filter((f) => f.type.startsWith("image/"));
     e.target.value = "";
     if (!files.length) return;
-    setPhotos((list) => [...list, ...files.map((file) => ({ id: `${file.name}-${file.size}-${Math.random()}`, file, url: URL.createObjectURL(file) }))].slice(0, 10));
+    const entries = files.map((file) => ({ id: `${file.name}-${file.size}-${Math.random()}`, file, url: URL.createObjectURL(file) }));
+    setPhotos((list) => [...list, ...entries].slice(0, 10));
     inputRef.current?.focus();
+    // Nudity and sexual images can't be sent; they're checked on the device.
+    for (const p of entries) {
+      checkFile(p.file).then((verdict) => {
+        if (verdict === "ok") return;
+        dropPhoto(p.id);
+        toast({ tone: "error", title: "Photo removed", body: UNSAFE_PHOTO });
+      }).catch(() => {});
+    }
   };
   const dropPhoto = (id) => setPhotos((list) => {
     list.filter((p) => p.id === id).forEach((p) => URL.revokeObjectURL(p.url));
@@ -194,7 +204,8 @@ export default function ChatView({ chat }) {
       catch (err) {
         console.error(err);
         failed.push(p);
-        reason = err?.code === "permission-denied" ? "This person isn't accepting your messages." : err?.message?.includes("too") ? err.message : "Check your connection and try again.";
+        reason = err?.name === "UnsafeImageError" ? err.message
+          : err?.code === "permission-denied" ? "This person isn't accepting your messages." : err?.message?.includes("too") ? err.message : "Check your connection and try again.";
       }
     }
     setPhotos(failed);

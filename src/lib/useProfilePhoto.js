@@ -37,7 +37,8 @@ export function useProfilePhoto() {
       toast({
         tone: "error",
         title: err instanceof StorageUnavailableError ? "Photo uploads aren't switched on yet" : "Couldn't update your photo",
-        body: err instanceof StorageUnavailableError ? "They need Firebase Cloud Storage (Blaze plan)." : "Try a smaller image, or try again in a moment.",
+        body: err?.name === "UnsafeImageError" ? err.message
+          : err instanceof StorageUnavailableError ? "They need Firebase Cloud Storage (Blaze plan)." : "Try a smaller image, or try again in a moment.",
       });
     } finally { setBusy(false); }
   };

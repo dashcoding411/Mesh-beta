@@ -58,7 +58,7 @@ function LookEditor({ group, onSaved }) {
       await onSaved();
       toast({ title: file ? (field === "bannerUrl" ? "Banner updated" : "Photo updated") : (field === "bannerUrl" ? "Banner removed" : "Photo removed") });
     } catch (err) {
-      toast({ tone: "error", title: "Couldn't save that", body: err?.message?.includes("quickly") ? err.message : "Check your connection and try again." });
+      toast({ tone: "error", title: "Couldn't save that", body: err?.name === "UnsafeImageError" || err?.message?.includes("quickly") ? err.message : "Check your connection and try again." });
     } finally {
       setBusy(null);
     }

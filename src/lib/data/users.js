@@ -87,7 +87,7 @@ export function myProfile() {
 }
 
 // Bump on material policy changes. Profiles keep the version they accepted.
-export const POLICY_VERSION = "2026-10-01.3";
+export const POLICY_VERSION = "2026-10-02.1";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);

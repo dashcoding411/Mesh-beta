@@ -15,6 +15,9 @@ export default defineConfig({
           // Firebase packages have circular imports; splitting them breaks
           // initialisation order. Storage is excluded because it's lazy-loaded.
           if (/@firebase\/storage|firebase\/storage/.test(id)) return undefined;
+          // The image checker (TensorFlow.js and its ~6 MB model) loads only when
+          // someone picks an image, so it stays out of the preloaded chunks.
+          if (/@tensorflow|nsfwjs|\/seedrandom\/|\/long\/|\/buffer\/|\/base64-js\/|\/ieee754\/|\/core-js\//.test(id)) return undefined;
           if (/firebase|\/idb\/|\/re2js\//.test(id)) return "firebase";
           if (id.includes("react-dom") || id.includes("/react/") || id.includes("scheduler")) return "react";
           if (id.includes("lucide-react")) return "icons";

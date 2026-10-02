@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, BadgeCheck, Trash2, Check, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
+  ShieldCheck, BadgeCheck, Trash2, Check, Eye, EyeOff, ImageIcon, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
 } from "lucide-react";
 import {
   isAdmin, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
-  fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername,
+  fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername, setPostHidden,
 } from "../lib/db";
 import { assessText } from "../lib/moderation";
+import { markImageOk, sweepImages } from "../lib/imageSweep";
 import { navigate } from "../lib/router";
 import { shortTime, fullTime, plural } from "../lib/format";
 import TopBar from "./shell/TopBar";
@@ -36,11 +37,24 @@ export default function Moderation() {
 
   useEffect(() => { isAdmin().then(setAdmin).catch(() => setAdmin(false)); }, []);
 
+  // The image sweep runs whenever a moderator opens this page.
+  const [sweep, setSweep] = useState({ status: "idle", done: 0, total: 0, flagged: [] });
+  const runSweep = useCallback(async () => {
+    setSweep({ status: "running", done: 0, total: 0, flagged: [] });
+    try {
+      const flagged = await sweepImages({ onProgress: (done, total) => setSweep((s) => ({ ...s, done, total })) });
+      setSweep((s) => ({ ...s, status: "done", flagged }));
+    } catch {
+      setSweep((s) => ({ ...s, status: "error" }));
+    }
+  }, []);
+  useEffect(() => { if (admin) (async () => { await runSweep(); })(); }, [admin, runSweep]);
+
   const load = useCallback(async () => {
     setError(false);
     setReports(null);
     try {
-      setReports(tab === "suspended" || tab === "writers" || tab === "verified" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
+      setReports(tab === "suspended" || tab === "writers" || tab === "verified" || tab === "images" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
         .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
     } catch (err) {
       console.error(err);
@@ -86,9 +100,11 @@ export default function Moderation() {
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" }]} />
+                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" },
+                  { id: "images", label: sweep.flagged.length ? `Images (${sweep.flagged.length})` : "Images" }]} />
 
-              {tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
+              {tab === "images" ? <ImageReview sweep={sweep} setSweep={setSweep} onRescan={runSweep} />
+                : tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
@@ -342,6 +358,80 @@ function Suspensions() {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Flagged images from the sweep: hidden (explicit) or waiting for a decision (suggestive). */
+function ImageReview({ sweep, setSweep, onRescan }) {
+  const toast = useToast();
+  const [revealed, setRevealed] = useState(new Set());
+  const [busy, setBusy] = useState("");
+  const update = (postId, patch) => setSweep((s) => ({ ...s, flagged: s.flagged.map((f) => (f.post.id === postId ? { ...f, ...patch } : f)) }));
+  const drop = (postId) => setSweep((s) => ({ ...s, flagged: s.flagged.filter((f) => f.post.id !== postId) }));
+  const act = async (key, fn, message) => {
+    setBusy(key);
+    try { await fn(); if (message) toast({ title: message }); }
+    catch { toast({ tone: "error", title: "That didn't work. Try again." }); }
+    finally { setBusy(""); }
+  };
+
+  return (
+    <section className="space-y-4">
+      <p className="text-caption text-fg-muted">
+        Every photo and video is checked for nudity and sexual content on the uploader's device before it posts. This sweep
+        rechecks recent public posts for anything that got through, such as posts from before the check or from a modified app.
+        Clearly explicit images are hidden straight away; borderline and suggestive ones wait for your decision.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" icon={ImageIcon} loading={sweep.status === "running"} onClick={onRescan}>Scan again</Button>
+        <p className="text-caption text-fg-subtle" role="status">
+          {sweep.status === "running" ? (sweep.total ? `Checked ${sweep.done} of ${sweep.total} images…` : "Loading recent posts…")
+            : sweep.status === "error" ? "The scan couldn't finish. Try again."
+            : sweep.status === "done" ? `${sweep.total} images checked. ${sweep.flagged.length ? `${sweep.flagged.length} flagged.` : "Nothing flagged."}` : ""}
+        </p>
+      </div>
+      {sweep.status === "done" && sweep.flagged.length === 0 && (
+        <EmptyState compact icon={ShieldCheck} title="No flagged images" body="Recent public posts passed the image check." />
+      )}
+      <ul className="space-y-3">
+        {sweep.flagged.map(({ post, url, verdict, hidden }) => (
+          <li key={post.id} className="flex gap-3 rounded-card border border-line bg-surface p-3">
+            <button type="button" onClick={() => setRevealed((r) => new Set(r).add(post.id))}
+              aria-label={revealed.has(post.id) ? "Flagged image" : "Show the flagged image"}
+              className="relative h-24 w-24 shrink-0 overflow-hidden rounded-control bg-surface-2">
+              <MediaImg src={url} alt="" className={`h-full w-full object-cover ${revealed.has(post.id) ? "" : "scale-110 blur-xl"}`} placeholderClass="h-full w-full" />
+              {!revealed.has(post.id) && <span className="absolute inset-0 flex items-center justify-center text-label font-semibold text-white">Tap to show</span>}
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={verdict === "explicit" ? "danger" : "warning"}>{verdict === "explicit" ? "Explicit" : "Suggestive"}</Badge>
+                {hidden && <Badge icon={EyeOff}>Hidden</Badge>}
+              </div>
+              <p className="mt-1 truncate text-callout">
+                <button type="button" className="font-semibold hover:underline" onClick={() => openUserProfile(post.authorId)}>@{post.authorName}</button>
+                <span className="text-fg-subtle"> · {shortTime(post.createdAt)}</span>
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" onClick={() => openPost(post.id)}>Open post</Button>
+                <Button size="sm" icon={Trash2} loading={busy === `del-${post.id}`}
+                  onClick={() => act(`del-${post.id}`, async () => { await deletePost(post); drop(post.id); }, "Post deleted")}>Delete post</Button>
+                {hidden ? (
+                  <Button size="sm" icon={Eye} loading={busy === `show-${post.id}`}
+                    onClick={() => act(`show-${post.id}`, async () => { await setPostHidden(post.id, false); markImageOk(url); drop(post.id); }, "Post restored")}>Restore</Button>
+                ) : (
+                  <>
+                    <Button size="sm" icon={EyeOff} loading={busy === `hide-${post.id}`}
+                      onClick={() => act(`hide-${post.id}`, async () => { await setPostHidden(post.id, true); update(post.id, { hidden: true }); }, "Post hidden")}>Hide</Button>
+                    <Button size="sm" variant="ghost" icon={Check} loading={busy === `ok-${post.id}`}
+                      onClick={() => act(`ok-${post.id}`, async () => { await setPostHidden(post.id, false); markImageOk(url); drop(post.id); })}>Not a problem</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

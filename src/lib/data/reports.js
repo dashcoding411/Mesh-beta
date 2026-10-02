@@ -29,8 +29,15 @@ export const REPORT_LABEL = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, 
 // Reports from accounts older than a day needed to hold a post for review.
 export const HOLD_AFTER_REPORTS = 3;
 
+/** Held for review: three reports, or hidden by a moderator (or the image sweep). */
 export function isHeld(post) {
+  if (post?.modStatus === "hidden") return true;
   return (post?.reportCount || 0) >= HOLD_AFTER_REPORTS && post?.modStatus !== "cleared";
+}
+
+/** Admins: take a post out of feeds pending a decision, or put it back. */
+export async function setPostHidden(postId, hidden) {
+  await updateDoc(doc(db, "posts", postId), { modStatus: hidden ? "hidden" : "cleared" });
 }
 
 /** @param {{type: "post"|"comment"|"message"|"user", id: string, authorId: string, postId?: string, chatId?: string, text?: string}} target */

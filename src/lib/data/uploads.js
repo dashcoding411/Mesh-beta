@@ -1,6 +1,7 @@
 // Media uploads: Cloud Storage when enabled, otherwise images inline in Firestore.
 import { loadStorage } from "../../firebase";
 import { imageSize, storeInlineImage, storeInlineImages } from "../media";
+import { assertSafe } from "../imageCheck";
 import { me } from "./core.js";
 
 // No Storage bucket (Spark plan).
@@ -47,7 +48,9 @@ function isBucketMissing(err) {
   );
 }
 
+// Every image and video is checked on the device first (lib/imageCheck.js).
 export async function uploadMedia(file, onProgress, folder = "uploads") {
+  await assertSafe(file);
   if (!(await storageAvailable())) {
     if (!file.type.startsWith("image/")) throw new StorageUnavailableError();
     onProgress?.(40);
@@ -60,6 +63,7 @@ export async function uploadMedia(file, onProgress, folder = "uploads") {
 }
 
 export async function uploadPhotos(files, onProgress) {
+  for (const file of files) await assertSafe(file);
   if (!(await storageAvailable())) return storeInlineImages(files, onProgress);
   const out = [];
   for (const [i, file] of files.entries()) {

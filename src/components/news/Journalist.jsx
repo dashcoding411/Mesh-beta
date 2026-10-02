@@ -16,6 +16,7 @@ import Dialog from "../ui/Dialog";
 import { Field, Input } from "../ui/Field";
 import { EmptyState, InlineMessage, Skeleton } from "../ui/States";
 import { useToast } from "../ui/toast-context";
+import { uploadProblem } from "../../lib/imageCheck";
 
 const PhotoCropper = lazy(() => import("../ui/PhotoCropper"));
 
@@ -234,8 +235,8 @@ export function JournalistSettings({ journalist, onClose, onSaved }) {
                 const { url } = await uploadMedia(file, null, "logos");
                 setLogoUrl(url);
                 setCropping(null);
-              } catch {
-                toast({ tone: "error", title: "Couldn't upload that logo" });
+              } catch (err) {
+                toast({ tone: "error", title: uploadProblem(err, "Couldn't upload that logo") });
               }
             }} />
         </Suspense>

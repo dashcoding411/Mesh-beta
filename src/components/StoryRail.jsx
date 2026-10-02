@@ -68,8 +68,10 @@ export default function StoryRail() {
       console.error(err);
       toast({
         tone: "error",
-        title: err instanceof StorageUnavailableError ? "Photo and video uploads aren't switched on yet" : "Your story didn't upload",
-        body: err instanceof StorageUnavailableError ? "Strands still work, so try posting words instead." : "Check your connection and try again.",
+        title: err?.name === "UnsafeImageError" ? "This can't go on your story"
+          : err instanceof StorageUnavailableError ? "Photo and video uploads aren't switched on yet" : "Your story didn't upload",
+        body: err?.name === "UnsafeImageError" ? err.message
+          : err instanceof StorageUnavailableError ? "Strands still work, so try posting words instead." : "Check your connection and try again.",
       });
     } finally {
       setUploading(false);

@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { storeChatPhoto, storeVoiceNote } from "../media";
+import { assertSafe } from "../imageCheck";
 import { me, snapToList, tsMillis } from "./core.js";
 import { fetchProfile, myProfile } from "./users.js";
 
@@ -158,6 +159,7 @@ export async function sendVoiceMessage(chatId, blob, duration, peaks) {
 }
 
 export async function sendPhotoMessage(chatId, file) {
+  await assertSafe(file);
   const photo = await storeChatPhoto(chatId, file);
   await sendMessage(chatId, "", { photo });
 }

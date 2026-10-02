@@ -11,6 +11,7 @@ import { suggestTopics, MAX_POST_TOPICS, interestById } from "../lib/interests";
 import { gifsEnabled } from "../lib/gifs";
 import { readDraft, useDraft } from "../lib/drafts";
 import { cameraSupported } from "../lib/cameras";
+import { checkFile, warmUp, UNSAFE_PHOTO, UNSAFE_VIDEO } from "../lib/imageCheck";
 import { InterestToggles } from "./Interests";
 import GifPicker, { GifView } from "./GifPicker";
 import { PollBuilder } from "./Poll";
@@ -116,6 +117,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [restored, setRestored] = useState(!!draft);
   const [file, setFile] = useState(() => (initialKind === "video" ? initialFiles?.[0] || null : null));
   const [camera, setCamera] = useState(false);
+  const [checking, setChecking] = useState(0); // photos being checked for nudity or sexual content
   // Secondary details stay folded until wanted.
   const [showLocation, setShowLocation] = useState(!!d.location);
   const [showAlt, setShowAlt] = useState(false);
@@ -198,6 +200,24 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     if (!fresh.length) return;
     if (!photos.length) setActivePhoto(0);
     setPhotos((list) => [...list, ...fresh]);
+    screen(fresh);
+  };
+  // Each photo is checked on the device as it's added; one that fails comes
+  // straight back out. (Uploading checks again, in case this was skipped.)
+  const screen = (entries) => {
+    setChecking((n) => n + entries.length);
+    for (const entry of entries) {
+      checkFile(entry.file)
+        .then((verdict) => {
+          if (verdict === "ok") return;
+          URL.revokeObjectURL(entry.url);
+          setPhotos((list) => list.filter((p) => p.id !== entry.id));
+          setActivePhoto(0);
+          setErrors({ file: UNSAFE_PHOTO });
+        })
+        .catch(() => {})
+        .finally(() => setChecking((n) => n - 1));
+    }
   };
   const removePhoto = (i) => {
     URL.revokeObjectURL(photos[i].url);
@@ -225,7 +245,18 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setFile(f);
     setTrailerStart(0);
     setDuration(spec.media === "video" ? await readDuration(f) : 0);
+    setChecking((n) => n + 1);
+    checkFile(f)
+      .then((verdict) => {
+        if (verdict === "ok") return;
+        setFile((cur) => (cur === f ? null : cur));
+        setErrors({ file: spec.media === "video" ? UNSAFE_VIDEO : UNSAFE_PHOTO });
+      })
+      .catch(() => {})
+      .finally(() => setChecking((n) => n - 1));
   };
+  // Get the checker ready while someone's choosing what to post.
+  useEffect(() => { if (spec.media) warmUp(); }, [spec.media]);
 
   const validate = () => {
     const e = {};
@@ -313,7 +344,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       console.error(err);
       setProgress(null);
       setErrors({
-        submit: err instanceof StorageUnavailableError || /very quickly/.test(err?.message || "")
+        submit: err instanceof StorageUnavailableError || err?.name === "UnsafeImageError" || /very quickly/.test(err?.message || "")
           ? err.message
           : err?.code === "permission-denied"
             ? "The server turned this down. If it keeps happening, the posting rules may need redeploying."
@@ -439,7 +470,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                 )}
               </div>
             )}
-            <div aria-live="polite" className="mt-1.5"><InlineMessage id={`${fileId}-err`}>{errors.file}</InlineMessage></div>
+            <div aria-live="polite" className="mt-1.5">
+              {checking > 0 && <p className="text-caption text-fg-subtle">Checking {spec.media === "video" ? "the video" : checking > 1 ? "photos" : "the photo"}…</p>}
+              <InlineMessage id={`${fileId}-err`}>{errors.file}</InlineMessage>
+            </div>
           </div>
         )}
 

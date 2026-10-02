@@ -1174,8 +1174,9 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
           && existsAfter(/databases/$(database)/documents/reports/$('post_' + postId + '_' + request.auth.uid))
           && myProfile().createdAt < request.time - duration.value(1, 'd'))
-        // Moderator review clears the hold, and can label a post as made with AI.
-        || (isAdmin() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', ''])
+        // Moderator review clears the hold or hides a post (image moderation),
+        // and can label a post as made with AI.
+        || (isAdmin() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', '', 'hidden'])
         || (isAdmin() && incomingData().diff(resource.data).affectedKeys().hasOnly(['aiGenerated', 'modStatus'])
             && incomingData().aiGenerated == true && incomingData().get('modStatus', '') in ['cleared', ''])
         // Circle mods can lock comments on a thread.

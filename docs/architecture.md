@@ -220,7 +220,20 @@ only protected from violence and dehumanisation.
 - `quoted`: posted after confirmation behind a warning.
 
 The rules enforce the unambiguous slurs (`hateFree`); anything else needs the
-`sensitive` flag. DMs aren't filtered.
+`sensitive` flag. The words in DMs aren't filtered.
+
+**Images** (`lib/imageCheck.js`): nudity, pornography and sexually suggestive
+images (photographed, drawn or AI) aren't allowed anywhere, messages included.
+With no server to scan uploads, every photo and video is classified on the
+uploader's device by NSFWJS (MobileNetV2, TensorFlow.js), loaded only when
+someone picks an image and kept out of the preloaded chunks. Pickers check as
+soon as a file is chosen; `uploadMedia`, `uploadPhotos` and `sendPhotoMessage`
+check again and refuse (`UnsafeImageError`), failing closed if the check
+can't run. Videos are checked at five frames. A modified app could skip this,
+so admins' devices sweep recent public posts when they open Moderation
+(`lib/imageSweep.js`): confident detections (explicit score 0.7+) are hidden
+(`modStatus: "hidden"`) at once and everything flagged is listed for a
+decision. GIF search is limited to PG.
 
 Reports are one per user per target. Three reports from accounts older than a
 day hold a post until a moderator reviews it. Moderators remove content, keep

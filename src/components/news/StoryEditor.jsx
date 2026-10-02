@@ -26,6 +26,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "../ui/Field";
 import { EmptyState, InlineMessage, Skeleton, Spinner } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 import { usePageTitle } from "../../lib/usePageTitle";
+import { uploadProblem } from "../../lib/imageCheck";
 
 const TYPE_ICONS = { p: Pilcrow, h2: Heading2, h3: Heading3, quote: Quote, list: List, image: ImageIcon, divider: Minus };
 const TEXT_TYPES = [["p", "Paragraph"], ["h2", "Heading"], ["h3", "Subheading"], ["quote", "Quote"], ["list", "List"]];
@@ -290,7 +291,7 @@ function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChang
     if (!file.type.startsWith("image/")) return toast({ tone: "error", title: "Choose an image" });
     setUploading(true);
     try { const { url } = await uploadMedia(file, undefined, "news"); onChange({ media: url }); }
-    catch { toast({ tone: "error", title: "Couldn't upload that image" }); }
+    catch (err) { toast({ tone: "error", title: uploadProblem(err, "Couldn't upload that image") }); }
     finally { setUploading(false); }
   };
 
@@ -424,7 +425,7 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
               if (!f) return;
               setCoverBusy(true);
               try { const { url } = await uploadMedia(f, undefined, "news"); update({ coverUrl: url }); }
-              catch { toast({ tone: "error", title: "Couldn't upload the cover" }); }
+              catch (err) { toast({ tone: "error", title: uploadProblem(err, "Couldn't upload the cover") }); }
               finally { setCoverBusy(false); }
             }} />
           </div>

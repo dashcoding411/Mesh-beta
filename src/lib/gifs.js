@@ -16,7 +16,8 @@ export async function searchGifs(q, { minor = false, offset = 0 } = {}) {
   if (!KEY) return [];
   // Blocked queries return nothing.
   if (q.trim() && assessText(q).level !== "ok") return [];
-  const rating = minor ? "g" : "pg-13";
+  // PG at most: PG-13 lets suggestive GIFs through.
+  const rating = minor ? "g" : "pg";
   const path = q.trim() ? "search" : "trending";
   const params = new URLSearchParams({ api_key: KEY, limit: "24", offset: String(offset), rating, bundle: "messaging_non_clips" });
   if (q.trim()) params.set("q", q.trim());

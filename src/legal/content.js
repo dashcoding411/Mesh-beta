@@ -62,6 +62,7 @@ export const PRIVACY = {
         ["To run your account", "Authentication, keeping you signed in, and letting people find you by handle."],
         ["To show you content", "Ordering your feed, suggesting accounts and suggesting circles, using the interaction signals and the interests you picked."],
         ["To keep Mesh safe", "Filtering hate speech and spam, limiting the reach of posts that may mock a group, rate-limiting posting, handling reports, suspending accounts that break the Community Guidelines, and enforcing circle rules. The filter runs on the text itself; it doesn't profile you."],
+        ["Checking images", "Photos and videos you choose are checked for nudity and sexual content by a model that runs on your own device, before anything uploads. The check doesn't send the image or its result to us or anyone else; only an image that passes is uploaded. Our moderators may run the same check on public posts."],
         ["To meet legal obligations", "Responding to lawful requests and to the eSafety Commissioner where required."],
       ],
     },
@@ -179,6 +180,7 @@ export const TERMS = {
       list: [
         ["Hate speech", "Content attacking people based on race, ethnicity, national origin, caste, religion, sex, gender identity, sexual orientation, disability or serious disease."],
         ["Harassment", "Targeted abuse, threats, stalking, or coordinated pile-ons."],
+        ["Nudity and sexual content", "Nudity, pornography, sexual acts and sexually suggestive images or video, whether photographed, drawn or made with AI, anywhere on Mesh, including messages."],
         ["Illegal content", "Anything unlawful where you are or where we operate, including child sexual abuse material, which we report to the relevant authorities."],
         ["Content you have no right to post", "Someone else's photos, video, music or writing, without permission."],
         ["Deceptive synthetic media", "See the section below."],
@@ -197,9 +199,9 @@ export const TERMS = {
     {
       h: "News on Mesh",
       p: [
-        "Only Mesh News writers, chosen by our admins, can write for the news section. Nobody can self-publish there.",
-        "A story needs a headline, the full text, at least two source links cited in the text, and a description for every image. Stories are held for human review against those sources before they appear, and are marked as reviewed once published. A story flagged for a legal read can't be published until that's cleared.",
-        "Review means a person has checked the submission against the sources provided. It is not a professional fact-checking certification, and it is not a guarantee that a story is true. Form your own view and follow the sources.",
+        "Only journalists whose identity our admins have verified can write for the news section. Nobody else can publish there.",
+        "Journalists publish their own stories; Mesh does not edit or approve them first. A story needs a headline, the full text, at least two source links cited in the text, a description for every image, and the journalist's confirmation that it is accurate. A story flagged for a legal read can't be published until that's cleared.",
+        "Readers can request a correction on any story, and corrections are published on the story itself. None of this is a fact-checking certification or a guarantee that a story is true. Form your own view and follow the sources.",
       ],
     },
     {
@@ -356,6 +358,7 @@ export const GUIDELINES = {
         ["Do not attack people for who they are", "As above: every group, every side, the same way."],
         ["Do not harass", "No targeted abuse, threats, or pile-ons. Many people making the same joke at one person or one group is a pile-on, even if each post seems small."],
         ["Do not deceive", "No impersonation, no fabricated news, no AI-generated material passed off as real, no fake reviews or endorsements. Using AI creatively is fine. Tick \"Made with AI\" when someone could mistake it for real."],
+        ["Keep it non-sexual", "No nudity, pornography or sexually suggestive images or video, real, drawn or made with AI, anywhere on Mesh, including messages."],
         ["Do not post what is not yours", "Only post media you made or have permission to use."],
         ["Do not spam", "No engagement farming, bulk unsolicited messages, or scams."],
         ["Respect the age rules", "Do not help someone under the minimum age create an account."],
@@ -365,7 +368,8 @@ export const GUIDELINES = {
       h: "How enforcement works",
       list: [
         ["Blocked before posting", "Slurs, dehumanising statements about groups, calls for violence or exclusion, and telling someone to hurt themselves are stopped before they post, with a message saying why, unless the context shows you're reporting or calling them out. The clearest slurs are also refused by our servers unless the post is labelled as quoting them, so they can't reach anyone unwarned by going around the app."],
-        ["What's checked", "Everything other people see in public: posts, comments, names, bios, circles, gatherings and news. Private messages aren't filtered: what you say to each other is yours. If someone abuses you in a message, block them and report it."],
+        ["What's checked", "Everything other people see in public: posts, comments, names, bios, circles, gatherings and news. The words in private messages aren't filtered: what you say to each other is yours. If someone abuses you in a message, block them and report it."],
+        ["Images", "Every photo and video, including ones sent in messages, is checked for nudity and sexual content on your own device before it uploads, and refused if it doesn't pass. The check never sends your photos anywhere. Moderators also recheck recent public posts; clearly explicit ones are taken down straight away and the rest are reviewed by a person."],
         ["Allowed, but not amplified", "Posts that could read as mocking a group, and blanket insults like \"X are stupid\", can be posted, but Mesh won't recommend them to people who don't follow you, never shows two close together, and folds such comments away behind a tap. Your words stay yours; our reach is ours to give."],
         ["Reports and review", "Anyone can report a post, comment, message or account. A person reviews every report against these guidelines. A post reported by several established accounts leaves feeds until it's reviewed; if it follows the guidelines it goes straight back, and reports can't hold it again. Brand-new accounts can report, but their reports don't count towards that, so a wave of fresh accounts can't bury someone."],
         ["Consequences", "Removal of the content, then suspension (a day, a week, a month, or permanently), which stops posting, commenting and messaging while still letting you read. Serious harms, such as child safety issues and credible threats, go straight to a permanent ban and are reported to authorities."],

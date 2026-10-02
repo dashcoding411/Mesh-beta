@@ -13,6 +13,7 @@ import { useShell } from "./shell/ShellContext";
 import { useLiveCard } from "../lib/profileCache";
 import { BadgeMark } from "./ui/Badges";
 import { buildCommentTree, countReplies, likesHidden } from "../lib/commentTree";
+import { checkFile, warmUp, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
@@ -87,6 +88,12 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     if (v.error) return setError(v.error);
     setGif(null);
     setPhoto({ file, url: URL.createObjectURL(file) });
+    // Checked on the device straight away; a photo that fails comes back out.
+    checkFile(file).then((verdict) => {
+      if (verdict === "ok") return;
+      setPhoto((cur) => (cur?.file === file ? null : cur));
+      setError(UNSAFE_PHOTO);
+    }).catch(() => {});
   };
 
   const startReply = (c) => {
@@ -129,7 +136,8 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       onAdded?.(c);
       if (flagged) toast({ tone: "info", title: "Posted", body: flagged.quoted ? "Others will see a warning and tap to read it, as it quotes offensive language." : "It may be folded away for others, as it could come across as mocking a group." });
     } catch (err) {
-      setError(err instanceof StorageUnavailableError ? "Photos can't be uploaded right now."
+      setError(err?.name === "UnsafeImageError" ? err.message
+        : err instanceof StorageUnavailableError ? "Photos can't be uploaded right now."
         : err?.code === "permission-denied" ? `@${post.authorName} only takes comments from people they follow.`
         : "Couldn't post your comment. It's still here, so try again.");
     } finally {
@@ -212,7 +220,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
             </div>
           )}
           <div className="flex items-end gap-1">
-            <IconButton icon={ImagePlus} label="Add a photo" className="-ml-2 shrink-0" onClick={() => fileInput.current?.click()} />
+            <IconButton icon={ImagePlus} label="Add a photo" className="-ml-2 shrink-0" onClick={() => { warmUp(); fileInput.current?.click(); }} />
             {gifsEnabled && <IconButton icon={Sticker} label="Add a GIF" className="shrink-0" onClick={() => setPicking(true)} />}
             <label htmlFor="comment-box" className="sr-only">{replyTo ? `Reply to @${replyTo.authorName}` : "Add a comment"}</label>
             <Textarea id="comment-box" ref={inputRef} autoGrow rows={1} maxRows={5} value={text}
