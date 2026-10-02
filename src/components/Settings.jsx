@@ -23,7 +23,7 @@ function brickSummary(brick) {
 }
 import {
   exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, isMinor, setMyBirthYear,
-  setPrivacySettings, setPostsVisibility, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
+  setPrivacySettings, setPostsVisibility, removeMyReposts, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
   fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
 } from "../lib/db";
 import Switch from "./ui/Switch";
@@ -509,6 +509,7 @@ function PrivacyDialog({ making, canPublic = true, onClose, onDone }) {
       if (making === "private") {
         await setPrivacySettings({ isPrivate: true });
         const { done } = await setPostsVisibility("followers");
+        await removeMyReposts();
         toast({ title: "Your account is private", body: done ? `${done} post${done === 1 ? "" : "s"} switched to followers-only.` : "New followers will need your approval." });
       } else {
         await setPrivacySettings({ isPrivate: false });
@@ -531,6 +532,7 @@ function PrivacyDialog({ making, canPublic = true, onClose, onDone }) {
           <li>New followers will need your approval. People who already follow you stay.</li>
           <li>Your public posts become followers-only, and new posts are followers-only.</li>
           <li>Your stories are for followers only.</li>
+          <li>Your reposts are removed, since reposts are public. You can repost again if you go public.</li>
           <li>Posts inside circles follow each circle's own settings.</li>
         </ul>
       ) : (

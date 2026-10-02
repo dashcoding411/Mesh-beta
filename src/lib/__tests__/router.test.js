@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { afterAuthPath, authPath, matchOverlay, matchPage, resolve } from "../router";
+import { afterAuthPath, authPath, matchOverlay, matchPage, resolve, safeNext } from "../router";
 
 describe("matchPage", () => {
   it.each([
@@ -40,7 +40,7 @@ describe("overlays", () => {
 describe("auth redirects", () => {
   const at = (url) => {
     const u = new URL(url, "https://mesh.test");
-    vi.stubGlobal("window", { location: { pathname: u.pathname, search: u.search } });
+    vi.stubGlobal("window", { location: { origin: u.origin, pathname: u.pathname, search: u.search } });
   };
   afterEach(() => vi.unstubAllGlobals());
 
@@ -62,7 +62,23 @@ describe("auth redirects", () => {
     expect(afterAuthPath()).toBe("/");
     at("/login?next=%2F%2Fevil.test");
     expect(afterAuthPath()).toBe("/");
+    // Browsers read a backslash as a slash, so this is //evil.test too.
+    at("/login?next=%2F%5Cevil.test");
+    expect(afterAuthPath()).toBe("/");
     at("/p/post1");
     expect(afterAuthPath()).toBe("/p/post1");
+  });
+});
+
+describe("safeNext", () => {
+  const origin = "https://mesh.example";
+  it("keeps paths on this site", () => {
+    expect(safeNext("/@noah?tab=posts#top", origin)).toBe("/@noah?tab=posts#top");
+    expect(safeNext("/messages", origin)).toBe("/messages");
+  });
+  it("refuses anything that leaves the site", () => {
+    for (const bad of ["//evil.com", "/\\evil.com", "/\\/evil.com", "https://evil.com", "javascript:alert(1)", "evil.com", "/ /evil.com", "", null]) {
+      expect(safeNext(bad, origin)).toBe("/");
+    }
   });
 });

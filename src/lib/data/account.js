@@ -7,7 +7,7 @@ import { fetchEvents } from "./events.js";
 import { deleteNews } from "./news.js";
 import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
-import { fetchFollowList, fetchMyBirthYear, fetchMyPrefs, myProfile } from "./users.js";
+import { clearFollowMarkers, fetchFollowList, fetchMyBirthYear, fetchMyPrefs, myProfile } from "./users.js";
 
 export async function exportMyData() {
   const uid = me();
@@ -78,9 +78,10 @@ export async function deleteMyAccountData() {
     batch.delete(doc(db, "users", d.id, "followers", uid));
     batch.delete(d.ref);
     batch.update(doc(db, "users", d.id), { followerCount: increment(-1), lastFollower: uid });
-    await batch.commit().catch(() => deleteDoc(d.ref).catch(() => {}));
+    await batch.commit().then(() => clearFollowMarkers(d.id)).catch(() => deleteDoc(d.ref).catch(() => {}));
   }
   await deleteDoc(doc(db, "thoughts", uid)).catch(() => {});
+  await deleteDoc(doc(db, "presence", uid)).catch(() => {});
   await deleteDoc(doc(db, "users", uid, "private", "prefs")).catch(() => {});
   await deleteDoc(doc(db, "users", uid, "private", "desk")).catch(() => {});
   const mine = async (col, field) => {

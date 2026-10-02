@@ -45,7 +45,7 @@ export default function PostCard({
   const pending = useRef({});
   const cardRef = useRef(null);
   const seen = useInView(cardRef);
-  const { hiddenAuthors, hiddenWords, guest, needsAccount } = useShell();
+  const { hiddenAuthors, hiddenWords, guest, needsAccount, profile: viewerProfile } = useShell();
   const [revealed, setRevealed] = useState(false);
   const mineNow = post.authorId === me();
   // Content allowed on context is collapsed for others, never for the author.
@@ -107,6 +107,9 @@ export default function PostCard({
     if (mine) return toast({ tone: "info", title: "You can't repost your own post", body: "Share it instead, or send it to someone." });
     if (post.visibility !== "public") {
       return toast({ tone: "info", title: "Only public posts can be reposted", body: "Reposting would show it to people the author didn't choose." });
+    }
+    if (!reposted && viewerProfile?.isPrivate) {
+      return toast({ tone: "info", title: "Private accounts can't repost", body: "Reposts are public. Share it or send it to someone instead." });
     }
     const on = !reposted;
     const ok = await optimistic("repost", "reposted", on, () => toggleRepost(post, reposted), "Couldn't update your repost");

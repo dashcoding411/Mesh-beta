@@ -14,10 +14,24 @@ const storyRef = (id) => doc(db, "news", id);
 
 // Writers
 
+// Your own journalist status is checked once per visit (News and the newsroom ask often).
+let writerCheck = { uid: null, result: null };
 export async function isNewsWriter(uid = me()) {
   if (!uid) return false;
-  const snap = await getDoc(doc(db, "newsWriters", uid)).catch(() => null);
-  return !!snap?.exists();
+  if (uid !== me()) return !!(await getDoc(doc(db, "newsWriters", uid)).catch(() => null))?.exists();
+  if (writerCheck.uid !== uid) {
+    writerCheck = { uid, result: getDoc(doc(db, "newsWriters", uid)).then((s) => s.exists()).catch(() => false) };
+  }
+  return writerCheck.result;
+}
+
+// The journalist list is small and public; read once per visit.
+let writersOnce = null;
+function writerIds() {
+  writersOnce ||= getDocs(query(collection(db, "newsWriters"), limit(200)))
+    .then((snap) => new Set(snap.docs.map((d) => d.id)))
+    .catch(() => { writersOnce = null; return new Set(); });
+  return writersOnce;
 }
 
 export async function fetchWriters() {
@@ -28,12 +42,16 @@ export async function addWriter(handle) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
   const p = await fetchProfile(uid);
-  await setDoc(doc(db, "newsWriters", uid), { username: p.username, addedBy: me(), addedAt: serverTimestamp() });
+  await setDoc(doc(db, "newsWriters", uid), { username: p.username, addedAt: serverTimestamp() });
+  writersOnce = null;
+  if (writerCheck.uid === uid) writerCheck = { uid: null, result: null };
   return { id: uid, username: p.username };
 }
 
 export async function removeWriter(uid) {
   await deleteDoc(doc(db, "newsWriters", uid));
+  writersOnce = null;
+  if (writerCheck.uid === uid) writerCheck = { uid: null, result: null };
 }
 
 // Journalist profiles: the byline on every story a writer publishes.
@@ -62,8 +80,10 @@ export async function fetchStoriesBy(uid) {
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).includes(uid));
 }
 
-/** Published stories by journalists in `following`, for Home. */
+/** Published stories by journalists in `following`, for Home. Skipped unless you follow one. */
 export async function fetchFollowedNews(following) {
+  const writers = await writerIds();
+  if (![...following].some((uid) => writers.has(uid))) return [];
   const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(50)));
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).some((uid) => following.has(uid)));
 }

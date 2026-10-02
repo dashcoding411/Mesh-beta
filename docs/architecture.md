@@ -96,6 +96,30 @@ tap) or "Post" (into the composer with the capture attached). In the composer,
 location and photo descriptions stay folded until asked for; the share button
 sits bottom-right.
 
+## Privacy
+
+What each kind of record shows, and to whom:
+
+- **Profiles** are readable by any signed-in account (and by visitors), so they
+  hold nothing private: no email, phone or birth year. Older profiles that had
+  them are cleaned at sign-in (or by an admin): the birth year moves to
+  `private/age`, email and phone are removed (Firebase Auth keeps them).
+  The `lastFollower` / `lastFollowing` markers that tie follow counts to a
+  follow are blanked as soon as the count has moved.
+- **Follow lists** of a private account: the owner and approved followers.
+- **Online status and Notes**: mutual follows and people with a 1:1 chat,
+  never someone who has blocked you.
+- **Private and hidden circles' member lists**: members only.
+- **Reposts** are public, so private accounts can't repost; going private
+  removes your reposts.
+- **Journalist records** are public and no longer say which admin added them.
+- **Drafts** are stored per account and cleared at sign-out; the Firestore
+  cache is in memory only. Sign-in redirects only go to pages on Mesh.
+- **Accepted exposure.** The Firebase web config and the TURN relay
+  credentials are in the site's code by design (there's no server to hand out
+  short-lived ones). App Check isn't enforced yet, so the rules are the only
+  barrier for scripted access.
+
 ## Accessibility
 
 The target is WCAG 2.2 AA, checked with axe-core on every main screen and

@@ -1,6 +1,6 @@
 // Posts and interactions on them: likes, saves, sends, reposts, hides, comments.
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
+  collection, deleteDoc, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
   setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { auth, db, loadStorage } from "../../firebase";
@@ -329,15 +329,18 @@ export async function fetchAffinity() {
 
 // Saves and sends
 
+// Up to 30 ids per "in" query.
+const chunks = (list, size = 30) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size));
+
+/** Which of `postIds` you've saved: one query on your Saved list, not a read per post. */
 export async function fetchMySaves(postIds) {
   const uid = me();
   const saved = new Set();
-  await Promise.all(
-    postIds.map(async (id) => {
-      const snap = await getDoc(doc(db, "posts", id, "saves", uid));
-      if (snap.exists()) saved.add(id);
-    })
-  );
+  if (!uid || !postIds.length) return saved;
+  await Promise.all(chunks(postIds).map(async (ids) => {
+    const snap = await getDocs(query(collection(db, "users", uid, "saved"), where(documentId(), "in", ids)));
+    snap.docs.forEach((d) => saved.add(d.id));
+  }));
   return saved;
 }
 
@@ -415,15 +418,15 @@ export async function sendPostTo(post, chatId, note = "") {
 
 const repostId = (postId, uid) => `${postId}_${uid}`;
 
+/** Which of `postIds` you've reposted, in one query rather than a read per post. */
 export async function fetchMyReposts(postIds) {
   const uid = me();
   const out = new Set();
-  await Promise.all(
-    postIds.map(async (id) => {
-      const snap = await getDoc(doc(db, "reposts", repostId(id, uid))).catch(() => null);
-      if (snap?.exists()) out.add(id);
-    })
-  );
+  if (!uid || !postIds.length) return out;
+  await Promise.all(chunks(postIds).map(async (ids) => {
+    const snap = await getDocs(query(collection(db, "reposts"), where("uid", "==", uid), where("postId", "in", ids))).catch(() => null);
+    snap?.docs.forEach((d) => out.add(d.data().postId));
+  }));
   return out;
 }
 
@@ -463,6 +466,22 @@ export async function fetchRepostsBy(uids, max = 60) {
     snap?.docs.forEach((d) => out.push({ id: d.id, ...d.data() }));
   }
   return out.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+/**
+ * Reposts are public, so a private account has none: they're removed when it
+ * goes private (and any left from before are removed at sign-in).
+ */
+export async function removeMyReposts() {
+  const list = await fetchRepostsBy([me()], 500).catch(() => []);
+  for (const r of list) {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "reposts", r.id));
+    batch.update(doc(db, "posts", r.postId), { repostCount: increment(-1) });
+    // The post may be gone; the repost still goes.
+    await batch.commit().catch(() => deleteDoc(doc(db, "reposts", r.id)).catch(() => {}));
+  }
+  return list.length;
 }
 
 export async function fetchRepostedPosts(uid) {

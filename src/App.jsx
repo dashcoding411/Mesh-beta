@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
@@ -146,6 +146,8 @@ export default function App() {
             fetchMyPrefs().catch(() => ({ interests: [] })),
           ]);
           setProfile(p);
+          // Private accounts can't have public reposts (older ones are removed).
+          if (p?.isPrivate) removeMyReposts().catch(() => {});
           setFollowing(f);
           setBlocked(b);
           setInterests(prefs.interests || []);

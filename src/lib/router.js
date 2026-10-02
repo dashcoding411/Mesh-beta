@@ -121,12 +121,25 @@ export function authPath(mode) {
   return here === "/" ? `/${mode}` : `/${mode}?next=${encodeURIComponent(here)}`;
 }
 
-/** Where to land after signing in: `next` if it's a local path, else the current page. */
+/** Where to land after signing in: `next` if it's a page on Mesh, else the current page. */
 export function afterAuthPath() {
   const { pathname, search } = window.location;
   if (!/^\/(login|signup)$/.test(pathname)) return pathname + search;
-  const next = new URLSearchParams(search).get("next") || "/";
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return safeNext(new URLSearchParams(search).get("next"));
+}
+
+/**
+ * A `next` path only if it stays on this site. Parsed as a URL, since
+ * browsers read "/\evil.com" (and "//evil.com") as another site.
+ */
+export function safeNext(next, origin = window.location.origin) {
+  if (!next || !next.startsWith("/") || /[\\\s]/.test(next)) return "/";
+  try {
+    const url = new URL(next, origin);
+    return url.origin === origin ? url.pathname + url.search + url.hash : "/";
+  } catch {
+    return "/";
+  }
 }
 
 export function postUrl(post) {

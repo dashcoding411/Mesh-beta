@@ -12,10 +12,16 @@ export async function fetchNews(status = "approved") {
   return snapToList(await getDocs(q));
 }
 
+// Checked once per visit: it gates menus on every profile and post.
+let adminCheck = { uid: null, result: null };
 export async function isAdmin() {
-  if (!me()) return false;
-  const snap = await getDoc(doc(db, "admins", me()));
-  return snap.exists();
+  const uid = me();
+  if (!uid) return false;
+  if (adminCheck.uid !== uid) {
+    adminCheck = { uid, result: getDoc(doc(db, "admins", uid)).then((s) => s.exists()) };
+    adminCheck.result.catch(() => { adminCheck = { uid: null, result: null }; });
+  }
+  return adminCheck.result;
 }
 
 export async function deleteNews(id) {

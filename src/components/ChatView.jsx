@@ -111,7 +111,9 @@ export default function ChatView({ chat }) {
   useEffect(() => listenMessages(chat.id, setMessages), [chat.id]);
   useEffect(() => listenTyping(chat.id, setTypingUsers), [chat.id]);
   useEffect(() => listenReads(chat.id, setReads), [chat.id]);
-  useEffect(() => listenPresence(others, (uid, at) => setPresence((prev) => new Map(prev).set(uid, at))), [others]);
+  // Online status is only shown, and only readable, for 1:1 chats.
+  useEffect(() => (chat.isGroup ? undefined
+    : listenPresence(others, (uid, at) => setPresence((prev) => new Map(prev).set(uid, at)))), [others, chat.isGroup]);
   useEffect(() => () => { clearTyping(chat.id).catch(() => {}); }, [chat.id]);
 
   // Requests stay unread for the sender until accepted.

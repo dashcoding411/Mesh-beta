@@ -267,11 +267,12 @@ export async function touchPresence() {
   await setDoc(doc(db, "presence", me()), { at: serverTimestamp() }, { merge: true }).catch(() => {});
 }
 
+/** Online status, which the rules show only to mutual follows and 1:1 chats. */
 export function listenPresence(uids, callback) {
   const unsubs = uids.map((uid) =>
     onSnapshot(doc(db, "presence", uid), (snap) => {
       callback(uid, snap.exists() ? tsMillis(snap.data().at) : 0);
-    })
+    }, () => callback(uid, 0))
   );
   return () => unsubs.forEach((u) => u());
 }
@@ -403,12 +404,13 @@ export async function clearThought() {
   await deleteDoc(doc(db, "thoughts", me())).catch(() => {});
 }
 
+/** Notes from `uids` that this account may see (mutual follows and 1:1 chats). */
 export async function fetchThoughts(uids) {
   const cutoff = Date.now() - 24 * 3600 * 1000;
   const results = await Promise.all(
     uids.map(async (uid) => {
-      const snap = await getDoc(doc(db, "thoughts", uid));
-      if (!snap.exists()) return null;
+      const snap = await getDoc(doc(db, "thoughts", uid)).catch(() => null);
+      if (!snap?.exists()) return null;
       const data = snap.data();
       return tsMillis(data.createdAt) > cutoff ? { uid, ...data } : null;
     })

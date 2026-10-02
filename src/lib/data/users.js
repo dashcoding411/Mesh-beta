@@ -28,18 +28,38 @@ export async function setMyBirthYear(year) {
   await setDoc(ageRef(me()), { birthYear: year });
 }
 
-/** Own profile with the birth year merged in. Moves a profile birth year to private/age. */
+/**
+ * Own profile with the birth year merged in. Profiles are readable by every
+ * signed-in account, so anything private left on an older one is moved off:
+ * a birth year to private/age, and email and phone (kept by Firebase Auth)
+ * removed. Follow markers left from an interrupted follow are blanked.
+ */
 export async function fetchOwnProfile(uid) {
   const [profile, age] = await Promise.all([fetchProfile(uid), getDoc(ageRef(uid)).catch(() => null)]);
   if (!profile) return null;
   const stored = age?.exists() ? age.data().birthYear : 0;
-  if (profile.birthYear > 0) {
+  const legacy = ["email", "phone"].filter((k) => k in profile);
+  if (profile.birthYear > 0 || legacy.length) {
     const batch = writeBatch(db);
-    if (!stored) batch.set(ageRef(uid), { birthYear: profile.birthYear });
-    batch.update(doc(db, "users", uid), { birthYear: deleteField() });
+    if (profile.birthYear > 0 && !stored) batch.set(ageRef(uid), { birthYear: profile.birthYear });
+    batch.update(doc(db, "users", uid), Object.fromEntries(
+      [...legacy, ...(profile.birthYear > 0 ? ["birthYear"] : [])].map((k) => [k, deleteField()])));
     await batch.commit().catch(() => {});
   }
-  return { ...profile, birthYear: stored || profile.birthYear || 0 };
+  if (profile.lastFollower || profile.lastFollowing) clearFollowMarkers(uid);
+  const { email: _email, phone: _phone, ...clean } = profile;
+  return { ...clean, birthYear: stored || profile.birthYear || 0 };
+}
+
+/**
+ * Follow counts are tied to the follow they change by lastFollower and
+ * lastFollowing (see the rules). Those name an account, so once the count
+ * has moved they're blanked, keeping who followed whom off public profiles.
+ */
+export function clearFollowMarkers(...uids) {
+  for (const id of uids) {
+    updateDoc(doc(db, "users", id), { lastFollower: "", lastFollowing: "" }).catch(() => {});
+  }
 }
 
 // Most writes denormalise the author's name and photo, so the signed-in
@@ -287,6 +307,7 @@ export async function toggleFollow(target, currentlyFollowing) {
     batch.update(doc(db, "users", uid), { followingCount: increment(-1), lastFollowing: target.id });
     batch.update(doc(db, "users", target.id), { followerCount: increment(-1), lastFollower: uid });
     await batch.commit();
+    clearFollowMarkers(uid, target.id);
     unnotify(target.id, "follow");
     return "unfollowed";
   }
@@ -302,6 +323,7 @@ export async function toggleFollow(target, currentlyFollowing) {
   batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
   batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
   await batch.commit();
+  clearFollowMarkers(uid, target.id);
   bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
   notify(target.id, "follow");
   return "following";
@@ -342,6 +364,7 @@ export async function approveFollowRequest(request) {
   batch.update(doc(db, "users", request.id), { followingCount: increment(1), lastFollowing: uid });
   batch.delete(doc(db, "users", uid, "followRequests", request.id));
   await batch.commit();
+  clearFollowMarkers(uid, request.id);
   notify(request.id, "accept");
 }
 
@@ -365,7 +388,7 @@ export async function blockUser(target) {
     batch.delete(doc(db, "users", target.id, "following", uid));
     batch.update(doc(db, "users", uid), { followerCount: increment(-1), lastFollower: target.id });
     batch.update(doc(db, "users", target.id), { followingCount: increment(-1), lastFollowing: uid });
-    await batch.commit().catch(() => {});
+    if (await batch.commit().then(() => true).catch(() => false)) clearFollowMarkers(uid, target.id);
   }
   await deleteDoc(doc(db, "users", uid, "followRequests", target.id)).catch(() => {});
 }
