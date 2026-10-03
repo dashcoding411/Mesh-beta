@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   AGE_LIMITS, approveJoinRequest, approvePost, declineJoinRequest, deleteGroup, effectiveAutomod,
   deletePost, fetchJoinRequests, fetchPendingPosts, setCircleInterests, setCircleLimits,
-  setCircleRules, setCircleTopics, setScreeningQuestions, setCircleImage, setCircleCover, COVER_COLORS,
+  setCircleRules, setCircleTopics, setScreeningQuestions, setCircleImage, setCircleCover, COVER_COLORS, setCircleCustom,
 } from "../../lib/db";
-import { coverClass, LATTICE } from "../../lib/covers";
+import { coverClass, LATTICE, CIRCLE_ACCENTS } from "../../lib/covers";
 import { validateMediaFile } from "../../lib/validate";
 import { CircleAvatar, CircleBanner } from "./CircleImages";
 import PhotoCropper from "../ui/PhotoCropper";
@@ -29,14 +29,81 @@ export function ManageDialog({ group, isOwner, section, onSection, onClose, onSa
           { id: "posts", label: "Posts" },
           { id: "limits", label: "Limits" },
           { id: "rules", label: "Details" },
-          ...(isOwner ? [{ id: "look", label: "Look" }] : []),
+          ...(isOwner ? [{ id: "look", label: "Look" }, { id: "custom", label: "Customise" }] : []),
         ]} />
       {section === "requests" && <JoinRequests group={group} onCountChange={onCountChange} />}
       {section === "posts" && <PostQueue group={group} />}
       {section === "limits" && <LimitsEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
       {section === "rules" && <RulesEditor group={group} onSaved={onSaved} isOwner={isOwner} />}
       {section === "look" && isOwner && <LookEditor group={group} onSaved={onSaved} />}
+      {section === "custom" && isOwner && <CustomEditor group={group} onSaved={onSaved} />}
     </Dialog>
+  );
+}
+
+const OPTIONAL_TABS = [
+  { id: "guides", label: "Guides", help: "Step-by-step guides members work through" },
+  { id: "gatherings", label: "Gatherings", help: "Events for the circle" },
+  { id: "members", label: "Members", help: "The member list (admins always see it in Manage)" },
+];
+
+/** Accent colour, a welcome note, what members are called, and which tabs show. */
+function CustomEditor({ group, onSaved }) {
+  const toast = useToast();
+  const [accent, setAccent] = useState(group.accent || "violet");
+  const [welcome, setWelcome] = useState(group.welcome || "");
+  const [memberTitle, setMemberTitle] = useState(group.memberTitle || "");
+  const [hidden, setHidden] = useState(new Set(group.hiddenTabs || []));
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setCircleCustom(group.id, { accent, welcome, memberTitle, hiddenTabs: [...hidden] });
+      await onSaved();
+      toast({ title: "Circle updated" });
+    } catch {
+      toast({ tone: "error", title: "Couldn't save that", body: "Check the words used and try again." });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <fieldset>
+        <legend className="mb-2 text-callout font-medium">Accent colour</legend>
+        <div role="radiogroup" aria-label="Accent colour" className="flex flex-wrap gap-2">
+          {CIRCLE_ACCENTS.map((a) => (
+            <button key={a.id} type="button" role="radio" aria-checked={accent === a.id} aria-label={a.label} onClick={() => setAccent(a.id)}
+              className={`press flex h-10 w-10 items-center justify-center rounded-full text-white ${accent === a.id ? "ring-2 ring-fg ring-offset-2 ring-offset-surface" : ""}`}
+              style={{ background: a.hex }}>
+              {accent === a.id && <Check size={18} aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-caption text-fg-subtle">Used for the join button, highlights and the welcome note on the circle's page.</p>
+      </fieldset>
+      <Field label="What members are called" optional hint={'One word, like "gardener" or "runner". The circle shows "120 gardeners".'}>
+        <Input value={memberTitle} onChange={(e) => setMemberTitle(e.target.value.replace(/[^\p{L}\p{N} '-]/gu, ""))} maxLength={24} placeholder="member" />
+      </Field>
+      <Field label="Welcome note" optional count={welcome.length} max={300}
+        hint="Shown to new members at the top of the circle until they close it.">
+        <Textarea autoGrow rows={3} maxRows={8} value={welcome} onChange={(e) => setWelcome(e.target.value)} maxLength={300}
+          placeholder="Welcome! Start by introducing yourself in Discussion." />
+      </Field>
+      <fieldset>
+        <legend className="mb-2 text-callout font-medium">Tabs</legend>
+        <div className="space-y-2">
+          {OPTIONAL_TABS.map((t) => (
+            <Checkbox key={t.id} checked={!hidden.has(t.id)} description={t.help}
+              onChange={(on) => setHidden((s) => { const n = new Set(s); if (on) n.delete(t.id); else n.add(t.id); return n; })}>
+              {t.label}
+            </Checkbox>
+          ))}
+        </div>
+        <p className="mt-2 text-caption text-fg-subtle">Discussion and About always show.</p>
+      </fieldset>
+      <div className="flex justify-end"><Button variant="primary" loading={busy} onClick={save}>Save</Button></div>
+    </div>
   );
 }
 

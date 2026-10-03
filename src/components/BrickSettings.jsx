@@ -11,7 +11,7 @@ import {
   saveOwnLimits, cancelPending, brickUntil, requestTimeZoneChange, fetchMyFamilyLink, fetchMyTeens, inviteTeen,
   acceptFamilyInvite, declineFamilyInvite, removeFamilyLink, saveParentLimits, answerParentRequest,
   requestParentChange, withdrawParentRequest, listenLock, fetchUsageFor, deleteNotices, recordFamilyLinkEnd,
-  fetchBrickStats, setStatsPublic, weekKeyFor,
+  fetchBrickStats, setStatsPublic, weekKeyFor, syncMyGroupEntries,
 } from "../lib/db";
 import { durationLabel } from "../lib/format";
 import { navigate } from "../lib/router";
@@ -79,6 +79,8 @@ export default function BrickSettings() {
     setBusy(true);
     try {
       await brickUntil(policy, raw, instant);
+      // Your Brick groups see you're bricked.
+      syncMyGroupEntries().catch(() => {});
       toast({ title: `Bricked until ${whenLabel(instant)}` });
       setInstant(null);
     } catch {

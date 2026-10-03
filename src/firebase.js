@@ -2,6 +2,8 @@ import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
+import { isNativeApp } from "./lib/native";
+import { allowed, onConsent } from "./lib/consent";
 
 // Public client config; access control is in firestore.rules and storage.rules.
 const firebaseConfig = {
@@ -21,7 +23,14 @@ const app = initializeApp(firebaseConfig);
 const APP_CHECK_SITE_KEY = import.meta.env.VITE_APPCHECK_SITE_KEY || "6Lfc89ItAAAAAM_UoSuReQkPRwbkFe5m0KXcI7Rb";
 const APP_CHECK_PROVIDER = import.meta.env.VITE_APPCHECK_PROVIDER || "enterprise"; // "enterprise" | "v3"
 
-if (APP_CHECK_SITE_KEY && typeof window !== "undefined") {
+// reCAPTCHA sets Google cookies, so it starts only once someone allows the
+// security check (lib/consent.js), never by default. It only runs on approved
+// websites, so the iPhone app skips it; that will use App Attest once App
+// Check is enforced.
+let appCheckStarted = false;
+function startAppCheck() {
+  if (appCheckStarted || !APP_CHECK_SITE_KEY || typeof window === "undefined" || isNativeApp) return;
+  appCheckStarted = true;
   // Local dev uses a registered debug token from .env.local (dev builds only).
   if (import.meta.env.DEV && import.meta.env.VITE_APPCHECK_DEBUG_TOKEN) {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN;
@@ -33,6 +42,8 @@ if (APP_CHECK_SITE_KEY && typeof window !== "undefined") {
     isTokenAutoRefreshEnabled: true,
   });
 }
+if (allowed("recaptcha")) startAppCheck();
+onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
 
 export const auth = getAuth(app);
 // Auto-detected long polling for proxies that break streaming.

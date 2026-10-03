@@ -81,6 +81,7 @@ const PAGES = [
   [/^\/saved$/, () => ({ tab: "home", section: "saved" })],
   [/^\/notifications$/, () => ({ tab: "home", section: "notifications" })],
   [/^\/leaderboard$/, () => ({ tab: "home", section: "leaderboard" })],
+  [/^\/leaderboard\/g\/([^/]+)$/, (m) => ({ tab: "home", section: "leaderboard", groupId: decodeURIComponent(m[1]) })],
   [/^\/messages(?:\/([^/]+))?$/, (m) => ({ tab: "messages", id: m[1] || null })],
   [/^\/account$/, () => ({ tab: "account", view: "profile" })],
   [/^\/account\/settings$/, () => ({ tab: "account", view: "settings" })],

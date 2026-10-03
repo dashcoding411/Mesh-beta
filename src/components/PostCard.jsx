@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  Heart, MessageCircle, Repeat2, Send, Bookmark, Ellipsis, Lock, WandSparkles, EyeOff, MapPin,
+  Heart, MessageCircle, Repeat2, Send, Bookmark, Ellipsis, Lock, WandSparkles, EyeOff, MapPin, Blend,
 } from "lucide-react";
 import { toggleLike, toggleSave, toggleRepost, openUserProfile, me, isHeld } from "../lib/db";
 import { navigate } from "../lib/router";
@@ -11,6 +11,7 @@ import { useInView } from "../lib/useInView";
 import { useShell } from "./shell/ShellContext";
 import LiveAvatar from "./ui/LiveAvatar";
 import { BadgeMark } from "./ui/Badges";
+import { tap } from "../lib/native";
 import { useLiveCard } from "../lib/profileCache";
 import IconButton from "./ui/IconButton";
 import Badge from "./ui/Badge";
@@ -86,11 +87,13 @@ export default function PostCard({
 
   const like = () => {
     if (needsAccount("like posts")) return;
+    if (!liked) tap();
     optimistic("like", "liked", !liked, () => toggleLike(post, liked), "Couldn't update your like");
   };
 
   const likeFromDoubleTap = () => {
     if (needsAccount("like posts")) return;
+    tap();
     setBurst(true);
     setTimeout(() => setBurst(false), 900);
     if (!liked) like();
@@ -166,7 +169,12 @@ export default function PostCard({
               </span>
             )}
           </div>
-          {post.location ? (
+          {post.circleName ? (
+            <button type="button" onClick={() => navigate(`/circles/${post.groupId}`)}
+              className="flex max-w-full items-center gap-1 truncate text-caption text-fg-muted hover:text-fg">
+              <Blend size={11} className="shrink-0" aria-hidden="true" /><span className="truncate">in {post.circleName}</span>
+            </button>
+          ) : post.location ? (
             <button type="button" onClick={() => navigate(`/search?q=${encodeURIComponent(post.location)}`)}
               className="flex max-w-full items-center gap-1 truncate text-caption text-fg-muted hover:text-fg">
               <MapPin size={11} className="shrink-0" aria-hidden="true" /><span className="truncate">{post.location}</span>

@@ -7,6 +7,7 @@ import "@fontsource-variable/plus-jakarta-sans/wght.css";
 import "./lib/appearance";
 import App from "./App.jsx";
 import { ToastProvider } from "./components/ui/Toast.jsx";
+import { startNative } from "./lib/native";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -16,3 +17,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </ToastProvider>
   </React.StrictMode>
 );
+
+startNative();

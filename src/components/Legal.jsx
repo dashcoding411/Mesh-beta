@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Cookie } from "lucide-react";
+import { openCookieChoices } from "../lib/consent";
+import Button from "./ui/Button";
 import { DOCUMENTS } from "../legal/content";
 import { BUSINESS, missingFields } from "../legal/business";
 import { navigate } from "../lib/router";
@@ -69,6 +71,9 @@ export default function Legal({ doc = "privacy" }) {
           <article className="mt-8 anim-fade" key={current.id}>
             <h2 ref={headingRef} tabIndex={-1} className="text-title-1 outline-none">{current.title}</h2>
             <p className="mt-2 text-body text-fg-muted">{current.summary}</p>
+            {current.id === "cookies" && (
+              <Button className="mt-4" icon={Cookie} onClick={openCookieChoices}>Change your cookie choices</Button>
+            )}
 
             <div className="mt-8 space-y-9">
               {current.sections.map((s) => (

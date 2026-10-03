@@ -1,13 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { Search as SearchIcon } from "lucide-react";
 import { searchGifs } from "../lib/gifs";
+import { setConsent, readConsent, useConsent } from "../lib/consent";
+import Button from "./ui/Button";
 import { isMinor } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
 import Dialog from "./ui/Dialog";
 import { Input } from "./ui/Field";
 import { Skeleton, EmptyState } from "./ui/States";
 
+// GIFs load from GIPHY, so they wait for a yes in the cookie choices.
+const allowGiphy = () => setConsent({ ...(readConsent() || {}), giphy: true });
+
 export default function GifPicker({ onPick, onClose }) {
+  const consent = useConsent();
+  if (!consent?.giphy) {
+    return (
+      <Dialog title="GIFs come from GIPHY" onClose={onClose} size="sm"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>Not now</Button>
+            <Button variant="primary" onClick={allowGiphy}>Allow GIFs</Button>
+          </div>
+        )}>
+        <p className="text-callout text-fg-muted">
+          Searching and showing GIFs loads them from GIPHY, which sees your IP address and what you search for. Mesh never sends GIPHY your name or account. You can change this in your cookie choices.
+        </p>
+      </Dialog>
+    );
+  }
+  return <GifSearch onPick={onPick} onClose={onClose} />;
+}
+
+function GifSearch({ onPick, onClose }) {
   const { profile } = useShell();
   const [q, setQ] = useState("");
   const [gifs, setGifs] = useState(null);
@@ -51,8 +76,21 @@ export default function GifPicker({ onPick, onClose }) {
 }
 
 export function GifView({ gif, className = "" }) {
+  const consent = useConsent();
+  const [once, setOnce] = useState(false);
   if (!gif?.url) return null;
   const ratio = gif.width && gif.height ? `${gif.width} / ${gif.height}` : "4 / 3";
+  // Without a yes to GIPHY, nothing loads until it's tapped.
+  if (!consent?.giphy && !once) {
+    return (
+      <button type="button" onClick={() => setOnce(true)}
+        className={`flex flex-col items-center justify-center gap-1 rounded-card bg-surface-2 p-3 text-center text-caption text-fg-muted ${className}`}
+        style={{ aspectRatio: ratio, maxWidth: 360 }}>
+        <span className="font-semibold text-fg">GIF{gif.title ? `: ${gif.title}` : ""}</span>
+        <span>Tap to load it from GIPHY</span>
+      </button>
+    );
+  }
   return (
     <span className={`relative block overflow-hidden rounded-card bg-surface-2 ${className}`} style={{ aspectRatio: ratio, maxWidth: 360 }}>
       <img src={gif.url} alt={gif.title ? `GIF: ${gif.title}` : "GIF"} loading="lazy" className="h-full w-full object-cover" />

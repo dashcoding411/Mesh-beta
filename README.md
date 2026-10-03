@@ -106,6 +106,29 @@ Cloud Storage requires the Blaze plan. Until it's enabled, photos are stored
 inline in Firestore (`media/{id}`) and video uploads are disabled. After
 enabling Blaze, deploy `storage.rules` and build with `VITE_STORAGE=on`.
 
+## iPhone app
+
+The app (`ios/`) is the same web app in a native shell, built with
+[Capacitor](https://capacitorjs.com). It needs Xcode (Mac App Store), and an
+Apple Developer Program membership to install on phones through TestFlight or
+publish to the App Store.
+
+```sh
+npm run app:sync   # build the web app and copy it into the iOS project
+npm run app:open   # open it in Xcode, then Run (simulator or a plugged-in iPhone)
+npm run app:assets # re-render the icon and launch screen from scripts/app-icon.html
+```
+
+Run `app:sync` after every web change; the app ships its own copy of the web
+code, so updates reach phones through the App Store, not by deploying Hosting.
+
+App-specific behaviour lives in `src/lib/native.js` (status bar, launch
+screen, haptics). Inside the app, App Check's reCAPTCHA can't run and Google,
+Apple and phone sign-in need native sign-in, so the app offers email sign-in
+until that's set up (Firebase iOS app, `GoogleService-Info.plist` and a native
+auth plugin). The bundle ID is `com.meshsocial.app` (`capacitor.config.json`);
+change it before the first App Store upload if you want a different one.
+
 ## Administration
 
 Admins are documents in `admins/{uid}`, created in the Firebase console. Admins

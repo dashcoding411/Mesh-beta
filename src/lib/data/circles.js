@@ -35,6 +35,14 @@ export async function fetchGroups() {
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
+// Public circles, read once per visit for Home (their posts appear there).
+let publicOnce = null;
+export function publicCircles() {
+  publicOnce ||= fetchGroups().then((list) => list.filter((g) => g.privacy === "public"))
+    .catch(() => { publicOnce = null; return []; });
+  return publicOnce;
+}
+
 export async function fetchGroupById(groupId) {
   const snap = await getDoc(doc(db, "groups", groupId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
@@ -123,6 +131,13 @@ export function canJoinDirectly(group) {
 
 export function circleVisibility(group) {
   return group.privacy === "public" ? "public" : "circle";
+}
+
+/** Owner customisation: accent, welcome note, member title, hidden tabs. */
+export async function setCircleCustom(groupId, { accent, welcome, memberTitle, hiddenTabs }) {
+  await updateDoc(doc(db, "groups", groupId), {
+    accent, welcome: welcome.trim().slice(0, 300), memberTitle: memberTitle.trim().toLowerCase().slice(0, 24), hiddenTabs,
+  });
 }
 
 export async function setCircleInterests(groupId, interests) {

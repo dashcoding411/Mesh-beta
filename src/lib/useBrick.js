@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  applyPending, listenLock, listenUsage, me, pingUsage, syncBrickStats, syncTimeZone, tidyUsage,
+  applyPending, listenLock, listenUsage, me, pingUsage, syncBrickStats, syncMyGroupEntries, syncTimeZone, tidyUsage,
 } from "./db";
 import { capFor, dayKey, lockState, pendingDueAt, unlockAt } from "./brick";
 
@@ -57,7 +57,7 @@ export function useBrickEngine(signedIn) {
     syncTimeZone(policy).catch(() => {});
     tidyUsage(policy).catch(() => {});
     counted.current = policy.self?.until || 0;
-    syncBrickStats(policy, raw).catch(() => {});
+    syncBrickStats(policy, raw).then(() => syncMyGroupEntries()).catch(() => {});
   }, [policy, raw]);
 
   // Claim an instant brick as soon as it ends.
@@ -65,7 +65,7 @@ export function useBrickEngine(signedIn) {
   useEffect(() => {
     if (!brickEnd || now < brickEnd || counted.current === brickEnd) return;
     counted.current = brickEnd;
-    syncBrickStats(policy, raw).catch(() => {});
+    syncBrickStats(policy, raw).then(() => syncMyGroupEntries()).catch(() => {});
   }, [brickEnd, now, policy, raw]);
 
   return useMemo(() => ({

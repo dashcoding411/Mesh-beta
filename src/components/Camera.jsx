@@ -6,6 +6,7 @@ import { motionReduced } from "../lib/appearance";
 import { formatDuration } from "../lib/format";
 import Button from "./ui/Button";
 import { Spinner } from "./ui/States";
+import PhotoEditor from "./PhotoEditor";
 import { useFocusTrap } from "../lib/useFocusTrap";
 
 const HOLD_MS = 280; // a press longer than this records
@@ -210,10 +211,11 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
 
   return createPortal(
     <div ref={trap} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[55] flex flex-col bg-black text-white anim-fade">
-      <div ref={boxRef} className="relative mx-auto min-h-0 w-full flex-1 overflow-hidden md:my-4 md:aspect-[3/4] md:w-auto md:max-w-full md:flex-none md:rounded-card md:[height:calc(100%-10rem)]">
+      {/* The viewfinder fills the screen (a tall frame on computers); controls float over it. */}
+      <div ref={boxRef} className="relative mx-auto h-full w-full overflow-hidden md:aspect-[9/16] md:w-auto">
         {shot ? (
           shot.kind === "image"
-            ? <img src={shot.url} alt="Your photo" className="h-full w-full object-contain" />
+            ? <PhotoEditor file={shot.file} actions={actions} onBack={retake} onDone={(id, file) => { stop(); onDone(id, file); }} />
             : <video src={shot.url} autoPlay loop playsInline className="h-full w-full object-contain" aria-label="Your video" />
         ) : (
           <video ref={videoRef} muted playsInline aria-hidden="true"
@@ -240,7 +242,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
           </div>
         )}
 
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent px-2 pb-6 pt-safe">
+        {shot?.kind !== "image" && <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent px-2 pb-6 pt-safe">
           {shot ? (
             <button type="button" onClick={retake} className="press flex min-h-11 items-center gap-1.5 rounded-full px-3 text-callout font-semibold">
               <ArrowLeft size={20} aria-hidden="true" /> Retake
@@ -256,11 +258,11 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
               <span className="h-2 w-2 rounded-full bg-white" aria-hidden="true" /> {formatDuration(Math.floor(elapsed))}
             </span>
           )}
-        </div>
+        </div>}
       </div>
 
-      {/* Thumb zone: everything you press lives down here. */}
-      <div className="shrink-0 px-5 pb-safe">
+      {/* Thumb zone: everything you press lives down here, over the viewfinder. */}
+      {shot?.kind !== "image" && <div className="absolute inset-x-0 bottom-0 mx-auto w-full bg-gradient-to-t from-black/70 via-black/30 to-transparent px-5 pb-safe md:max-w-[56.25vh]">
         {shot ? (
           <div className="flex h-[142px] items-center justify-end gap-3">
             {actions.map((a) => (
@@ -313,7 +315,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
             </div>
           </>
         )}
-      </div>
+      </div>}
       <input ref={libraryRef} type="file" accept={accept} multiple={!!onLibrary && photo && !video} className="hidden"
         onChange={pickLibrary} aria-hidden="true" tabIndex={-1} />
     </div>,

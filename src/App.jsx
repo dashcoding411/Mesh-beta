@@ -330,7 +330,7 @@ export default function App() {
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
       case "saved": content = <Saved />; break;
       case "notifications": content = <Notifications />; break;
-      case "leaderboard": content = <Leaderboard />; break;
+      case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
       default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {

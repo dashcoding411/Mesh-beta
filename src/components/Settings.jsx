@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie,
 } from "lucide-react";
 import { plural } from "../lib/format";
 import { interestById } from "../lib/interests";
@@ -11,6 +11,7 @@ import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
 import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
 import { replayTour } from "../lib/tour";
+import { openCookieChoices, optionalItems, useConsent } from "../lib/consent";
 import { clearAllDrafts } from "../lib/drafts";
 import { useBrick } from "../lib/useBrick";
 import { hasAnyLimit, parentActive } from "../lib/brick";
@@ -46,6 +47,7 @@ const PROVIDERS = { password: "Email and password", "google.com": "Google", "app
 
 export default function Settings() {
   const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, muted } = useShell();
+  const consent = useConsent();
   const brick = useBrick();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
@@ -135,6 +137,11 @@ export default function Settings() {
             <Row icon={Ban} label="Blocked accounts"
               value={blockedList === null ? "Loading…" : blockedList.length ? `${blockedList.length} blocked` : "No one"}
               onClick={() => setDialog("blocked")} />
+            <Row icon={Cookie} label="Cookies and storage"
+              value={consent === null ? "Not chosen yet: essential only"
+                : optionalItems().every((i) => consent[i.id]) ? "Everything allowed"
+                : optionalItems().some((i) => consent[i.id]) ? "Some extras allowed" : "Essential only"}
+              onClick={openCookieChoices} />
           </Group>
 
           <Group title="Your feed">

@@ -14,4 +14,5 @@ export * from "./data/events.js";
 export * from "./data/notifications.js";
 export * from "./data/brick.js";
 export * from "./data/brickStats.js";
+export * from "./data/brickGroups.js";
 export * from "./data/account.js";

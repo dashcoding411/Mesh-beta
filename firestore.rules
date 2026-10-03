@@ -1111,6 +1111,72 @@ service cloud.firestore {
       allow delete: if isUser(uid);
     }
 
+    // Brick groups: friends compare bricked time privately, like a study group.
+    // Each member's entry mirrors their verified brickStats and current brick,
+    // checked here, so nobody can inflate their own time.
+    function brickEntryOk(d, uid) {
+      let statsPath = /databases/$(database)/documents/brickStats/$(uid);
+      let lockPath = /databases/$(database)/documents/locks/$(uid);
+      let s = exists(statsPath) ? get(statsPath).data
+        : {'weekKey': '', 'weekSeconds': 0, 'totalSeconds': 0, 'streakDays': 0};
+      return d.keys().hasOnly(['username', 'name', 'photoURL', 'weekKey', 'weekSeconds', 'totalSeconds',
+                               'streakDays', 'brickedUntil', 'updatedAt'])
+        && isMyName(d.username)
+        && d.name == myProfile().get('name', '')
+        && d.photoURL == myProfile().get('photoURL', '')
+        && d.weekKey == s.weekKey && d.weekSeconds == s.weekSeconds
+        && d.totalSeconds == s.totalSeconds && d.streakDays == s.streakDays
+        && d.brickedUntil == (exists(lockPath) ? get(lockPath).data.self.until : null)
+        && d.updatedAt == request.time;
+    }
+    match /brickGroups/{gid} {
+      function groupNow() {
+        return get(/databases/$(database)/documents/brickGroups/$(gid)).data;
+      }
+      // Anyone with the invite link sees the name and size before joining.
+      allow get: if signedIn();
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly(['name', 'ownerId', 'members', 'createdAt'])
+        && incomingData().ownerId == request.auth.uid
+        && incomingData().members == [request.auth.uid]
+        && incomingData().name is string && incomingData().name.size() >= 1 && incomingData().name.size() <= 40
+        && hateFree(incomingData().name)
+        && incomingData().createdAt == request.time
+        && notSuspended();
+      allow update: if signedIn() && (
+        // The owner renames it.
+        (resource.data.ownerId == request.auth.uid
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['name'])
+          && incomingData().name is string && incomingData().name.size() >= 1 && incomingData().name.size() <= 40
+          && hateFree(incomingData().name))
+        // Join: add only yourself, up to 30 members.
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['members'])
+          && !(request.auth.uid in resource.data.members)
+          && incomingData().members == resource.data.members.concat([request.auth.uid])
+          && incomingData().members.size() <= 30
+          && !exists(/databases/$(database)/documents/users/$(resource.data.ownerId)/blocked/$(request.auth.uid)))
+        // Leave (anyone but the owner), or the owner removes someone else.
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['members'])
+          && incomingData().members.size() == resource.data.members.size() - 1
+          && incomingData().members.toSet().difference(resource.data.members.toSet()).size() == 0
+          && (resource.data.members.toSet().difference(incomingData().members.toSet()) == [request.auth.uid].toSet()
+              || resource.data.ownerId == request.auth.uid)
+          && resource.data.ownerId in incomingData().members)
+      );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /members/{uid} {
+        allow read: if signedIn() && request.auth.uid in groupNow().members;
+        allow create, update: if isUser(uid) && uid in groupNow().members && brickEntryOk(incomingData(), uid);
+        // Your own entry, the owner tidying up, or anyone once you've left.
+        allow delete: if signedIn() && (isUser(uid)
+          || !existsAfter(/databases/$(database)/documents/brickGroups/$(gid))
+          || groupNow().ownerId == request.auth.uid
+          || !(uid in groupNow().members));
+      }
+    }
+
     // Posts
     match /posts/{postId} {
       // Authors can always read their own posts, even when bricked.
@@ -2114,8 +2180,14 @@ service cloud.firestore {
                .hasOnly(['name', 'description', 'privacy', 'requireApproval', 'ageLimit', 'interests',
                          'rules', 'coverColor', 'pinnedPostId',
                          'screeningQuestions', 'automod', 'featuredPostIds', 'topics', 'chatId',
-                         'bannerUrl', 'photoUrl'])
+                         'bannerUrl', 'photoUrl', 'accent', 'welcome', 'memberTitle', 'hiddenTabs'])
           && incomingData().privacy in ['public', 'private', 'hidden']
+          // Customise: accent colour, welcome note, what members are called, which tabs show.
+          && incomingData().get('accent', 'violet') in ['violet', 'pink', 'blue', 'teal', 'green', 'amber', 'red']
+          && incomingData().get('welcome', '') is string && incomingData().get('welcome', '').size() <= 300
+          && incomingData().get('memberTitle', '') is string && incomingData().get('memberTitle', '').size() <= 24
+          && incomingData().get('hiddenTabs', []) is list && incomingData().get('hiddenTabs', []).hasOnly(['guides', 'gatherings', 'members'])
+          && hateFree(incomingData().get('welcome', '') + ' ' + incomingData().get('memberTitle', ''))
           && circleImageOk('bannerUrl') && circleImageOk('photoUrl')
           && limitsOk(incomingData())
           && hateFree(incomingData().name + ' ' + incomingData().description + ' ' + incomingData().get('rules', '') + ' ' + incomingData().get('topics', []).join(' '))

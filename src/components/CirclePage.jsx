@@ -1,4 +1,5 @@
-import { ArrowLeft, Check, Clock, ImagePlus, Lock, Settings2, UserPlus, Users, MessagesSquare, CalendarDays, ScrollText, ListChecks } from "lucide-react";
+import { ArrowLeft, Check, Clock, ImagePlus, Lock, Settings2, UserPlus, Users, MessagesSquare, CalendarDays, ScrollText, ListChecks, X } from "lucide-react";
+import { accentOf } from "../lib/covers";
 import { useCallback, useEffect, useState } from "react";
 import { CircleAvatar, CircleBanner } from "./circle/CircleImages";
 import {
@@ -41,6 +42,14 @@ export default function CirclePage({ circleId }) {
   const [group, setGroup] = useState(undefined);
   usePageTitle(group?.name || null, 1);
   const [tab, setTab] = useState("discussion");
+  const welcomeKey = `mesh:circle-welcome:${circleId}`;
+  const [welcomeClosed, setWelcomeClosed] = useState(() => {
+    try { return localStorage.getItem(welcomeKey) === "1"; } catch { return false; }
+  });
+  const closeWelcome = () => {
+    try { localStorage.setItem(welcomeKey, "1"); } catch { /* storage blocked: closes for this visit */ }
+    setWelcomeClosed(true);
+  };
   const [membership, setMembership] = useState(undefined);
   const [memberCount, setMemberCount] = useState(0);
   const [dialog, setDialog] = useState(null); // "manage" | "join" | "leave"
@@ -136,6 +145,11 @@ export default function CirclePage({ circleId }) {
     } finally { setChatBusy(false); }
   };
   const refreshMembership = () => fetchMembership(circleId).then(setMembership).catch(() => {});
+  // The owner's customisation: accent colour and which tabs show.
+  const accent = accentOf(group);
+  const hiddenTabs = new Set(group.hiddenTabs || []);
+  const tabs = TABS.filter((t) => !hiddenTabs.has(t.id) && !(guest && t.id === "members"));
+  const shown = tabs.some((t) => t.id === tab) ? tab : "discussion";
 
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
@@ -158,7 +172,7 @@ export default function CirclePage({ circleId }) {
               <PrivacyBadge privacy={group.privacy} />
             </div>
             <p className="mt-1 text-callout text-fg-muted">
-              {plural(memberCount, "member")}
+              <span className="font-semibold" style={{ color: accent }}>{plural(memberCount, group.memberTitle || "member")}</span>
               {membership && <> · you're {(ROLES[membership.role] || "Member").toLowerCase()}</>}
             </p>
           </div>
@@ -176,7 +190,7 @@ export default function CirclePage({ circleId }) {
               ) : pendingRequest ? (
                 <Badge tone="warning" icon={Clock} className="min-h-11 px-4 text-callout">Request sent</Badge>
               ) : (
-                <Button variant="primary" icon={UserPlus} loading={joining} onClick={join}>
+                <Button variant="primary" icon={UserPlus} loading={joining} onClick={join} style={{ background: accent }}>
                   {direct ? "Join" : "Ask to join"}
                 </Button>
               )
@@ -192,20 +206,27 @@ export default function CirclePage({ circleId }) {
 
         {canRead && <Featured group={group} member={!!membership} onTab={setTab} />}
 
-        <Tabs variant="underline" label="Circle sections" value={tab} onChange={setTab} className="mt-5"
-          tabs={guest ? TABS.filter((t) => t.id !== "members") : TABS} />
+        {membership && group.welcome && !welcomeClosed && (
+          <div className="mt-4 flex gap-3 rounded-card border-l-4 bg-surface p-4" style={{ borderColor: accent }} role="note">
+            <p className="min-w-0 flex-1 whitespace-pre-wrap text-callout">{group.welcome}</p>
+            <IconButton icon={X} label="Close the welcome note" size={16} onClick={closeWelcome} />
+          </div>
+        )}
+
+        <Tabs variant="underline" label="Circle sections" value={shown} onChange={setTab} className="mt-5"
+          tabs={tabs} />
 
         <div role="tabpanel" className="pt-5">
-          {tab === "about" ? (
+          {shown === "about" ? (
             <About group={group} memberCount={memberCount} limits={limits} />
           ) : !canRead ? (
             <EmptyState icon={Lock} title="This circle is private"
               body={pendingRequest ? "Your request is waiting for an admin." : oldEnough ? "Ask to join to see what's being shared." : `It's for people ${group.ageLimit} and over.`} />
-          ) : tab === "discussion" ? (
+          ) : shown === "discussion" ? (
             <Discussion group={group} membership={membership} onChanged={load} onReview={() => openManage("posts")} onPosted={refreshMembership} />
-          ) : tab === "guides" ? (
+          ) : shown === "guides" ? (
             <Guides group={group} membership={membership} />
-          ) : tab === "gatherings" ? (
+          ) : shown === "gatherings" ? (
             <CircleGatherings group={group} membership={membership} />
           ) : (
             <Members group={group} isOwner={isOwner} moderator={moderator} onCountChange={setMemberCount} />

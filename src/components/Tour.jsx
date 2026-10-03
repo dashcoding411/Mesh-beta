@@ -93,9 +93,9 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
 
   useEffect(() => {
     if (steps || !ready || !(pending || eligible)) return undefined;
-    // Wait for the feed to render and for any first-run dialog to close.
+    // Wait for the feed to render and for any first-run dialog or the cookie banner to close.
     const id = setInterval(() => {
-      if (document.querySelector("[aria-modal=true]")) return;
+      if (document.querySelector("[aria-modal=true], [data-cookie-banner]")) return;
       clearInterval(id);
       const list = (guest ? GUEST_STEPS : MEMBER_STEPS).filter((s) => !s.targets || findTarget(s.targets));
       setPending(false);

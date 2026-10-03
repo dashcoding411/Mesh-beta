@@ -21,3 +21,16 @@ export const LATTICE = {
 export function initialsOf(name) {
   return String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 }
+
+// A circle's accent colour (Manage > Customise), used across its page. Each
+// keeps white text at 4.5:1 or better.
+export const CIRCLE_ACCENTS = [
+  { id: "violet", label: "Purple", hex: "#7c3aed" },
+  { id: "pink", label: "Pink", hex: "#db2777" },
+  { id: "blue", label: "Blue", hex: "#2563eb" },
+  { id: "teal", label: "Teal", hex: "#0f766e" },
+  { id: "green", label: "Green", hex: "#15803d" },
+  { id: "amber", label: "Amber", hex: "#b45309" },
+  { id: "red", label: "Red", hex: "#dc2626" },
+];
+export const accentOf = (group) => (CIRCLE_ACCENTS.find((a) => a.id === group?.accent) || CIRCLE_ACCENTS[0]).hex;

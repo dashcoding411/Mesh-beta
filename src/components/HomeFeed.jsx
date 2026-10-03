@@ -1,7 +1,7 @@
-import { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { Fragment, useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
-  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
+  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
 import { latestFirst } from "../lib/algorithm";
@@ -18,6 +18,8 @@ import { useToast } from "./ui/toast-context";
 import PostCard, { POST_LIST } from "./PostCard";
 import NewsFeedCard from "./news/NewsFeedCard";
 import StoryRail from "./StoryRail";
+import CirclesToJoin from "./CirclesToJoin";
+import SuggestedPeople from "./SuggestedPeople";
 import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
@@ -27,9 +29,10 @@ const kept = new Map(); // `${uid}:${mode}:${topic}` -> { posts, shown, top, at,
 const KEEP_MS = 15 * 60 * 1000;
 let lastTopic = "all";
 
-// For you: everyone's public posts plus followers-only posts from people you
-// follow. Following: only people you follow. Both newest first, with stories
-// from journalists you follow mixed in by when they were published.
+// For you: everyone's public posts (public circles' included) plus
+// followers-only posts from people you follow. Following: only people you
+// follow. Both newest first, with stories from journalists you follow mixed
+// in by when they were published.
 const postTime = (p) => (p.kind === "news" ? p.at : Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at)));
 
 export default function HomeFeed({ mode }) {
@@ -72,14 +75,18 @@ export default function HomeFeed({ mode }) {
     setError(false);
     if (quiet) setRefreshing(true);
     try {
-      const [list, followersOnly, hidden, reposts, news] = await Promise.all([
+      const circlesP = publicCircles();
+      const [list, followersOnly, hidden, reposts, news, circles, circlePosts] = await Promise.all([
         topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
         following.size ? fetchFollowersPosts(following) : [],
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
         following.size && topic === "all" ? fetchFollowedNews(following).catch(() => []) : [],
+        circlesP,
+        circlesP.then((cs) => (cs.length ? fetchCirclePosts(cs.map((c) => c.id)) : [])),
       ]);
-      const pool = [...list, ...followersOnly.filter((p) => topic === "all" || p.topics?.includes(topic))];
+      const circleName = new Map(circles.map((c) => [c.id, c.name]));
+      const pool = [...list, ...followersOnly, ...circlePosts].filter((p) => topic === "all" || p.topics?.includes(topic));
 
       // Annotate reposted posts and fetch any that aren't in the pool.
       const byId = new Map(pool.map((p) => [p.id, { ...p }]));
@@ -92,7 +99,9 @@ export default function HomeFeed({ mode }) {
         p.repostedBy = [...(p.repostedBy || []), { uid: r.uid, username: r.username, at: tsMillis(r.createdAt) }];
       }
 
-      const visible = [...byId.values()].filter((p) => !hidden.has(p.id) && !p.groupId && !hiddenAuthors.has(p.authorId));
+      const visible = [...byId.values()]
+        .filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId) && (!p.groupId || (p.visibility === "public" && circleName.has(p.groupId))))
+        .map((p) => (p.groupId ? { ...p, circleName: circleName.get(p.groupId) } : p));
 
       const ordered = latestFirst(visible, { followingSet: following, myUid: me(), hiddenWords, hideAi });
       const stories = news
@@ -206,10 +215,19 @@ export default function HomeFeed({ mode }) {
 
           {page?.length > 0 && (
             <div className={`stagger ${POST_LIST}`}>
-              {page.map((p) => (p.kind === "news" ? <NewsFeedCard key={p.id} story={p.story} /> : (
-                <PostCard key={p.id} post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove}
-                  onChanged={(id, changes) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, ...changes } : x)))} />
-              )))}
+              {page.map((p, i) => (
+                <Fragment key={p.id}>
+                  {p.kind === "news" ? <NewsFeedCard story={p.story} /> : (
+                    <PostCard post={p} viewer={viewer} onViewerChange={setViewer} onRemoved={remove}
+                      onChanged={(id, changes) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, ...changes } : x)))} />
+                  )}
+                  {/* Breaks in the scroll so Home is about places and people, not just a timeline. */}
+                  {i === 3 && mode === "foryou" && topic === "all" && <CirclesToJoin />}
+                  {i === 8 && mode === "foryou" && topic === "all" && !guest && (
+                    <SuggestedPeople title="People you may know" className="py-4 md:rounded-card md:border md:border-line md:bg-surface" />
+                  )}
+                </Fragment>
+              ))}
             </div>
           )}
 

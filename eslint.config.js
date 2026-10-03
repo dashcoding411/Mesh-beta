@@ -6,7 +6,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // ios/ holds a copy of the built site inside the iPhone app.
+  globalIgnores(['dist', 'ios']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

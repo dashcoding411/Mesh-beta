@@ -96,6 +96,13 @@ tap) or "Post" (into the composer with the capture attached). In the composer,
 location and photo descriptions stay folded until asked for; the share button
 sits bottom-right.
 
+A photo from the camera opens in `PhotoEditor.jsx` before it's used: text
+layers (colour, background pill, size, drag or arrow keys to move), zoom, pan,
+quarter turns, brightness, contrast and saturation, and GIF stickers when GIFs
+are on. The preview uses CSS; the edits are drawn into a new JPEG on "Use
+photo". Music isn't supported: there's no licensed catalogue and no server to
+mix audio.
+
 ## Privacy
 
 What each kind of record shows, and to whom:
@@ -115,6 +122,13 @@ What each kind of record shows, and to whom:
 - **Journalist records** are public and no longer say which admin added them.
 - **Drafts** are stored per account and cleared at sign-out; the Firestore
   cache is in memory only. Sign-in redirects only go to pages on Mesh.
+- **Cookies and storage** (`lib/consent.js`, `StorageNotice.jsx`). Essential
+  storage is always on. Optional third parties (Google reCAPTCHA for App
+  Check; GIPHY when GIFs are on) stay off until the visitor picks "Allow all"
+  or switches them on in "Choose"; "Essential only" has the same weight. The
+  choice is kept under `mesh:consent` and can be changed in Settings or from
+  the Cookies policy. App Check only starts once reCAPTCHA is allowed (never in
+  the iPhone app). The first-run tour waits until the banner is answered.
 - **Accepted exposure.** The Firebase web config and the TURN relay
   credentials are in the site's code by design (there's no server to hand out
   short-lived ones). App Check isn't enforced yet, so the rules are the only
@@ -164,6 +178,16 @@ report.
 
 Followers-only posts are fetched with a query per followed author (up to 100),
 because the rules have to check each author's follower list.
+
+Public posts from public circles (newest 40, `fetchCirclePosts`) join For
+you, labelled with the circle's name.
+
+To keep Home from reading like a text timeline: the feed choice is a menu
+rather than two tabs, short Strands (140 characters, no poll or GIF) show as
+colour cards, and the scroll is broken up by "Circles to join" (public circles
+sharing the viewer's interests, after the 4th post) and "People you may know"
+(the Search suggestions, after the 9th). Both rows are worked out once per
+visit.
 
 Published stories by journalists the viewer follows are mixed into both Home
 feeds by publication time (not in interest topics, and not while News is
@@ -260,6 +284,13 @@ the parent can't read their birth year.
 its exact duration, and whole past days against the schedule in force
 (`slotsChangedAt`). Public stats back the leaderboard.
 
+Brick groups (`brickGroups/{gid}`, up to 30 members) are private leaderboards
+for friends, joined by link. Each member keeps an entry in
+`brickGroups/{gid}/members/{uid}` that mirrors their `brickStats` and current
+brick; `brickEntryOk` checks every number against those documents, so a group
+shows real time even when someone's stats aren't public. Entries refresh after
+stats sync and when a brick starts.
+
 ## Calls (`lib/calls.js`)
 
 One-to-one WebRTC. Firestore carries the offer, answer and ICE candidates;
@@ -296,6 +327,9 @@ accounts, contact details, minimum length, media, strikes, slow mode, banned
 words) that decline or hold posts. `circlePostOkAs` enforces them; the client
 mirrors them for messaging. Circles also have featured posts, topics, a
 community chat, guides with member progress, and a banner and photo.
+Owners can also pick an accent colour, write a welcome note for new visitors,
+rename what members are called (`memberTitle`) and hide the Guides, Gatherings
+or Members tabs.
 
 Gatherings are public or private, optionally in a circle, with capacity
 enforced by coupling "going" RSVPs to the head count in one batch. Calendar

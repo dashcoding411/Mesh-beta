@@ -332,6 +332,15 @@ export async function fetchAffinity() {
 // Up to 30 ids per "in" query.
 const chunks = (list, size = 30) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size));
 
+/** Recent posts in the given public circles (up to 30 per query), for Home. */
+export async function fetchCirclePosts(circleIds, max = 40) {
+  const lists = await Promise.all(chunks(circleIds).map((ids) => getDocs(query(
+    collection(db, "posts"), where("visibility", "==", "public"), where("groupId", "in", ids),
+    orderBy("createdAt", "desc"), limit(max),
+  )).then(snapToList).catch(() => [])));
+  return lists.flat();
+}
+
 /** Which of `postIds` you've saved: one query on your Saved list, not a read per post. */
 export async function fetchMySaves(postIds) {
   const uid = me();
