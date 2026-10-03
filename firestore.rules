@@ -657,6 +657,44 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // Ads: sold directly and run by staff. Anyone can see them (they're shown
+    // in Home); targeting is limited to town, picked interests and 18+, and
+    // counters are totals that signed-in viewers can only add one to.
+    function adOk(d) {
+      return d.advertiser is string && d.advertiser.size() >= 1 && d.advertiser.size() <= 60
+        && d.headline is string && d.headline.size() >= 1 && d.headline.size() <= 80
+        && d.body is string && d.body.size() <= 240
+        && (d.imageUrl == '' || d.imageUrl.matches('^mesh-media:[A-Za-z0-9]{20}$'))
+        && d.linkUrl is string && d.linkUrl.size() <= 500 && d.linkUrl.matches('^https://[^ ]+$')
+        && d.cta in ['Learn more', 'Visit', 'Get the deal', 'Book now', 'Order now', 'Sign up', 'RSVP']
+        && d.startsAt is timestamp && d.endsAt is timestamp && d.endsAt > d.startsAt
+        && d.active is bool && d.adultsOnly is bool
+        && d.towns is list && d.towns.size() <= 10
+        && d.interests is list && d.interests.size() <= 5 && d.interests.hasOnly(interestIds())
+        && d.impressions is int && d.clicks is int
+        && hateFree(d.advertiser + ' ' + d.headline + ' ' + d.body);
+    }
+    match /ads/{adId} {
+      allow read: if true;
+      allow create: if isStaff()
+        && incomingData().keys().hasOnly(['advertiser', 'headline', 'body', 'imageUrl', 'linkUrl', 'cta', 'startsAt', 'endsAt',
+                                          'active', 'towns', 'interests', 'adultsOnly', 'impressions', 'clicks',
+                                          'createdBy', 'createdAt', 'updatedAt'])
+        && adOk(incomingData())
+        && incomingData().impressions == 0 && incomingData().clicks == 0
+        && incomingData().createdBy == request.auth.uid
+        && incomingData().createdAt == request.time && incomingData().updatedAt == request.time;
+      allow update: if (isStaff()
+          && !incomingData().diff(resource.data).affectedKeys().hasAny(['impressions', 'clicks', 'createdBy', 'createdAt'])
+          && adOk(incomingData())
+          && incomingData().updatedAt == request.time)
+        || (signedIn() && incomingData().diff(resource.data).affectedKeys().hasOnly(['impressions'])
+          && incomingData().impressions == resource.data.impressions + 1)
+        || (signedIn() && incomingData().diff(resource.data).affectedKeys().hasOnly(['clicks'])
+          && incomingData().clicks == resource.data.clicks + 1);
+      allow delete: if isStaff();
+    }
+
     // Appeals: anyone whose post was blocked can ask a person to look again.
     // Only they and staff can read it; staff decide, and the decision stands.
     match /appeals/{appealId} {

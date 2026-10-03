@@ -445,6 +445,27 @@ profile. They're readable by whoever can see the account's follows and not by
 people it has blocked, and each story still checks its own audience when
 played. Viewers can't reply to past stories, so the reply bar is hidden.
 
+## Ads
+
+Ads are sold directly and run by staff from `/account/ads` (`AdsManager.jsx`,
+`ads/{id}`). Home shows one after the 6th post and every 10 after
+(`AdCard.jsx`), labelled "Ad", with "Why am I seeing this?"; never in
+Messages. Matching (`adFits`) uses only the town on the viewer's profile, the
+interests they picked and whether they're 18 or over. Signed-in views (once
+per ad per visit) and taps add one to totals; nothing records who. Links open
+through the usual leaving-Mesh check.
+
+## Edge (`cloudflare/edge`)
+
+Once joinmesh.social's DNS is on Cloudflare (proxied), a Worker in front of
+Firebase Hosting handles shareable paths (`/news/*`, `/p/*`, `/@*`, `/u/*`,
+`/gatherings/*`, `/circles/*`): it reads what a signed-out visitor could see
+through Firestore's REST API and writes the page's title, description, image,
+canonical link and, for stories, NewsArticle data and readable text into the
+HTML. `/og/media/{id}` serves inline photos as images for previews, and
+`/sitemap-news.xml` lists published stories. Everything else goes straight to
+Firebase.
+
 ## Media storage
 
 On the Spark plan images are compressed client-side (WebP or JPEG, under

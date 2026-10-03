@@ -1,0 +1,25 @@
+# Mesh edge: link previews and search-engine pages for joinmesh.social.
+# Runs in front of Firebase Hosting once the domain's DNS is on Cloudflare
+# (proxied). Deploy with `npm run edge:deploy` from the project root.
+name = "mesh-edge"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+
+# Only these paths go through the Worker; everything else (the app's code,
+# images, the API) goes straight to Firebase and doesn't count against the
+# free plan's requests.
+routes = [
+  { pattern = "joinmesh.social/news/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/p/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/@*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/u/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/gatherings/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/circles/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/og/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/sitemap-news.xml", zone_name = "joinmesh.social" },
+]
+
+[vars]
+FIREBASE_PROJECT = "mesh-a293c"
+SITE = "https://joinmesh.social"

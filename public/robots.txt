@@ -7,3 +7,4 @@ Disallow: /account
 Disallow: /saved
 
 Sitemap: https://joinmesh.social/sitemap.xml
+Sitemap: https://joinmesh.social/sitemap-news.xml

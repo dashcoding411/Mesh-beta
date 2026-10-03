@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
   Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
-  MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Plus,
+  MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
   SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie,
 } from "lucide-react";
 import { plural } from "../lib/format";
@@ -180,6 +180,7 @@ export default function Settings() {
           {role && (
             <Group title="Moderation">
               <Row icon={Gavel} label="Moderation queue" value="Review reports and suspensions" onClick={() => navigate("/account/moderation")} />
+              <Row icon={Megaphone} label="Ads" value="Create, schedule and track ads in Home" onClick={() => navigate("/account/ads")} />
             </Group>
           )}
 

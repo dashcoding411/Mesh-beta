@@ -1,7 +1,7 @@
 import { Fragment, useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
 import {
-  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
+  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchLiveAds, adRunning, adFits, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
 import { latestFirst } from "../lib/algorithm";
@@ -20,6 +20,7 @@ import NewsFeedCard from "./news/NewsFeedCard";
 import StoryRail from "./StoryRail";
 import CirclesToJoin from "./CirclesToJoin";
 import SuggestedPeople from "./SuggestedPeople";
+import AdCard from "./AdCard";
 import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
@@ -36,7 +37,16 @@ let lastTopic = "all";
 const postTime = (p) => (p.kind === "news" ? p.at : Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at)));
 
 export default function HomeFeed({ mode }) {
-  const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, feedKey, guest } = useShell();
+  const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, feedKey, guest, profile } = useShell();
+  // Directly sold ads that fit what this person told Mesh (see lib/data/ads).
+  const [ads, setAds] = useState([]);
+  useEffect(() => {
+    let live = true;
+    fetchLiveAds().then((list) => {
+      if (live) setAds(list.filter((a) => adRunning(a) && adFits(a, { profile, interests, guest })));
+    });
+    return () => { live = false; };
+  }, [profile, interests, guest]);
   const toast = useToast();
   const [chosen, setChosen] = useState(lastTopic);
   const topic = mode === "foryou" ? chosen : "all"; // topics narrow For you only
@@ -223,6 +233,8 @@ export default function HomeFeed({ mode }) {
                   )}
                   {/* Breaks in the scroll so Home is about places and people, not just a timeline. */}
                   {i === 3 && mode === "foryou" && topic === "all" && <CirclesToJoin />}
+                  {/* One ad after the 6th post, then every 10, taking turns. */}
+                  {i % 10 === 5 && ads.length > 0 && <AdCard ad={ads[Math.floor(i / 10) % ads.length]} />}
                   {i === 8 && mode === "foryou" && topic === "all" && !guest && (
                     <SuggestedPeople title="People you may know" className="py-4 md:rounded-card md:border md:border-line md:bg-surface" />
                   )}

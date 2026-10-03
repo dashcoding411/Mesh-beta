@@ -52,7 +52,7 @@ export const PRIVACY = {
     {
       h: "What we do not do",
       p: [
-        "We do not sell your personal information. We do not share it with advertisers. We do not run advertising or third-party tracking on Mesh, and there are no analytics or advertising cookies on this site.",
+        "We do not sell your personal information, and we do not share it with advertisers. Mesh shows a few ads from local businesses, clubs and events in Home, always labelled \"Ad\" and never in Messages. An ad is matched only to the town on your profile, the interests you picked and whether you're 18 or over; never to what you do, read or watch on Mesh, and never to anything from other websites. Advertisers see totals (how many times their ad was seen and tapped), never who. There is no third-party ad tracking and there are no advertising cookies.",
         "We do not use your private messages to train machine learning models.",
       ],
     },
@@ -103,6 +103,7 @@ export const PRIVACY = {
       p: [
         "Mesh runs on Google Firebase (Authentication, Cloud Firestore, Cloud Storage). Google processes this data on our behalf as our service provider.",
         "Your Firestore data, including photos and voice messages, is stored in Google's australia-southeast1 region (Sydney).",
+        "joinmesh.social is delivered through Cloudflare's network (a US company), which sees visitors' IP addresses to route traffic and block attacks. Cloudflare Web Analytics counts page views and load times for us without cookies and without building a profile of anyone. When a link to a public story, post, profile, circle or gathering is shared, Cloudflare shows link previewers its title, description and picture, the same things a signed-out visitor could see.",
         "Videos, and the still frame shown before one plays, are stored with Cloudflare R2. Cloudflare is a US company; the files are kept in its Oceania region and delivered through its worldwide network, so this can be a transfer overseas, and Australian Privacy Principle 8 applies to it. Anyone with a video's link can watch it, as with links to photos.",
         "When you add a location to a post, the words you type in the location box go to Photon, a place search run by komoot (Germany) on OpenStreetMap data, so it can suggest places. Photon also sees your IP address. Nothing else about you is sent, and it only happens while you type there. The place you pick is shown on your post.",
         "GIFs come from GIPHY, a US company. When you open the GIF picker, your search words and your IP address go to GIPHY to fetch results. GIFs only load if you allow them in your cookie choices (or tap a single GIF to load it); then your browser loads them from GIPHY's servers, so GIPHY sees your IP address. We never send GIPHY your name, handle, email or any account detail. Accounts under 16 only see G-rated GIFs. GIPHY's own privacy policy covers what it does with this.",
@@ -256,7 +257,7 @@ export const COOKIES = {
     {
       h: "The short version",
       p: [
-        "Mesh sets no advertising cookies and no analytics cookies. There is no third-party tracking on this site, and nothing here follows you to other websites. Fonts are served from Mesh itself rather than a font service.",
+        "Mesh sets no advertising cookies and no analytics cookies. Visits are counted by Cloudflare Web Analytics, which uses no cookies and doesn't follow you to other websites. There is no third-party tracking on this site. Fonts are served from Mesh itself rather than a font service.",
         "Anything from another company that sets its own cookies, such as Google's reCAPTCHA security check, is off until you allow it. The first time you visit, Mesh asks: you can allow it, keep to essential storage only, or choose item by item. Ignoring or closing the question never counts as a yes.",
         "What we do store is the minimum needed to keep you signed in and to stop the same message being posted a hundred times a second.",
       ],
