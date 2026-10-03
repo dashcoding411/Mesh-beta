@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import {
   Heart, MessageCircle, Repeat2, Send, Bookmark, Ellipsis, Lock, WandSparkles, EyeOff, MapPin, Blend,
 } from "lucide-react";
@@ -20,6 +20,7 @@ import Comments from "./Comments";
 import { ShareSheet, PostMenu } from "./PostActions";
 import EditPostDialog from "./EditPost";
 import { PostBody, Dots } from "./post/PostMedia";
+const AddToAlbum = lazy(() => import("./SavedAlbums").then((m) => ({ default: m.AddToAlbum })));
 import { Action, Caption, SocialProof, QuickComment } from "./post/PostFooter";
 
 // Lists of posts space them apart rather than ruling lines between them; on
@@ -37,7 +38,7 @@ export default function PostCard({
     like: post.likeCount || 0, comment: post.commentCount || 0,
     repost: post.repostCount || 0, save: post.saveCount || 0,
   });
-  const [sheet, setSheet] = useState(null); // "comments" | "share" | "menu" | "edit"
+  const [sheet, setSheet] = useState(null); // "comments" | "share" | "menu" | "edit" | "album"
   const [burst, setBurst] = useState(false);
   const [slide, setSlide] = useState(0);
   // Any interaction disqualifies the post from a carousel second look.
@@ -102,7 +103,7 @@ export default function PostCard({
   const save = async () => {
     if (needsAccount("save posts")) return;
     const ok = await optimistic("save", "saved", !saved, () => toggleSave(post, saved), "Couldn't update Saved");
-    if (ok && !saved) toast({ title: "Saved", action: { label: "View saved", onClick: () => navigate("/saved") } });
+    if (ok && !saved) toast({ title: "Saved", action: { label: "Add to album", onClick: () => setSheet("album") } });
   };
 
   const repost = async () => {
@@ -251,6 +252,9 @@ export default function PostCard({
           onCountChange={(d) => setCounts((c) => ({ ...c, comment: Math.max(0, c.comment + d) }))} />
       )}
       {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
+      {sheet === "album" && (
+        <Suspense fallback={null}><AddToAlbum post={post} onClose={() => setSheet(null)} /></Suspense>
+      )}
       {sheet === "menu" && (
         <PostMenu post={post} mine={mine} canModerate={canModerate} onEdit={() => setSheet("edit")}
           onClose={() => setSheet(null)} onRemoved={(why) => onRemoved?.(post.id, why)} />

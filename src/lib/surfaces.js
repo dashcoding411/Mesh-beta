@@ -1,5 +1,5 @@
 import {
-  Sparkles, Users, Clapperboard, Newspaper, Blend, Search, Bookmark,
+  Sparkles, Users, Clapperboard, Newspaper, Blend, Search,
   House, MessageCircle, UserRound, Bell, Trophy,
 } from "lucide-react";
 
@@ -19,7 +19,6 @@ const ALL = {
   circles: { id: "circles", path: "/circles", label: "Circles", icon: Blend, blurb: "Communities and the gatherings they plan" },
   following: { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
   news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },
-  saved: { id: "saved", path: "/saved", label: "Saved", icon: Bookmark, blurb: "Posts you've kept. Only you see these" },
   notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell, blurb: "Likes, comments, follows and invites" },
   leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "Who's kept Mesh bricked the longest" },
 };
@@ -29,4 +28,4 @@ export const FEED_TABS = [ALL.foryou, ALL.following];
 export const sectionById = (id) => ALL[id] || ALL.foryou;
 
 /** Sidebar item for a section; feed tabs map to For you. */
-export const sidebarSection = (id) => (["following", "saved"].includes(id) ? "foryou" : id);
+export const sidebarSection = (id) => (id === "following" ? "foryou" : id);

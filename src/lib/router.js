@@ -78,7 +78,8 @@ const PAGES = [
   [/^\/circles(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "circles", id: m[1] || null })],
   [/^\/gatherings\/([^/]+)$/, (m) => ({ tab: "home", section: "circles", gatheringId: m[1] })],
   [/^\/search$/, () => ({ tab: "home", section: "search" })],
-  [/^\/saved$/, () => ({ tab: "home", section: "saved" })],
+  // Saved lives on your profile now; old links land there.
+  [/^\/saved$/, () => ({ tab: "account", view: "profile", profileTab: "saved" })],
   [/^\/notifications$/, () => ({ tab: "home", section: "notifications" })],
   [/^\/leaderboard$/, () => ({ tab: "home", section: "leaderboard" })],
   [/^\/leaderboard\/g\/([^/]+)$/, (m) => ({ tab: "home", section: "leaderboard", groupId: decodeURIComponent(m[1]) })],

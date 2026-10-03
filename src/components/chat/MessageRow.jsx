@@ -30,7 +30,7 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
   const [confirmUnsend, setConfirmUnsend] = useState(false);
   const [reporting, setReporting] = useState(false);
   const mine = m.senderId === me();
-  const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && !m.storyReply && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
+  const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && !m.storyReply && !m.thoughtReply && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
   const name = chat.nicknames?.[m.senderId] || chat.memberNames?.[m.senderId] || "Someone";
   const reactions = groupReactions(m.reactions);
   const sent = tsMillis(m.createdAt); // 0 while pending
@@ -109,11 +109,12 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
           ) : (
           <button type="button" onClick={() => setMenu(true)} onDoubleClick={() => react("❤️")}
             title={sent ? fullTime(sent) : "Sending…"}
-            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : m.gif ? " sent a GIF" : m.storyReply ? " replied to a story" : ""}: ${m.call?.summary || m.poll?.question || m.text || m.gif?.title || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
+            aria-label={`${mine ? "You" : name}${m.poll ? " sent a poll" : m.sharedPost ? " shared a post" : m.gif ? " sent a GIF" : m.storyReply ? " replied to a story" : m.thoughtReply ? ` replied to the thought "${m.thoughtReply.text}"` : ""}: ${m.call?.summary || m.poll?.question || m.text || m.gif?.title || m.sharedPost?.title || m.sharedPost?.text || ""}. ${when}${m.editedAt ? ", edited" : ""}. Open message actions`}
             className={`min-w-0 text-left text-body ${shape} ${(m.sharedPost || m.gif) && !m.text ? "p-1" : "px-4 py-2"} ${
               m.gif && !m.text ? "bg-transparent" : mine ? `text-white ${theme.bubble}` : "bg-surface-3 text-fg"
             }`}>
             {m.storyReply && <StoryReplyCard reply={m.storyReply} sent={sent} mine={mine} />}
+            {m.thoughtReply && <ThoughtReplyCard reply={m.thoughtReply} mine={mine} />}
             {m.call && <CallLog call={m.call} />}
             {m.gif && <GifView gif={m.gif} className="max-w-[260px]" />}
             {m.poll && <PollView chatId={chat.id} msg={m} mine={mine} />}
@@ -210,6 +211,18 @@ function ChatPhoto({ chatId, photo, label, onMenu, onLike }) {
 }
 
 // Thumbnail while the story may still be live (<24h since the message).
+function ThoughtReplyCard({ reply, mine }) {
+  const label = reply.authorId === me() ? "Replied to your thought" : mine ? "You replied to their thought" : "Replied to a thought";
+  return (
+    <span className="mb-1.5 block">
+      <span className="block text-label font-semibold opacity-80">{label}</span>
+      <span className="mt-1 block w-fit max-w-[220px] rounded-2xl border border-current/20 bg-black/10 px-3 py-1.5 text-caption italic [overflow-wrap:anywhere]">
+        "{reply.text}"
+      </span>
+    </span>
+  );
+}
+
 function StoryReplyCard({ reply, sent, mine }) {
   const [now] = useState(() => Date.now());
   const gone = sent && now - sent > 24 * 3600 * 1000;

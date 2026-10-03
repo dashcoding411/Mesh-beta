@@ -239,7 +239,6 @@ function Explore() {
 }
 
 export function Tile({ post, tall = false }) {
-  // Legacy text-only "post" docs render as Strands.
   const asText = post.kind === "text" || (post.kind === "post" && !post.mediaUrl);
   const open = () => {
     if (post.kind === "short") navigate(`/flicks/${post.id}`);
@@ -256,6 +255,18 @@ export function Tile({ post, tall = false }) {
       <button type="button" onClick={open} aria-label={label}
         className="press group relative block h-full w-full overflow-hidden bg-surface-2 aspect-square data-[tall=true]:aspect-auto"
         data-tall={tall}>
+        <TileVisual post={post} />
+      </button>
+    </li>
+  );
+}
+
+/** What a grid tile shows: the photo, a Flick's frame, or a Strand's words. */
+export function TileVisual({ post }) {
+  // Legacy text-only "post" docs render as Strands.
+  const asText = post.kind === "text" || (post.kind === "post" && !post.mediaUrl);
+  return (
+    <>
         {post.kind === "post" && post.mediaUrl && (
           <MediaImg src={post.mediaUrl} alt={mediaAlt(post)} loading="lazy" className="h-full w-full object-cover transition-transform duration-emphasis group-hover:scale-105" placeholderClass="h-full w-full" />
         )}
@@ -280,8 +291,7 @@ export function Tile({ post, tall = false }) {
             <span className="truncate text-label text-fg-subtle">@{post.authorName}</span>
           </span>
         )}
-      </button>
-    </li>
+    </>
   );
 }
 

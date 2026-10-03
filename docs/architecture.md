@@ -329,6 +329,17 @@ their own entry. A request isn't marked read until it's accepted, so the
 sender doesn't see "Seen". Group members
 are added one write at a time so each add is vetted.
 
+Thoughts (`thoughts/{uid}`, 60 characters, 24 hours) sit above the inbox for
+mutual follows and 1:1 chats, each showing its time left. Friends can like one
+(`thoughts/{uid}/likes/{liker}`, tied to that thought by `thoughtAt` so a new
+thought starts at zero; only the owner lists them) or reply, which sends a DM
+quoting it (`thoughtReply`, checked against the thought).
+
+Saved posts can be filed into albums (`users/{uid}/albums`, private, up to 500
+posts each, a post can be in several) from the Saved tab on the profile or the
+"Add to album" button after saving. Unsaving takes a post out of every album.
+Saved isn't in the sidebar; `/saved` opens the profile's Saved tab.
+
 ## Circles and gatherings
 
 Circles have privacy (`public`, `private`, `hidden`), join approval and

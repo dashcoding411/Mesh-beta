@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake, History, Menu } from "lucide-react";
+import { Settings, Link2, Grid3x3, Repeat2, Plus, Info, HeartHandshake, History, Menu } from "lucide-react";
 import {
   fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, fetchIncomingSpouseRequests,
   respondSpouseRequest, isMinor, me, fetchMySpouseRequestStatus, updateProfileFields,
@@ -9,6 +9,7 @@ import { useShell } from "./shell/ShellContext";
 import { EditableAvatar } from "./ProfilePhoto";
 import BrickHighlight from "./BrickHighlight";
 import Highlights from "./Highlights";
+import SavedSection from "./SavedAlbums";
 import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import TopBar from "./shell/TopBar";
@@ -21,12 +22,12 @@ import { JournalistCard, JournalistSettings, JournalistStories } from "./news/Jo
 import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { hasPinkCheck } from "../lib/badges";
 
-export default function Profile() {
+export default function Profile({ initialTab = null }) {
   const { profile, setProfile, openComposer, openDrawer } = useShell();
   const brick = useBrick();
   const feedLock = brick.state("feed");
   const toast = useToast();
-  const [tab, setTab] = useState(null);
+  const [tab, setTab] = useState(initialTab);
   const loadedJournalist = useJournalist(me());
   const [editedJournalist, setEditedJournalist] = useState(null);
   const journalist = editedJournalist || loadedJournalist;
@@ -153,15 +154,7 @@ export default function Profile() {
               <PostGrid posts={reposts} emptyIcon={Repeat2} emptyTitle="No reposts yet"
                 emptyBody="When you repost something, it's shown to your followers and kept here." />
             )}
-            {current === "saved" && (
-              <>
-                <p className="flex items-center gap-2 px-4 py-3 text-caption text-fg-subtle md:px-6">
-                  <Lock size={14} aria-hidden="true" /> Only you can see this tab.
-                </p>
-                <PostGrid posts={saved} emptyIcon={Bookmark} emptyTitle="Nothing saved yet"
-                  emptyBody="Tap the bookmark on any post to keep it here." />
-              </>
-            )}
+            {current === "saved" && <SavedSection saved={saved} />}
           </div>
           )}
 

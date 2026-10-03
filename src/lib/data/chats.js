@@ -1,6 +1,6 @@
 // Conversations, messages, reactions, typing, read state, polls and thoughts.
 import {
-  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, limit,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit,
   onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -181,6 +181,7 @@ export async function sendMessage(chatId, text, extras = {}) {
       : extras.photo ? "Sent a photo"
       : extras.call ? extras.call.summary
       : extras.storyReply ? `Story reply: ${text}`
+      : extras.thoughtReply ? `Thought reply: ${text}`
       : text).slice(0, 80),
     lastSenderId: uid,
     updatedAt: serverTimestamp(),
@@ -403,7 +404,41 @@ export async function setThought(text) {
 }
 
 export async function clearThought() {
+  // Likes go with it.
+  const likes = await getDocs(query(collection(db, "thoughts", me(), "likes"), limit(500))).catch(() => null);
+  await Promise.all((likes?.docs || []).map((d) => deleteDoc(d.ref).catch(() => {})));
   await deleteDoc(doc(db, "thoughts", me())).catch(() => {});
+}
+
+export const THOUGHT_MS = 24 * 3600 * 1000;
+/** Milliseconds until a thought disappears. */
+export const thoughtLeft = (thought, now = Date.now()) => Math.max(0, tsMillis(thought?.createdAt) + THOUGHT_MS - now);
+
+const likeRef = (ownerUid) => doc(db, "thoughts", ownerUid, "likes", me());
+const sameThought = (like, thought) => tsMillis(like?.thoughtAt) === tsMillis(thought.createdAt);
+
+export async function hasLikedThought(thought) {
+  const snap = await getDoc(likeRef(thought.uid)).catch(() => null);
+  return !!snap?.exists() && sameThought(snap.data(), thought);
+}
+
+export async function likeThought(thought, on) {
+  if (!on) return deleteDoc(likeRef(thought.uid));
+  const profile = await myProfile();
+  await setDoc(likeRef(thought.uid), { username: profile?.username || "", thoughtAt: thought.createdAt, createdAt: serverTimestamp() });
+}
+
+/** Who liked your current thought. */
+export async function fetchThoughtLikes(thought) {
+  const snap = await getDocs(query(collection(db, "thoughts", me(), "likes"), limit(500)));
+  return snapToList(snap).filter((l) => sameThought(l, thought)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+/** A private reply, sent as a message that quotes the thought. */
+export async function replyToThought(thought, text) {
+  const chatId = await openDirectChat({ id: thought.uid, username: thought.username });
+  await sendMessage(chatId, text.slice(0, 2000), { thoughtReply: { authorId: thought.uid, text: thought.text } });
+  return chatId;
 }
 
 /** Notes from `uids` that this account may see (mutual follows and 1:1 chats). */

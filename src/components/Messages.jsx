@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  SquarePen, Search as SearchIcon, Pin, BellOff, Ellipsis, MessageCircle, Inbox as InboxIcon, Mail, Users,
+  SquarePen, Search as SearchIcon, Pin, BellOff, Ellipsis, MessageCircle, Inbox as InboxIcon, Mail, Users, Heart, SendHorizontal,
 } from "lucide-react";
 import {
   isRequest, togglePin, toggleMute, touchPresence, me, fetchThoughts, setThought, clearThought,
+  thoughtLeft, hasLikedThought, likeThought, fetchThoughtLikes, replyToThought, QUICK_REACTIONS,
 } from "../lib/db";
 import { checkContent } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -232,6 +233,9 @@ function ThoughtsRail({ chats }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState(null); // a friend's thought
+  const [likes, setLikes] = useState(null); // on your own thought
+  const now = useNow();
   const members = useMemo(() => [...new Set([me(), ...(chats || []).flatMap((c) => c.members)])].join(","), [chats]);
   const loaded = useRef("");
 
@@ -252,7 +256,10 @@ function ThoughtsRail({ chats }) {
         const mod = checkContent(t, { key: "thought", skipCooldown: true });
         if (mod.error) { setError(mod.error); setBusy(false); return; }
         await setThought(t);
-        setMine({ uid: me(), text: t });
+        // Shaped like a Timestamp until the next load.
+        const at = Date.now();
+        setMine({ uid: me(), text: t, createdAt: { toMillis: () => at } });
+        setLikes([]);
         toast({ title: "Thought shared", body: "It disappears after 24 hours." });
       } else {
         await clearThought();
@@ -274,20 +281,27 @@ function ThoughtsRail({ chats }) {
     <div className="border-b border-line">
       <ul className="flex gap-2 overflow-x-auto no-scrollbar px-3 pb-3 pt-3" aria-label="Thoughts">
         <li className="flex w-[120px] shrink-0 flex-col items-center gap-1.5">
-          <button type="button" onClick={() => { setText(mine?.text || ""); setEditing(true); }}
-            aria-label={mine ? `Your thought: ${mine.text}. Edit` : "Share a thought"} className="press flex flex-col items-center">
+          <button type="button" onClick={() => {
+            setText(mine?.text || "");
+            setEditing(true);
+            if (mine) fetchThoughtLikes(mine).then(setLikes).catch(() => setLikes([]));
+          }}
+            aria-label={mine ? `Your thought: ${mine.text}. ${timeLeft(thoughtLeft(mine, now))}. Edit or see likes` : "Share a thought"} className="press flex flex-col items-center">
             <span className="flex items-end justify-center" style={room}><Bubble muted={!mine}>{mine?.text || "Thought…"}</Bubble></span>
             <Avatar profile={profile} size={56} />
           </button>
           <span className="text-label text-fg-subtle">Your thought</span>
+          {mine && <span className="-mt-1 text-label text-fg-subtle tabular" aria-hidden="true">{timeLeft(thoughtLeft(mine, now))}</span>}
         </li>
         {thoughts.map((n) => (
           <li key={n.uid} className="flex w-[120px] shrink-0 flex-col items-center gap-1.5">
-            <span className="flex flex-col items-center" aria-label={`@${n.username}: ${n.text}`}>
+            <button type="button" onClick={() => setViewing(n)} className="press flex flex-col items-center"
+              aria-label={`@${n.username}'s thought: ${n.text}. ${timeLeft(thoughtLeft(n, now))}. Like or reply`}>
               <span className="flex items-end justify-center" style={room}><Bubble>{n.text}</Bubble></span>
               <LiveAvatar uid={n.uid} profile={{ username: n.username }} size={56} />
-            </span>
+            </button>
             <span className="w-full truncate text-center text-label text-fg-subtle">{n.username}</span>
+            <span className="-mt-1 text-label text-fg-subtle tabular" aria-hidden="true">{timeLeft(thoughtLeft(n, now))}</span>
           </li>
         ))}
       </ul>
@@ -295,6 +309,17 @@ function ThoughtsRail({ chats }) {
       {editing && (
         <Dialog title="Share a thought" onClose={() => setEditing(false)} size="sm">
           <p className="mb-3 text-callout text-fg-muted">Up to 60 characters. People you message see it above their inbox for 24 hours.</p>
+          {mine && (
+            <div className="mb-4 rounded-control bg-surface-2 p-3">
+              <p className="text-callout font-semibold">Your thought: "{mine.text}"</p>
+              <p className="mt-0.5 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(mine, now), true)}</p>
+              <p className="mt-2 flex items-start gap-1.5 text-caption text-fg-muted">
+                <Heart size={14} className="mt-0.5 shrink-0 text-like" aria-hidden="true" />
+                {likes === null ? "Loading likes…" : likes.length === 0 ? "No likes yet. Replies arrive in your messages."
+                  : <span>Liked by {likes.slice(0, 5).map((l) => `@${l.username}`).join(", ")}{likes.length > 5 ? ` and ${likes.length - 5} more` : ""}</span>}
+              </p>
+            </div>
+          )}
           <label htmlFor="thought-input" className="sr-only">Your thought</label>
           <Input id="thought-input" value={text} onChange={(e) => { setText(e.target.value); setError(""); }} maxLength={60}
             placeholder="What's on your mind?" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(text); } }} />
@@ -306,7 +331,89 @@ function ThoughtsRail({ chats }) {
           </div>
         </Dialog>
       )}
+      {viewing && <ThoughtSheet thought={viewing} now={now} onClose={() => setViewing(null)} />}
     </div>
+  );
+}
+
+// Re-renders every minute so time left stays right.
+function useNow() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+/** "5h left", or "5h 12m" in full. */
+function timeLeft(ms, full = false) {
+  const mins = Math.max(1, Math.round(ms / 60000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (full) return h ? `${h}h ${m}m` : `${m}m`;
+  return h ? `${h}h left` : `${m}m left`;
+}
+
+/** A friend's thought: like it, or reply privately (it lands in your chat with them). */
+function ThoughtSheet({ thought, now, onClose }) {
+  const toast = useToast();
+  const [liked, setLiked] = useState(null);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    hasLikedThought(thought).then((v) => { if (live) setLiked(v); }).catch(() => { if (live) setLiked(false); });
+    return () => { live = false; };
+  }, [thought]);
+
+  const toggleLike = async () => {
+    const on = !liked;
+    setLiked(on);
+    try { await likeThought(thought, on); }
+    catch { setLiked(!on); toast({ tone: "error", title: "Couldn't like the thought" }); }
+  };
+
+  const send = async (text) => {
+    const t = text.trim();
+    if (!t || sending) return;
+    setSending(true);
+    try {
+      await replyToThought(thought, t);
+      toast({ title: `Sent to @${thought.username}`, body: "It's in your messages with them." });
+      onClose();
+    } catch (err) {
+      toast({ tone: "error", title: "Couldn't send your reply", body: err?.message?.startsWith("You can't message") ? err.message : "Check your connection and try again." });
+      setSending(false);
+    }
+  };
+
+  return (
+    <Dialog title={`@${thought.username}'s thought`} onClose={onClose} size="sm">
+      <div className="flex flex-col items-center text-center">
+        <LiveAvatar uid={thought.uid} profile={{ username: thought.username }} size={64} />
+        <p className="mt-3 max-w-xs rounded-2xl border border-line-strong bg-surface-3 px-4 py-2.5 text-body text-fg [overflow-wrap:anywhere]">{thought.text}</p>
+        <p className="mt-2 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(thought, now), true)}</p>
+        <button type="button" onClick={toggleLike} disabled={liked === null} aria-pressed={!!liked}
+          aria-label={liked ? "Unlike thought" : `Like thought (only @${thought.username} sees)`}
+          className="press mt-3 flex h-12 w-12 items-center justify-center rounded-full hover:bg-surface-2 disabled:opacity-50">
+          <Heart size={28} aria-hidden="true" className={liked ? "fill-like text-like" : "text-fg"} />
+        </button>
+      </div>
+      <div className="mt-3 flex justify-around" role="group" aria-label="Quick reactions">
+        {QUICK_REACTIONS.map((r) => (
+          <button key={r} type="button" onClick={() => send(r)} disabled={sending} aria-label={`Send ${r} to @${thought.username}`}
+            className="press text-[1.7rem] leading-none disabled:opacity-50">{r}</button>
+        ))}
+      </div>
+      <form className="mt-4 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); send(reply); }}>
+        <label htmlFor="thought-reply" className="sr-only">{`Reply privately to @${thought.username}`}</label>
+        <Input id="thought-reply" value={reply} onChange={(e) => setReply(e.target.value)} maxLength={2000} autoComplete="off"
+          placeholder={`Reply to @${thought.username}…`} className="flex-1" />
+        <IconButton type="submit" icon={SendHorizontal} label="Send reply" tone="primary" disabled={sending || !reply.trim()} />
+      </form>
+    </Dialog>
   );
 }
 

@@ -1,5 +1,5 @@
 import {
-  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Bookmark, Trophy,
+  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy,
 } from "lucide-react";
 import { sidebarSection } from "../../lib/surfaces";
 
@@ -18,14 +18,13 @@ export const MAIN_NAV = [
 export const MORE_NAV = [
   { id: "settings", label: "Settings", icon: Settings, path: "/account/settings", account: true },
   { id: "brick", label: "Brick mode", icon: BrickWall, path: "/account/brick", account: true },
-  { id: "saved", label: "Saved", icon: Bookmark, path: "/saved", account: true },
   { id: "leaderboard", label: "Leaderboard", icon: Trophy, path: "/leaderboard" },
 ];
 
 export const navFor = (items, guest) => (guest ? items.filter((i) => !i.account) : items);
 
 export function activeNavId(page) {
-  if (page.tab === "home") return ["saved", "leaderboard"].includes(page.section) ? page.section : sidebarSection(page.section);
+  if (page.tab === "home") return page.section === "leaderboard" ? page.section : sidebarSection(page.section);
   if (page.tab === "account") return { settings: "settings", brick: "brick", profile: "profile" }[page.view] || null;
   return page.tab;
 }

@@ -39,7 +39,6 @@ const named = (load, name) => lazy(() => load().then((m) => ({ default: m[name] 
 const Flicks = lazy(() => import("./components/Flicks"));
 const FlicksHome = lazy(() => import("./components/FlicksHome"));
 const Search = lazy(() => import("./components/Search"));
-const Saved = lazy(() => import("./components/Saved"));
 const News = lazy(() => import("./components/News"));
 const Circles = lazy(() => import("./components/Circles"));
 const GatheringPage = lazy(() => import("./components/GatheringPage"));
@@ -63,7 +62,7 @@ const IncomingCall = named(() => import("./components/CallScreen"), "IncomingCal
 const InterestsDialog = named(() => import("./components/Interests"), "InterestsDialog");
 
 const SECTION_TITLES = {
-  foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search", saved: "Saved",
+  foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
   notifications: "Notifications", leaderboard: "Leaderboard",
 };
 
@@ -73,7 +72,7 @@ function lockSectionOf(page) {
   if (page.tab !== "home" || page.gatheringId || page.notFound) return null;
   // The newsroom is exempt from News limits.
   if (page.section === "news" && page.view) return null;
-  return { foryou: "feed", following: "feed", search: "feed", circles: "feed", saved: "feed", flicks: "flicks", news: "news" }[page.section] || null;
+  return { foryou: "feed", following: "feed", search: "feed", circles: "feed", flicks: "flicks", news: "news" }[page.section] || null;
 }
 
 // Pages that belong to an account, and what to tell a signed-out visitor.
@@ -84,7 +83,6 @@ function accountOnly(page) {
   if (page.section === "news" && page.view) return { title: "Newsroom", body: "Log in to write and review stories." };
   return {
     following: { title: "Following", body: "Log in to see posts from people you follow." },
-    saved: { title: "Saved", body: "Log in to save posts and find them here later." },
     notifications: { title: "Notifications", body: "Log in to see likes, replies and follows." },
   }[page.section] || null;
 }
@@ -340,7 +338,6 @@ export default function App() {
           : <Circles key={`circles-${feedKey}`} circleId={page.id} view={query.get("view")} />;
         break;
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
-      case "saved": content = <Saved />; break;
       case "notifications": content = <Notifications />; break;
       case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
       default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
@@ -358,7 +355,7 @@ export default function App() {
   } else if (page.view === "legal") {
     content = <Legal key={page.doc} doc={page.doc} />;
   } else {
-    content = <Profile />;
+    content = <Profile key={page.profileTab || "profile"} initialTab={page.profileTab} />;
   }
   if (page.notFound) content = <NotFound />;
 

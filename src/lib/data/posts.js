@@ -10,6 +10,7 @@ import { circleVisibility } from "./circles.js";
 import { me, snapToList, tsMillis } from "./core.js";
 import { myProfile, uidForUsername } from "./users.js";
 import { deleteCloudMedia, isCloudMedia } from "./uploads.js";
+import { removeFromAllAlbums } from "./albums.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
 
 // post: photo (Still), text: up to 500 chars (Strand), short: video up to
@@ -368,6 +369,7 @@ export async function toggleSave(post, currentlySaved) {
     batch.delete(doc(db, "users", uid, "saved", post.id));
     batch.update(postRef, { saveCount: increment(-1) });
     await batch.commit();
+    removeFromAllAlbums(post.id).catch(() => {});
   } else {
     batch.set(saveRef, { createdAt: serverTimestamp() });
     batch.set(doc(db, "users", uid, "saved", post.id), { createdAt: serverTimestamp() });

@@ -18,3 +18,4 @@ export * from "./data/brickGroups.js";
 export * from "./data/account.js";
 export * from "./data/staff.js";
 export * from "./data/highlights.js";
+export * from "./data/albums.js";

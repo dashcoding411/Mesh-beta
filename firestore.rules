@@ -962,6 +962,18 @@ service cloud.firestore {
       match /saved/{postId} {
         allow read, write: if isUser(uid);
       }
+      // Saved albums: private to the owner.
+      match /albums/{albumId} {
+        allow read, delete: if isUser(uid);
+        allow create, update: if isUser(uid)
+          && incomingData().keys().hasOnly(['name', 'postIds', 'coverUrl', 'coverType', 'createdAt', 'updatedAt'])
+          && incomingData().name is string && incomingData().name.size() >= 1 && incomingData().name.size() <= 30
+          && incomingData().postIds is list && incomingData().postIds.size() <= 500
+          && incomingData().coverUrl is string && incomingData().coverUrl.size() <= 1000
+          && incomingData().coverType in ['image', 'video', '']
+          && incomingData().createdAt is timestamp
+          && incomingData().updatedAt == request.time;
+      }
       match /hidden/{postId} {
         allow read, write: if isUser(uid);
       }
@@ -1875,6 +1887,12 @@ service cloud.firestore {
           && story.get('mediaType', '') == r.mediaType
           && r.authorId in chatData().members;
       }
+      // A reply to someone's thought quotes it exactly.
+      function thoughtReplyOk(r) {
+        return r.keys().hasOnly(['authorId', 'text'])
+          && r.authorId in chatData().members && r.authorId != request.auth.uid
+          && get(/databases/$(database)/documents/thoughts/$(r.authorId)).data.text == r.text;
+      }
       function onlyMyKeyIn(field) {
         return incomingData()[field].diff(resource.data[field]).affectedKeys()
           .hasOnly([request.auth.uid]);
@@ -2009,7 +2027,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if inChat();
         allow create: if inChat()
-          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'photo', 'poll', 'call', 'storyReply'])
+          && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'photo', 'poll', 'call', 'storyReply', 'thoughtReply'])
           && incomingData().senderId == request.auth.uid
           && incomingData().createdAt == request.time
           && incomingData().reactions == {}
@@ -2047,6 +2065,7 @@ service cloud.firestore {
           && (!('gif' in incomingData()) || gifOk(incomingData().gif))
           // Story replies must reference a real story by a chat member.
           && (!('storyReply' in incomingData()) || storyReplyOk(incomingData().storyReply))
+          && (!('thoughtReply' in incomingData()) || thoughtReplyOk(incomingData().thoughtReply))
           // No hate filter in DMs (block/report instead).
           && notSuspended()
           && !blockedInDm();
@@ -2135,6 +2154,19 @@ service cloud.firestore {
         && hateFree(incomingData().text)
         && notSuspended();
       allow delete: if isUser(uid);
+
+      // Likes on a thought. `thoughtAt` ties a like to the thought it was for,
+      // so a new thought starts with none. Only the owner sees who liked.
+      match /likes/{likerUid} {
+        allow get: if isUser(likerUid) || isUser(uid);
+        allow list: if isUser(uid);
+        allow create: if isUser(likerUid) && likerUid != uid && closeTo(uid)
+          && incomingData().keys().hasOnly(['username', 'thoughtAt', 'createdAt'])
+          && isMyName(incomingData().username)
+          && incomingData().thoughtAt == get(/databases/$(database)/documents/thoughts/$(uid)).data.createdAt
+          && incomingData().createdAt == request.time;
+        allow delete: if isUser(likerUid) || isUser(uid);
+      }
     }
 
     // Spouse requests
