@@ -40,9 +40,30 @@ Optional settings go in `.env.local` (git-ignored).
 | `VITE_TURN_API_URL` | Alternative: an endpoint returning ICE servers. Its host must be allowed in the CSP (`firebase.json`). |
 | `VITE_GIPHY_API_KEY` | Enables GIFs. |
 | `VITE_STORAGE=on` | Use Cloud Storage for uploads and enable video. Requires the Blaze plan and deployed `storage.rules`. |
+| `VITE_MEDIA_API` | The Cloudflare media Worker's URL (see below). Enables video without Cloud Storage. |
 | `VITE_APPLE_SIGNIN=on` | Show Apple sign-in once it's configured in Firebase. |
 | `VITE_APPCHECK_DEBUG_TOKEN` | App Check debug token for local development. Keep it out of builds. |
 | `VITE_APPCHECK_SITE_KEY`, `VITE_APPCHECK_PROVIDER` | Override the App Check key/provider in `src/firebase.js`. |
+
+### Video on Cloudflare (free tier)
+
+Until Cloud Storage is on, videos and their poster frames can go to a
+Cloudflare Worker backed by R2 (`cloudflare/media`). R2's free tier is 10 GB
+with no charge for viewing; the Worker free tier is 100,000 requests a day.
+The Worker checks the uploader's Firebase ID token, stores files under their
+uid, caps files at 100 MB and 60 per person, and lets only the owner delete.
+
+1. Make a free Cloudflare account and turn on R2 in the dashboard (Cloudflare
+   asks for a card; nothing is charged within the free tier).
+2. `npx wrangler@4 login`
+3. `npx wrangler@4 r2 bucket create mesh-media --location oc`
+4. `npm run media:deploy`, and note the `https://mesh-media.<you>.workers.dev` URL.
+5. Put that URL in `VITE_MEDIA_API` (`.env`, committed: it is not a secret), in `MEDIA_HOST` in
+   `firestore.rules` (dots escaped as `[.]`), and in the CSP's `connect-src`,
+   `img-src` and `media-src` in `firebase.json`. Then deploy rules and hosting.
+
+Anyone with a video's link can watch it, as with Storage download URLs. Admins
+removing a post doesn't remove the file from R2.
 
 TURN credentials are embedded in the client bundle by design; scope them in
 the provider's dashboard. Never put a provider's account secret key here.

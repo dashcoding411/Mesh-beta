@@ -1,5 +1,7 @@
-// Media uploads: Cloud Storage when enabled, otherwise images inline in Firestore.
-import { loadStorage } from "../../firebase";
+// Media uploads: Cloud Storage when enabled, otherwise images inline in
+// Firestore. Until Storage is on, videos and their posters can go to the
+// Cloudflare media Worker instead (cloudflare/media, set VITE_MEDIA_API).
+import { auth, loadStorage } from "../../firebase";
 import { imageSize, storeInlineImage, storeInlineImages } from "../media";
 import { assertSafe } from "../imageCheck";
 import { me } from "./core.js";
@@ -16,6 +18,18 @@ export class StorageUnavailableError extends Error {
 }
 
 let storageCheck = null;
+
+const MEDIA_API = (import.meta.env.VITE_MEDIA_API || "").replace(/\/$/, "");
+// Matches the Worker's 100 MB request limit.
+export const MAX_CLOUD_BYTES = 100 * 1024 * 1024;
+
+/** True for a file on the Cloudflare media Worker. */
+export const isCloudMedia = (url) => !!MEDIA_API && typeof url === "string" && url.startsWith(`${MEDIA_API}/v/`);
+
+/** Whether videos can be posted at all (Cloud Storage, or the Cloudflare Worker). */
+export async function videoUploadsAvailable() {
+  return !!MEDIA_API || storageAvailable();
+}
 
 export function storageAvailable() {
   if (import.meta.env.VITE_STORAGE !== "on") return Promise.resolve(false);
@@ -51,7 +65,11 @@ function isBucketMissing(err) {
 // Every image and video is checked on the device first (lib/imageCheck.js).
 export async function uploadMedia(file, onProgress, folder = "uploads") {
   await assertSafe(file);
-  if (!(await storageAvailable())) {
+  const storage = await storageAvailable();
+  if (!storage && MEDIA_API && (file.type.startsWith("video/") || folder === "posters")) {
+    return uploadToCloud(file, onProgress);
+  }
+  if (!storage) {
     if (!file.type.startsWith("image/")) throw new StorageUnavailableError();
     onProgress?.(40);
     // Avatars render at 120px at most.
@@ -72,6 +90,39 @@ export async function uploadPhotos(files, onProgress) {
     out.push({ ...stored, ...size });
   }
   return out;
+}
+
+// Its message is written for people, so the composer shows it as is.
+export class UploadError extends Error {
+  constructor(message) { super(message); this.name = "UploadError"; }
+}
+
+function uploadToCloud(file, onProgress) {
+  if (file.size > MAX_CLOUD_BYTES) return Promise.reject(new UploadError("Videos can be up to 100 MB for now. Try a shorter clip."));
+  return auth.currentUser?.getIdToken().then((token) => new Promise((resolve, reject) => {
+    // XHR rather than fetch, for upload progress.
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `${MEDIA_API}/upload`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+      if (xhr.status === 200 && isCloudMedia(body.url)) resolve({ url: body.url, path: body.path });
+      else reject(new UploadError(body.error || "The upload didn't go through. Try again."));
+    };
+    xhr.onerror = () => reject(new UploadError("The upload didn't go through. Check your connection."));
+    xhr.send(file);
+  })) ?? Promise.reject(new UploadError("Sign in to upload."));
+}
+
+/** Removes your own file from the Cloudflare Worker. Best effort. */
+export async function deleteCloudMedia(url) {
+  if (!isCloudMedia(url)) return;
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) return;
+  await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
 }
 
 async function uploadToStorage(file, onProgress, folder) {

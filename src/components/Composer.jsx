@@ -3,7 +3,7 @@ import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSp
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
-  uploadMedia, uploadPhotos, createPost, isMinor, StorageUnavailableError, storageAvailable, screenPost, MAX_SLIDES,
+  uploadMedia, uploadPhotos, createPost, isMinor, StorageUnavailableError, videoUploadsAvailable, isCloudMedia, screenPost, MAX_SLIDES,
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
@@ -87,8 +87,8 @@ async function uploadPoster(file, at) {
   try {
     const blob = await capturePoster(file, at);
     if (!blob) return "";
-    const { url } = await uploadMedia(new File([blob], "poster.jpg", { type: "image/jpeg" }));
-    return url.startsWith("https://firebasestorage.googleapis.com/") ? url : "";
+    const { url } = await uploadMedia(new File([blob], "poster.jpg", { type: "image/jpeg" }), undefined, "posters");
+    return url.startsWith("https://firebasestorage.googleapis.com/") || isCloudMedia(url) ? url : "";
   } catch {
     return "";
   }
@@ -145,7 +145,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const long = kind === "video" && duration > LONG_VIDEO_SECONDS;
   const busy = progress !== null;
 
-  useEffect(() => { storageAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
+  useEffect(() => { videoUploadsAvailable().then(setMediaReady).catch(() => setMediaReady(false)); }, []);
   useEffect(() => {
     if (initialKind === "video" && initialFiles?.[0]) readDuration(initialFiles[0]).then(setDuration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,7 +344,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       console.error(err);
       setProgress(null);
       setErrors({
-        submit: err instanceof StorageUnavailableError || err?.name === "UnsafeImageError" || /very quickly/.test(err?.message || "")
+        submit: err instanceof StorageUnavailableError || err?.name === "UnsafeImageError" || err?.name === "UploadError" || /very quickly/.test(err?.message || "")
           ? err.message
           : err?.code === "permission-denied"
             ? "The server turned this down. If it keeps happening, the posting rules may need redeploying."

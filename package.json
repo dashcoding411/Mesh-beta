@@ -13,7 +13,8 @@
     "check": "npm run lint && npm test && npm run build",
     "app:sync": "npm run build && npx cap sync ios",
     "app:open": "npx cap open ios",
-    "app:assets": "sh scripts/app-assets.sh"
+    "app:assets": "sh scripts/app-assets.sh",
+    "media:deploy": "npx wrangler@4 deploy --config cloudflare/media/wrangler.toml"
   },
   "engines": {
     "node": ">=20.19"

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { fetchActiveStories, uploadMedia, createStory, me, storySeen, storageAvailable, StorageUnavailableError } from "../lib/db";
+import { fetchActiveStories, uploadMedia, createStory, me, storySeen, videoUploadsAvailable, StorageUnavailableError } from "../lib/db";
 import { cameraSupported } from "../lib/cameras";
 import { validateMediaFile } from "../lib/validate";
 import { useShell } from "./shell/ShellContext";
@@ -45,7 +45,7 @@ export default function StoryRail() {
   const startStory = async () => {
     if (!cameraFirst()) return fileRef.current?.click();
     // Hold-to-record only when videos can be uploaded.
-    setCamera({ video: await storageAvailable().catch(() => false) });
+    setCamera({ video: await videoUploadsAvailable().catch(() => false) });
   };
 
   const addStory = (e) => {

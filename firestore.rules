@@ -141,6 +141,12 @@ service cloud.firestore {
       return url.matches('^mesh-media:[A-Za-z0-9]{20}$')
         && get(/databases/$(database)/documents/media/$(url.split(':')[1])).data.ownerId == request.auth.uid;
     }
+    // A video or poster frame on the Cloudflare media Worker (cloudflare/media),
+    // stored under the writer's own uid. The host is the deployed Worker's.
+    function ownCloudMedia(url, exts) {
+      return url is string
+        && url.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/v/' + request.auth.uid + '/[a-f0-9]{32}[.](' + exts + ')$');
+    }
 
     // Privacy and blocking
     function profileOf(uid) {
@@ -273,7 +279,8 @@ service cloud.firestore {
           ])
           && validTopics(d.get('topics', []))
           && (!('posterUrl' in d) || (d.kind in ['short', 'video'] && d.posterUrl is string
-              && d.posterUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')))
+              && (d.posterUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
+                  || ownCloudMedia(d.posterUrl, 'jpg|webp'))))
           && d.get('location', '') is string && d.get('location', '').size() <= 60
           && (!('media' in d) || (d.kind == 'post' && slidesOk(d.media) && d.media[0].url == d.mediaUrl))
           && d.get('circleTopic', '') is string && d.get('circleTopic', '').size() <= 40
@@ -342,6 +349,7 @@ service cloud.firestore {
                 && (d.text.size() >= 1 || 'gif' in d))
               || (d.kind != 'text'
                 && d.mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
+              || (d.kind in ['short', 'video'] && ownCloudMedia(d.mediaUrl, 'mp4|webm|mov'))
               || (d.kind == 'post' && ownInlineImage(d.mediaUrl)));
     }
 
@@ -1517,7 +1525,8 @@ service cloud.firestore {
         && notSuspended()
         && (incomingData().audience == 'followers' || myProfile().get('isPrivate', false) != true)
         && (incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
-            || ownInlineImage(incomingData().mediaUrl));
+            || ownInlineImage(incomingData().mediaUrl)
+            || ownCloudMedia(incomingData().mediaUrl, 'mp4|webm|mov'));
       allow update: if false;
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
 

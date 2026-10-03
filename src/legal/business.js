@@ -13,9 +13,9 @@ export const BUSINESS = {
   address: "TODO: registered or business address",
 
   // The privacy contact must be monitored (access/correction requests).
-  supportEmail: "TODO: support@yourdomain",
-  privacyEmail: "TODO: privacy@yourdomain",
-  copyrightEmail: "TODO: copyright@yourdomain",
+  supportEmail: "legal@joinmesh.social",
+  privacyEmail: "legal@joinmesh.social",
+  copyrightEmail: "legal@joinmesh.social",
 
   website: "https://joinmesh.social",
   lastUpdated: "3 October 2026",

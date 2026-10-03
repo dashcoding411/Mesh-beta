@@ -5,6 +5,7 @@ import {
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { deleteInline } from "./posts.js";
+import { deleteCloudMedia } from "./uploads.js";
 import { myProfile } from "./users.js";
 import { notify, unnotify } from "./notifications.js";
 import { openDirectChat, sendMessage } from "./chats.js";
@@ -44,6 +45,7 @@ export async function deleteStory(story) {
   }
   await deleteDoc(doc(db, "stories", story.id));
   await deleteInline(story.mediaUrl);
+  await deleteCloudMedia(story.mediaUrl);
 }
 
 // Views

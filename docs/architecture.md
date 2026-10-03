@@ -383,8 +383,12 @@ author-only likes and views, and public echoes held to the comment rules.
 
 On the Spark plan images are compressed client-side (WebP or JPEG, under
 900k base64 characters) and stored in `media/{id}`; carousels upload in a
-single batch. Video requires Cloud Storage (Blaze). The Storage SDK is loaded
-lazily.
+single batch. Video requires Cloud Storage (Blaze), or the Cloudflare media
+Worker (`cloudflare/media`, R2) when `VITE_MEDIA_API` is set: videos and poster
+frames are PUT to it with the uploader's ID token and land at
+`v/{uid}/{random}.{ext}`; `ownCloudMedia` in the rules only accepts links under
+the writer's own uid. Deleting a post or story deletes its files there. The
+Storage SDK is loaded lazily.
 
 ## Limitations
 

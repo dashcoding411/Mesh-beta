@@ -9,6 +9,7 @@ import { INLINE_PREFIX, isInline } from "../media";
 import { circleVisibility } from "./circles.js";
 import { me, snapToList, tsMillis } from "./core.js";
 import { myProfile, uidForUsername } from "./users.js";
+import { deleteCloudMedia, isCloudMedia } from "./uploads.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
 
 // post: photo (Still), text: up to 500 chars (Strand), short: video up to
@@ -233,7 +234,9 @@ export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
   await deleteInline(post.mediaUrl);
   for (const m of (post.media || []).slice(1)) await deleteInline(m.url).catch(() => {});
-  if (post.mediaPath || post.posterUrl) {
+  if (isCloudMedia(post.mediaUrl) || isCloudMedia(post.posterUrl)) {
+    await Promise.all([deleteCloudMedia(post.mediaUrl), deleteCloudMedia(post.posterUrl)]);
+  } else if (post.mediaPath || post.posterUrl) {
     try {
       const { deleteObject, ref, storage } = await loadStorage();
       if (post.mediaPath) await deleteObject(ref(storage, post.mediaPath));

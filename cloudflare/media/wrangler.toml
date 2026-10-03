@@ -1,0 +1,15 @@
+# Mesh media: video uploads on Cloudflare R2 while Firebase Storage needs the
+# Blaze plan. Deploy with `npm run media:deploy` from the project root.
+name = "mesh-media"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT = "mesh-a293c"
+# Browsers on these sites may upload and delete. Anyone may watch.
+ALLOWED_ORIGINS = "https://joinmesh.social,https://mesh-a293c.web.app,https://mesh-a293c.firebaseapp.com,http://localhost:5173"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "mesh-media"
