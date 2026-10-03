@@ -102,6 +102,13 @@ npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --pro
 - Always pass `--project mesh-a293c`. The CLI's default project for this
   directory may point elsewhere.
 
+The site's address is `https://joinmesh.social` (Firebase Hosting custom
+domain; `mesh-a293c.web.app` still serves the same site). The canonical link,
+share previews and sitemap use it (`index.html`, `scripts/prerender.mjs`,
+`public/robots.txt`). In-app links use the address the visitor is on. The
+domain must also be listed in Firebase Auth's authorized domains and on the
+App Check reCAPTCHA key.
+
 Cloud Storage requires the Blaze plan. Until it's enabled, photos are stored
 inline in Firestore (`media/{id}`) and video uploads are disabled. After
 enabling Blaze, deploy `storage.rules` and build with `VITE_STORAGE=on`.

@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { DOCUMENTS } from "../src/legal/content.js";
 import { BUSINESS } from "../src/legal/business.js";
 
-export const SITE_URL = "https://mesh-a293c.web.app";
+export const SITE_URL = "https://joinmesh.social";
 const dist = new URL("../dist/", import.meta.url);
 
 const esc = (s) => String(s ?? "")

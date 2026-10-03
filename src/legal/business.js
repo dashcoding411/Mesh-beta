@@ -17,7 +17,7 @@ export const BUSINESS = {
   privacyEmail: "TODO: privacy@yourdomain",
   copyrightEmail: "TODO: copyright@yourdomain",
 
-  website: "TODO: https://yourdomain",
+  website: "https://joinmesh.social",
   lastUpdated: "3 October 2026",
 };
 

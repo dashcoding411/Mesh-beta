@@ -6,4 +6,4 @@ Disallow: /messages
 Disallow: /account
 Disallow: /saved
 
-Sitemap: https://mesh-a293c.web.app/sitemap.xml
+Sitemap: https://joinmesh.social/sitemap.xml
