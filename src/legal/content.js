@@ -10,7 +10,12 @@ import { DOCUMENT_TITLES } from "./titles.js";
    your jurisdiction review them before launch. */
 
 const B = BUSINESS;
-const OPERATOR = `${B.legalName} (ABN ${B.abn}), trading as ${B.tradingName}`;
+// Until the operating entity is registered, name who runs Mesh honestly rather
+// than printing placeholder text; fill in business.js before launch.
+const registered = !B.legalName.startsWith("TODO") && !B.abn.startsWith("TODO");
+const OPERATOR = registered
+  ? `${B.legalName} (ABN ${B.abn}), trading as ${B.tradingName}`
+  : `the founders of ${B.tradingName} (its operating company is being registered; this page will name it once it is)`;
 
 export const PRIVACY = {
   id: "privacy",
@@ -44,6 +49,13 @@ export const PRIVACY = {
         ["Mesh News writers", "If you write for Mesh News: that an admin made you a writer, your drafts, each version saved when you send a story for review or ask for one, which part of a story you're editing while you're editing it, and live blog updates you post."],
         ["Gathering replies", "A copy of each gathering you reply to (its title, place, start time and your reply), kept with your account so Mesh can show what's coming up without searching every gathering."],
         ["Circle activity", "Your last post time in each circle (for slow mode), how far you've got through a circle's guides, and, if a circle admin removes one of your posts, a record of that (a 'strike') with its date."],
+        ["Stories and highlights", "Stories you post stay in your story archive after their 24 hours, until you delete them. Highlights are the past stories you choose to keep on your profile, with a name and a cover."],
+        ["Saved posts and albums", "The posts you save, and the albums you file them into."],
+        ["Notes", "Your note (up to 60 characters, for 24 hours) and who liked it. Replies to a note arrive as messages."],
+        ["News reads", "When you open a published story while signed in, a marker that you read it, so each reader counts once in the total its journalists see."],
+        ["Brick groups", "The groups you make or join, and a copy of your bricked time and when your current brick ends, kept in each group so its members can compare."],
+        ["Appeals", "If you appeal a block: the words that were blocked, the rule they matched, where you were posting, your reason, and the decision."],
+        ["Ads", "Totals only: how many times each ad was seen and tapped. Nothing records who saw or tapped it."],
       ],
       p: [
         "We do not collect your contacts, your device's location, your device identifiers, or your browsing activity on other sites. A place you type on a post is only the words you chose to share; Mesh never reads where your device is. We do not buy personal information from data brokers.",
@@ -53,7 +65,7 @@ export const PRIVACY = {
       h: "What we do not do",
       p: [
         "We do not sell your personal information, and we do not share it with advertisers. Mesh shows a few ads from local businesses, clubs and events in Home, always labelled \"Ad\" and never in Messages. An ad is matched only to the town on your profile, the interests you picked and whether you're 18 or over; never to what you do, read or watch on Mesh, and never to anything from other websites. Advertisers see totals (how many times their ad was seen and tapped), never who. There is no third-party ad tracking and there are no advertising cookies, unless you turn on Google ads (below).",
-        "Google ads are off unless you turn them on in your cookie choices, and only shown to people 18 and over. Then, when no local ad is booked for a space in Home, Google AdSense fills it. Google and its partners set cookies and see your IP address and browser to show, count and limit ads and to stop fraud. Mesh asks Google for ads that aren't personalised, and sends Google nothing about your account. How Google uses this: policies.google.com/technologies/partner-sites. Turn it off any time in Settings, under Cookies and storage.",
+        "Google ads are off unless you turn them on in your cookie choices, and only shown to people 18 and over. Then, when no local ad is booked for a space in Home, Google AdSense fills it. Google and its partners set cookies and see your IP address and browser to show, count and limit ads and to stop fraud. Mesh asks Google for ads that aren't personalised, and sends Google nothing about your account. How Google uses this: policies.google.com/technologies/partner-sites. You can also manage Google's ads at adssettings.google.com. Turn it off any time in Settings, under Cookies and storage.",
         "We do not use your private messages to train machine learning models.",
       ],
     },
@@ -78,7 +90,7 @@ export const PRIVACY = {
         ["Followers-only posts", "Visible to you and the people who follow you. Enforced on our servers, not only in the app."],
         ["Circle posts", "In a public circle, visible to anyone, including people without an account. In a private or hidden circle, visible only to its members. Posts waiting for a circle admin's approval are visible only to you and that circle's admins and moderators."],
         ["Gatherings", "A public gathering's page (title, time, place, description, the host's handle and how many are going) is visible to anyone, including people without a Mesh account, so hosts can invite anyone. Who replied is only visible to people signed in. Private gatherings are visible only to the host, the people they invite, and members of the circle they belong to. If the host hides the guest list, only the host sees who replied."],
-        ["Stories", "Visible for 24 hours to the people who can see your posts. Only you see who viewed and who liked your story, and when you view someone else's story, they can see that you did. Replies to a story are private messages to you, like any other message. Echoes (public replies on a story) are visible to everyone who can see the story; you can delete any echo on yours, and they're deleted with the story."],
+        ["Stories", "Visible for 24 hours to the people who can see your posts. After that only you can see them, in your story archive, unless you add them to a highlight, which keeps them on your profile for the people who can see your posts. Only you see who viewed and who liked your story, and when you view someone else's story, they can see that you did. Replies to a story are private messages to you, like any other message. Echoes (public replies on a story) are visible to everyone who can see the story; you can delete any echo on yours, and they're deleted with the story."],
         ["Your notifications", "Visible only to you. The person who caused one can take it back (for example by unliking)."],
         ["Brick mode", "Your limits and minutes are visible only to you, and to a parent you've agreed to link to. That parent sees your limits and today's minutes per section, never your messages, posts you haven't shared with them, or who you talk to."],
         ["Bricked time", "Private unless you choose to share it. If you switch on 'Show on my profile and the leaderboard', anyone can see your bricked totals and streak on your profile and on the leaderboard. Switching it off hides them again."],
@@ -95,6 +107,10 @@ export const PRIVACY = {
         ["Voice messages and photos in messages", "Like other messages, visible only to the people in that conversation. Unsending one deletes the recording or photo."],
         ["Reports", "If you report something, moderators see what you reported, why, and anything you add. The person reported isn't told who reported them. Reporting a message shares that one message's text with moderators, not the rest of the conversation."],
         ["Your hidden words", "Visible only to you."],
+        ["Notes", "Your note is visible to mutual follows and people you have a one-to-one chat with. Only you see who liked it."],
+        ["Saved albums and your story archive", "Visible only to you."],
+        ["Brick groups", "A group's members see each other's handle, bricked time this week and in total, streak, and when a current brick ends, even if your bricked time isn't public. Leave the group to stop sharing it."],
+        ["Appeals", "Visible to you and to Mesh's admins and moderators, who decide them."],
         ["Suspensions", "If your account is suspended, the end date is stored on your profile so our servers can enforce it. The reason is visible only to you and moderators."],
         ["Who you've blocked", "Visible only to you. The person isn't told. Blocking stops them following you, messaging you, adding you to groups and commenting on your posts."],
       ],
@@ -102,13 +118,14 @@ export const PRIVACY = {
     {
       h: "Who we share it with",
       p: [
-        "Mesh runs on Google Firebase (Authentication, Cloud Firestore, Cloud Storage). Google processes this data on our behalf as our service provider.",
+        "Mesh runs on Google Firebase (Authentication, Cloud Firestore and Hosting). Google processes this data on our behalf as our service provider.",
         "Your Firestore data, including photos and voice messages, is stored in Google's australia-southeast1 region (Sydney).",
         "joinmesh.social is delivered through Cloudflare's network (a US company), which sees visitors' IP addresses to route traffic and block attacks. Cloudflare Web Analytics counts page views and load times for us without cookies and without building a profile of anyone. When a link to a public story, post, profile, circle or gathering is shared, Cloudflare shows link previewers its title, description and picture, the same things a signed-out visitor could see.",
         "Videos, and the still frame shown before one plays, are stored with Cloudflare R2. Cloudflare is a US company; the files are kept in its Oceania region and delivered through its worldwide network, so this can be a transfer overseas, and Australian Privacy Principle 8 applies to it. Anyone with a video's link can watch it, as with links to photos.",
         "When you add a location to a post, the words you type in the location box go to Photon, a place search run by komoot (Germany) on OpenStreetMap data, so it can suggest places. Photon also sees your IP address. Nothing else about you is sent, and it only happens while you type there. The place you pick is shown on your post.",
-        "GIFs come from GIPHY, a US company. When you open the GIF picker, your search words and your IP address go to GIPHY to fetch results. GIFs only load if you allow them in your cookie choices (or tap a single GIF to load it); then your browser loads them from GIPHY's servers, so GIPHY sees your IP address. We never send GIPHY your name, handle, email or any account detail. Accounts under 16 only see G-rated GIFs. GIPHY's own privacy policy covers what it does with this.",
-        "Voice and video calls connect your device directly to the other person's using WebRTC, and the audio and video are encrypted in transit. To find a route between you, your device contacts Google's public STUN servers, which see your IP address, and the other person's device learns your IP address during the call. The setup data is deleted from our database when the call ends. If a relay (TURN) server is configured for networks that block direct connections, the encrypted call passes through it without being decrypted.",
+        "GIFs come from GIPHY, a US company. When you open the GIF picker, your search words and your IP address go to GIPHY to fetch results. GIFs only load if you allow them in your cookie choices (or tap a single GIF to load it); then your browser loads them from GIPHY's servers, so GIPHY sees your IP address. We never send GIPHY your name, handle, email or any account detail. Accounts under 18 only see G-rated GIFs. GIPHY's own privacy policy covers what it does with this.",
+        "Voice and video calls connect your device directly to the other person's using WebRTC, and the audio and video are encrypted in transit. To find a route between you, your device contacts Google's public STUN servers, which see your IP address, and the other person's device learns your IP address during the call. The setup data is deleted from our database when the call ends. When a direct connection isn't possible (common on mobile data), the call passes through a relay run by Metered (metered.ca), which sees both IP addresses but can't decrypt the call.",
+        "Overseas: Google (including AdSense, if you turn on Google ads), Cloudflare, GIPHY and Metered are based in the United States or run servers there and elsewhere, and Photon (komoot) is in Germany. Your account data itself stays in Firestore in Sydney. Each provider gets only what it needs to do its job, under its own privacy terms, and Australian Privacy Principle 8 applies to these disclosures.",
         "Links people share can lead to other websites. Mesh shows you where a link goes and asks before opening it; once you leave, that site's own policies apply, not ours.",
         "If you sign in with Google or Apple, that provider knows you signed in to Mesh.",
         "If you allow the security check in your cookie choices, Mesh runs Google reCAPTCHA Enterprise in the background, through Firebase App Check. Until you do, it doesn't load. It checks that requests come from a real browser on this site and not from a script, and you never see a puzzle. To do that it sends Google information about your browser and device, and Google may set its own cookies. Google says it uses this data to run and improve reCAPTCHA and for general security, not for personalised advertising. If you use phone sign-in, reCAPTCHA also runs when you request an SMS code.",
@@ -118,15 +135,15 @@ export const PRIVACY = {
     {
       h: "Age",
       p: [
-        "Mesh is not intended for children under 13, and we do not knowingly create accounts for them.",
-        "Australia restricts accounts on age-restricted social media platforms for people under 16. We collect birth year and apply restrictions to accounts under 16. Your birth year is visible only to you. If you believe an account belongs to someone under the minimum age, report it and we will act.",
-        "We are actively reviewing our obligations under the Online Safety Amendment (Social Media Minimum Age) Act 2024 and will update this policy as our approach is finalised.",
+        "Mesh is for people 16 and over, as the Online Safety Amendment (Social Media Minimum Age) Act 2024 requires. Signing up asks for your birth year (and, if you turn 16 this year, whether you've had your birthday), and nobody under 16 can make an account. Accounts made before this were asked for a birth year; an account under 16 can only download its data and delete itself.",
+        "Your birth year is stored where only your account can read it, and is used only for age rules: the 16+ minimum, 18+ ads and G-rated GIFs for under-18s. It's never shown on your profile.",
+        "If you believe an account belongs to someone under 16, report it and we will act, including closing the account.",
       ],
     },
     {
       h: "How long we keep it",
       p: [
-        "We keep your account data for as long as your account exists. Deleting your account removes your profile, posts, handle, notifications, brick mode limits and minutes, bricked time, gathering replies list and parental-control links. Notifications you caused in other people's inboxes stay until they delete them, like a sent message.",
+        "We keep your account data for as long as your account exists. Deleting your account removes your profile and handle, posts and their photos and videos (including uploads you never posted), stories, highlights and your story archive, saved posts and albums, news drafts, your note, circles and gatherings you host and your place in other circles, Brick groups, notifications, brick mode limits and minutes, bricked time, gathering replies list and parental-control links. Notifications you caused in other people's inboxes, and comments you left on other people's posts, stay until they or you delete them, like a sent message. Decided appeals and reports are kept as moderation records.",
         "Messages you have sent may remain visible to the people you sent them to, in the same way a sent text message does. Use unsend to remove an individual message for everyone.",
         "Brick mode keeps your daily minutes for 7 days; older days are deleted when you next open Mesh. Notifications are kept until you delete them, and ones older than 90 days are removed when you open the notifications page. Parental controls end on 1 January of the year the teen turns 18, or earlier if the parent removes them.",
         "Backups and server logs may persist for a short period after deletion before being overwritten.",
@@ -135,9 +152,9 @@ export const PRIVACY = {
     {
       h: "Your rights",
       p: [
-        "You can access everything we hold about you: Account → Your data → Download gives you a JSON export immediately, with no request needed.",
+        "You can access what we hold about you: Settings → Your data → Download your data gives you a file (JSON) straight away, with your profile, posts, comments, messages you sent, stories, saved posts and albums, news, notes, Brick mode, appeals and more, with no request needed.",
         "You can correct your profile at any time from Profile → Edit profile.",
-        "You can delete your account permanently from Settings → Account → Delete account.",
+        "You can delete your account permanently from Settings → Your data → Delete account.",
         `If you want something we have not built a button for, or you want to complain about how we have handled your information, email ${B.privacyEmail}. We aim to respond within 30 days.`,
         "If you are not satisfied with our response, you can complain to the Office of the Australian Information Commissioner at oaic.gov.au. If the GDPR applies to you, you may complain to your local supervisory authority.",
       ],
@@ -167,7 +184,7 @@ export const TERMS = {
     {
       h: "Who can use Mesh",
       p: [
-        "You need to be old enough to use a social media service where you live. In Australia that currently means 16 or over for age-restricted social media platforms.",
+        "You must be 16 or over to have a Mesh account, as Australian law requires, and old enough to use social media where you live. If you're under 16, don't make an account; if we find an account belongs to someone under 16, we close it.",
         "One person, one account, and the details you give us should be true. You are responsible for what happens under your account.",
       ],
     },
@@ -203,7 +220,8 @@ export const TERMS = {
     {
       h: "News on Mesh",
       p: [
-        "Only journalists whose identity our admins have verified can write for the news section. Nobody else can publish there.",
+        "Only journalists whose identity the Mesh team has verified can write for the news section. Nobody else can publish there.",
+        "Every story is labelled as a report, analysis, explainer or opinion, so readers know what they're reading. Passing opinion off as reporting isn't allowed. A published story can be updated for developing news, with a note readers see; mistakes are fixed with corrections.",
         "Journalists publish their own stories; Mesh does not edit or approve them first. A story needs a headline, the full text, at least two source links cited in the text, a description for every image, and the journalist's confirmation that it is accurate. A story flagged for a legal read can't be published until that's cleared.",
         "Readers can request a correction on any story, and corrections are published on the story itself. None of this is a fact-checking certification or a guarantee that a story is true. Form your own view and follow the sources.",
       ],
@@ -214,13 +232,23 @@ export const TERMS = {
         "We use automated filters and human review. Automated filtering is imperfect in both directions: it misses things it should catch, and occasionally catches things it should not.",
         "We may remove content, restrict features, or suspend or terminate accounts that breach these terms. Where it is reasonable to do so, we will tell you why.",
         "Circle admins can moderate within their own circles. They cannot switch off our platform-wide safety filters.",
+        "Every automatic block names the rule it matched and can be appealed to a person, who decides. People, not machines, decide every appeal.",
+      ],
+    },
+    {
+      h: "Ads on Mesh",
+      p: [
+        "Mesh shows a small number of ads in Home to pay for its servers and moderators. Every ad is labelled \"Ad\" and \"Sponsored\", none appear in Messages, and nobody can pay to boost an ordinary post or to change what's in your feed.",
+        "Ads from local businesses, clubs and events are matched only to the town on your profile, the interests you picked and whether you're 18 or over. If you turn on Google ads in your cookie choices (18 and over), Google AdSense may fill spaces no local ad is booked for, with ads that aren't personalised.",
+        "Ads must be truthful, clearly identifiable as ads and follow the AANA Code of Ethics. Alcohol ads are shown only to people 18 and over; gambling, tobacco, vaping, weapons and adult content aren't accepted. We may refuse or remove any ad. Advertisers are invoiced directly under a separate agreement, and are responsible for their ads and the pages they link to.",
       ],
     },
     {
       h: "Reporting content",
       p: [
         "Use the report control on any post. Reports go to a review queue and are not visible to the person you reported.",
-        `To report a copyright infringement, email ${B.copyrightEmail} with a link to the content, proof of your ownership, and your contact details.`,
+        `To report a copyright infringement, email ${B.copyrightEmail} with a link to the content, proof of your ownership, and your contact details. We remove infringing content once we've checked the notice, and close the accounts of repeat infringers.`,
+        `If you believe something on Mesh is defamatory of you, email ${B.supportEmail} with a link to it, what's wrong with it and how to reach you. We'll acknowledge it, look at it within 7 days, and tell you what we've done, which may include removing it or passing your complaint to the person who posted it. Journalists and other posters are responsible for what they publish.`,
         "Australians can also complain to the eSafety Commissioner about serious cyberbullying, adult cyber abuse, image-based abuse and illegal content, at esafety.gov.au.",
       ],
     },
@@ -235,7 +263,7 @@ export const TERMS = {
     {
       h: "Ending it",
       p: [
-        "You can delete your account at any time from Settings → Account → Delete account. That is permanent.",
+        "You can delete your account at any time from Settings → Your data → Delete account. That is permanent.",
         "We may suspend or close an account that breaches these terms, or where we are legally required to.",
       ],
     },
@@ -276,6 +304,10 @@ export const COOKIES = {
         ["Profile photo reminder", "One key per account, beginning 'mesh:photo-nudge:', remembering that you dismissed the reminder to add a profile photo. Kept on this device only."],
         ["Second looks", "One key, 'mesh:second-look', listing photo posts with several photos that you scrolled past without looking through, so next time they open on their second photo. It holds post ids and times only, for a week at most, and never leaves your device."],
         ["Drafts", "Keys beginning 'mesh:draft:' hold the words of a post or message you started but didn't send, so closing the composer or switching chats doesn't lose them. Photos and videos aren't kept. Kept on this device only, for a week at most, and deleted when you send, discard or sign out."],
+        ["Remembered views", "Small preferences kept on this device only: the newsroom's list or grid view ('mesh:desk-view'), the camera you used last ('mesh:camera-facing'), whether video autoplays ('mesh:autoplay'), and that you've seen the Brick mode intro ('mesh:brick-intro'), the first-run tour ('mesh:tour-done:') or a circle's welcome note ('mesh:circle-welcome:')."],
+        ["Keep me signed in", "If you sign in without 'keep me signed in', 'mesh:ephemeral-session' (on this device) and 'mesh:tab' (for this tab only, in session storage) let Mesh sign you out when you close the last Mesh tab."],
+        ["Moderation checks", "For Mesh admins and moderators only: 'mesh:image-sweep' remembers which public images this device has already checked, so each is checked once."],
+        ["Cloudflare security cookies", "joinmesh.social is delivered through Cloudflare. If Cloudflare needs to check that a visit comes from a person (for example during an attack), it may set short-lived security cookies such as __cf_bm or cf_clearance. They're strictly necessary, aren't used for ads, and don't follow you to other sites."],
         ["Google ads (only if you allow it, 18 and over)", "Google AdSense fills ad spaces in Home that no local ad is booked for. Google and its partners set advertising cookies to show, count and limit ads and to stop fraud. Mesh requests ads that aren't personalised. See policies.google.com/technologies/partner-sites."],
         ["Google reCAPTCHA (only if you allow it)", "Loaded by Firebase App Check to tell real visitors from scripts, if you allow the security check. It also runs if you choose phone sign-in, because that's how the text message code is protected. Google sets its own cookies for this. It's a security measure: it isn't used for advertising, and Mesh receives only a pass or fail."],
       ],
@@ -302,12 +334,13 @@ export const COOKIES = {
 export const REFUNDS = {
   id: "refunds",
   title: DOCUMENT_TITLES.refunds,
-  summary: "Mesh is free. There is nothing to charge or refund yet. Here is what happens if that changes.",
+  summary: "Mesh is free to use. Here's what happens if that ever changes, and how advertisers are handled.",
   sections: [
     {
       h: "Right now",
       p: [
-        "Mesh does not charge for anything. There are no subscriptions, no purchases, no tipping, and we do not store payment details. If a page ever asks you to pay for Mesh today, it is not us. Do not enter card details, and tell us.",
+        "Mesh doesn't charge people to use it. There are no subscriptions, no purchases, no tipping, and we do not store payment details. If a page ever asks you to pay for Mesh, it is not us. Do not enter card details, and tell us.",
+        "Businesses that advertise on Mesh are invoiced directly, never through the app. Their pricing, what happens if an ad doesn't run as agreed, and refunds are set out in their advertising agreement, alongside their rights under the Australian Consumer Law.",
       ],
     },
     {
@@ -368,7 +401,7 @@ export const GUIDELINES = {
         ["Keep it non-sexual", "No nudity, pornography or sexually suggestive images or video, real, drawn or made with AI, anywhere on Mesh, including messages."],
         ["Do not post what is not yours", "Only post media you made or have permission to use."],
         ["Do not spam", "No engagement farming, bulk unsolicited messages, or scams."],
-        ["Respect the age rules", "Do not help someone under the minimum age create an account."],
+        ["Respect the age rules", "Mesh is 16 and over. Do not help someone under 16 create an account, and report accounts that belong to under-16s."],
       ],
     },
     {

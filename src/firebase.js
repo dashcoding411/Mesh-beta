@@ -1,5 +1,4 @@
 import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { isNativeApp } from "./lib/native";
@@ -20,7 +19,7 @@ const firebaseConfig = {
   storageBucket: "mesh-a293c.firebasestorage.app",
   messagingSenderId: "173524995677",
   appId: "1:173524995677:web:5635f47444ad2a6edd47b4",
-  measurementId: "G-PX8VHYKKSC",
+  // No measurementId: Mesh never uses Google Analytics.
 };
 
 const app = initializeApp(firebaseConfig);
@@ -33,15 +32,16 @@ const APP_CHECK_PROVIDER = import.meta.env.VITE_APPCHECK_PROVIDER || "enterprise
 // reCAPTCHA sets Google cookies, so it starts only once someone allows the
 // security check (lib/consent.js), never by default. It only runs on approved
 // websites, so the iPhone app skips it; that will use App Attest once App
-// Check is enforced.
+// Check is enforced. Its code loads only then, so most visitors never download it.
 let appCheckStarted = false;
-function startAppCheck() {
+async function startAppCheck() {
   if (appCheckStarted || !APP_CHECK_SITE_KEY || typeof window === "undefined" || isNativeApp) return;
   appCheckStarted = true;
   // Local dev uses a registered debug token from .env.local (dev builds only).
   if (import.meta.env.DEV && import.meta.env.VITE_APPCHECK_DEBUG_TOKEN) {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN;
   }
+  const { initializeAppCheck, ReCaptchaV3Provider, ReCaptchaEnterpriseProvider } = await import("firebase/app-check");
   initializeAppCheck(app, {
     provider: APP_CHECK_PROVIDER === "enterprise"
       ? new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY)

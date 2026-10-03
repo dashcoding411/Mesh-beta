@@ -117,6 +117,14 @@ function uploadToCloud(file, onProgress) {
   })) ?? Promise.reject(new UploadError("Sign in to upload."));
 }
 
+/** Account deletion: removes every file you uploaded to the Cloudflare Worker. Best effort. */
+export async function deleteAllCloudMedia() {
+  const uid = auth.currentUser?.uid;
+  const token = await auth.currentUser?.getIdToken();
+  if (!MEDIA_API || !uid || !token) return;
+  await fetch(`${MEDIA_API}/v/${uid}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+}
+
 /** Removes your own file from the Cloudflare Worker. Best effort. */
 export async function deleteCloudMedia(url) {
   if (!isCloudMedia(url)) return;

@@ -89,7 +89,8 @@ service cloud.firestore {
         && (!exists(path) || get(path).data.get(kind, timestamp.value(0)) < request.time - duration.value(seconds, 's'));
     }
     function validBirthYear(y) {
-      return y is int && (y == 0 || (y >= request.time.year() - 120 && y <= request.time.year() - 13));
+      // 16 and over (Social Media Minimum Age Act); 0 = not yet given (legacy accounts).
+      return y is int && (y == 0 || (y >= request.time.year() - 120 && y <= request.time.year() - 16));
     }
     // Birth year is private (users/{uid}/private/age). Accounts not yet
     // migrated still carry it on the profile.

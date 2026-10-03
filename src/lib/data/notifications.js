@@ -10,7 +10,7 @@ import { db } from "../../firebase";
 import { me, tsMillis } from "./core.js";
 import { myProfile } from "./users.js";
 
-export const NOTICE_TYPES = ["like", "comment", "reply", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo"];
+export const NOTICE_TYPES = ["like", "comment", "reply", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo", "appeal"];
 
 export function noticeId(type, { actor, postId = "", commentId = "", ref = "" }) {
   switch (type) {

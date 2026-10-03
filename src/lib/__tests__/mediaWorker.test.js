@@ -27,7 +27,7 @@ function bucket() {
     files,
     async put(key, body, opts) { files.set(key, { bytes: new Uint8Array(await new Response(body).arrayBuffer()), opts }); },
     async list({ prefix }) { return { objects: [...files.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; },
-    async delete(key) { files.delete(key); },
+    async delete(keys) { for (const k of [].concat(keys)) files.delete(k); },
     async get(key, { range } = {}) {
       const f = files.get(key);
       if (!f) return null;
@@ -123,6 +123,18 @@ describe("media worker", () => {
     expect(e.MEDIA.files.has(path)).toBe(true);
     expect((await del(await token())).status).toBe(200);
     expect(e.MEDIA.files.has(path)).toBe(false);
+  });
+
+  it("deletes all of an account's files, and only for that account", async () => {
+    const e = env();
+    const auth = await token();
+    await put(e, { auth }); await put(e, { auth });
+    const delAll = async (uid, a) => worker.fetch(new Request(`${BASE}/v/${uid}`, { method: "DELETE", headers: { Origin: ORIGIN, Authorization: `Bearer ${a}` } }), e);
+    expect((await delAll("SomeoneElse0000000000000000a", auth)).status).toBe(403);
+    expect(e.MEDIA.files.size).toBe(2);
+    const res = await delAll(UID, auth);
+    expect((await res.json()).removed).toBe(2);
+    expect(e.MEDIA.files.size).toBe(0);
   });
 
   it("404s anything outside the media paths", async () => {

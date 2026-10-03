@@ -53,6 +53,7 @@ const Legal = lazy(() => import("./components/Legal"));
 const Moderation = lazy(() => import("./components/Moderation"));
 const StoryArchive = lazy(() => import("./components/StoryArchive"));
 const AdsManager = lazy(() => import("./components/AdsManager"));
+const AgeGate = lazy(() => import("./components/AgeGate"));
 const NotFound = lazy(() => import("./components/NotFound"));
 const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
@@ -319,6 +320,16 @@ export default function App() {
   // account is created and the profile is still to come.
   const enter = () => window.location.replace(afterAuthPath());
   if (user && !profile) return <AuthPage pendingUser={user} onCreated={enter} />;
+  // 16 and over only: accounts without a birth year are asked, and under-16s
+  // can only download their data or delete the account.
+  const ageYears = profile?.birthYear > 0 ? new Date().getFullYear() - profile.birthYear : null;
+  if (user && profile && !profile.ageUnknown && (ageYears === null || ageYears < 16)) {
+    return (
+      <Suspense fallback={null}>
+        <AgeGate profile={profile} onBirthYear={(y) => setProfile((p) => ({ ...p, birthYear: y }))} />
+      </Suspense>
+    );
+  }
   if (guest && onAuthPage) return <AuthPage initialMode={page.mode} onCreated={enter} />;
   if (onAuthPage) return null;
 

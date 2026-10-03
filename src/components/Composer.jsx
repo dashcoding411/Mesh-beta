@@ -3,7 +3,7 @@ import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSp
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
-  uploadMedia, uploadPhotos, createPost, isMinor, StorageUnavailableError, videoUploadsAvailable, isCloudMedia, screenPost, MAX_SLIDES,
+  uploadMedia, uploadPhotos, createPost, StorageUnavailableError, videoUploadsAvailable, isCloudMedia, screenPost, MAX_SLIDES,
   circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
 } from "../lib/db";
 import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
@@ -104,7 +104,7 @@ async function uploadPoster(file, at) {
 export default function Composer({ onClose, onPosted, groupId, group, membership, profile, kind: initialKind, attach, files: initialFiles, text: initialText = "", circleTopic: initialCircleTopic }) {
   const toast = useToast();
   // Under-16 and private accounts are followers-only (also enforced by the rules).
-  const minor = isMinor(profile) || !!profile?.isPrivate;
+  const minor = !!profile?.isPrivate;
   // Restore the draft unless opened with explicit content.
   const draftScope = groupId ? `circle:${groupId}` : "post";
   const [draft] = useState(() => (initialText || attach || initialFiles?.length ? null : readDraft(draftScope)));
@@ -407,7 +407,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </div>
           {minor && !groupId && (
             <p className="text-caption text-fg-subtle">
-              {profile?.isPrivate ? "Your account is private, so posts go to your followers only." : "Under-16 accounts post to followers only."}
+              Your account is private, so posts go to your followers only.
             </p>
           )}
         </div>

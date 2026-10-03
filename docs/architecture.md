@@ -107,6 +107,25 @@ mix audio.
 
 ## Privacy
 
+Mesh is 16 and over (Online Safety Amendment (Social Media Minimum Age) Act
+2024): `validBirthYear` and the rules refuse later birth years, and sign-up
+asks whether someone born 16 years ago has had their birthday. `AgeGate.jsx`
+stops accounts with no birth year (asked once) and under-16s (download and
+delete only); an unreadable age record (`ageUnknown`) doesn't trigger it.
+
+Deleting an account (`deleteMyAccountData`) also removes every file under the
+user's uid on the media Worker (`DELETE /v/{uid}`), their note and its likes,
+Brick groups, circles they own (and memberships), gatherings they host,
+highlights, albums, open appeals and any staff role. Hidden circles can't be
+listed, so ones a user owns aren't found yet. The data download includes
+messages they sent, stories, highlights, albums, news drafts, their note,
+Brick groups, appeals and interaction signals.
+
+The legal pages (`src/legal`) must match this code. Until `business.js` has
+the operator's legal name and ABN, the policies name "the founders" rather
+than placeholders; the warning about missing details shows in development
+only. App Check's code loads only after someone allows the security check.
+
 What each kind of record shows, and to whom:
 
 - **Profiles** are readable by any signed-in account (and by visitors), so they

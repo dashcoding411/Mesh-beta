@@ -48,9 +48,12 @@ export function validBirthYear(raw) {
   if (!Number.isInteger(y) || y < now - 120 || y > now) {
     return { error: "Enter a real birth year." };
   }
-  // Minimum age 13, also enforced by the rules (validBirthYear).
-  if (y > now - 13) return { error: "You need to be at least 13 to use Mesh." };
-  return { year: y };
+  // Minimum age 16 (Online Safety Amendment (Social Media Minimum Age) Act
+  // 2024), also enforced by the rules (validBirthYear). Someone born 16
+  // years ago may not have had their birthday yet, so that year is
+  // `borderline` and the sign-up form asks.
+  if (y > now - 16) return { error: "Mesh is for people 16 and over." };
+  return { year: y, borderline: y === now - 16 };
 }
 
 const USERNAME_RE = /^[a-z0-9_]+$/;

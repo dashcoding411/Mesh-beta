@@ -3,7 +3,7 @@ import { Search as SearchIcon } from "lucide-react";
 import { searchGifs } from "../lib/gifs";
 import { setConsent, readConsent, useConsent } from "../lib/consent";
 import Button from "./ui/Button";
-import { isMinor } from "../lib/db";
+import { isUnder18 } from "../lib/db";
 import { useShell } from "./shell/ShellContext";
 import Dialog from "./ui/Dialog";
 import { Input } from "./ui/Field";
@@ -42,7 +42,7 @@ function GifSearch({ onPick, onClose }) {
   useEffect(() => {
     let alive = true;
     const t = setTimeout(() => {
-      searchGifs(q, { minor: isMinor(profile) })
+      searchGifs(q, { minor: isUnder18(profile) })
         .then((list) => { if (alive) { setGifs(list); setError(""); } })
         .catch((e) => { if (alive) { setGifs([]); setError(e.message); } });
     }, q ? 300 : 0);

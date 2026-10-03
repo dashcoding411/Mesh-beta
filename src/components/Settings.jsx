@@ -23,7 +23,7 @@ function brickSummary(brick) {
   return p.pending ? "On, with a change waiting" : "On";
 }
 import {
-  exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, isMinor, setMyBirthYear,
+  exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, removeMyReposts, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
   fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
 } from "../lib/db";
@@ -204,7 +204,7 @@ export default function Settings() {
           onDone={() => { setProfile({ ...profile, isPrivate: true }); setDialog(null); }} />
       )}
       {dialog === "public" && (
-        <PrivacyDialog onClose={() => setDialog(null)} making="public" canPublic={!isMinor(profile)}
+        <PrivacyDialog onClose={() => setDialog(null)} making="public"
           onDone={() => { setProfile({ ...profile, isPrivate: false }); setDialog(null); }} />
       )}
       {dialog === "messages" && (
@@ -354,7 +354,7 @@ function SetPasswordButton({ email }) {
   );
 }
 
-function DataExportRow() {
+export function DataExportRow() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const run = async () => {
@@ -421,14 +421,16 @@ function PasswordDialog({ onClose }) {
   );
 }
 
-function BirthYearDialog({ onClose, onSaved }) {
+export function BirthYearDialog({ onClose, onSaved, title = "Set your birth year", dismissible = true }) {
   const [year, setYear] = useState("");
+  const [turned16, setTurned16] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     const v = validBirthYear(year);
     if (v.error) return setError(v.error);
+    if (v.borderline && !turned16) return setError("Mesh is for people 16 and over. Tick the box once you've had your 16th birthday.");
     setBusy(true);
     try {
       await setMyBirthYear(v.year);
@@ -439,7 +441,7 @@ function BirthYearDialog({ onClose, onSaved }) {
     }
   };
   return (
-    <Dialog title="Set your birth year" onClose={onClose} size="sm">
+    <Dialog title={title} onClose={onClose} size="sm" dismissible={dismissible}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <p className="text-callout text-fg-muted">
           This can only be set once, so check it. It's used for age protections and never shown to anyone.
@@ -448,13 +450,16 @@ function BirthYearDialog({ onClose, onSaved }) {
           <Input inputMode="numeric" autoComplete="bday-year" value={year} maxLength={4}
             onChange={(e) => { setYear(e.target.value.replace(/\D/g, "")); setError(""); }} placeholder="e.g. 2001" />
         </Field>
+        {validBirthYear(year).borderline && (
+          <Checkbox checked={turned16} onChange={setTurned16}>I&apos;ve already had my 16th birthday.</Checkbox>
+        )}
         <Button type="submit" variant="primary" full loading={busy}>Save birth year</Button>
       </form>
     </Dialog>
   );
 }
 
-function DeleteDialog({ hasPassword, onClose }) {
+export function DeleteDialog({ hasPassword, onClose }) {
   const [confirmText, setConfirmText] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");

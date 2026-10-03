@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Settings, Link2, Grid3x3, Repeat2, Plus, Info, HeartHandshake, History, Menu } from "lucide-react";
+import { Settings, Link2, Grid3x3, Repeat2, Plus, HeartHandshake, History, Menu } from "lucide-react";
 import {
   fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, fetchIncomingSpouseRequests,
-  respondSpouseRequest, isMinor, me, fetchMySpouseRequestStatus, updateProfileFields,
+  respondSpouseRequest, me, fetchMySpouseRequestStatus, updateProfileFields,
 } from "../lib/db";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
@@ -125,12 +125,6 @@ export default function Profile({ initialTab = null }) {
           <Highlights profile={profile} own />
           <BrickHighlight uid={profile.id} own />
           {journalist && <JournalistCard uid={profile.id} journalist={journalist} stories={stories} onEdit={() => setEditingByline(true)} />}
-          {isMinor(profile) && (
-            <p className="mx-4 mb-3 flex items-start gap-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted md:mx-6">
-              <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-              Under-16 accounts post to followers only. Only you can see this note.
-            </p>
-          )}
 
           <Tabs variant="underline" label="Profile content" value={current} onChange={setTab} className="px-2 md:px-4"
             tabs={[

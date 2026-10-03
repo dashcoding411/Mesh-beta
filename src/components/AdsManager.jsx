@@ -243,7 +243,7 @@ function AdEditor({ ad, onClose, onSaved }) {
           </fieldset>
           <label className="flex items-center gap-3 text-callout">
             <Switch checked={form.adultsOnly} onChange={(v) => set({ adultsOnly: v })} label="18 and over only" />
-            18 and over only <span className="text-caption text-fg-subtle">(required for alcohol and gambling)</span>
+            18 and over only <span className="text-caption text-fg-subtle">(required for alcohol; gambling, tobacco, vaping and adult ads aren't accepted)</span>
           </label>
           <InlineMessage>{error}</InlineMessage>
         </div>

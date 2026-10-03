@@ -9,7 +9,7 @@ export const BUSINESS = {
 
   // Governing law.
   country: "Australia",
-  state: "TODO: your state or territory",
+  state: "Queensland",
   address: "TODO: registered or business address",
 
   // The privacy contact must be monitored (access/correction requests).

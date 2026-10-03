@@ -1,9 +1,16 @@
 // Data export and account deletion.
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "../../firebase";
-import { fetchGroups } from "./circles.js";
-import { me } from "./core.js";
-import { fetchEvents } from "./events.js";
+import { fetchGroups, fetchMembership, leaveGroup, deleteGroup } from "./circles.js";
+import { me, snapToList } from "./core.js";
+import { deleteEvent } from "./events.js";
+import { clearThought, fetchThoughts } from "./chats.js";
+import { fetchMyBrickGroups, leaveBrickGroup, deleteBrickGroup } from "./brickGroups.js";
+import { fetchHighlights, fetchMyStoryArchive } from "./highlights.js";
+import { fetchAlbums } from "./albums.js";
+import { fetchMyAppeals } from "./appeals.js";
+import { fetchMyStories } from "./newsroom.js";
+import { deleteAllCloudMedia } from "./uploads.js";
 import { deleteNews } from "./news.js";
 import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
@@ -16,7 +23,7 @@ export async function exportMyData() {
     fetchMyBirthYear().catch(() => 0),
     fetchPostsByAuthor(uid),
     fetchGroups().then((gs) => gs.filter((g) => g.ownerId === uid)),
-    fetchEvents().then((es) => es.filter((e) => e.hostId === uid)),
+    getDocs(query(collection(db, "events"), where("hostId", "==", uid), limit(500))).then(snapToList),
     fetchFollowList(uid, "following"),
     fetchFollowList(uid, "followers"),
   ]);
@@ -33,6 +40,26 @@ export async function exportMyData() {
     const cs = await fetchComments(p.id).catch(() => []);
     comments.push(...cs.filter((c) => c.authorId === uid).map((c) => ({ postId: p.id, ...c })));
   }
+  const own = (name) => getDocs(query(collection(db, "users", uid, name), limit(1000)))
+    .then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() }))).catch(() => []);
+  // Messages you sent, by conversation.
+  const chats = await getDocs(query(collection(db, "chats"), where("members", "array-contains", uid), limit(200))).then(snapToList).catch(() => []);
+  const messages = [];
+  for (const c of chats) {
+    const sent = await getDocs(query(collection(db, "chats", c.id, "messages"), where("senderId", "==", uid), limit(1000))).then(snapToList).catch(() => []);
+    messages.push({ chatId: c.id, chatName: c.name || "", members: c.members, sent });
+  }
+  const [stories, highlights, albums, appeals, newsStories, thought, brickGroups, saved, affinity] = await Promise.all([
+    fetchMyStoryArchive().catch(() => []),
+    fetchHighlights(uid).catch(() => []),
+    fetchAlbums().catch(() => []),
+    fetchMyAppeals().catch(() => []),
+    fetchMyStories().catch(() => []),
+    fetchThoughts([uid]).then((l) => l[0] || null).catch(() => null),
+    fetchMyBrickGroups().catch(() => []),
+    own("saved"),
+    own("affinity"),
+  ]);
   return {
     exportedAt: new Date().toISOString(),
     account: { uid, email: auth.currentUser?.email || "", phone: auth.currentUser?.phoneNumber || "" },
@@ -50,6 +77,16 @@ export async function exportMyData() {
     brickMode: { limits, usage, parentLink: family, brickedTime },
     gatheringReplies: gatherings,
     notifications,
+    messages,
+    stories,
+    storyHighlights: highlights,
+    savedPosts: saved,
+    savedAlbums: albums,
+    newsStories,
+    thought,
+    brickGroups,
+    appeals,
+    interactionSignals: affinity,
   };
 }
 
@@ -57,6 +94,24 @@ export async function exportMyData() {
 export async function deleteMyAccountData() {
   const uid = me();
   const profile = await myProfile().catch(() => null);
+  // Uploaded videos and posters (including ones never posted), your note and
+  // its likes, Brick groups, circles and gatherings, open appeals and staff role.
+  await deleteAllCloudMedia();
+  await clearThought().catch(() => {});
+  for (const g of await fetchMyBrickGroups().catch(() => [])) {
+    await (g.ownerId === uid ? deleteBrickGroup(g) : leaveBrickGroup(g)).catch(() => {});
+  }
+  for (const g of await fetchGroups().catch(() => [])) {
+    if (g.ownerId === uid) await deleteGroup(g).catch(() => {});
+    else if (await fetchMembership(g.id).catch(() => null)) await leaveGroup(g.id).catch(() => {});
+  }
+  // Every gathering you host, private ones included.
+  const hosted = await getDocs(query(collection(db, "events"), where("hostId", "==", uid), limit(500))).then(snapToList).catch(() => []);
+  for (const e of hosted) await deleteEvent(e.id).catch(() => {});
+  for (const a of (await fetchMyAppeals().catch(() => [])).filter((x) => x.status === "open")) {
+    await deleteDoc(doc(db, "appeals", a.id)).catch(() => {});
+  }
+  await deleteDoc(doc(db, "moderators", uid)).catch(() => {});
   const posts = await fetchPostsByAuthor(uid).catch(() => []);
   for (const p of posts) {
     await deletePost(p).catch(() => {});
@@ -70,7 +125,7 @@ export async function deleteMyAccountData() {
     const snap = await getDocs(query(collection(db, "users", uid, name), limit(500))).catch(() => null);
     return snap?.docs || [];
   };
-  for (const name of ["affinity", "saved", "hidden", "blocked", "followRequests", "notifications", "rsvps"]) {
+  for (const name of ["affinity", "saved", "hidden", "blocked", "followRequests", "notifications", "rsvps", "highlights", "albums"]) {
     for (const d of await sub(name)) await deleteDoc(d.ref).catch(() => {});
   }
   for (const d of await sub("following")) {

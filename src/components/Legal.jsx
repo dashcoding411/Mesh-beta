@@ -9,6 +9,8 @@ import TopBar from "./shell/TopBar";
 import { useShell } from "./shell/ShellContext";
 
 // Policies are public routes (/legal/:doc), readable signed out.
+const set = (v) => (v && !v.startsWith("TODO") ? v : "");
+
 export default function Legal({ doc = "privacy" }) {
   const { guest } = useShell();
   const headingRef = useRef(null);
@@ -34,7 +36,8 @@ export default function Legal({ doc = "privacy" }) {
           <h1 className="mt-1 text-display font-display">Policies</h1>
           <p className="mt-2 text-body text-fg-muted">Written in plain English, and describing what Mesh actually does.</p>
 
-          {gaps.length > 0 && (
+          {/* Shown while developing only: visitors never see placeholder warnings. */}
+          {import.meta.env.DEV && gaps.length > 0 && (
             <div role="alert" className="mt-5 flex gap-3 rounded-card border border-amber-500/40 bg-amber-500/10 p-4">
               <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
               <div>
@@ -97,9 +100,10 @@ export default function Legal({ doc = "privacy" }) {
             </div>
 
             <footer className="mt-12 border-t border-line pt-6 text-caption text-fg-subtle">
-              <p className="text-callout font-semibold text-fg">{BUSINESS.legalName}</p>
-              <p className="mt-1">ABN {BUSINESS.abn}</p>
-              <p>{BUSINESS.address}</p>
+              {/* Placeholders are never shown: until the business details are set, say so plainly. */}
+              <p className="text-callout font-semibold text-fg">{set(BUSINESS.legalName) || `${BUSINESS.tradingName}, run by its founders`}</p>
+              {set(BUSINESS.abn) ? <p className="mt-1">ABN {BUSINESS.abn}</p> : <p className="mt-1">Company registration in progress</p>}
+              <p>{set(BUSINESS.address) || `${BUSINESS.state}, ${BUSINESS.country}`}</p>
               <dl className="mt-3 grid gap-1 sm:grid-cols-[auto_1fr] sm:gap-x-4">
                 <dt>General</dt><dd className="text-fg-muted">{BUSINESS.supportEmail}</dd>
                 <dt>Privacy</dt><dd className="text-fg-muted">{BUSINESS.privacyEmail}</dd>

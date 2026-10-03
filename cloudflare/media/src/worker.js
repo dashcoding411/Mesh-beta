@@ -35,6 +35,22 @@ export default {
         if (!trusted) throw httpError(403, "Uploads only come from Mesh.");
         return json(await upload(req, env), 200, cors);
       }
+      // Account deletion: every file under the caller's own uid.
+      const everything = url.pathname.match(/^\/v\/([A-Za-z0-9]{20,40})$/);
+      if (everything && req.method === "DELETE") {
+        if (!trusted) throw httpError(403, "Deletes only come from Mesh.");
+        const uid = await verifyToken(req, env);
+        if (uid !== everything[1]) throw httpError(403, "Those files aren't yours.");
+        let removed = 0;
+        for (;;) {
+          const page = await env.MEDIA.list({ prefix: `v/${uid}/`, limit: 1000 });
+          if (!page.objects.length) break;
+          await env.MEDIA.delete(page.objects.map((o) => o.key));
+          removed += page.objects.length;
+          if (!page.truncated) break;
+        }
+        return json({ ok: true, removed }, 200, cors);
+      }
       const file = url.pathname.match(FILE);
       if (file && (req.method === "GET" || req.method === "HEAD")) return serve(req, env, `v/${file[1]}/${file[2]}`);
       if (file && req.method === "DELETE") {

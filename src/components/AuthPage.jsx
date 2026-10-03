@@ -334,6 +334,8 @@ function FinishProfile({ user, onCreated }) {
   const [handleState, setHandleState] = useState({ for: "", ok: false, message: "" });
   const [birthYear, setBirthYear] = useState("");
   const [consent, setConsent] = useState(false);
+  // Born 16 years ago: only allowed once they've had this year's birthday.
+  const [turned16, setTurned16] = useState(false);
   // Minutes a day for Home and Flicks; 0 is no limit. Nothing is forced.
   const [limit, setLimit] = useState(null);
   const [error, setError] = useState("");
@@ -375,6 +377,7 @@ function FinishProfile({ user, onCreated }) {
     if (named.error) return setError(named.error);
     const year = validBirthYear(birthYear);
     if (year.error) return setError(year.error);
+    if (year.borderline && !turned16) return setError("Mesh is for people 16 and over. Tick the box once you've had your 16th birthday.");
     if (!consent) return setError("Accept the Terms and Privacy Policy to create your account.");
     setBusy(true);
     try {
@@ -426,6 +429,13 @@ function FinishProfile({ user, onCreated }) {
         <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
           value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2001" />
       </Field>
+      {validBirthYear(birthYear).borderline && (
+        <label className="flex cursor-pointer items-start gap-3 text-callout text-fg-muted">
+          <input type="checkbox" checked={turned16} onChange={(e) => setTurned16(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
+          I&apos;ve already had my 16th birthday. (Mesh is for people 16 and over.)
+        </label>
+      )}
       <fieldset>
         <legend id={ids.limit} className="mb-1.5 block text-callout font-medium text-fg">How long do you want Mesh each day?</legend>
         <div role="radiogroup" aria-labelledby={ids.limit} className="grid grid-cols-4 gap-2">

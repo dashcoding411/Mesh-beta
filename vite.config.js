@@ -13,8 +13,9 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules") || /\.css($|\?)/.test(id)) return undefined;
           // Firebase packages have circular imports; splitting them breaks
-          // initialisation order. Storage is excluded because it's lazy-loaded.
-          if (/@firebase\/storage|firebase\/storage/.test(id)) return undefined;
+          // initialisation order. Storage and App Check are excluded because
+          // they're lazy-loaded (App Check only after someone allows it).
+          if (/@firebase\/(storage|app-check)|firebase\/(storage|app-check)/.test(id)) return undefined;
           // The image checker (TensorFlow.js and its ~6 MB model) loads only when
           // someone picks an image, so it stays out of the preloaded chunks.
           if (/@tensorflow|nsfwjs|\/seedrandom\/|\/long\/|\/buffer\/|\/base64-js\/|\/ieee754\/|\/core-js\//.test(id)) return undefined;

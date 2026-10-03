@@ -35,9 +35,9 @@ export async function setMyBirthYear(year) {
  * removed. Follow markers left from an interrupted follow are blanked.
  */
 export async function fetchOwnProfile(uid) {
-  const [profile, age] = await Promise.all([fetchProfile(uid), getDoc(ageRef(uid)).catch(() => null)]);
+  const [profile, age] = await Promise.all([fetchProfile(uid), getDoc(ageRef(uid)).catch(() => "failed")]);
   if (!profile) return null;
-  const stored = age?.exists() ? age.data().birthYear : 0;
+  const stored = age !== "failed" && age?.exists() ? age.data().birthYear : 0;
   const legacy = ["email", "phone"].filter((k) => k in profile);
   if (profile.birthYear > 0 || legacy.length) {
     const batch = writeBatch(db);
@@ -48,7 +48,8 @@ export async function fetchOwnProfile(uid) {
   }
   if (profile.lastFollower || profile.lastFollowing) clearFollowMarkers(uid);
   const { email: _email, phone: _phone, ...clean } = profile;
-  return { ...clean, birthYear: stored || profile.birthYear || 0 };
+  // `ageUnknown`: the private record couldn't be read (offline), so don't treat it as missing.
+  return { ...clean, birthYear: stored || profile.birthYear || 0, ageUnknown: age === "failed" };
 }
 
 /**
@@ -87,7 +88,7 @@ export function myProfile() {
 }
 
 // Bump on material policy changes. Profiles keep the version they accepted.
-export const POLICY_VERSION = "2026-10-04.2";
+export const POLICY_VERSION = "2026-10-04.3";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -196,9 +197,10 @@ export async function changeUsername(profile, nextUsername) {
   return nextUsername;
 }
 
-export function isMinor(profile) {
+/** Under 18 (Mesh is 16 and over), for content ratings like G-rated GIFs. */
+export function isUnder18(profile) {
   const y = profile?.birthYear || 0;
-  return y > 0 && new Date().getFullYear() - y < 16;
+  return y > 0 && new Date().getFullYear() - y < 18;
 }
 
 export async function removeAvatar() {
