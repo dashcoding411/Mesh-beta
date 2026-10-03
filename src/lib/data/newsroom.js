@@ -3,7 +3,7 @@
 
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction,
-  serverTimestamp, setDoc, updateDoc, where,
+  serverTimestamp, setDoc, updateDoc, where, increment, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
@@ -117,6 +117,7 @@ export function storyFromDoc(snap) {
     keyPoints: [points[0] || "", points[1] || "", points[2] || ""],
     sources: d.sources || [],
     format: d.format || "story",
+    label: d.label || "report",
     legalHold: !!d.legalHold,
     legalNote: d.legalNote || "",
     blocks: blocksFromDoc(d),
@@ -129,6 +130,9 @@ export function storyFromDoc(snap) {
     live: !!d.live,
     publishedAt: d.publishedAt || null,
     updatedAt: d.updatedAt,
+    updateNote: d.updateNote || "",
+    updateNoteAt: d.updateNoteAt || null,
+    readCount: d.readCount || 0,
   };
 }
 
@@ -142,6 +146,7 @@ function storyFields(s) {
     keyPoints: s.keyPoints.map((k) => k.trim()).filter(Boolean).slice(0, 3).map((k) => k.slice(0, 200)),
     sources: s.sources.map((u) => u.trim()).filter(Boolean).slice(0, 10),
     format: s.format,
+    label: s.label || "report",
     legalHold: !!s.legalHold,
     legalNote: (s.legalNote || "").slice(0, 300),
     authors: s.authors,
@@ -165,6 +170,7 @@ export async function createNewsStory(format = "story") {
     keyPoints: [],
     sources: [],
     format,
+    label: "report",
     live: false,
     legalHold: false,
     legalNote: "",
@@ -215,6 +221,30 @@ export async function publishStory(id, base, local) {
   const result = await saveStory(id, base, local, { status: "approved", submittedAt: at, attestedAt: at, publishedAt: at });
   await saveRevision(id, result.story, "Published").catch(() => {});
   return result;
+}
+
+/**
+ * Updates a published story in place, for developing news: it stays up, and
+ * readers see "Updated" with the note. Fixing a mistake is a correction instead.
+ */
+export async function publishUpdate(id, base, local, note) {
+  const result = await saveStory(id, base, local, { updateNote: note.trim().slice(0, 200), updateNoteAt: serverTimestamp() });
+  await saveRevision(id, result.story, `Update: ${note.trim()}`.slice(0, 200)).catch(() => {});
+  return result;
+}
+
+// Reads: each signed-in reader counts once, so journalists see their real audience.
+const counted = new Set();
+export async function recordNewsRead(story) {
+  const uid = me();
+  if (!uid || counted.has(story.id) || story.status !== "approved" || (story.authors || [story.authorId]).includes(uid)) return;
+  counted.add(story.id);
+  const readRef = doc(db, "news", story.id, "reads", uid);
+  if ((await getDoc(readRef).catch(() => null))?.exists()) return;
+  const batch = writeBatch(db);
+  batch.set(readRef, { at: serverTimestamp() });
+  batch.update(storyRef(story.id), { readCount: increment(1) });
+  await batch.commit().catch(() => {});
 }
 
 export async function reopenStory(id, base, local) {

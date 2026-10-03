@@ -1721,6 +1721,7 @@ service cloud.firestore {
         && d.script is string && d.script.size() <= 40000
         && d.sources is list && d.sources.size() <= 10 && newsSourcesOk(d.sources)
         && d.get('format', 'story') in ['story', 'live']
+        && d.get('label', 'report') in ['report', 'analysis', 'explainer', 'opinion']
         && d.get('legalHold', false) is bool
         && d.get('legalNote', '') is string && d.get('legalNote', '').size() <= 300
         && storyBlocksOk(d)
@@ -1777,7 +1778,7 @@ service cloud.firestore {
       allow create: if isNewsWriter()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'authors', 'authorNames', 'title', 'standfirst', 'script', 'sources',
-          'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'live', 'legalHold', 'legalNote',
+          'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'label', 'live', 'legalHold', 'legalNote',
           'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
           'corrections', 'status', 'reviewNote', 'likeCount', 'commentCount', 'version', 'createdAt', 'updatedAt'
         ])
@@ -1802,7 +1803,7 @@ service cloud.firestore {
           && isStoryAuthor(resource.data)
           && resource.data.status in ['draft', 'rejected', 'pending']
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
-               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'format',
+               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'label',
                'legalHold', 'legalNote', 'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
                'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'publishedAt', 'version', 'updatedAt'])
           && incomingData().version == resource.data.version + 1
@@ -1820,6 +1821,31 @@ service cloud.firestore {
           && (incomingData().status == resource.data.status
               || (resource.data.status in ['rejected', 'pending'] && incomingData().status == 'draft')
               || (incomingData().status == 'approved' && readyToPublish(incomingData()))))
+        // Updating a published story (developing news): it stays up, still has
+        // to meet the publishing bar, and carries a note readers see.
+        || (isNewsWriter()
+          && isStoryAuthor(resource.data)
+          && resource.data.status == 'approved'
+          && incomingData().diff(resource.data).affectedKeys().hasOnly([
+               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'label',
+               'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
+               'updateNote', 'updateNoteAt', 'version', 'updatedAt'])
+          && incomingData().version == resource.data.version + 1
+          && incomingData().updatedAt == request.time
+          && incomingData().updateNoteAt == request.time
+          && incomingData().updateNote is string && incomingData().updateNote.size() >= 3 && incomingData().updateNote.size() <= 200
+          && hateFree(incomingData().updateNote)
+          && storyContentOk(incomingData())
+          && incomingData().title.size() >= 10 && incomingData().script.size() >= 100 && incomingData().sources.size() >= 2
+          && incomingData().get('legalHold', false) != true
+          && notSuspended())
+        // Each signed-in reader adds one read, alongside their reads/{uid} marker.
+        || (signedIn() && !isStoryAuthor(resource.data)
+          && resource.data.status == 'approved'
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['readCount'])
+          && incomingData().readCount == resource.data.get('readCount', 0) + 1
+          && !exists(/databases/$(database)/documents/news/$(newsId)/reads/$(request.auth.uid))
+          && existsAfter(/databases/$(database)/documents/news/$(newsId)/reads/$(request.auth.uid)))
         // Corrections are append-only, by the story's journalists or an admin.
         || ((isStaff() || isStoryAuthor(resource.data))
           && resource.data.status == 'approved'
@@ -1832,6 +1858,15 @@ service cloud.firestore {
           && incomingData().live is bool
           && incomingData().updatedAt == request.time);
       allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isStaff());
+
+      // Who has read it, so each reader counts once. Only the reader sees theirs.
+      match /reads/{uid} {
+        allow get: if isUser(uid);
+        allow create: if isUser(uid)
+          && incomingData().keys().hasOnly(['at']) && incomingData().at == request.time
+          && getAfter(/databases/$(database)/documents/news/$(newsId)).data.get('readCount', 0)
+             == get(/databases/$(database)/documents/news/$(newsId)).data.get('readCount', 0) + 1;
+      }
 
       // Per-block editing presence.
       match /presence/{uid} {

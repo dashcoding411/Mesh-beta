@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import IconButton from "./IconButton";
+import { useLocation } from "../../lib/router";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), ' +
@@ -21,6 +22,14 @@ export default function Dialog({
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
+
+  // Going somewhere else (an @mention, a link to a profile or post) closes
+  // the dialog it was opened from, so the new page isn't hidden behind it.
+  const { path } = useLocation();
+  const openedAt = useRef(path);
+  useEffect(() => {
+    if (dismissible && path !== openedAt.current) onCloseRef.current?.();
+  }, [path, dismissible]);
 
   useEffect(() => {
     const opener = document.activeElement;

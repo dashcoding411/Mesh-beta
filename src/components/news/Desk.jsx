@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronRight, Ellipsis, FilePen, FileText, Folder, FolderInput, FolderOpen, FolderPlus, LayoutGrid, List,
-  Pencil, Plus, Radio, Search as SearchIcon, Trash2, Users, X,
+  Pencil, Plus, Radio, RefreshCw, Search as SearchIcon, Trash2, Users, X,
 } from "lucide-react";
 import { createNewsStory, deleteNews, fetchDesk, saveDesk, setLive, tsMillis, me } from "../../lib/db";
 import {
@@ -288,6 +288,7 @@ export default function Desk({ stories, setStories }) {
                 badge={<Badge tone={st.tone}>{st.label}</Badge>}
                 meta={[
                   shortTime(modified(s)),
+                  s.status === "approved" && plural(s.readCount || 0, "read"),
                   (s.authors || []).length > 1 && `with ${(s.authorNames || []).filter((_, i) => (s.authors || [])[i] !== me()).map((n) => `@${n}`).join(", ")}`,
                   view.flat && where(s),
                 ].filter(Boolean).join(" · ")}
@@ -305,6 +306,11 @@ export default function Desk({ stories, setStories }) {
           <Dialog title={storyName(s)} onClose={() => setDialog(null)}>
             <MenuGroup>
               <MenuItem icon={FilePen} onClick={() => { setDialog(null); openStory(s); }}>{s.status === "approved" ? "Open story" : "Open in editor"}</MenuItem>
+              {s.status === "approved" && (
+                <MenuItem icon={RefreshCw} description="Add new information. It stays up, marked as updated." onClick={() => { setDialog(null); navigate(`/news/write/${s.id}?update=1`); }}>
+                  Update story
+                </MenuItem>
+              )}
               <MenuItem icon={FolderInput} description={`In ${where(s)}`} onClick={() => setDialog({ kind: "move", items: { stories: [s.id], folders: [] } })}>Move to</MenuItem>
               {s.format === "live" && s.status === "approved" && (
                 <MenuItem icon={Radio} onClick={async () => {
@@ -321,7 +327,7 @@ export default function Desk({ stories, setStories }) {
               <p className="px-3 pt-3 text-caption text-fg-subtle">Only the lead journalist, @{(s.authorNames || [])[0]}, can delete this draft.</p>
             )}
             {s.status === "approved" && (
-              <p className="px-3 pt-3 text-caption text-fg-subtle">Published stories stay up with their corrections. Ask an administrator if one has to come down.</p>
+              <p className="px-3 pt-3 text-caption text-fg-subtle">Published stories stay up, with their updates and corrections. Ask an administrator if one has to come down.</p>
             )}
           </Dialog>
         );

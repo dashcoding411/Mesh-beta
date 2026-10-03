@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowDown, ArrowUp, Trash2, Plus, ImagePlus, History, Eye, Send, Scale, Radio, Users, X, Check, Info,
-  Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, ListChecks,
+  Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, ListChecks, Pencil, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import {
-  listenStory, saveStory, publishStory, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
+  listenStory, saveStory, publishStory, publishUpdate, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
   clearStoryPresence, coAuthorFor, uploadMedia, deleteNews, me,
 } from "../../lib/db";
-import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS } from "../../lib/storyDoc";
+import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS, legalRisks, STORY_LABELS } from "../../lib/storyDoc";
 import { NEWS_TOPICS } from "../../lib/interests";
 import { checkContent } from "../../lib/moderation";
 import { goBack, navigate } from "../../lib/router";
 import { relativeTime } from "../../lib/format";
 import { useShell } from "../shell/ShellContext";
 import { StoryBody } from "./StoryBody";
-import { TopicLabel } from "./parts";
+import { KindBadge, TopicLabel } from "./parts";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import Badge from "../ui/Badge";
@@ -46,7 +46,9 @@ export default function StoryEditor({ id }) {
   const [saveError, setSaveError] = useState("");
   const [presence, setPresenceList] = useState([]);
   const [now, setNow] = useState(() => Date.now());
-  const [dialog, setDialog] = useState(null); // "publish" | "history" | "preview"
+  const [dialog, setDialog] = useState(null); // "publish" | "update" | "history" | "preview"
+  // Editing a published story; nothing reaches readers until "Publish update".
+  const [updating, setUpdating] = useState(() => new URLSearchParams(window.location.search).has("update"));
   const baseRef = useRef(null);
   const localRef = useRef(null);
   useEffect(() => { baseRef.current = base; }, [base]);
@@ -69,7 +71,8 @@ export default function StoryEditor({ id }) {
     return () => { clearInterval(t); clearStoryPresence(id); };
   }, [id]);
 
-  const editable = local && ["draft", "rejected", "pending"].includes(local.status);
+  const published = local?.status === "approved";
+  const editable = local && (["draft", "rejected", "pending"].includes(local.status) || (published && updating));
   const dirty = !!local && !!base && !same(local, base);
   const lead = local?.authorId === me();
 
@@ -95,10 +98,11 @@ export default function StoryEditor({ id }) {
   }, [id, saving, toast]);
 
   useEffect(() => {
-    if (!dirty || !editable) return undefined;
+    // Published stories only change when the update is published.
+    if (!dirty || !editable || published) return undefined;
     const t = setTimeout(save, 1500);
     return () => clearTimeout(t);
-  }, [local, dirty, editable, save]);
+  }, [local, dirty, editable, published, save]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -137,6 +141,21 @@ export default function StoryEditor({ id }) {
     return { ...s, blocks };
   });
   const removeBlock = (blockId) => setLocal((s) => ({ ...s, blocks: s.blocks.length > 1 ? s.blocks.filter((b) => b.id !== blockId) : s.blocks }));
+  // Pasting a draft from Docs or Word: each paragraph becomes its own block,
+  // and lines starting with # or ## become headings.
+  const pasteBlocks = (blockId, before, chunks, after) => setLocal((s) => {
+    const i = s.blocks.findIndex((b) => b.id === blockId);
+    if (i === -1) return s;
+    const typed = chunks.map((c) => {
+      const m = c.match(/^(#{1,3})\s+(.*)$/);
+      return m ? newBlock(m[1].length === 1 ? "h2" : "h3", m[2]) : newBlock("p", c);
+    });
+    const first = { ...s.blocks[i], text: before + (typed[0].type === "p" ? typed[0].text : "") };
+    const rest = typed[0].type === "p" ? typed.slice(1) : typed;
+    if (after) rest.push(newBlock("p", after));
+    const blocks = [...s.blocks.slice(0, i), first, ...rest, ...s.blocks.slice(i + 1)].slice(0, MAX_BLOCKS);
+    return { ...s, blocks };
+  });
 
   if (missing) {
     return (
@@ -167,18 +186,36 @@ export default function StoryEditor({ id }) {
         <AuthorsStrip names={local.authorNames} uids={local.authors} presence={presence} now={now} />
         <Button size="sm" variant="ghost" icon={History} onClick={() => setDialog("history")}>History</Button>
         <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDialog("preview")}>Preview</Button>
-        {editable && local.authorId === me() && (
+        {editable && !published && local.authorId === me() && (
           <IconButton icon={Trash2} label="Delete draft" onClick={() => setDialog("delete")} />
         )}
-        {editable && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("publish")}>Publish</Button>}
+        {editable && !published && <Button size="sm" variant="primary" icon={Send} onClick={() => setDialog("publish")}>Publish</Button>}
+        {published && !updating && local.authors.includes(me()) && (
+          <Button size="sm" variant="primary" icon={Pencil} onClick={() => setUpdating(true)}>Update story</Button>
+        )}
+        {published && updating && (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => { setLocal(base); setUpdating(false); }}>Discard changes</Button>
+            <Button size="sm" variant="primary" icon={RefreshCw} disabled={!dirty} onClick={() => setDialog("update")}>Publish update</Button>
+          </>
+        )}
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-24 pt-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <main className="min-w-0">
-          {!editable && (
+          {published && !updating && (
             <p role="status" className="mb-4 flex items-start gap-2 rounded-card border border-line bg-surface-2 p-3 text-callout text-fg-muted">
               <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-              Published. Changes to a published story are made as public corrections, from the story page.
+              <span>
+                Published{local.readCount ? `, read by ${local.readCount.toLocaleString()} ${local.readCount === 1 ? "person" : "people"}` : ""}.
+                For new information, choose <strong>Update story</strong>: it stays up and readers see what changed. To fix a mistake, add a correction from the story page.
+              </span>
+            </p>
+          )}
+          {published && updating && (
+            <p role="status" className="mb-4 flex items-start gap-2 rounded-card border border-accent-text/30 bg-accent-soft/40 p-3 text-callout">
+              <RefreshCw size={18} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+              Updating a published story. Readers keep seeing the current version until you publish the update.
             </p>
           )}
           {local.status === "draft" && local.reviewNote && (
@@ -213,6 +250,7 @@ export default function StoryEditor({ id }) {
               <div key={b.id}>
                 <BlockEditor block={b} index={i} count={local.blocks.length} editable={editable} lockedBy={lockedBy[b.id]}
                   onFocus={() => focusBlock(b.id)} onChange={(patch) => updateBlock(b.id, patch)}
+                  onPasteBlocks={(before, chunks, after) => pasteBlocks(b.id, before, chunks, after)}
                   onMove={(d) => moveBlock(i, d)} onRemove={() => removeBlock(b.id)} />
                 {editable && <AddBlock onAdd={(type) => insertBlock(i + 1, type)} />}
               </div>
@@ -243,6 +281,15 @@ export default function StoryEditor({ id }) {
           onRestore={(rev) => { update({ title: rev.title, standfirst: rev.standfirst, blocks: rev.blocks, sources: rev.sources }); setDialog(null); toast({ title: "Restored", body: "It saves in a moment, as the next version." }); }} />
       )}
       {dialog === "preview" && <PreviewDialog story={local} onClose={() => setDialog(null)} />}
+      {dialog === "update" && (
+        <UpdateDialog story={local} onClose={() => setDialog(null)} onPublish={async (note) => {
+          const { story } = await publishUpdate(id, baseRef.current, localRef.current, note);
+          setBase(story); setLocal(story);
+          setUpdating(false);
+          setDialog(null);
+          toast({ title: "Update published", body: "Readers now see the new version, marked as updated." });
+        }} />
+      )}
       {dialog === "delete" && (
         <ConfirmDialog title="Delete this draft?" confirmLabel="Delete draft"
           body="The draft and its history will be permanently deleted for you and any co-authors. This can't be undone."
@@ -275,7 +322,7 @@ function AuthorsStrip({ names, uids, presence, now }) {
   );
 }
 
-function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChange, onMove, onRemove }) {
+function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChange, onMove, onRemove, onPasteBlocks }) {
   const toast = useToast();
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
@@ -338,6 +385,15 @@ function BlockEditor({ block, index, count, editable, lockedBy, onFocus, onChang
           <Icon size={14} className="mt-3 shrink-0 text-fg-subtle opacity-0 group-focus-within:opacity-100" aria-hidden="true" />
           <Textarea aria-label={TEXT_TYPES.find(([v]) => v === block.type)?.[1]} autoGrow rows={1} maxRows={40} value={block.text} readOnly={readOnly}
             maxLength={8000} onChange={(e) => onChange({ text: e.target.value })}
+            onPaste={(e) => {
+              if (block.type === "list" || readOnly) return;
+              const pasted = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
+              const chunks = pasted.split(/\n\s*\n|\n/).map((c) => c.trim()).filter(Boolean);
+              if (chunks.length < 2) return;
+              e.preventDefault();
+              const el = e.currentTarget;
+              onPasteBlocks(block.text.slice(0, el.selectionStart), chunks, block.text.slice(el.selectionEnd));
+            }}
             placeholder={{ p: "Write, and cite sources by number like [1]", h2: "Heading", h3: "Subheading", quote: "A quote worth pulling out", list: "One item per line" }[block.type]}
             className={`!border-transparent !bg-transparent !px-0 !py-1 hover:!border-transparent focus:!ring-0 ${textClass}`} />
         </div>
@@ -398,8 +454,21 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
   return (
     <>
       <section className={cls} aria-label="Story details">
-        <Segmented label="Format" value={story.format} onChange={(v) => editable && update({ format: v })} className="mb-4"
+        <Segmented label="Format" value={story.format} onChange={(v) => editable && story.status !== "approved" && update({ format: v })} className="mb-4"
           options={[{ id: "story", label: "Story" }, { id: "live", label: "Live blog" }]} />
+        <fieldset className="mb-4">
+          <legend className="mb-1.5 text-callout font-medium">What kind of piece</legend>
+          <div role="radiogroup" aria-label="What kind of piece" className="grid grid-cols-2 gap-1.5">
+            {STORY_LABELS.map((l) => (
+              <button key={l.id} type="button" role="radio" aria-checked={story.label === l.id} disabled={!editable}
+                onClick={() => update({ label: l.id })} title={l.blurb}
+                className={`press min-h-10 rounded-control border px-2 text-callout font-semibold disabled:opacity-60 ${story.label === l.id ? "border-accent bg-accent-soft text-fg" : "border-field bg-surface-2 text-fg-muted"}`}>
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-caption text-fg-subtle">{STORY_LABELS.find((l) => l.id === story.label)?.blurb}. Shown to readers on the story and in News.</p>
+        </fieldset>
         <div className="space-y-3">
           <Field label="Topic">
             <Select value={story.topic} disabled={!editable} onChange={(e) => update({ topic: e.target.value })}>
@@ -500,13 +569,79 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
   );
 }
 
+/**
+ * Sentences naming someone beside an allegation. The journalist confirms
+ * each is attributed or has been checked before it goes out.
+ */
+function LegalCheck({ story, checked, onChange }) {
+  const risks = legalRisks(story);
+  if (!risks.length) return null;
+  return (
+    <div className="mt-4 rounded-card border border-warning-text/40 bg-warning-text/10 p-3">
+      <p className="flex items-center gap-2 text-callout font-semibold text-warning-text">
+        <TriangleAlert size={16} aria-hidden="true" /> Check these for defamation
+      </p>
+      <p className="mt-1 text-caption text-fg-muted">
+        They name someone next to an allegation without saying who makes it. Attribute each one (a court, police, a document you cite),
+        or have an editor or lawyer check it. Turn on legal review if you're unsure.
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {risks.map((s) => <li key={s} className="rounded-control bg-surface p-2 text-caption text-fg">“{s}”</li>)}
+      </ul>
+      <div className="mt-3">
+        <Checkbox checked={checked} onChange={onChange}>Each of these is attributed, true and provable, or has been legally checked.</Checkbox>
+      </div>
+    </div>
+  );
+}
+
+/** Publishing an update to a live story: what changed, in a note readers see. */
+function UpdateDialog({ story, onClose, onPublish }) {
+  const [note, setNote] = useState("");
+  const [legalOk, setLegalOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const problems = reviewProblems(story);
+  const words = checkContent(`${story.title}\n${story.standfirst}\n${story.blocks.map((b) => b.text).join("\n")}\n${note}`, { key: "news", skipCooldown: true, allowQuoted: true });
+  const all = words.error ? [...problems, words.error] : problems;
+  const risky = legalRisks(story).length > 0;
+  const ready = !all.length && note.trim().length >= 3 && !story.legalHold && (!risky || legalOk);
+  return (
+    <Dialog title="Publish an update" onClose={busy ? undefined : onClose} size="md"
+      footer={
+        <div className="space-y-2">
+          <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
+          <div className="flex justify-end gap-2">
+            <Button onClick={onClose} disabled={busy}>Keep editing</Button>
+            <Button variant="primary" icon={RefreshCw} loading={busy} disabled={!ready} onClick={async () => {
+              setBusy(true); setError("");
+              try { await onPublish(note); } catch (err) { console.error(err); setBusy(false); setError("The update couldn't be published. Check your connection and try again."); }
+            }}>Publish update</Button>
+          </div>
+        </div>
+      }>
+      <p className="text-callout text-fg-muted">The story stays up. Readers see it marked as updated, with your note, and the change is kept in History.</p>
+      <Field label="What's new" className="mt-3" count={note.length} max={200} hint="For example: Adds a statement from the council. Fixing a mistake? Add a correction instead.">
+        <Input value={note} maxLength={200} autoFocus onChange={(e) => setNote(e.target.value)} placeholder="Adds police statement" />
+      </Field>
+      {all.length > 0 && (
+        <ul className="mt-3 space-y-1.5">{all.map((p) => <li key={p} className="flex gap-2 text-callout"><X size={16} className="mt-0.5 shrink-0 text-danger-text" aria-hidden="true" />{p}</li>)}</ul>
+      )}
+      {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">This story is marked as requiring legal review, so the update can't go out yet.</p>}
+      <LegalCheck story={story} checked={legalOk} onChange={setLegalOk} />
+    </Dialog>
+  );
+}
+
 function PublishDialog({ story, onClose, onPublish }) {
   const [attest, setAttest] = useState(false);
+  const [legalOk, setLegalOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const problems = reviewProblems(story);
   const words = checkContent(`${story.title}\n${story.standfirst}\n${story.blocks.map((b) => b.text).join("\n")}`, { key: "news", skipCooldown: true, allowQuoted: true });
   const all = words.error ? [...problems, words.error] : problems;
+  const legalBlocked = legalRisks(story).length > 0 && !legalOk;
   return (
     <Dialog title="Publish this story" onClose={busy ? undefined : onClose} size="md"
       footer={
@@ -514,7 +649,7 @@ function PublishDialog({ story, onClose, onPublish }) {
           <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} disabled={busy}>Keep editing</Button>
-            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest || story.legalHold} onClick={async () => {
+            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest || story.legalHold || legalBlocked} onClick={async () => {
               setBusy(true); setError("");
               try { await onPublish(); } catch (err) { console.error(err); setBusy(false); setError("The story could not be published. Check your connection and that the story has saved, then try again."); }
             }}>Publish</Button>
@@ -530,6 +665,7 @@ function PublishDialog({ story, onClose, onPublish }) {
         <p className="flex items-center gap-2 text-callout text-success-text"><Check size={16} aria-hidden="true" /> The headline, body, sources and citations are complete.</p>
       )}
       {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">This story is marked as requiring legal review. Clear that mark in the story details once the review is complete, then publish.</p>}
+      <LegalCheck story={story} checked={legalOk} onChange={setLegalOk} />
       <div className="mt-4 rounded-card border border-line bg-surface p-3">
         <Checkbox checked={attest} onChange={setAttest} description="Your confirmation is recorded with the story.">
           I confirm this story is accurate to the best of my knowledge, that its sources are cited, and that no image, footage, audio or quotation in it was generated or altered by AI to appear genuine.
@@ -571,7 +707,7 @@ function PreviewDialog({ story, onClose, title = "Preview" }) {
   return (
     <Dialog title={title} onClose={onClose} variant="full" size="xl">
       <article>
-        <p className="flex items-center gap-2 text-label"><TopicLabel id={story.topic} />{story.format === "live" && <Badge tone="danger" icon={Radio}>Live</Badge>}</p>
+        <p className="flex items-center gap-2 text-label"><KindBadge id={story.label} /><TopicLabel id={story.topic} />{story.format === "live" && <Badge tone="danger" icon={Radio}>Live</Badge>}</p>
         <h1 className="mt-2 font-display text-title-1">{story.title || "Untitled story"}</h1>
         {story.standfirst && <p className="mt-2 text-title-3 font-normal text-fg-muted">{story.standfirst}</p>}
         {story.coverUrl && <MediaImg src={story.coverUrl} alt="" className="mt-4 aspect-[16/9] w-full rounded-card object-cover" placeholderClass="mt-4 aspect-[16/9] w-full rounded-card" />}

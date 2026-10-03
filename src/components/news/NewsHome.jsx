@@ -4,7 +4,7 @@ import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
 import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
-import { Meta, TopicLabel } from "./parts";
+import { KindBadge, Meta, TopicLabel } from "./parts";
 import { AuthorLine } from "./Journalist";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
@@ -120,6 +120,7 @@ function LeadStory({ item }) {
         )}
         <span className="block p-5">
           <span className="flex flex-wrap items-center gap-2 text-label">
+            <KindBadge id={item.label} />
             <TopicLabel id={item.topic} />
             {item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}
             {item.location && <span className="inline-flex items-center gap-1 text-fg-subtle"><MapPin size={12} aria-hidden="true" />{item.location}</span>}
@@ -140,7 +141,7 @@ function StoryRow({ item }) {
       <button type="button" onClick={() => navigate(`/news/${item.id}`)}
         className="press group flex w-full gap-4 py-4 text-left">
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 text-label"><TopicLabel id={item.topic} />{item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}</span>
+          <span className="flex items-center gap-2 text-label"><KindBadge id={item.label} /><TopicLabel id={item.topic} />{item.live && <Badge tone="danger" icon={Radio}>Live</Badge>}</span>
           <h3 id={`row-${item.id}`} className="mt-1 line-clamp-2 text-title-3 group-hover:underline decoration-fg-subtle underline-offset-2">{item.title}</h3>
           <span className="mt-1 line-clamp-2 block text-callout text-fg-muted">{summaryOf(item)}</span>
           <span className="mt-2 block"><AuthorLine item={item} /></span>

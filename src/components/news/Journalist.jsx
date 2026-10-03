@@ -6,7 +6,7 @@ import { useLiveCard } from "../../lib/profileCache";
 import { openUserProfile, saveJournalist, toggleFollow, uploadMedia, me } from "../../lib/db";
 import { useShell } from "../shell/ShellContext";
 import { navigate } from "../../lib/router";
-import { Meta, TopicLabel } from "./parts";
+import { KindBadge, Meta, TopicLabel } from "./parts";
 import LiveAvatar from "../ui/LiveAvatar";
 import MediaImg from "../ui/MediaImg";
 import Badge from "../ui/Badge";
@@ -158,7 +158,7 @@ export function JournalistStories({ stories }) {
       {stories.map((s) => (
         <li key={s.id}>
           <button type="button" onClick={() => navigate(`/news/${s.id}`)} className="press group block w-full py-4 text-left">
-            <span className="block text-label"><TopicLabel id={s.topic} /></span>
+            <span className="flex items-center gap-2 text-label"><KindBadge id={s.label} /><TopicLabel id={s.topic} /></span>
             <span className="mt-1 line-clamp-2 block text-title-3 group-hover:underline decoration-fg-subtle underline-offset-2">{s.title}</span>
             <span className="mt-1.5 block"><Meta item={s} /></span>
           </button>

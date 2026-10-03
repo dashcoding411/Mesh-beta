@@ -1,4 +1,5 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { labelOf } from "../../lib/storyDoc";
 import { fullTime, isoTime, plural, shortTime } from "../../lib/format";
 import { newsTopicById } from "../../lib/interests";
 import { readMinutes } from "./text";
@@ -13,6 +14,13 @@ export function TopicLabel({ id, className = "" }) {
   );
 }
 
+/** Analysis, Explainer or Opinion (reports go unlabelled), so readers know what they're reading. */
+export function KindBadge({ id }) {
+  const kind = labelOf(id);
+  if (!kind || kind.id === "report") return null;
+  return <Badge tone={kind.id === "opinion" ? "warning" : "accent"}>{kind.label}</Badge>;
+}
+
 export function Meta({ item }) {
   const sources = (item.sources || []).length;
   return (
@@ -22,6 +30,7 @@ export function Meta({ item }) {
       <span>{plural(sources, "source")}</span>
       <span aria-hidden="true">·</span>
       <time dateTime={isoTime(item.createdAt)} title={fullTime(item.createdAt)}>{shortTime(item.createdAt)}</time>
+      {item.updateNoteAt && <Badge icon={RefreshCw}>Updated {shortTime(item.updateNoteAt)}</Badge>}
       {item.corrections?.length > 0 && <Badge tone="warning" icon={AlertTriangle}>Corrected</Badge>}
     </span>
   );

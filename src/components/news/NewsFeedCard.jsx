@@ -1,7 +1,7 @@
 import { Newspaper, Radio } from "lucide-react";
 import { navigate } from "../../lib/router";
 import { AuthorLine } from "./Journalist";
-import { Meta, TopicLabel } from "./parts";
+import { KindBadge, Meta, TopicLabel } from "./parts";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
 import MediaImg from "../ui/MediaImg";
@@ -22,6 +22,7 @@ export default function NewsFeedCard({ story }) {
         )}
         <span className="block px-4 pt-3">
           <span className="flex flex-wrap items-center gap-2 text-label">
+            <KindBadge id={story.label} />
             <TopicLabel id={story.topic} />
             {story.live && <Badge tone="danger" icon={Radio}>Live</Badge>}
           </span>

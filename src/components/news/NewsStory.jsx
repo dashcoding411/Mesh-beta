@@ -1,9 +1,9 @@
 import {
-  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, X, Radio,
+  AlertTriangle, ArrowLeft, Clock, Flag, Inbox, Link2, MapPin, Newspaper, PenLine, Share2, X, Radio, RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
-  addCorrection, deleteNews, fetchCorrectionRequests, fetchNewsStory, staffRole, me,
+  addCorrection, deleteNews, fetchCorrectionRequests, fetchNewsStory, staffRole, me, recordNewsRead,
   suggestCorrection, tsMillis,
 } from "../../lib/db";
 import { fullTime, isoTime, plural, shortTime } from "../../lib/format";
@@ -11,12 +11,13 @@ import { checkContent } from "../../lib/moderation";
 import { goBack, navigate } from "../../lib/router";
 import { usePageTitle } from "../../lib/usePageTitle";
 import { validateText } from "../../lib/validate";
+import { labelOf } from "../../lib/storyDoc";
 import HomeHeader from "../shell/HomeHeader";
 import { useShell } from "../shell/ShellContext";
 import { StoryBody } from "./StoryBody";
 import { LiveUpdates } from "./LiveUpdates";
 import { Byline } from "./Journalist";
-import { TopicLabel } from "./parts";
+import { KindBadge, TopicLabel } from "./parts";
 import { readMinutes, storyUrl } from "./text";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
@@ -45,6 +46,9 @@ export function NewsStory({ id }) {
   }, [id]);
   const mine = !!story && (story.authors || [story.authorId]).includes(me());
   useEffect(() => { (async () => { await load(); })(); }, [load]);
+  // Counts once per signed-in reader, so journalists see their real audience.
+  useEffect(() => { if (story) recordNewsRead(story).catch(() => {}); }, [story]);
+  const kind = labelOf(story?.label);
 
   const share = async () => {
     if (navigator.share) {
@@ -79,6 +83,7 @@ export function NewsStory({ id }) {
           {story && (
             <article aria-labelledby="story-title" className="mt-3">
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label">
+                <KindBadge id={story.label} />
                 <TopicLabel id={story.topic} />
                 {story.live && <Badge tone="danger" icon={Radio}>Live</Badge>}
                 {story.location && <span className="inline-flex items-center gap-1 text-fg-subtle"><MapPin size={12} aria-hidden="true" />{story.location}</span>}
@@ -94,7 +99,22 @@ export function NewsStory({ id }) {
                 <time dateTime={isoTime(story.createdAt)} title={fullTime(story.createdAt)}>{fullTime(story.createdAt)}</time>
                 <span aria-hidden="true">·</span>
                 <span>{readMinutes(story.script)} min read</span>
+                {mine && story.status === "approved" && (
+                  <><span aria-hidden="true">·</span><span>{plural(story.readCount || 0, "read")} (only you see this)</span></>
+                )}
               </div>
+              {story.updateNoteAt && (
+                <p className="mt-3 flex items-start gap-2 rounded-control border border-line bg-surface-2 p-3 text-caption">
+                  <RefreshCw size={14} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+                  <span>
+                    <strong className="font-semibold text-fg">Updated <time dateTime={isoTime(story.updateNoteAt)} title={fullTime(story.updateNoteAt)}>{fullTime(story.updateNoteAt)}</time>:</strong>{" "}
+                    <span className="text-fg-muted">{story.updateNote}</span>
+                  </span>
+                </p>
+              )}
+              {kind?.id === "opinion" && (
+                <p className="mt-3 text-caption text-fg-muted">This is opinion: the journalist's own view, not a news report.</p>
+              )}
 
               {story.status === "approved" ? (
                 <p className="mt-4 flex items-start gap-2 rounded-control bg-accent-soft p-3 text-caption text-fg-muted">
@@ -122,6 +142,9 @@ export function NewsStory({ id }) {
               )}
 
               <div className="mt-8 flex flex-wrap gap-2 border-t border-line pt-5">
+                {mine && story.status === "approved" && (
+                  <Button variant="primary" icon={RefreshCw} onClick={() => navigate(`/news/write/${id}?update=1`)}>Update story</Button>
+                )}
                 <Button icon={Share2} onClick={share}>Share</Button>
                 <Button icon={Link2} onClick={copy}>Copy link</Button>
                 {story.status === "approved" && (

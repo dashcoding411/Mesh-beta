@@ -39,7 +39,16 @@ export function blocksToDoc(blocks) {
   };
 }
 
-const FIELDS = ["title", "standfirst", "topic", "location", "coverUrl", "format", "legalHold", "legalNote"];
+const FIELDS = ["title", "standfirst", "topic", "location", "coverUrl", "format", "legalHold", "legalNote", "label"];
+
+/** What kind of piece it is, shown to readers. Commentary is fine; passing it off as reporting isn't. */
+export const STORY_LABELS = [
+  { id: "report", label: "Report", blurb: "What happened, from your reporting and sources" },
+  { id: "analysis", label: "Analysis", blurb: "What it means, explained by the reporter" },
+  { id: "explainer", label: "Explainer", blurb: "Background so readers can follow a story" },
+  { id: "opinion", label: "Opinion", blurb: "Your view. Readers see it's opinion" },
+];
+export const labelOf = (id) => STORY_LABELS.find((l) => l.id === id) || null;
 const LIST_FIELDS = ["keyPoints", "sources"];
 export const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const blockEq = (a, b) => !!a && !!b && a.type === b.type && a.text === b.text && a.media === b.media && a.alt === b.alt;
@@ -87,6 +96,19 @@ export function storyStats(story) {
   const cites = new Set();
   for (const b of story.blocks) for (const m of String(b.text || "").matchAll(CITE_RE)) cites.add(Number(m[1]));
   return { words, minutes: Math.max(1, Math.round(words / 220)), cited: [...cites].sort((a, b) => a - b) };
+}
+
+// Sentences that name someone next to an allegation, which is where
+// defamation risk sits. Attributed ones (a court, police, a charge) are
+// left out. A prompt to check, not a block.
+const ALLEGATION = /\b(fraud\w*|stole|steal\w*|theft|embezzl\w*|brib\w*|corrupt\w*|assault\w*|abus\w*|rape[ds]?|rapist|harass\w*|scam\w*|launder\w*|lied|liar|criminal|crook|cheat\w*|misconduct|negligen\w*|murder\w*|paedophil\w*|pedophil\w*|predator|traffick\w*|blackmail\w*|extort\w*|forg(?:ed|ery))\b/i;
+const NAMED = /\b[A-Z][\p{L}'’-]+(?:\s+(?:[A-Z][\p{L}'’-]+|de|van|von|bin|al))+\b/u;
+const ATTRIBUTED = /\b(allegedly|alleged|accused of|charged with|pleaded|convicted|sentenced|found guilty|court (heard|was told|found|documents?)|police (said|allege|say)|according to (court|police|the (charge|indictment|judgment)))\b/i;
+
+export function legalRisks(story) {
+  const text = [story.title, story.standfirst, ...story.blocks.map((b) => (b.type === "divider" ? "" : b.text))].join("\n");
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+  return sentences.filter((s) => ALLEGATION.test(s) && NAMED.test(s) && !ATTRIBUTED.test(s)).slice(0, 6);
 }
 
 /** User-facing problems blocking submission for review. */

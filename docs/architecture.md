@@ -391,6 +391,18 @@ story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
 
+Every story carries a `label` (Report, Analysis, Explainer or Opinion; reports
+go unlabelled to readers). A published story can be updated in place for
+developing news: the editor's update mode doesn't autosave, and "Publish
+update" writes the changes with an `updateNote` readers see as "Updated …",
+still held to the publishing bar, and records a revision. Mistakes are fixed
+with corrections instead. Before publishing or updating, `legalRisks` lists
+sentences naming someone next to an unattributed allegation and the
+journalist confirms they're attributed or checked. Pasting a draft splits it
+into paragraph blocks (`#` lines become headings). Each signed-in reader adds
+one read (`news/{id}/reads/{uid}` with `readCount`), shown only to the
+story's journalists on the story and the desk.
+
 The newsroom files stories like OneDrive (`news/Desk.jsx`, `lib/desk.js`):
 folders and subfolders with breadcrumbs, list or grid, multi-select, drag and
 drop, Move to, rename, and My stories / Recent / Shared with me views. Folders
