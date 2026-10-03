@@ -8,6 +8,7 @@ import Dialog from "./ui/Dialog";
 import Button from "./ui/Button";
 import { Field, Input, Textarea } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
+import LocationField from "./LocationField";
 import { useToast } from "./ui/toast-context";
 
 // Text-only edits: media and polls are immutable once posted.
@@ -101,7 +102,7 @@ export default function EditPostDialog({ post, onClose, onSaved }) {
         </Field>
         {post.kind !== "text" && (
           <Field label="Location" optional count={location.length} max={60}>
-            <Input value={location} maxLength={60} onChange={(e) => setLocation(e.target.value)} placeholder="Where was this?" />
+            <LocationField id="edit-location" value={location} onChange={setLocation} />
           </Field>
         )}
         {post.kind === "post" && (

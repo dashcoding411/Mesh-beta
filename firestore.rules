@@ -293,8 +293,10 @@ service cloud.firestore {
             'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'circleTopic',
             'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
             'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
-            'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl'
+            'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl', 'card'
           ])
+          // A short Strand's background (src/lib/strandCards.js).
+          && (!('card' in d) || (d.kind == 'text' && d.card in ['violet', 'blue', 'teal', 'rose', 'orange', 'slate', 'none']))
           && validTopics(d.get('topics', []))
           && (!('posterUrl' in d) || (d.kind in ['short', 'video'] && d.posterUrl is string
               && (d.posterUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')

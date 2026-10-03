@@ -94,7 +94,9 @@ on. The photo is cropped to what the viewfinder showed. On phones, adding to
 your story opens the camera first, and the preview offers "Your story" (one
 tap) or "Post" (into the composer with the capture attached). In the composer,
 location and photo descriptions stay folded until asked for; the share button
-sits bottom-right.
+sits bottom-right. Location searches real places as you type
+(`LocationField.jsx`, Photon on OpenStreetMap data, no key or cookies) and
+stores the picked name, or whatever was typed, up to 60 characters.
 
 A photo from the camera opens in `PhotoEditor.jsx` before it's used: text
 layers (colour, background pill, size, drag or arrow keys to move), zoom, pan,
@@ -183,8 +185,9 @@ Public posts from public circles (newest 40, `fetchCirclePosts`) join For
 you, labelled with the circle's name.
 
 To keep Home from reading like a text timeline: the feed choice is a menu
-rather than two tabs, short Strands (140 characters, no poll or GIF) show as
-colour cards, and the scroll is broken up by "Circles to join" (public circles
+rather than two tabs, short Strands (140 characters on one line, no poll or
+GIF) show on a background the author picks in the composer (`card`, one of
+`lib/strandCards.js` or "none"; older posts get one from their id), and the scroll is broken up by "Circles to join" (public circles
 sharing the viewer's interests, after the 4th post) and "People you may know"
 (the Search suggestions, after the 9th). Both rows are worked out once per
 visit.

@@ -22,6 +22,8 @@ import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import { Field, Input, Textarea, Checkbox } from "./ui/Field";
 import MentionTextarea from "./ui/MentionTextarea";
+import LocationField from "./LocationField";
+import { CARD_BACKGROUNDS, CARD_IDS, fitsCard } from "../lib/strandCards";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
@@ -113,6 +115,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [photos, setPhotos] = useState(() => (initialKind === "post" ? (initialFiles || []).map(photoEntry) : []));
   const [activePhoto, setActivePhoto] = useState(0);
   const [location, setLocation] = useState(d.location || "");
+  const [card, setCard] = useState(d.card || CARD_IDS[0]);
   const [ai, setAi] = useState(false);
   const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
   const [restored, setRestored] = useState(!!draft);
@@ -160,7 +163,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const picked = spec.media === "image" ? photos.length > 0 : !!file;
   const hasWords = !!(text.trim() || title.trim() || location.trim() || gif || poll?.options.some((o) => o.trim()));
   const finishDraft = useDraft(draftScope, hasWords ? {
-    kind, text, title, location, visibility, gif,
+    kind, text, title, location, visibility, gif, card,
     poll: kind === "text" ? poll : null,
     topics: topicsTouched ? topics : undefined,
   } : null);
@@ -323,6 +326,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         mediaType: spec.media === "image" ? photos[0].file.type : file ? file.type : "",
         media: slides,
         location: spec.media ? location : "",
+        card: kind === "text" && fitsCard({ text: clean, poll, gif }) ? card : "",
         duration,
         trailerStart: long ? trailerStart : 0,
         aiGenerated: spec.media ? ai : false,
@@ -516,6 +520,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                   <div aria-live="polite" className="mt-1.5"><InlineMessage>{errors.poll}</InlineMessage></div>
                 </div>
               )}
+              {fitsCard({ text, poll, gif }) && <CardPicker value={card} onChange={setCard} text={text} />}
               {!poll && !gif && (
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" icon={ChartBar} onClick={() => setPoll({ options: ["", ""], hours: 24 })}>Add a poll</Button>
@@ -547,11 +552,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
 
         {picked && spec.media && (showLocation || location) && (
           <Field label="Location" optional count={location.length} max={60}>
-            <div className="relative">
-              <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
-              <Input id="composer-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60}
-                placeholder="Where was this?" className="!pl-9" />
-            </div>
+            <LocationField id="composer-location" value={location} onChange={setLocation} />
           </Field>
         )}
 
@@ -746,6 +747,31 @@ function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd, onC
           <IconButton icon={ChevronRight} label="Move this photo later" size={16} disabled={active === photos.length - 1} onClick={() => onMove(active, 1)} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Background for a short Strand: one of the colours, or plain. Shows a live preview. */
+function CardPicker({ value, onChange, text }) {
+  const bg = CARD_BACKGROUNDS.find((c) => c.id === value);
+  return (
+    <div className="mt-3">
+      {bg && (
+        <div aria-hidden="true" className={`mb-2 flex min-h-[120px] items-center justify-center rounded-card bg-gradient-to-br px-5 py-6 text-center ${bg.className}`}>
+          <p className="font-display text-title-2 font-extrabold leading-tight text-white [overflow-wrap:anywhere]">{text}</p>
+        </div>
+      )}
+      <div role="radiogroup" aria-label="Background" className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-caption font-semibold text-fg-muted">Background</span>
+        {CARD_BACKGROUNDS.map((c) => (
+          <button key={c.id} type="button" role="radio" aria-checked={value === c.id} aria-label={c.label} onClick={() => onChange(c.id)}
+            className={`press h-8 w-8 rounded-full bg-gradient-to-br ${c.className} ${value === c.id ? "ring-2 ring-fg ring-offset-2 ring-offset-surface" : ""}`} />
+        ))}
+        <button type="button" role="radio" aria-checked={value === "none"} onClick={() => onChange("none")}
+          className={`press min-h-8 rounded-full border px-3 text-caption font-semibold ${value === "none" ? "border-fg bg-fg text-canvas" : "border-line-strong text-fg-muted"}`}>
+          None
+        </button>
+      </div>
     </div>
   );
 }

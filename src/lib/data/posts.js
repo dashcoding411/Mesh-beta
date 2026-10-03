@@ -41,7 +41,7 @@ export const MAX_SLIDES = 10;
 export async function createPost({
   kind, text, title, alt, mediaUrl, mediaPath, mediaType, groupId, visibility,
   duration = 0, trailerStart = 0, aiGenerated = false, topics = [], poll = null, gif = null, sensitive = false,
-  circleTopic = "", media = null, location = "", posterUrl = "",
+  circleTopic = "", media = null, location = "", posterUrl = "", card = "",
 }) {
   const user = auth.currentUser;
   const profile = await myProfile();
@@ -77,6 +77,8 @@ export async function createPost({
       media: media.slice(0, MAX_SLIDES).map((m) => ({ url: m.url, alt: (m.alt || "").slice(0, 500), w: Math.round(m.width || 0), h: Math.round(m.height || 0) })),
     } : {}),
     ...(location.trim() ? { location: location.trim().slice(0, 60) } : {}),
+    // A short Strand's background ("none" for plain text).
+    ...(kind === "text" && card ? { card } : {}),
     // Video thumbnail (a frame captured when posting).
     ...(posterUrl ? { posterUrl } : {}),
     ...(groupId && circleTopic ? { circleTopic: circleTopic.slice(0, 40) } : {}),

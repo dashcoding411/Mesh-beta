@@ -10,22 +10,17 @@ import MediaImg from "../ui/MediaImg";
 import Lightbox from "../ui/Lightbox";
 import { GifView } from "../GifPicker";
 import { PollCard } from "../Poll";
-
-// Short Strands become colour cards, like text posts on Instagram, so a feed
-// of words doesn't read like a timeline. Each keeps white text above 7:1.
-const CARD_COLORS = [
-  "from-violet-700 to-fuchsia-800", "from-blue-700 to-indigo-800", "from-teal-700 to-cyan-900",
-  "from-rose-700 to-pink-900", "from-orange-700 to-red-900", "from-slate-700 to-slate-900",
-];
-const cardColor = (id = "") => CARD_COLORS[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % CARD_COLORS.length];
+import { cardClassFor, fitsCard } from "../../lib/strandCards";
 
 export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged }) {
   const short = post.kind === "text" && post.text.length <= 140 && !post.text.includes("\n");
+  // Short Strands show on the background their author picked, like text posts on Instagram.
+  const card = post.kind === "text" && fitsCard(post) ? cardClassFor(post) : null;
 
-  if (post.kind === "text" && short && post.text && !post.poll && !post.gif) {
+  if (card) {
     return (
       <div className="px-4 pt-3" onDoubleClick={onDoubleTap}>
-        <div className={`relative flex min-h-[220px] items-center justify-center overflow-hidden rounded-card bg-gradient-to-br px-6 py-10 text-center ${cardColor(post.id)}`}>
+        <div className={`relative flex min-h-[220px] items-center justify-center overflow-hidden rounded-card bg-gradient-to-br px-6 py-10 text-center ${card}`}>
           <RichText text={post.text} highlight={highlight}
             className="font-display text-title-1 font-extrabold leading-tight text-white [overflow-wrap:anywhere] [&_a]:text-white [&_a]:decoration-white/60" />
           {burst && <Heart size={88} className="anim-heart pointer-events-none absolute text-white drop-shadow-lg" fill="currentColor" aria-hidden="true" />}

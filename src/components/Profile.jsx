@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake, History } from "lucide-react";
+import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake, History, Menu } from "lucide-react";
 import {
   fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, fetchIncomingSpouseRequests,
   respondSpouseRequest, isMinor, me, fetchMySpouseRequestStatus, updateProfileFields,
@@ -22,7 +22,7 @@ import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { hasPinkCheck } from "../lib/badges";
 
 export default function Profile() {
-  const { profile, setProfile, openComposer } = useShell();
+  const { profile, setProfile, openComposer, openDrawer } = useShell();
   const brick = useBrick();
   const feedLock = brick.state("feed");
   const toast = useToast();
@@ -86,6 +86,7 @@ export default function Profile() {
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${hasPinkCheck(profile.badges) ? "theme-pink bg-canvas" : ""}`}>
       <TopBar title={`@${profile.username}`}
+        left={<IconButton icon={Menu} label="Open Home sections" onClick={openDrawer} />}
         right={(
           <>
             <IconButton icon={History} label="Story archive" onClick={() => navigate("/account/archive")} />
