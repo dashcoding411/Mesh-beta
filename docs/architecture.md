@@ -330,7 +330,7 @@ sender doesn't see "Seen". Group members
 are added one write at a time so each add is vetted.
 
 Thoughts (`thoughts/{uid}`, 60 characters, 24 hours) sit above the inbox for
-mutual follows and 1:1 chats, each showing its time left. Friends can like one
+mutual follows and 1:1 chats; opening one shows its time left. Friends can like one
 (`thoughts/{uid}/likes/{liker}`, tied to that thought by `thoughtAt` so a new
 thought starts at zero; only the owner lists them) or reply, which sends a DM
 quoting it (`thoughtReply`, checked against the thought).

@@ -286,22 +286,20 @@ function ThoughtsRail({ chats }) {
             setEditing(true);
             if (mine) fetchThoughtLikes(mine).then(setLikes).catch(() => setLikes([]));
           }}
-            aria-label={mine ? `Your thought: ${mine.text}. ${timeLeft(thoughtLeft(mine, now))}. Edit or see likes` : "Share a thought"} className="press flex flex-col items-center">
+            aria-label={mine ? `Your thought: ${mine.text}. Edit or see likes` : "Share a thought"} className="press flex flex-col items-center">
             <span className="flex items-end justify-center" style={room}><Bubble muted={!mine}>{mine?.text || "Thought…"}</Bubble></span>
             <Avatar profile={profile} size={56} />
           </button>
           <span className="text-label text-fg-subtle">Your thought</span>
-          {mine && <span className="-mt-1 text-label text-fg-subtle tabular" aria-hidden="true">{timeLeft(thoughtLeft(mine, now))}</span>}
         </li>
         {thoughts.map((n) => (
           <li key={n.uid} className="flex w-[120px] shrink-0 flex-col items-center gap-1.5">
             <button type="button" onClick={() => setViewing(n)} className="press flex flex-col items-center"
-              aria-label={`@${n.username}'s thought: ${n.text}. ${timeLeft(thoughtLeft(n, now))}. Like or reply`}>
+              aria-label={`@${n.username}'s thought: ${n.text}. Like or reply`}>
               <span className="flex items-end justify-center" style={room}><Bubble>{n.text}</Bubble></span>
               <LiveAvatar uid={n.uid} profile={{ username: n.username }} size={56} />
             </button>
             <span className="w-full truncate text-center text-label text-fg-subtle">{n.username}</span>
-            <span className="-mt-1 text-label text-fg-subtle tabular" aria-hidden="true">{timeLeft(thoughtLeft(n, now))}</span>
           </li>
         ))}
       </ul>
@@ -312,7 +310,7 @@ function ThoughtsRail({ chats }) {
           {mine && (
             <div className="mb-4 rounded-control bg-surface-2 p-3">
               <p className="text-callout font-semibold">Your thought: "{mine.text}"</p>
-              <p className="mt-0.5 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(mine, now), true)}</p>
+              <p className="mt-0.5 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(mine, now))}</p>
               <p className="mt-2 flex items-start gap-1.5 text-caption text-fg-muted">
                 <Heart size={14} className="mt-0.5 shrink-0 text-like" aria-hidden="true" />
                 {likes === null ? "Loading likes…" : likes.length === 0 ? "No likes yet. Replies arrive in your messages."
@@ -346,13 +344,11 @@ function useNow() {
   return now;
 }
 
-/** "5h left", or "5h 12m" in full. */
-function timeLeft(ms, full = false) {
+/** "5h 12m" until a thought disappears. Shown when one is opened. */
+function timeLeft(ms) {
   const mins = Math.max(1, Math.round(ms / 60000));
   const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (full) return h ? `${h}h ${m}m` : `${m}m`;
-  return h ? `${h}h left` : `${m}m left`;
+  return h ? `${h}h ${mins % 60}m` : `${mins}m`;
 }
 
 /** A friend's thought: like it, or reply privately (it lands in your chat with them). */
@@ -394,7 +390,7 @@ function ThoughtSheet({ thought, now, onClose }) {
       <div className="flex flex-col items-center text-center">
         <LiveAvatar uid={thought.uid} profile={{ username: thought.username }} size={64} />
         <p className="mt-3 max-w-xs rounded-2xl border border-line-strong bg-surface-3 px-4 py-2.5 text-body text-fg [overflow-wrap:anywhere]">{thought.text}</p>
-        <p className="mt-2 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(thought, now), true)}</p>
+        <p className="mt-2 text-caption text-fg-subtle">Disappears in {timeLeft(thoughtLeft(thought, now))}</p>
         <button type="button" onClick={toggleLike} disabled={liked === null} aria-pressed={!!liked}
           aria-label={liked ? "Unlike thought" : `Like thought (only @${thought.username} sees)`}
           className="press mt-3 flex h-12 w-12 items-center justify-center rounded-full hover:bg-surface-2 disabled:opacity-50">
