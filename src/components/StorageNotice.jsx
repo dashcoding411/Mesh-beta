@@ -30,7 +30,7 @@ export default function StorageNotice({ onReadMore }) {
               <p className="mt-1 text-callout text-fg-muted">
                 Mesh only stores what it needs to work, like keeping you signed in. {optionalItems().length === 1
                   ? "Google's security check sets its own cookies, so it stays off unless you allow it."
-                  : "A few extras from other companies set their own cookies, so they stay off unless you allow them."} No ads, no analytics.
+                  : `Extras from other companies (${optionalItems().map((i) => i.label).join(", ")}) set their own cookies, so they stay off unless you allow them.`} No tracking ads, no analytics cookies.
               </p>
             </div>
           </div>

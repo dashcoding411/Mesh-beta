@@ -56,7 +56,7 @@ const GUEST_STEPS = [
     body: "Video with limits you set, news from verified journalists, and communities. Browsing is free." },
   { targets: ["search", "nav-search", "tab-search"], title: "Search", body: "Find people, posts, circles and news." },
   { targets: ["login"], title: "Make an account", body: "Log in or sign up to post, follow people and message." },
-  { title: "Enjoy Mesh", body: "No ad tracking, no data sold, and no endless scroll." },
+  { title: "Enjoy Mesh", body: "Ads never target what you do, your data is never sold, and the scroll ends." },
 ];
 
 function findTarget(keys = []) {

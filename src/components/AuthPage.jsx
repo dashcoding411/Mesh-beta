@@ -472,9 +472,9 @@ function Shell({ finishing = false, children }) {
             Posts, short and long video, communities and news that has to cite its sources, in one place.
           </p>
           <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-6 text-callout">
-            <div><dt className="text-fg-subtle">Ad tracking</dt><dd className="mt-0.5 font-semibold">None</dd></div>
+            <div><dt className="text-fg-subtle">Ads on what you do</dt><dd className="mt-0.5 font-semibold">Never</dd></div>
             <div><dt className="text-fg-subtle">Data sold</dt><dd className="mt-0.5 font-semibold">Never</dd></div>
-            <div><dt className="text-fg-subtle">Trackers</dt><dd className="mt-0.5 font-semibold">None</dd></div>
+            <div><dt className="text-fg-subtle">Extra cookies</dt><dd className="mt-0.5 font-semibold">Your choice</dd></div>
           </dl>
         </div>
       </div>

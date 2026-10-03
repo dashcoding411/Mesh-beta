@@ -52,7 +52,8 @@ export const PRIVACY = {
     {
       h: "What we do not do",
       p: [
-        "We do not sell your personal information, and we do not share it with advertisers. Mesh shows a few ads from local businesses, clubs and events in Home, always labelled \"Ad\" and never in Messages. An ad is matched only to the town on your profile, the interests you picked and whether you're 18 or over; never to what you do, read or watch on Mesh, and never to anything from other websites. Advertisers see totals (how many times their ad was seen and tapped), never who. There is no third-party ad tracking and there are no advertising cookies.",
+        "We do not sell your personal information, and we do not share it with advertisers. Mesh shows a few ads from local businesses, clubs and events in Home, always labelled \"Ad\" and never in Messages. An ad is matched only to the town on your profile, the interests you picked and whether you're 18 or over; never to what you do, read or watch on Mesh, and never to anything from other websites. Advertisers see totals (how many times their ad was seen and tapped), never who. There is no third-party ad tracking and there are no advertising cookies, unless you turn on Google ads (below).",
+        "Google ads are off unless you turn them on in your cookie choices, and only shown to people 18 and over. Then, when no local ad is booked for a space in Home, Google AdSense fills it. Google and its partners set cookies and see your IP address and browser to show, count and limit ads and to stop fraud. Mesh asks Google for ads that aren't personalised, and sends Google nothing about your account. How Google uses this: policies.google.com/technologies/partner-sites. Turn it off any time in Settings, under Cookies and storage.",
         "We do not use your private messages to train machine learning models.",
       ],
     },
@@ -252,12 +253,12 @@ export const COOKIES = {
   id: "cookies",
   title: DOCUMENT_TITLES.cookies,
   summary:
-    "Mesh uses browser storage to keep you signed in and to stop spam. There is no advertising or analytics tracking.",
+    "Mesh uses browser storage to keep you signed in and to stop spam. There is no advertising or analytics tracking unless you turn on Google ads.",
   sections: [
     {
       h: "The short version",
       p: [
-        "Mesh sets no advertising cookies and no analytics cookies. Visits are counted by Cloudflare Web Analytics, which uses no cookies and doesn't follow you to other websites. There is no third-party tracking on this site. Fonts are served from Mesh itself rather than a font service.",
+        "Mesh sets no advertising cookies and no analytics cookies of its own; Google's advertising cookies only arrive if you turn on Google ads. Visits are counted by Cloudflare Web Analytics, which uses no cookies and doesn't follow you to other websites. Unless you turn on Google ads, there is no third-party tracking on this site. Fonts are served from Mesh itself rather than a font service.",
         "Anything from another company that sets its own cookies, such as Google's reCAPTCHA security check, is off until you allow it. The first time you visit, Mesh asks: you can allow it, keep to essential storage only, or choose item by item. Ignoring or closing the question never counts as a yes.",
         "What we do store is the minimum needed to keep you signed in and to stop the same message being posted a hundred times a second.",
       ],
@@ -275,6 +276,7 @@ export const COOKIES = {
         ["Profile photo reminder", "One key per account, beginning 'mesh:photo-nudge:', remembering that you dismissed the reminder to add a profile photo. Kept on this device only."],
         ["Second looks", "One key, 'mesh:second-look', listing photo posts with several photos that you scrolled past without looking through, so next time they open on their second photo. It holds post ids and times only, for a week at most, and never leaves your device."],
         ["Drafts", "Keys beginning 'mesh:draft:' hold the words of a post or message you started but didn't send, so closing the composer or switching chats doesn't lose them. Photos and videos aren't kept. Kept on this device only, for a week at most, and deleted when you send, discard or sign out."],
+        ["Google ads (only if you allow it, 18 and over)", "Google AdSense fills ad spaces in Home that no local ad is booked for. Google and its partners set advertising cookies to show, count and limit ads and to stop fraud. Mesh requests ads that aren't personalised. See policies.google.com/technologies/partner-sites."],
         ["Google reCAPTCHA (only if you allow it)", "Loaded by Firebase App Check to tell real visitors from scripts, if you allow the security check. It also runs if you choose phone sign-in, because that's how the text message code is protected. Google sets its own cookies for this. It's a security measure: it isn't used for advertising, and Mesh receives only a pass or fail."],
       ],
     },
@@ -342,7 +344,7 @@ export const GUIDELINES = {
     {
       h: "What Mesh is for",
       p: [
-        "Mesh exists to make ordinary people's stories reachable without an advertising machine deciding which ones deserve an audience. We do not sell your attention, and we do not rank content by what pays best.",
+        "Mesh exists to make ordinary people's stories reachable without an advertising machine deciding which ones deserve an audience. A few labelled ads pay for the servers and moderators, but they never decide what you see: we don't rank content by what pays best, and nobody can pay to boost a post.",
       ],
     },
     {

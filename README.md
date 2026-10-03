@@ -1,7 +1,8 @@
 # Mesh
 
 A social app for photos, text posts, short and long video, communities,
-events, sourced news and messaging. No ads and no third-party tracking.
+events, sourced news and messaging. Ads are labelled and never target what people do;
+no third-party tracking without consent.
 
 React 19, Vite, Tailwind CSS, and Firebase (Auth, Firestore, Hosting, App
 Check). There is no application server: the client talks to Firestore

@@ -193,6 +193,7 @@ function AdEditor({ ad, onClose, onSaved }) {
           </Field>
           <div>
             <p className="mb-1.5 text-callout font-medium">Image <span className="font-normal text-fg-subtle">Optional</span></p>
+            <p className="mb-2 text-caption text-fg-subtle">Shown like a post's photo, cropped to 4:5 portrait. 1080 × 1350 works best.</p>
             <div className="flex gap-2">
               <label className="press inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 text-callout font-semibold">
                 <ImagePlus size={16} aria-hidden="true" /> {uploading ? "Uploading…" : form.imageUrl ? "Change" : "Add an image"}

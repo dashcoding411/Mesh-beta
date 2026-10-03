@@ -30,7 +30,7 @@ export function JoinDialog({ reason, onClose }) {
   return (
     <Dialog title="You need an account for that" onClose={onClose} variant="center" size="sm">
       <p className="text-callout text-fg-muted">
-        Browsing is open to everyone. To {reason}, log in or create an account. It&apos;s free, with no ads.
+        Browsing is open to everyone. To {reason}, log in or create an account. It&apos;s free.
       </p>
       <div className="mt-5">
         <AuthButtons onPick={onClose} />

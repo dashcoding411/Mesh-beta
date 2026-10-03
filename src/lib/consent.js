@@ -3,6 +3,7 @@
 // and stay off until someone says yes; nothing is assumed from browsing.
 import { useSyncExternalStore } from "react";
 import { gifsEnabled } from "./gifs";
+import { adsenseEnabled } from "./adsense";
 
 const KEY = "mesh:consent";
 const VERSION = 1;
@@ -19,6 +20,11 @@ export function optionalItems() {
       id: "giphy",
       label: "GIFs from GIPHY",
       body: "Searching and showing GIFs loads them from GIPHY, which sees your IP address and your search words.",
+    }] : []),
+    ...(adsenseEnabled ? [{
+      id: "googleads",
+      label: "Google ads",
+      body: "When no local ad is booked, some ad spaces in Home are filled by Google AdSense (18 and over only). Google and its partners set cookies and see your IP address and browser to show, count and limit ads and to stop fraud. Mesh asks for ads that aren't personalised.",
     }] : []),
   ];
 }

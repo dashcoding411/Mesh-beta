@@ -455,6 +455,13 @@ interests they picked and whether they're 18 or over. Signed-in views (once
 per ad per visit) and taps add one to totals; nothing records who. Links open
 through the usual leaving-Mesh check.
 
+Ad spaces with no local ad fall back to Google AdSense (`GoogleAdCard.jsx`,
+`lib/adsense.js`, unit settings in `.env`), but only for signed-in adults who
+turned on the "Google ads" cookie choice (off by default). The script loads
+only then, requests non-personalised ads, and a space Google leaves
+`unfilled` is removed. The CSP allows Google's ad domains; the site carries
+the AdSense ownership meta tag and `ads.txt`. Auto ads stay off.
+
 ## Edge (`cloudflare/edge`)
 
 Once joinmesh.social's DNS is on Cloudflare (proxied), a Worker in front of

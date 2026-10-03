@@ -21,6 +21,9 @@ import StoryRail from "./StoryRail";
 import CirclesToJoin from "./CirclesToJoin";
 import SuggestedPeople from "./SuggestedPeople";
 import AdCard from "./AdCard";
+import GoogleAdCard from "./GoogleAdCard";
+import { useConsent } from "../lib/consent";
+import { adsenseEnabled } from "../lib/adsense";
 import { PhotoNudge } from "./ProfilePhoto";
 
 const PAGE = 12;
@@ -47,6 +50,11 @@ export default function HomeFeed({ mode }) {
     });
     return () => { live = false; };
   }, [profile, interests, guest]);
+  // Google fills ad spaces only when no local ad is running, and only for
+  // signed-in adults who turned on "Google ads".
+  const consent = useConsent();
+  const adult = !guest && profile?.birthYear > 0 && new Date().getFullYear() - profile.birthYear >= 18;
+  const googleAds = adsenseEnabled && adult && !!consent?.googleads;
   const toast = useToast();
   const [chosen, setChosen] = useState(lastTopic);
   const topic = mode === "foryou" ? chosen : "all"; // topics narrow For you only
@@ -234,7 +242,9 @@ export default function HomeFeed({ mode }) {
                   {/* Breaks in the scroll so Home is about places and people, not just a timeline. */}
                   {i === 3 && mode === "foryou" && topic === "all" && <CirclesToJoin />}
                   {/* One ad after the 6th post, then every 10, taking turns. */}
-                  {i % 10 === 5 && ads.length > 0 && <AdCard ad={ads[Math.floor(i / 10) % ads.length]} />}
+                  {i % 10 === 5 && (ads.length > 0
+                    ? <AdCard ad={ads[Math.floor(i / 10) % ads.length]} />
+                    : googleAds && <GoogleAdCard />)}
                   {i === 8 && mode === "foryou" && topic === "all" && !guest && (
                     <SuggestedPeople title="People you may know" className="py-4 md:rounded-card md:border md:border-line md:bg-surface" />
                   )}
