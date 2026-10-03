@@ -225,6 +225,13 @@ to a frame from the file.
 
 ## Moderation (`lib/moderation.js`)
 
+Staff are admins (`admins/{uid}`, set in the console) and moderators
+(`moderators/{uid}`, appointed by staff from the Moderation page). Every staff
+power in the rules is `isStaff()`, so moderators can do everything admins can:
+reports, suspensions, removals, checks, journalists, news review and
+appointing moderators. Only the founder gives the pink check. A moderator
+account opens on the moderation queue instead of Home and can't create posts.
+
 `assessText` returns `block`, `borderline`, `quoted` or `ok`. Text is
 normalised (homoglyphs, accents, zero-width characters, leetspeak, stretching,
 separators) and each match is evaluated in its sentence for negation,
@@ -359,6 +366,11 @@ journalist can delete a draft from the desk or the editor.
 
 ## Comments
 
+Typing `@` in a comment or caption suggests people (`ui/MentionTextarea.jsx`):
+people in the thread first, then a username prefix search. Arrow keys move,
+Enter or Tab picks, Escape closes; the textarea points at the active option
+with `aria-activedescendant`.
+
 Threaded like Reddit: a reply stores `parentId`, which the rules require to
 exist, and its parent's author is notified (`reply`, verified against both
 comments). Threads nest four levels, then continue at that level naming who
@@ -378,6 +390,14 @@ comment's first hour so early likes don't sway later readers.
 
 24-hour media with DM replies (`storyReply`, verified against the story),
 author-only likes and views, and public echoes held to the comment rules.
+
+Stories aren't deleted when they expire. The author's archive
+(`StoryArchive.jsx`, `/account/archive`) lists them all; others stop seeing
+them in the rail after 24 hours. Highlights (`users/{uid}/highlights`) are
+named sets of up to 100 past stories with a cover, shown as circles on the
+profile. They're readable by whoever can see the account's follows and not by
+people it has blocked, and each story still checks its own audience when
+played. Viewers can't reply to past stories, so the reply bar is hidden.
 
 ## Media storage
 

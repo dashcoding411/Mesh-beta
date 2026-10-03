@@ -128,7 +128,11 @@ domain; `mesh-a293c.web.app` still serves the same site). The canonical link,
 share previews and sitemap use it (`index.html`, `scripts/prerender.mjs`,
 `public/robots.txt`). In-app links use the address the visitor is on. The
 domain must also be listed in Firebase Auth's authorized domains and on the
-App Check reCAPTCHA key.
+App Check reCAPTCHA key. Google's account picker shows the Auth domain
+(`mesh-a293c.firebaseapp.com`). To show joinmesh.social, add
+`https://joinmesh.social/__/auth/handler` as an authorized redirect URI on the
+project's OAuth web client in Google Cloud, then switch `AUTH_DOMAIN` in
+`src/firebase.js`.
 
 Cloud Storage requires the Blaze plan. Until it's enabled, photos are stored
 inline in Firestore (`media/{id}`) and video uploads are disabled. After

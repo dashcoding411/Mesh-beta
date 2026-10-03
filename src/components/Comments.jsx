@@ -24,7 +24,7 @@ import IconButton from "./ui/IconButton";
 import MediaImg from "./ui/MediaImg";
 import RichText from "./ui/RichText";
 import Segmented from "./ui/Segmented";
-import { Textarea } from "./ui/Field";
+import MentionTextarea from "./ui/MentionTextarea";
 import { Skeleton, EmptyState, ErrorState, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
@@ -39,6 +39,11 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const [reporting, setReporting] = useState(null);
   const [closedReason, setClosedReason] = useState("");
   const [comments, setComments] = useState(null);
+  // People in this thread, offered first when typing @.
+  const mentionable = [
+    { id: post.authorId, username: post.authorName, name: post.authorDisplayName, photoURL: post.authorPhoto },
+    ...(comments || []).map((c) => ({ id: c.authorId, username: c.authorName, name: c.authorDisplayName, photoURL: c.authorPhoto })),
+  ];
   const [liked, setLiked] = useState(new Set());
   const [sort, setSort] = useState("best");
   const [collapsed, setCollapsed] = useState(new Set());
@@ -223,11 +228,11 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
             <IconButton icon={ImagePlus} label="Add a photo" className="-ml-2 shrink-0" onClick={() => { warmUp(); fileInput.current?.click(); }} />
             {gifsEnabled && <IconButton icon={Sticker} label="Add a GIF" className="shrink-0" onClick={() => setPicking(true)} />}
             <label htmlFor="comment-box" className="sr-only">{replyTo ? `Reply to @${replyTo.authorName}` : "Add a comment"}</label>
-            <Textarea id="comment-box" ref={inputRef} autoGrow rows={1} maxRows={5} value={text}
+            <MentionTextarea id="comment-box" ref={inputRef} autoGrow rows={1} maxRows={5} value={text} suggest={mentionable} wrapperClassName="ml-1 min-w-0 flex-1"
               onChange={(e) => { setText(e.target.value); if (error) setError(""); }} onKeyDown={onKey}
               placeholder={replyTo ? `Reply to @${replyTo.authorName}…` : `Comment on @${post.authorName}'s post…`} maxLength={LIMITS.comment}
               aria-invalid={error ? "true" : undefined} aria-describedby={error ? "comment-error" : undefined}
-              className="ml-1 min-h-11" />
+              className="min-h-11" />
             <IconButton type="submit" icon={SendHorizontal} label={replyTo ? "Post reply" : "Post comment"} tone="primary"
               disabled={busy || (!text.trim() && !gif && !photo)} />
           </div>

@@ -3,7 +3,7 @@ import {
   ShieldCheck, BadgeCheck, Trash2, Check, Eye, EyeOff, ImageIcon, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
 } from "lucide-react";
 import {
-  isAdmin, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
+  staffRole, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
   fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername, setPostHidden,
 } from "../lib/db";
@@ -30,12 +30,15 @@ const TYPE = {
 
 // Reports are grouped per target, busiest first; decisions are recorded on each report.
 export default function Moderation() {
+  // Admin or moderator; null while checking.
   const [admin, setAdmin] = useState(null);
   const [tab, setTab] = useState("open");
   const [reports, setReports] = useState(null);
   const [error, setError] = useState(false);
 
-  useEffect(() => { isAdmin().then(setAdmin).catch(() => setAdmin(false)); }, []);
+  useEffect(() => {
+    staffRole().then((r) => setAdmin(!!r)).catch(() => setAdmin(false));
+  }, []);
 
   // The image sweep runs whenever a moderator opens this page.
   const [sweep, setSweep] = useState({ status: "idle", done: 0, total: 0, flagged: [] });
@@ -54,7 +57,7 @@ export default function Moderation() {
     setError(false);
     setReports(null);
     try {
-      setReports(tab === "suspended" || tab === "writers" || tab === "verified" || tab === "images" ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
+      setReports(["suspended", "writers", "verified", "images", "mods"].includes(tab) ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
         .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
     } catch (err) {
       console.error(err);
@@ -85,7 +88,7 @@ export default function Moderation() {
 
           {admin === null && <Skeleton className="h-24 !rounded-card" />}
           {admin === false && (
-            <EmptyState icon={ShieldCheck} title="Restricted to moderators"
+            <EmptyState icon={ShieldCheck} title="For Mesh moderators"
               body="This page is available to Mesh moderators only. To report content, use the Report option on the post, comment, message or profile." />
           )}
 
@@ -100,11 +103,12 @@ export default function Moderation() {
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" }, { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" },
-                  { id: "images", label: sweep.flagged.length ? `Images (${sweep.flagged.length})` : "Images" }]} />
+                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" },
+                  { id: "images", label: sweep.flagged.length ? `Images (${sweep.flagged.length})` : "Images" },
+                  { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" }, { id: "mods", label: "Moderators" }]} />
 
               {tab === "images" ? <ImageReview sweep={sweep} setSweep={setSweep} onRescan={runSweep} />
-                : tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
+                : tab === "mods" ? <Moderators /> : tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
@@ -455,7 +459,7 @@ function Verified() {
       toast({ title: `@${name} is verified`, body: "A purple tick now shows beside their name." });
       setHandle("");
       load();
-    } catch (err) { setError(err?.code === "permission-denied" ? "Only administrators can verify accounts." : err.message); }
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins and moderators can verify accounts." : err.message); }
     finally { setBusy(false); }
   };
   const remove = async (p) => {
@@ -497,6 +501,66 @@ function Verified() {
   );
 }
 
+/** Staff appoint moderator accounts, which can do everything admins can except give the pink check. */
+function Moderators() {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const [handle, setHandle] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetchModerators().then((l) => setList(l.sort((a, b) => a.username.localeCompare(b.username)))).catch(() => setList([]));
+  useEffect(() => { load(); }, []);
+  const add = async (e) => {
+    e.preventDefault();
+    const username = handle.trim().replace(/^@/, "").toLowerCase();
+    setBusy(true);
+    setError("");
+    try {
+      const uid = await uidForUsername(username);
+      if (!uid) throw new Error(`There's no account called @${username}.`);
+      await addModerator({ uid, username });
+      toast({ title: `@${username} is now a moderator`, body: "Mesh opens on the moderation queue for them." });
+      setHandle("");
+      load();
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins and moderators can add moderators." : err.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="space-y-4">
+      <p className="text-caption text-fg-muted">
+        Moderators can do everything admins can: review reports, suspend accounts, remove content, give checks, add journalists,
+        review news and appoint other moderators. Only the founder gives the pink check. Mesh opens on this page for them, and they
+        can't create posts.
+      </p>
+      <form onSubmit={add} className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <label htmlFor="mod-handle" className="sr-only">Handle</label>
+          <input id="mod-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+          <InlineMessage>{error}</InlineMessage>
+        </div>
+        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add moderator</Button>
+      </form>
+      {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
+        <EmptyState compact icon={ShieldCheck} title="No moderators yet" body="Add someone you trust by their handle." />
+      ) : (
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+          {list.map((m) => (
+            <li key={m.id} className="flex min-h-12 items-center gap-3 px-4">
+              <button type="button" onClick={() => openUserProfile(m.id)} className="min-w-0 flex-1 truncate text-left text-callout hover:underline">@{m.username}</button>
+              <span className="text-caption text-fg-subtle">since {shortTime(m.addedAt)}</span>
+              <Button size="sm" variant="ghost" onClick={async () => {
+                try { await removeModerator(m.id); setList((l) => l.filter((x) => x.id !== m.id)); toast({ title: `@${m.username} is no longer a moderator` }); }
+                catch { toast({ tone: "error", title: "The moderator could not be removed" }); }
+              }}>Remove</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function Writers() {
   const toast = useToast();
   const [list, setList] = useState(null);
@@ -514,7 +578,7 @@ function Writers() {
       toast({ title: `@${w.username} has been added as a journalist`, body: "They can now publish on Mesh News." });
       setHandle("");
       load();
-    } catch (err) { setError(err?.code === "permission-denied" ? "Only administrators can add journalists." : err.message); }
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins and moderators can add journalists." : err.message); }
     finally { setBusy(false); }
   };
   return (

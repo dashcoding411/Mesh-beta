@@ -25,7 +25,7 @@ function brickSummary(brick) {
 import {
   exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, isMinor, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, removeMyReposts, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile, isAdmin, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
+  fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
 } from "../lib/db";
 import Switch from "./ui/Switch";
 import Segmented from "./ui/Segmented";
@@ -46,18 +46,16 @@ import { useToast } from "./ui/toast-context";
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
 
 export default function Settings() {
-  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, muted } = useShell();
+  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, muted, role } = useShell();
   const consent = useConsent();
   const brick = useBrick();
   const [requests, setRequests] = useState(null);
   const [blockedList, setBlockedList] = useState(null);
-  const [admin, setAdmin] = useState(false);
 
   const [, setChecked] = useState(0);
   useEffect(() => {
     fetchFollowRequests().then(setRequests).catch(() => setRequests([]));
     fetchBlocked().then(setBlockedList).catch(() => setBlockedList([]));
-    isAdmin().then(setAdmin).catch(() => {});
     // Reload the auth user to pick up emailVerified after the link round-trip.
     if (auth.currentUser && !auth.currentUser.emailVerified) {
       auth.currentUser.reload().then(() => setChecked((n) => n + 1)).catch(() => {});
@@ -179,7 +177,7 @@ export default function Settings() {
             <Row icon={Compass} label="Take the tour" value="A quick look at where everything is in Mesh" onClick={replayTour} />
           </Group>
 
-          {admin && (
+          {role && (
             <Group title="Moderation">
               <Row icon={Gavel} label="Moderation queue" value="Review reports and suspensions" onClick={() => navigate("/account/moderation")} />
             </Group>

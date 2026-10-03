@@ -21,6 +21,7 @@ import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import { Field, Input, Textarea, Checkbox } from "./ui/Field";
+import MentionTextarea from "./ui/MentionTextarea";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
@@ -492,7 +493,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           kind === "text" ? (
             <div>
               <label htmlFor="composer-text" className="sr-only">Your Strand</label>
-              <Textarea id="composer-text" autoGrow rows={4} maxRows={14} value={text}
+              <MentionTextarea id="composer-text" autoGrow rows={4} maxRows={14} value={text}
                 onChange={(e) => { setText(e.target.value); if (errors.text) setErrors((x) => ({ ...x, text: "" })); }}
                 placeholder="What's on your mind?" maxLength={STRAND_MAX}
                 aria-invalid={errors.text ? "true" : undefined} aria-describedby="composer-text-meta"
@@ -524,7 +525,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             </div>
           ) : (
             <Field label={long ? "Description" : "Caption"} optional error={errors.text} count={text.length} max={LIMITS.text}>
-              <Textarea id="composer-text" autoGrow rows={3} maxRows={10} value={text}
+              <MentionTextarea id="composer-text" autoGrow rows={3} maxRows={10} value={text}
                 onChange={(e) => setText(e.target.value)} maxLength={LIMITS.text}
                 placeholder={long ? "What should people know before watching?" : "Say something about it…"} />
             </Field>

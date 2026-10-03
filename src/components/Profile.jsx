@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake } from "lucide-react";
+import { Settings, Link2, Grid3x3, Repeat2, Bookmark, Lock, Plus, Info, HeartHandshake, History } from "lucide-react";
 import {
   fetchPostsByAuthor, fetchRepostedPosts, fetchSavedPosts, fetchIncomingSpouseRequests,
   respondSpouseRequest, isMinor, me, fetchMySpouseRequestStatus, updateProfileFields,
@@ -8,6 +8,7 @@ import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
 import { EditableAvatar } from "./ProfilePhoto";
 import BrickHighlight from "./BrickHighlight";
+import Highlights from "./Highlights";
 import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import TopBar from "./shell/TopBar";
@@ -85,11 +86,17 @@ export default function Profile() {
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${hasPinkCheck(profile.badges) ? "theme-pink bg-canvas" : ""}`}>
       <TopBar title={`@${profile.username}`}
-        right={<IconButton icon={Settings} label="Settings" onClick={() => navigate("/account/settings")} />} />
+        right={(
+          <>
+            <IconButton icon={History} label="Story archive" onClick={() => navigate("/account/archive")} />
+            <IconButton icon={Settings} label="Settings" onClick={() => navigate("/account/settings")} />
+          </>
+        )} />
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] pb-10">
           <div className="hidden items-center justify-end gap-2 px-6 pt-4 md:flex">
+            <Button size="sm" variant="ghost" icon={History} onClick={() => navigate("/account/archive")}>Story archive</Button>
             <Button size="sm" variant="ghost" icon={Settings} onClick={() => navigate("/account/settings")}>Settings</Button>
           </div>
 
@@ -113,6 +120,7 @@ export default function Profile() {
               } />
           </div>
 
+          <Highlights profile={profile} own />
           <BrickHighlight uid={profile.id} own />
           {journalist && <JournalistCard uid={profile.id} journalist={journalist} stories={stories} onEdit={() => setEditingByline(true)} />}
           {isMinor(profile) && (

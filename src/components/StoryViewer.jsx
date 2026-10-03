@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Pause, Play, ChevronLeft, ChevronRight, Trash2, Heart, SendHorizontal, Waves, Eye } from "lucide-react";
+import { X, Pause, Play, ChevronLeft, ChevronRight, Trash2, Heart, SendHorizontal, Waves, Eye, Star, Pencil } from "lucide-react";
 import {
   deleteStory, me, hasLikedStory, likeStory, fetchStoryLikes, fetchStoryViews, markStoryViewed, fetchEchoes, addEcho, deleteEcho, replyToStory, storyExpired,
   ECHO_MAX, QUICK_REACTIONS,
@@ -15,11 +15,14 @@ import MediaImg from "./ui/MediaImg";
 import IconButton from "./ui/IconButton";
 import { useFocusTrap } from "../lib/useFocusTrap";
 
+const AddToHighlight = lazy(() => import("./Highlights").then((m) => ({ default: m.AddToHighlight })));
+
 const IMAGE_MS = 5000;
 
 // Auto-advance is pausable (WCAG 2.2.2) via button, press-and-hold, space.
 // Viewers can reply (DM), react, like and echo; authors see activity.
-export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null, startAt = 0 }) {
+// `highlight` plays a profile highlight; its owner can jump to editing it.
+export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null, startAt = 0, highlight = null, onEditHighlight }) {
   const trap = useFocusTrap();
   const toast = useToast();
   const { hiddenAuthors, hiddenWords } = useShell();
@@ -31,6 +34,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const [typing, setTyping] = useState(false);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [adding, setAdding] = useState(false);
   // Per-story { liked, echoes, likes, views }
   const [meta, setMeta] = useState({});
   const closeRef = useRef(null);
@@ -39,7 +43,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const mine = item.authorId === me();
   const info = meta[item.id] || {};
   const patch = (id, p) => setMeta((m) => ({ ...m, [id]: { ...m[id], ...p } }));
-  const held = paused || confirming || !!panel || typing;
+  const held = paused || confirming || !!panel || typing || adding;
 
   const next = () => {
     if (idx + 1 < thread.items.length) setIdx(idx + 1);
@@ -124,6 +128,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 
   useEffect(() => {
     const onKey = (e) => {
+      if (adding) return; // the dialog in front handles its own keys
       if (e.key === "Escape") { if (panel) setPanel(null); else onClose(); return; }
       // Don't hijack keys while typing.
       if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName) || panel) return;
@@ -134,7 +139,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, thread, panel]);
+  }, [idx, thread, panel, adding]);
 
   const echoes = (info.echoes || []).filter((e) => !hiddenAuthors.has(e.authorId) && !hitsHiddenWords(e.text, hiddenWords));
   // Views merged with likes (likes can predate view tracking).
@@ -168,10 +173,12 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
         <div className="absolute inset-x-2 top-6 z-10 flex items-center gap-2 pt-safe">
           <LiveAvatar uid={thread.authorId} profile={{ username: thread.authorName, photoURL: thread.authorPhoto }} size={32} />
           <p className="min-w-0 flex-1 text-callout font-semibold text-white drop-shadow">
-            {thread.authorName} <span className="font-normal text-white/75">{shortTime(item.createdAt)}</span>
+            {thread.authorName} <span className="font-normal text-white/75">{highlight ? `${highlight.title} · ` : ""}{shortTime(item.createdAt)}</span>
           </p>
           <IconButton icon={held ? Play : Pause} label={held ? "Play story" : "Pause story"} tone="overlay"
             onClick={() => { if (held) { setPaused(false); setPanel(null); } else setPaused(true); }} />
+          {mine && <IconButton icon={Star} label="Add to a highlight" tone="overlay" onClick={() => setAdding(true)} />}
+          {mine && onEditHighlight && <IconButton icon={Pencil} label="Edit this highlight" tone="overlay" onClick={onEditHighlight} />}
           {mine && (
             <IconButton icon={Trash2} label="Delete this story" tone="overlay"
               onClick={() => setConfirming(true)} />
@@ -198,7 +205,8 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
           <ChevronRight size={32} aria-hidden="true" />
         </button>
 
-        {!panel && !confirming && (
+        {/* Past stories (highlights) can't be replied to, so viewers get no reply bar. */}
+        {!panel && !confirming && (mine || !expired) && (
           <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-10">
             {mine ? (
               <button type="button" onClick={() => setPanel("activity")}
@@ -257,6 +265,12 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
           <StoryPanel panel={panel} setPanel={setPanel} story={item} mine={mine} expired={expired}
             echoes={echoes} viewers={viewers} authorName={thread.authorName} startTab={startTab}
             onEchoes={(list) => patch(item.id, { echoes: list })} rawEchoes={info.echoes || []} />
+        )}
+
+        {adding && (
+          <Suspense fallback={null}>
+            <AddToHighlight story={item} ownerId={thread.authorId} onClose={() => setAdding(false)} />
+          </Suspense>
         )}
 
         {confirming && (

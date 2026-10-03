@@ -16,3 +16,5 @@ export * from "./data/brick.js";
 export * from "./data/brickStats.js";
 export * from "./data/brickGroups.js";
 export * from "./data/account.js";
+export * from "./data/staff.js";
+export * from "./data/highlights.js";

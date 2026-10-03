@@ -5,10 +5,17 @@ import { initializeFirestore } from "firebase/firestore";
 import { isNativeApp } from "./lib/native";
 import { allowed, onConsent } from "./lib/consent";
 
+// Google's account picker names this domain. To show joinmesh.social, add
+// https://joinmesh.social/__/auth/handler as a redirect URI on the project's
+// OAuth web client in Google Cloud, then use "joinmesh.social" here when
+// location.hostname is joinmesh.social. Until then it must stay as is, or
+// Google sign-in fails with redirect_uri_mismatch.
+const AUTH_DOMAIN = "mesh-a293c.firebaseapp.com";
+
 // Public client config; access control is in firestore.rules and storage.rules.
 const firebaseConfig = {
   apiKey: "AIzaSyAjbyWWaYdJSdX4m3hTYcuhiroD_RHDiGI",
-  authDomain: "mesh-a293c.firebaseapp.com",
+  authDomain: AUTH_DOMAIN,
   projectId: "mesh-a293c",
   storageBucket: "mesh-a293c.firebasestorage.app",
   messagingSenderId: "173524995677",

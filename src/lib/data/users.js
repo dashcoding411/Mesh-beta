@@ -253,7 +253,7 @@ export async function setPinkCheck(uid, on) {
   await batch.commit();
 }
 
-/** Admins only (the rules check). */
+/** Admins and moderators only (the rules check). */
 export async function setBadge(uid, badge, on) {
   await updateDoc(doc(db, "users", uid), { badges: on ? arrayUnion(badge) : arrayRemove(badge) });
 }

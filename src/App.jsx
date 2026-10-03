@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
@@ -52,6 +52,7 @@ const Leaderboard = lazy(() => import("./components/Leaderboard"));
 const PublicGathering = lazy(() => import("./components/PublicGathering"));
 const Legal = lazy(() => import("./components/Legal"));
 const Moderation = lazy(() => import("./components/Moderation"));
+const StoryArchive = lazy(() => import("./components/StoryArchive"));
 const NotFound = lazy(() => import("./components/NotFound"));
 const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
@@ -93,7 +94,7 @@ function sectionTitle(page, query) {
   if (page.tab === "auth") return page.mode === "signup" ? "Sign up" : "Log in";
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
-  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode" }[page.view] || "Your profile";
+  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode", archive: "Story archive" }[page.view] || "Your profile";
   if (page.section === "search" && query?.get("q")) return `${query.get("q").slice(0, 40)} · Search`;
   if (page.section === "circles" && page.gatheringId) return "Gatherings";
   return SECTION_TITLES[page.section] ?? null;
@@ -179,6 +180,14 @@ export default function App() {
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
   const brick = useBrickEngine(signedIn);
+  // Moderator accounts only moderate: Home is the queue and they don't post.
+  const [role, setRole] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (signedIn) staffRole().then((r) => { if (live) setRole(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [signedIn]);
+  const modOnly = signedIn && role === "moderator";
 
   const [notices, setNotices] = useState(null);
   useEffect(() => {
@@ -257,7 +266,10 @@ export default function App() {
     setIncoming((l) => l.filter((c) => c.id !== inc.id));
     await refuseCall(inc.id, "declined");
   };
-  const openComposer = useCallback((opts = {}) => { if (!needsAccount("post")) setComposer(opts); }, [needsAccount]);
+  const openComposer = useCallback((opts = {}) => {
+    if (modOnly) return toast({ title: "Moderator accounts don't post", body: "Use your personal account to share things." });
+    if (!needsAccount("post")) setComposer(opts);
+  }, [needsAccount, modOnly, toast]);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const openInterests = useCallback(() => setInterestsDialog("edit"), []);
@@ -278,10 +290,10 @@ export default function App() {
   }, [saveMute, toast]);
   const hiddenAuthors = useMemo(() => new Set([...blocked, ...muted]), [blocked, muted]);
   const shell = useMemo(() => ({
-    profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey,
+    profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey, role, modOnly,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount,
-  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, interests, openInterests, startCall, call, hiddenWords, hideAi,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, modOnly, interests, openInterests, startCall, call, hiddenWords, hideAi,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount]);
 
   const { page, overlay, bgQuery } = resolve(loc);
@@ -331,7 +343,7 @@ export default function App() {
       case "saved": content = <Saved />; break;
       case "notifications": content = <Notifications />; break;
       case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
-      default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
+      default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
     content = <Messages chatId={page.id} />;
@@ -341,6 +353,8 @@ export default function App() {
     content = <BrickSettings />;
   } else if (page.view === "moderation") {
     content = <Moderation />;
+  } else if (page.view === "archive") {
+    content = <StoryArchive />;
   } else if (page.view === "legal") {
     content = <Legal key={page.doc} doc={page.doc} />;
   } else {

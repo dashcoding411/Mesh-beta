@@ -5,7 +5,7 @@ import {
 import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
-  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, isAdmin, setBadge, setPinkCheck, me,
+  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, staffRole, setBadge, setPinkCheck, me,
   uidForUsername, cachedUidFor,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
@@ -21,6 +21,7 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import BrickHighlight from "./BrickHighlight";
+import Highlights from "./Highlights";
 import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
@@ -94,7 +95,7 @@ function ProfileView({ uid }) {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
     if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
-    if (!guest) isAdmin().then((a) => { if (!cancelled) setAdmin(a); }).catch(() => {});
+    if (!guest) staffRole().then((r) => { if (!cancelled) setAdmin(!!r); }).catch(() => {});
     fetchPostsByAuthor(uid, { follower: following.has(uid) })
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
@@ -184,7 +185,7 @@ function ProfileView({ uid }) {
       primeCard(uid, { ...profile, badges }); // so their posts and comments update now
       toast({ title: on ? (badge === "verified" ? `@${profile.username} is verified` : `@${profile.username} is a beta tester`) : badge === "verified" ? "Verification removed" : "Badge removed" });
     } catch {
-      toast({ tone: "error", title: "Couldn't change the badge", body: "Check that your account is in the admins collection." });
+      toast({ tone: "error", title: "Couldn't change the badge", body: "Only Mesh admins and moderators can do this." });
     }
   };
 
@@ -252,6 +253,7 @@ function ProfileView({ uid }) {
                 </>
               )} />
 
+            {!isBlocked && !locked && !guest && <Highlights profile={profile} />}
             {!isBlocked && <BrickHighlight uid={uid} />}
             {!isBlocked && journalist && <JournalistCard uid={uid} journalist={journalist} stories={stories} />}
             {isMuted && !isBlocked && (
@@ -321,11 +323,11 @@ function ProfileView({ uid }) {
           {admin && (
             <MenuGroup>
               <MenuItem icon={BadgeCheck} onClick={() => toggleBadge("verified")}
-                description="Admins only. A purple tick by their name everywhere">
+                description="Staff only. A purple tick by their name everywhere">
                 {profile.badges?.includes("verified") ? "Remove verification" : `Verify @${profile.username}`}
               </MenuItem>
               {!betaByJoinDate(profile) && (
-                <MenuItem icon={FlaskConical} onClick={() => toggleBadge("beta")} description="Admins only. Shows on their profile and posts">
+                <MenuItem icon={FlaskConical} onClick={() => toggleBadge("beta")} description="Staff only. Shows on their profile and posts">
                   {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}
                 </MenuItem>
               )}
