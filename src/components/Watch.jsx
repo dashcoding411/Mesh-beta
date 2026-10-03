@@ -239,7 +239,7 @@ export default function Watch({ postId }) {
                 <time title={fullTime(post.createdAt)}>{shortTime(post.createdAt)}</time>
                 {post.editedAt && <span title={`Edited ${fullTime(post.editedAt)}`}>· Edited</span>}
                 {post.duration > 0 && <span>· {spokenDuration(post.duration)}</span>}
-                {post.aiGenerated && <Badge icon={WandSparkles}>Made with AI</Badge>}
+                {post.aiGenerated && <Badge icon={WandSparkles}>Edited with AI</Badge>}
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">

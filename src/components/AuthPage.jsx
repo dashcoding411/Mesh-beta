@@ -7,7 +7,8 @@ import {
 } from "../lib/auth";
 import { validateUsername, validBirthYear } from "../lib/validate";
 import { checkName } from "../lib/moderation";
-import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile } from "../lib/db";
+import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile, saveOwnLimits } from "../lib/db";
+import { emptyLayer } from "../lib/brick";
 import { Eye, EyeOff, AlertTriangle, Check, ArrowLeft, Loader2 } from "lucide-react";
 import { authPath, goBack, navigate } from "../lib/router";
 import { LogoMark } from "./shell/Sidebar";
@@ -333,9 +334,11 @@ function FinishProfile({ user, onCreated }) {
   const [handleState, setHandleState] = useState({ for: "", ok: false, message: "" });
   const [birthYear, setBirthYear] = useState("");
   const [consent, setConsent] = useState(false);
+  // Minutes a day for Home and Flicks; 0 is no limit. Nothing is forced.
+  const [limit, setLimit] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const ids = { name: useId(), handle: useId(), year: useId(), consent: useId() };
+  const ids = { name: useId(), handle: useId(), year: useId(), consent: useId(), limit: useId() };
 
   const changeName = (v) => {
     setDisplayName(v);
@@ -377,6 +380,12 @@ function FinishProfile({ user, onCreated }) {
     try {
       if (await usernameTaken(v.username)) throw new Error("That handle is taken. Try another.");
       await claimUsernameAndCreateProfile(user, v.username, year.year, displayName.trim());
+      if (limit) {
+        const layer = emptyLayer();
+        layer.caps = { ...layer.caps, feed: limit, flicks: limit };
+        // Best effort: it can be set in Brick mode if this fails.
+        await saveOwnLimits(null, null, layer).catch(() => {});
+      }
       onCreated();
     } catch (err) {
       setError(err?.code === "permission-denied"
@@ -417,6 +426,21 @@ function FinishProfile({ user, onCreated }) {
         <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
           value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2001" />
       </Field>
+      <fieldset>
+        <legend id={ids.limit} className="mb-1.5 block text-callout font-medium text-fg">How long do you want Mesh each day?</legend>
+        <div role="radiogroup" aria-labelledby={ids.limit} className="grid grid-cols-4 gap-2">
+          {[[30, "30 min"], [45, "45 min"], [60, "1 hr"], [0, "No limit"]].map(([m, label]) => (
+            <button key={m} type="button" role="radio" aria-checked={limit === m} onClick={() => setLimit(m)}
+              className={`press min-h-11 rounded-control border px-1 text-callout font-semibold ${limit === m ? "border-accent bg-accent-soft text-fg" : "border-field bg-surface-2 text-fg-muted hover:text-fg"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-caption text-fg-subtle">
+          {limit ? "Home and Flicks lock at that point until midnight. Raising it later takes 24 hours. Messages never lock."
+            : "Optional. Home and Flicks lock once you hit it, until midnight. You can set it any time in Brick mode."}
+        </p>
+      </fieldset>
       <div className="flex items-start gap-3 py-1">
         <input id={ids.consent} type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
           className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />

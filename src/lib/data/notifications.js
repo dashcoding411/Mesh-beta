@@ -23,6 +23,7 @@ export function noticeId(type, { actor, postId = "", commentId = "", ref = "" })
     case "joined": return `joined_${ref}`;
     case "storylike": return `storylike_${ref}_${actor}`;
     case "echo": return `echo_${commentId}`;
+    case "appeal": return `appeal_${ref}`;
     default: return `${type}_${actor}`;
   }
 }

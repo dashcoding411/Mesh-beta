@@ -364,7 +364,7 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
             </button>
             {post.aiGenerated && (
               <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-label font-semibold text-white">
-                <WandSparkles size={12} aria-hidden="true" /> Made with AI
+                <WandSparkles size={12} aria-hidden="true" /> Edited with AI
               </span>
             )}
             {post.text && (

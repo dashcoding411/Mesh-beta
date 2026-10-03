@@ -395,6 +395,35 @@ export function blockMessage(category) {
   return BLOCK_MESSAGES[category] || BLOCK_MESSAGES.dehumanising;
 }
 
+/** The published rule each block names. */
+export const RULE_NAMES = {
+  slur: "Slurs",
+  dehumanising: "Dehumanising a group",
+  violence: "Calls for violence",
+  exclusion: "Shutting a group out",
+  hatred: "Hatred of a group",
+  xenophobia: "Telling people they don't belong",
+  conspiracy: "Conspiracy theories about a group",
+  threat: "Threats",
+  harassment: "Telling someone to hurt themselves",
+};
+
+// Appeals. Each block is remembered by its message so the message can offer
+// an appeal for exactly what was blocked (ui/States InlineMessage). Text a
+// person overturned on appeal is let through for its author.
+const recentBlocks = new Map();
+const overturned = new Set();
+const appealKey = (text) => String(text || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** What a block message was for: { text, rule, where }, or null. */
+export const blockFor = (message) => recentBlocks.get(message) || null;
+
+/** Texts this account won on appeal (loaded at sign-in). */
+export function allowOverturned(texts) {
+  overturned.clear();
+  for (const t of texts) overturned.add(appealKey(t));
+}
+
 export const BORDERLINE_NOTE =
   "This might come across as mocking a group. You can still post it, but Mesh won't recommend it to people who don't follow you.";
 
@@ -466,9 +495,17 @@ export function duplicateOfLast(text, key = "post") {
  * checks (private messages).
  */
 export function checkContent(text, { key = "post", skipCooldown = false, allowQuoted = false, hate = true } = {}) {
-  const verdict = hate ? assessText(text) : { level: "ok" };
+  let verdict = hate ? assessText(text) : { level: "ok" };
+  // Overturned on appeal: it posts. A slur still goes behind a warning (the
+  // server only accepts slurs on posts flagged sensitive).
+  if ((verdict.level === "block" || verdict.level === "quoted") && overturned.has(appealKey(text))) {
+    verdict = verdict.category === "slur" ? { level: "quoted", category: "slur" } : { level: "ok" };
+    allowQuoted = true;
+  }
   if (verdict.level === "block" || (verdict.level === "quoted" && !allowQuoted)) {
-    return { error: blockMessage(verdict.category), category: verdict.category };
+    const error = blockMessage(verdict.category);
+    recentBlocks.set(error, { text: String(text).trim(), rule: verdict.category || "dehumanising", where: key });
+    return { error, category: verdict.category };
   }
   const spam = looksLikeSpam(text);
   if (spam) return { error: spam };

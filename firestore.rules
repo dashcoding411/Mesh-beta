@@ -233,7 +233,14 @@ service cloud.firestore {
         || (n.type == 'reply' && replyNotice(uid, id, n, actor))
         || familyNotice(uid, id, n, actor)
         || inviteNotice(uid, id, n, actor)
-        || storyNotice(uid, id, n, actor);
+        || storyNotice(uid, id, n, actor)
+        || appealNotice(uid, id, n);
+    }
+    // Staff telling someone how their appeal went (`ref` is the appeal, `text` the outcome).
+    function appealNotice(uid, id, n) {
+      let appeal = get(/databases/$(database)/documents/appeals/$(n.ref)).data;
+      return n.type == 'appeal' && id == 'appeal_' + n.ref && isStaff()
+        && appeal.uid == uid && appeal.status in ['upheld', 'overturned'] && n.text == appeal.status;
     }
     // A reply to `uid`'s comment.
     function replyNotice(uid, id, n, actor) {
@@ -648,6 +655,29 @@ service cloud.firestore {
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt', 'action'])
         && incomingData().status in ['open', 'actioned', 'dismissed'];
       allow delete: if isStaff();
+    }
+
+    // Appeals: anyone whose post was blocked can ask a person to look again.
+    // Only they and staff can read it; staff decide, and the decision stands.
+    match /appeals/{appealId} {
+      allow get: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow list: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly(['uid', 'username', 'text', 'rule', 'where', 'note', 'status', 'createdAt'])
+        && incomingData().uid == request.auth.uid
+        && isMyName(incomingData().username)
+        && incomingData().text is string && incomingData().text.size() >= 1 && incomingData().text.size() <= 5000
+        && incomingData().rule in ['slur', 'dehumanising', 'violence', 'exclusion', 'hatred', 'xenophobia', 'conspiracy', 'threat', 'harassment']
+        && incomingData().where is string && incomingData().where.size() <= 40
+        && incomingData().note is string && incomingData().note.size() <= 500
+        && incomingData().status == 'open'
+        && incomingData().createdAt == request.time;
+      allow update: if isStaff()
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'decision', 'reviewedBy', 'reviewedAt'])
+        && incomingData().status in ['upheld', 'overturned']
+        && incomingData().decision is string && incomingData().decision.size() <= 500
+        && incomingData().reviewedAt == request.time;
+      allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'open');
     }
 
     // Suspension reasons: owner and moderators only (suspendedUntil is on the profile).

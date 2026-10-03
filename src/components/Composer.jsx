@@ -11,7 +11,7 @@ import { suggestTopics, MAX_POST_TOPICS, interestById } from "../lib/interests";
 import { gifsEnabled } from "../lib/gifs";
 import { readDraft, useDraft } from "../lib/drafts";
 import { cameraSupported } from "../lib/cameras";
-import { checkFile, warmUp, UNSAFE_PHOTO, UNSAFE_VIDEO } from "../lib/imageCheck";
+import { checkFile, warmUp, UNSAFE_PHOTO, UNSAFE_VIDEO, AI_GENERATED } from "../lib/imageCheck";
 import { InterestToggles } from "./Interests";
 import GifPicker, { GifView } from "./GifPicker";
 import { PollBuilder } from "./Poll";
@@ -23,6 +23,7 @@ import IconButton from "./ui/IconButton";
 import { Field, Input, Textarea, Checkbox } from "./ui/Field";
 import MentionTextarea from "./ui/MentionTextarea";
 import LocationField from "./LocationField";
+import { aiMarker } from "../lib/aiMarkers";
 import { CARD_BACKGROUNDS, CARD_IDS, fitsCard } from "../lib/strandCards";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
@@ -117,6 +118,8 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [location, setLocation] = useState(d.location || "");
   const [card, setCard] = useState(d.card || CARD_IDS[0]);
   const [ai, setAi] = useState(false);
+  // Set when a picked file's own metadata says AI edited it.
+  const [aiFound, setAiFound] = useState(false);
   const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
   const [restored, setRestored] = useState(!!draft);
   const [file, setFile] = useState(() => (initialKind === "video" ? initialFiles?.[0] || null : null));
@@ -161,6 +164,16 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   // Unfold a detail and put the cursor in it.
   const reveal = (show, id) => { show(true); requestAnimationFrame(() => document.getElementById(id)?.focus()); };
   const picked = spec.media === "image" ? photos.length > 0 : !!file;
+  // AI-edited files get the label automatically (generated ones are refused at upload).
+  const pickedFiles = spec.media === "image" ? photos.map((p) => p.file) : file ? [file] : [];
+  const pickedKey = pickedFiles.map((f) => `${f.name}:${f.size}`).join("|");
+  useEffect(() => {
+    let live = true;
+    Promise.all(pickedFiles.map(aiMarker))
+      .then((marks) => { if (live) { const found = marks.includes("edited"); setAiFound(found); if (found) setAi(true); } });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedKey]);
   const hasWords = !!(text.trim() || title.trim() || location.trim() || gif || poll?.options.some((o) => o.trim()));
   const finishDraft = useDraft(draftScope, hasWords ? {
     kind, text, title, location, visibility, gif, card,
@@ -206,18 +219,20 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setPhotos((list) => [...list, ...fresh]);
     screen(fresh);
   };
-  // Each photo is checked on the device as it's added; one that fails comes
-  // straight back out. (Uploading checks again, in case this was skipped.)
+  // Each photo is checked on the device as it's added (nudity, and files
+  // that say an AI made them); one that fails comes straight back out.
+  // (Uploading checks again, in case this was skipped.)
   const screen = (entries) => {
     setChecking((n) => n + entries.length);
     for (const entry of entries) {
-      checkFile(entry.file)
+      aiMarker(entry.file)
+        .then(async (mark) => (mark === "generated" ? "ai" : checkFile(entry.file)))
         .then((verdict) => {
           if (verdict === "ok") return;
           URL.revokeObjectURL(entry.url);
           setPhotos((list) => list.filter((p) => p.id !== entry.id));
           setActivePhoto(0);
-          setErrors({ file: UNSAFE_PHOTO });
+          setErrors({ file: verdict === "ai" ? AI_GENERATED : UNSAFE_PHOTO });
         })
         .catch(() => {})
         .finally(() => setChecking((n) => n - 1));
@@ -250,11 +265,12 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setTrailerStart(0);
     setDuration(spec.media === "video" ? await readDuration(f) : 0);
     setChecking((n) => n + 1);
-    checkFile(f)
+    aiMarker(f)
+      .then(async (mark) => (mark === "generated" ? "ai" : checkFile(f)))
       .then((verdict) => {
         if (verdict === "ok") return;
         setFile((cur) => (cur === f ? null : cur));
-        setErrors({ file: spec.media === "video" ? UNSAFE_VIDEO : UNSAFE_PHOTO });
+        setErrors({ file: verdict === "ai" ? AI_GENERATED : spec.media === "video" ? UNSAFE_VIDEO : UNSAFE_PHOTO });
       })
       .catch(() => {})
       .finally(() => setChecking((n) => n - 1));
@@ -329,7 +345,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         card: kind === "text" && fitsCard({ text: clean, poll, gif }) ? card : "",
         duration,
         trailerStart: long ? trailerStart : 0,
-        aiGenerated: spec.media ? ai : false,
+        aiGenerated: spec.media ? ai || aiFound : false,
         topics: shownTopics,
         sensitive,
         poll: kind === "text" && poll ? { options: poll.options.map((o) => o.trim()).filter(Boolean), hours: poll.hours } : null,
@@ -604,8 +620,10 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         {picked && spec.media && (
           <div className="rounded-card border border-line bg-surface p-3">
             <Checkbox checked={ai} onChange={setAi}
-              description="Tick this if AI made or changed this in a way someone could mistake for real. Mesh shows a “Made with AI” label. Creative use is welcome; passing it off as real isn't.">
-              <span className="inline-flex items-center gap-1.5"><WandSparkles size={15} aria-hidden="true" /> Made with AI</span>
+              description={aiFound
+                ? "This file says it was edited with AI, so Mesh labels it. Edits are welcome; pictures and videos made entirely by AI aren't allowed."
+                : "Tick this if you used AI to change a real photo or video, like a new background. Pictures and videos made entirely by AI aren't allowed on Mesh."}>
+              <span className="inline-flex items-center gap-1.5"><WandSparkles size={15} aria-hidden="true" /> Edited with AI</span>
             </Checkbox>
           </div>
         )}

@@ -174,7 +174,7 @@ function VideoCard({ post }) {
           <p className="text-caption text-fg-subtle">
             {compact(post.likeCount || 0)} {post.likeCount === 1 ? "like" : "likes"} · {shortTime(post.createdAt)}
           </p>
-          {post.aiGenerated && <Badge icon={WandSparkles} className="mt-1">Made with AI</Badge>}
+          {post.aiGenerated && <Badge icon={WandSparkles} className="mt-1">Edited with AI</Badge>}
         </div>
       </div>
     </article>

@@ -5,6 +5,7 @@ import { setTourDone, tsMillis } from "../lib/db";
 import { motionReduced } from "../lib/appearance";
 import { TOUR_EVENT } from "../lib/tour";
 import Button from "./ui/Button";
+import { navigate } from "../lib/router";
 import { useFocusTrap } from "../lib/useFocusTrap";
 
 // New accounts from this date see the tour once by themselves; anyone can
@@ -14,9 +15,15 @@ const doneKey = (uid) => `mesh:tour-done:${uid || "guest"}`;
 
 // Each step spotlights the first visible element marked data-tour="<key>"
 // (phones and computers mark different ones). Steps with nothing to point at
-// are left out, except those without targets, which sit in the middle.
+// are left out, except those without targets, which sit in the middle. A
+// step with `path` opens that page first; the rest happen on Home.
 const MEMBER_STEPS = [
   { title: "Welcome to Mesh", body: "Here's a quick look at where everything is. It takes about 30 seconds." },
+  // Brick mode comes first: Mesh is made to be put down.
+  { path: "/account/brick", targets: ["brick-limits"], title: "Your daily limits",
+    body: "This is Brick mode. The limit you picked at sign-up lives here. When you hit it, Home or Flicks locks until midnight. Lowering a limit is instant; raising it takes 24 hours." },
+  { path: "/account/brick", targets: ["brick-now"], title: "Brick me now",
+    body: "Lock Mesh to messages and calls for a few hours or days, like exam week. Scheduled times below lock it every week, say before 10am." },
   { targets: ["feed-tabs"], title: "Your feed",
     body: "For you shows everyone's posts, newest first. Following shows only people you follow. Your interests sit alongside to narrow it down." },
   { targets: ["stories"], title: "Stories",
@@ -35,10 +42,10 @@ const MEMBER_STEPS = [
     body: "Chats, groups, voice notes and calls. Messages from people you don't follow wait in Requests until you accept." },
   { targets: ["tab-account", "profile"], title: "Your profile",
     body: "Your posts, reposts and saved posts, and how others see you. Settings are here too." },
-  { targets: ["more", "sections"], title: "Brick mode",
+  { targets: ["more", "sections"], title: "Back to Brick mode",
     body: {
-      more: "Brick mode, Saved, the Leaderboard and Settings are under More. Brick mode sets daily limits or locks parts of Mesh for a while.",
-      sections: "Brick mode is in this menu too. It sets daily limits or locks parts of Mesh for a while. Mesh is made to be put down.",
+      more: "Brick mode, the Leaderboard and Settings are under More, so you can change your limits any time.",
+      sections: "Brick mode is in this menu too, so you can change your limits any time.",
     } },
   { title: "You're all set", body: "Replay this tour any time from Settings." },
 ];
@@ -97,7 +104,7 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
     const id = setInterval(() => {
       if (document.querySelector("[aria-modal=true], [data-cookie-banner]")) return;
       clearInterval(id);
-      const list = (guest ? GUEST_STEPS : MEMBER_STEPS).filter((s) => !s.targets || findTarget(s.targets));
+      const list = (guest ? GUEST_STEPS : MEMBER_STEPS).filter((s) => !s.targets || s.path || findTarget(s.targets));
       setPending(false);
       setAt(0);
       setSteps(list);
@@ -115,6 +122,13 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
 
   const step = steps?.[at];
 
+  // Steps on another page open it; the others come back to Home.
+  useEffect(() => {
+    if (!step) return;
+    const want = step.path || "/";
+    if (window.location.pathname !== want) navigate(want);
+  }, [step]);
+
   // Measure the current target, and keep measuring as the page moves.
   useLayoutEffect(() => {
     if (!step) return undefined;
@@ -125,13 +139,21 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
       const r = found.el.getBoundingClientRect();
       setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
     };
-    const found = step.targets ? findTarget(step.targets) : null;
-    found?.el.scrollIntoView({ block: "nearest", behavior: motionReduced() ? "auto" : "smooth" });
-    measure();
-    const t = setTimeout(measure, 350);
+    // A page the tour just opened may still be loading, so look again.
+    let scrolled = false;
+    const look = () => {
+      const found = step.targets ? findTarget(step.targets) : null;
+      if (found && !scrolled) {
+        scrolled = true;
+        found.el.scrollIntoView({ block: "nearest", behavior: motionReduced() ? "auto" : "smooth" });
+      }
+      measure();
+    };
+    look();
+    const timers = [350, 800, 1500].map((ms) => setTimeout(look, ms));
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
-    return () => { clearTimeout(t); window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure, true); };
+    return () => { timers.forEach(clearTimeout); window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure, true); };
   }, [step]);
 
   useEffect(() => { if (step) cardRef.current?.focus(); }, [step]);

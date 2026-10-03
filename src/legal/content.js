@@ -190,11 +190,11 @@ export const TERMS = {
       ],
     },
     {
-      h: "AI-generated content",
+      h: "AI: edits yes, generated no",
       p: [
-        "Using AI as a creative tool is welcome. Using it to deceive is not.",
-        "You must not present AI-generated or AI-altered material as a real photograph, a real recording, a real event, or a real person's words. You must not use it to fabricate news, impersonate anyone, or manufacture fake endorsements and reviews.",
-        "Where AI-generated media could reasonably be mistaken for a real depiction of real people or events, label it. The composer has a \"Made with AI\" option for exactly this, and posts carrying it show the label to everyone.",
+        "Mesh is social media for humans. Pictures and videos made entirely by AI aren't allowed anywhere on Mesh, including stories, comments and messages. Uploads whose files say an AI tool generated them are turned away, reports are acted on, and anyone who keeps posting AI-generated media is suspended.",
+        "Editing your own photos and videos with AI is fine: a new background, an object taken out, a different sky. Tick \"Edited with AI\" in the composer and posts carry that label. Mesh adds it for you when the file says it was edited with AI.",
+        "You must not present AI-altered material as a real photograph, a real recording, a real event, or a real person's words. You must not use AI to fabricate news, impersonate anyone, or manufacture fake endorsements and reviews.",
         "News submissions must be factual. Fabricated sources, invented quotes and AI-generated 'evidence' are grounds for removal and account termination.",
       ],
     },
@@ -361,7 +361,7 @@ export const GUIDELINES = {
       list: [
         ["Do not attack people for who they are", "As above: every group, every side, the same way."],
         ["Do not harass", "No targeted abuse, threats, or pile-ons. Many people making the same joke at one person or one group is a pile-on, even if each post seems small."],
-        ["Do not deceive", "No impersonation, no fabricated news, no AI-generated material passed off as real, no fake reviews or endorsements. Using AI creatively is fine. Tick \"Made with AI\" when someone could mistake it for real."],
+        ["Do not deceive", "No impersonation, no fabricated news, no fake reviews or endorsements. No AI-generated pictures or videos at all. Editing your own photos with AI is fine; tick \"Edited with AI\"."],
         ["Keep it non-sexual", "No nudity, pornography or sexually suggestive images or video, real, drawn or made with AI, anywhere on Mesh, including messages."],
         ["Do not post what is not yours", "Only post media you made or have permission to use."],
         ["Do not spam", "No engagement farming, bulk unsolicited messages, or scams."],
@@ -377,7 +377,7 @@ export const GUIDELINES = {
         ["Allowed, but not amplified", "Posts that could read as mocking a group, and blanket insults like \"X are stupid\", can be posted, but Mesh won't recommend them to people who don't follow you, never shows two close together, and folds such comments away behind a tap. Your words stay yours; our reach is ours to give."],
         ["Reports and review", "Anyone can report a post, comment, message or account. A person reviews every report against these guidelines. A post reported by several established accounts leaves feeds until it's reviewed; if it follows the guidelines it goes straight back, and reports can't hold it again. Brand-new accounts can report, but their reports don't count towards that, so a wave of fresh accounts can't bury someone."],
         ["Consequences", "Removal of the content, then suspension (a day, a week, a month, or permanently), which stops posting, commenting and messaging while still letting you read. Serious harms, such as child safety issues and credible threats, go straight to a permanent ban and are reported to authorities."],
-        ["Appeals", "A suspended account is told why and until when. If you think a decision is wrong, email us and a different person will look at it."],
+        ["Appeals", "Every block names the rule it matched, with an \"Appeal to a person\" button right there. A member of the Mesh team reads it and decides; if they agree, you can post it as you wrote it. A suspended account is told why and until when; if you think that's wrong, email us and a different person will look at it. People, not machines, decide every appeal."],
         ["Your own controls", "Block anyone. Hide words and phrases from everything you see. Limit who can comment on your posts or message you. Mark posts \"Not interested\"."],
         ["Circles", "Circle admins moderate their own circles and can add stricter rules, but can't loosen these."],
         ["No filter is perfect", "It will miss things, and occasionally stop something harmless. Report what gets through, and tell us when it gets something wrong. The filter covers English only for now."],

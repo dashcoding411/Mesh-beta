@@ -1,4 +1,6 @@
+import { lazy, Suspense, useState } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
+import { blockFor, RULE_NAMES } from "../../lib/moderation";
 import Button from "./Button";
 
 // Shared loading, empty and error states.
@@ -60,8 +62,14 @@ export function ErrorState({ title = "Something went wrong", body, onRetry, comp
 }
 
 /** Inline form message with an icon, so colour isn't the only signal. */
+// A hate-filter block names its rule and can be appealed to a person, from
+// wherever the message shows.
+const AppealDialog = lazy(() => import("../AppealDialog"));
+
 export function InlineMessage({ tone = "error", children, id }) {
+  const [appealing, setAppealing] = useState(false);
   if (!children) return null;
+  const block = tone === "error" && typeof children === "string" ? blockFor(children) : null;
   const tones = {
     error: "text-danger-text",
     success: "text-success-text",
@@ -71,7 +79,20 @@ export function InlineMessage({ tone = "error", children, id }) {
   return (
     <p id={id} className={`flex items-start gap-1.5 text-caption ${tones[tone]}`}>
       {tone === "error" && <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
-      <span>{children}</span>
+      <span>
+        {children}
+        {block && (
+          <span className="mt-1 block text-fg-muted">
+            Matched rule: {RULE_NAMES[block.rule] || block.rule}.{" "}
+            <button type="button" onClick={() => setAppealing(true)} className="font-semibold text-accent-text underline underline-offset-2">
+              Appeal to a person
+            </button>
+          </span>
+        )}
+      </span>
+      {appealing && block && (
+        <Suspense fallback={null}><AppealDialog block={block} onClose={() => setAppealing(false)} /></Suspense>
+      )}
     </p>
   );
 }

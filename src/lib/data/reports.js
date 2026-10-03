@@ -20,7 +20,7 @@ export const REPORT_REASONS = [
   { id: "spam", label: "Spam or scam" },
   { id: "misinfo", label: "False information" },
   { id: "impersonation", label: "Pretending to be someone else" },
-  { id: "unlabelled_ai", label: "Made with AI but not labelled", description: "Generated with AI and not marked as made with AI" },
+  { id: "unlabelled_ai", label: "AI-generated, or an unlabelled AI edit", description: "Made entirely by AI (not allowed on Mesh), or edited with AI without the label" },
   { id: "other", label: "Something else" },
 ];
 
@@ -104,7 +104,7 @@ export async function clearPost(postId) {
   await updateDoc(doc(db, "posts", postId), { modStatus: "cleared" });
 }
 
-/** Adds the "Made with AI" label (and clears any hold) instead of removing the post. */
+/** Adds the "Edited with AI" label (and clears any hold) instead of removing the post. */
 export async function labelPostAi(postId) {
   await updateDoc(doc(db, "posts", postId), { aiGenerated: true, modStatus: "cleared" });
 }

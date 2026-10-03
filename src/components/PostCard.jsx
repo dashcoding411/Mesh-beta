@@ -226,7 +226,7 @@ export default function PostCard({
           caption={media && !(cover && !revealed) && (post.title || post.text) ? <Caption post={post} highlight={highlight} /> : null}
           tags={(post.aiGenerated || post.topics?.length > 0) ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              {post.aiGenerated && <Badge icon={WandSparkles}>Made with AI</Badge>}
+              {post.aiGenerated && <Badge icon={WandSparkles}>Edited with AI</Badge>}
               {post.topics?.map((t) => {
                 const it = interestById(t);
                 if (!it) return null;

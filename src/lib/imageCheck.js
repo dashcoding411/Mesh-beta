@@ -3,10 +3,13 @@
 // (Spark plan), so images are checked on the device before they upload, with
 // NSFWJS (MobileNetV2), loaded only once someone picks an image. Admins can
 // also sweep recent posts for anything that got past it (Moderation).
+// AI-generated pictures and videos are turned away here too (lib/aiMarkers).
+import { aiMarker } from "./aiMarkers";
 
 export const UNSAFE_PHOTO = "This photo can't be posted. Mesh doesn't allow nudity or sexual images.";
 export const UNSAFE_VIDEO = "This video can't be posted. Mesh doesn't allow nudity or sexual content.";
 export const CHECK_FAILED = "Couldn't check this image. Check your connection and try again.";
+export const AI_GENERATED = "This looks AI-generated: its file says an AI tool made it. Mesh doesn't allow AI-generated pictures or videos. Editing your own photo with AI is fine.";
 
 export class UnsafeImageError extends Error {
   constructor(message = UNSAFE_PHOTO) {
@@ -132,6 +135,8 @@ export function checkFile(file) {
  */
 export async function assertSafe(file) {
   if (!file?.type || !(file.type.startsWith("image/") || file.type.startsWith("video/"))) return;
+  // Generated from scratch is out; AI edits are labelled by the composer.
+  if (await aiMarker(file) === "generated") throw new UnsafeImageError(AI_GENERATED);
   let verdict;
   try { verdict = await checkFile(file); } catch { throw new UnsafeImageError(CHECK_FAILED); }
   if (verdict !== "ok") throw new UnsafeImageError(file.type.startsWith("video/") ? UNSAFE_VIDEO : UNSAFE_PHOTO);

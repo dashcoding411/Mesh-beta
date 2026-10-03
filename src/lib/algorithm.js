@@ -24,7 +24,7 @@ function levelOf(post) {
 const borderline = (post) => levelOf(post) === "borderline";
 
 /** Removes held posts, hidden-word matches and blocked content (the viewer's own posts are kept). */
-// `hideAi` drops posts labelled as made with AI.
+// `hideAi` drops posts labelled as edited with AI.
 export function screenForViewer(posts, { myUid, hiddenWords = [], hideAi = false } = {}) {
   return posts.filter((p) => p.authorId === myUid
     || (!isHeld(p) && !(hideAi && p.aiGenerated) && !hitsHiddenWords(textOf(p), hiddenWords) && levelOf(p) !== "block"));

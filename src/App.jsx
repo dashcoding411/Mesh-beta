@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
@@ -192,6 +192,9 @@ export default function App() {
     if (!signedIn) return undefined;
     return listenNotifications(setNotices);
   }, [signedIn]);
+  // What this account has won on appeal can be posted; refreshed when a decision arrives.
+  const appealDecisions = (notices || []).filter((n) => n.type === "appeal").length;
+  useEffect(() => { if (signedIn) loadAppealAllowances().catch(() => {}); }, [signedIn, appealDecisions]);
   const noticesUnread = useMemo(() => (notices || []).filter((n) => !n.read && !muted.has(n.actorId) && !blocked.has(n.actorId)).length, [notices, muted, blocked]);
 
   const callUid = signedIn ? user.uid : null;

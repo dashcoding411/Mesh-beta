@@ -155,10 +155,10 @@ export default function Settings() {
               value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
               onClick={() => setDialog("hidden")} />
-            <Row icon={WandSparkles} label="Hide posts made with AI"
-              value={hideAi ? "Hidden from Home, Flicks and Explore" : "Shown, with a Made with AI label"}
+            <Row icon={WandSparkles} label="Hide posts edited with AI"
+              value={hideAi ? "Hidden from Home, Flicks and Explore" : "Shown, with an Edited with AI label"}
               help="Covers posts their authors labelled, and ones moderators labelled after a report. You'll still see them on people's profiles."
-              action={<Switch label="Hide posts made with AI" checked={hideAi} onChange={toggleAi} />} />
+              action={<Switch label="Hide posts edited with AI" checked={hideAi} onChange={toggleAi} />} />
           </Group>
 
           <Group title="Your data">

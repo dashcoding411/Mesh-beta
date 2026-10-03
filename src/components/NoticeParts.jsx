@@ -1,6 +1,7 @@
 import {
-  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, UserCheck, Waves,
+  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, UserCheck, Waves, Scale,
 } from "lucide-react";
+import { LogoMark } from "./shell/Sidebar";
 import { plural } from "../lib/format";
 import LiveAvatar from "./ui/LiveAvatar";
 
@@ -20,6 +21,7 @@ const ICONS = {
   joined: { icon: Blend, className: "bg-success-text/15 text-success-text" },
   storylike: { icon: Heart, className: "bg-like/15 text-like" },
   echo: { icon: Waves, className: "bg-accent-soft text-accent-text" },
+  appeal: { icon: Scale, className: "bg-accent-soft text-accent-text" },
 };
 
 /** The actor's photo with a small icon for what they did. */
@@ -27,7 +29,10 @@ export function NoticeAvatar({ n, size = 44 }) {
   const { icon: Icon, className } = ICONS[n.type] || ICONS.follow;
   return (
     <span className="relative shrink-0">
-      <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={size} />
+      {/* Appeal decisions come from Mesh, not the staff member who made them. */}
+      {n.type === "appeal"
+        ? <LogoMark size={size} />
+        : <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={size} />}
       <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
         <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" || n.type === "storylike" ? "currentColor" : "none"} />
       </span>
@@ -56,5 +61,8 @@ export function NoticeLine({ n, others = 0 }) {
     joined: <>You&apos;re in: {who} let you into a circle</>,
     storylike: <>{who}{rest} liked your story</>,
     echo: <>{who} echoed your story:{quote}</>,
+    appeal: n.text === "overturned"
+      ? <><strong className="font-semibold text-fg">Mesh</strong> accepted your appeal. You can post it now, just as you wrote it.</>
+      : <><strong className="font-semibold text-fg">Mesh</strong> looked at your appeal and the block stays. The rule it matched still applies.</>,
   }[n.type] || <>{who} did something new. Reload Mesh to see what.</>;
 }

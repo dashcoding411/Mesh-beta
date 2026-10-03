@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, BadgeCheck, Trash2, Check, Eye, EyeOff, ImageIcon, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles,
+  ShieldCheck, BadgeCheck, Trash2, Check, Eye, EyeOff, ImageIcon, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles, Scale,
 } from "lucide-react";
 import {
-  staffRole, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
+  staffRole, fetchAppeals, decideAppeal, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
   fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername, setPostHidden,
 } from "../lib/db";
-import { assessText } from "../lib/moderation";
+import { assessText, RULE_NAMES } from "../lib/moderation";
 import { markImageOk, sweepImages } from "../lib/imageSweep";
 import { navigate } from "../lib/router";
 import { shortTime, fullTime, plural } from "../lib/format";
@@ -57,7 +57,7 @@ export default function Moderation() {
     setError(false);
     setReports(null);
     try {
-      setReports(["suspended", "writers", "verified", "images", "mods"].includes(tab) ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
+      setReports(["suspended", "writers", "verified", "images", "mods", "appeals"].includes(tab) ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
         .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
     } catch (err) {
       console.error(err);
@@ -103,11 +103,12 @@ export default function Moderation() {
                 </span>
               </p>
               <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open reports" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" },
+                tabs={[{ id: "open", label: "Open reports" }, { id: "appeals", label: "Appeals" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" },
                   { id: "images", label: sweep.flagged.length ? `Images (${sweep.flagged.length})` : "Images" },
                   { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" }, { id: "mods", label: "Moderators" }]} />
 
               {tab === "images" ? <ImageReview sweep={sweep} setSweep={setSweep} onRescan={runSweep} />
+                : tab === "appeals" ? <Appeals />
                 : tab === "mods" ? <Moderators /> : tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
@@ -168,7 +169,7 @@ function Case({ item, readOnly, onDone }) {
       } else if (kind === "label") {
         await labelPostAi(item.targetId);
         await resolveReports(item.reports, "actioned", "labelled");
-        toast({ title: "Labelled as made with AI", body: "The post is now hidden from members who exclude AI content." });
+        toast({ title: "Labelled as edited with AI", body: "It now carries the label and is hidden from members who hide AI edits." });
       } else {
         if (item.type === "post" && target) await clearPost(item.targetId);
         await resolveReports(item.reports, "dismissed", "kept");
@@ -238,7 +239,7 @@ function Case({ item, readOnly, onDone }) {
 
       {readOnly ? (
         <p className="mt-3 border-t border-line pt-3 text-caption text-fg-subtle">
-          {{ removed: "Removed", suspended: "Author suspended", labelled: "Labelled as made with AI" }[first.action] || "Reports dismissed"}
+          {{ removed: "Removed", suspended: "Author suspended", labelled: "Labelled as edited with AI" }[first.action] || "Reports dismissed"}
           {first.reviewedBy ? ` by @${first.reviewedBy}` : ""}{first.reviewedAt ? `, ${shortTime(first.reviewedAt)}` : ""}
         </p>
       ) : (
@@ -250,7 +251,7 @@ function Case({ item, readOnly, onDone }) {
           )}
           {item.type === "post" && target && !target.aiGenerated && (
             <Button size="sm" icon={WandSparkles} loading={busy === "label"} disabled={!!busy} onClick={() => act("label")}>
-              Label as made with AI
+              Label as edited with AI
             </Button>
           )}
           <Button size="sm" icon={Check} loading={busy === "keep"} disabled={!!busy} onClick={() => act("keep")}>
@@ -497,6 +498,61 @@ function Verified() {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** People whose words the hate filter blocked, asking a person to look again. */
+function Appeals() {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const [notes, setNotes] = useState({});
+  const [busy, setBusy] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetchAppeals("open").then((l) => { if (live) setList(l); }).catch(() => { if (live) setList([]); });
+    return () => { live = false; };
+  }, []);
+
+  const decide = async (a, outcome) => {
+    setBusy(a.id);
+    try {
+      await decideAppeal(a, outcome, notes[a.id] || "");
+      setList((l) => l.filter((x) => x.id !== a.id));
+      toast({ title: outcome === "overturned" ? `@${a.username} can post it now` : "The block stays", body: "They've been told." });
+    } catch { toast({ tone: "error", title: "The decision couldn't be saved" }); }
+    finally { setBusy(null); }
+  };
+
+  if (list === null) return <Skeleton className="h-32 !rounded-card" />;
+  if (!list.length) return <EmptyState icon={Scale} title="No appeals waiting" body="When someone appeals a block, it shows here for a person to decide." />;
+  return (
+    <section className="space-y-4">
+      <p className="text-caption text-fg-muted">
+        Judge the words, not the person. Allow quoting to call something out, reporting, and reclaimed use about oneself.
+        Keep the block for attacks on people for who they are. Overturning lets them post exactly this text.
+      </p>
+      <ul className="space-y-3">
+        {list.map((a) => (
+          <li key={a.id} className="rounded-card border border-line bg-surface p-4">
+            <p className="flex flex-wrap items-center gap-x-2 text-caption text-fg-subtle">
+              <button type="button" onClick={() => openUserProfile(a.uid)} className="font-semibold text-fg hover:underline">@{a.username}</button>
+              <span>· {a.where}</span><span>· {shortTime(a.createdAt)}</span>
+              <Badge>{RULE_NAMES[a.rule] || a.rule}</Badge>
+            </p>
+            <blockquote className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-control bg-surface-2 p-3 text-callout [overflow-wrap:anywhere]">{a.text}</blockquote>
+            {a.note && <p className="mt-2 text-callout"><span className="font-semibold">Their reason:</span> {a.note}</p>}
+            <label htmlFor={`appeal-${a.id}`} className="sr-only">Note for your decision</label>
+            <input id={`appeal-${a.id}`} value={notes[a.id] || ""} maxLength={500} placeholder="Note for the record (optional)"
+              onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
+              className="field mt-3 min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <Button size="sm" disabled={busy === a.id} onClick={() => decide(a, "upheld")}>Keep the block</Button>
+              <Button size="sm" variant="primary" icon={Check} loading={busy === a.id} onClick={() => decide(a, "overturned")}>Allow it</Button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

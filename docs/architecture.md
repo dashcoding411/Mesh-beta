@@ -228,6 +228,22 @@ to a frame from the file.
 
 ## Moderation (`lib/moderation.js`)
 
+Every hate-filter block names its rule (`RULE_NAMES`) and offers "Appeal to
+a person" wherever the message shows (`ui/States` InlineMessage looks the
+message up with `blockFor`). Appeals (`appeals/{id}`) are read by their author
+and staff; staff uphold or overturn them in Moderation, and the author gets an
+`appeal` notification from Mesh. Overturned text is let through for its author
+(`allowOverturned`, loaded at sign-in); a slur still posts behind a warning,
+since the rules only accept slurs on posts flagged `sensitive`.
+
+AI-generated pictures and videos aren't allowed; AI edits of real ones are,
+labelled "Edited with AI" (`aiGenerated`). `lib/aiMarkers.js` reads the
+file's own markers before upload: the IPTC/C2PA digital source type
+(`trainedAlgorithmicMedia` is refused, `compositeWithTrainedAlgorithmicMedia`
+and `algorithmicallyEnhanced` are labelled automatically) and Stable
+Diffusion settings left in PNGs. Stripped metadata gets past it, so reports
+back it up.
+
 Staff are admins (`admins/{uid}`, set in the console) and moderators
 (`moderators/{uid}`, appointed by staff from the Moderation page). Every staff
 power in the rules is `isStaff()`, so moderators can do everything admins can:
@@ -274,6 +290,10 @@ day hold a post until a moderator reviews it. Moderators remove content, keep
 it (clearing the hold), or suspend accounts (`notSuspended()` in the rules).
 
 ## Brick mode (`lib/brick.js`)
+
+Sign-up asks how long someone wants Mesh each day (30, 45 or 60 minutes, or
+no limit); a choice sets the Feed and Flicks caps. The first-run tour opens
+Brick mode right after its welcome, then returns to Home.
 
 Weekly windows (half-hour slots per local day), daily per-section caps and
 instant bricks (for a length of time, or until a clock time, up to 8 days). Tightening applies immediately; loosening waits 24 hours in

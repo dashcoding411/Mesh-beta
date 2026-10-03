@@ -111,7 +111,7 @@ export default function BrickSettings() {
           </header>
           <BrickIntro />
 
-              <section aria-labelledby="brick-now" className="rounded-card border border-line bg-surface p-4">
+              <section aria-labelledby="brick-now" data-tour="brick-now" className="rounded-card border border-line bg-surface p-4">
             <div className="flex items-start gap-3">
               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${lockNow ? "bg-accent text-white" : "bg-surface-2 text-fg-muted"}`}>
                 <BrickWall size={22} aria-hidden="true" />
@@ -176,7 +176,7 @@ export default function BrickSettings() {
             </div>
           </Group>
 
-              <Group icon={Timer} title="Daily limits" help="When you reach one, that section locks until midnight. Everything else stays open.">
+              <Group icon={Timer} title="Daily limits" tour="brick-limits" help="When you reach one, that section locks until midnight. Everything else stays open.">
             <ul className="divide-y divide-line">
               {SECTIONS.map((s) => {
                 const cap = self.caps[s.id] || 0;
@@ -256,10 +256,10 @@ function nextLockLabel(policy, usage, now) {
   return "No scheduled locks this week.";
 }
 
-function Group({ icon: Icon, title, help, children }) {
+function Group({ icon: Icon, title, help, tour, children }) {
   const id = `g-${title.replace(/\s/g, "")}`;
   return (
-    <section aria-labelledby={id}>
+    <section aria-labelledby={id} data-tour={tour}>
       <h2 id={id} className="mb-1 flex items-center gap-2 px-1 text-callout font-semibold">
         <Icon size={18} className="text-fg-muted" aria-hidden="true" /> {title}
       </h2>
