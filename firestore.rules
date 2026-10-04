@@ -1683,6 +1683,11 @@ service cloud.firestore {
           && removed() == [request.auth.uid].toSet()
           && added().size() == 0
           && resource.data.ownerId != request.auth.uid)
+        // Developing early: whoever started it, or Mesh staff testing, sets it to now.
+        || ((resource.data.ownerId == request.auth.uid || isStaff())
+          && only(['developAt'])
+          && incomingData().developAt == request.time
+          && request.time < resource.data.developAt)
         // The shot counter moves with a member's shot (see shots below).
         || (only(['photoCount'])
           && request.auth.uid in resource.data.members

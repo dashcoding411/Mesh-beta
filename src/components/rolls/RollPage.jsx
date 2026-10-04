@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Aperture, ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Lock, LogOut, MoreHorizontal,
-  Pencil, QrCode, Share2, Trash2, UserMinus, Users, X,
+  Pencil, QrCode, Share2, Sunrise, Trash2, UserMinus, Users, X,
 } from "lucide-react";
 import {
   fetchRoll, fetchMyShotCount, fetchRollPhotos, fetchProfiles, joinRoll, leaveRoll, removeFromRoll, updateRoll, deleteRoll,
   deleteRollPhoto, isDeveloped, isMember, developLabel, countdownLabel, rollUrl, rollIcs, rollGoogleCalendarUrl, markRollSeen,
-  rollSeen, onShotQueue, SHOTS_PER_PERSON, MAX_MEMBERS, tsMillis, me, openUserProfile,
+  rollSeen, onShotQueue, SHOTS_PER_PERSON, MAX_MEMBERS, tsMillis, me, openUserProfile, developRollNow, staffRole,
 } from "../../lib/db";
 import { fetchInline, isInline } from "../../lib/media";
 import { authPath, goBack, navigate } from "../../lib/router";
@@ -32,7 +32,11 @@ export default function RollPage({ rollId }) {
   const [now, setNow] = useState(() => Date.now());
   usePageTitle(roll?.title || "Roll", 1);
 
-  const load = useCallback(() => fetchRoll(rollId).then(setRoll).catch(() => setRoll(null)), [rollId]);
+  // After loading, "now" is at least the develop time, so a roll developed early opens straight away.
+  const load = useCallback(() => fetchRoll(rollId).then((r) => {
+    setNow((n) => Math.max(n, Date.now(), r && tsMillis(r.developAt) <= Date.now() + 5000 ? tsMillis(r.developAt) : 0));
+    setRoll(r);
+  }).catch(() => setRoll(null)), [rollId]);
   useEffect(() => { if (!guest) load(); }, [guest, load]);
   // Tick, so a roll developing while you're looking at it opens up.
   useEffect(() => {
@@ -226,7 +230,7 @@ function Shooting({ roll, now, onChange, reload }) {
       )}
       {dialog === "invite" && <InviteDialog roll={roll} onClose={() => setDialog(null)} />}
       {dialog === "remind" && <RemindDialog roll={roll} onClose={() => setDialog(null)} />}
-      <ManageDialogs roll={roll} dialog={dialog} onDialog={setDialog} onChange={onChange} people={people} />
+      <ManageDialogs roll={roll} dialog={dialog} onDialog={setDialog} onChange={onChange} people={people} onDeveloped={reload} />
     </Frame>
   );
 }
@@ -234,6 +238,8 @@ function Shooting({ roll, now, onChange, reload }) {
 function RollMenu({ roll, owner, onChange, onDialog }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [staff, setStaff] = useState(false);
+  useEffect(() => { staffRole().then((r) => setStaff(!!r)).catch(() => {}); }, []);
   const developed = isDeveloped(roll);
   const pick = (d) => { setOpen(false); onDialog(d); };
   return (
@@ -242,6 +248,12 @@ function RollMenu({ roll, owner, onChange, onDialog }) {
       {open && (
         <Dialog title="Roll options" onClose={() => setOpen(false)} size="sm">
           <div className="space-y-0.5">
+            {(owner || staff) && !developed && (
+              <MenuItem icon={Sunrise} onClick={() => pick("develop")}
+                description={owner ? "Shooting ends and everyone gets every photo right away" : "Mesh staff, for testing: develops it for everyone right away"}>
+                {owner ? "Develop now" : "Develop now (staff)"}
+              </MenuItem>
+            )}
             {owner && !developed && <MenuItem icon={Pencil} onClick={() => pick("rename")}>Rename</MenuItem>}
             {owner && !developed && (
               <MenuItem icon={Lock} description={roll.open ? "Nobody new can join with the link" : "Anyone with the link can join again"} onClick={async () => {
@@ -260,10 +272,20 @@ function RollMenu({ roll, owner, onChange, onDialog }) {
   );
 }
 
-function ManageDialogs({ roll, dialog, onDialog, onChange, people }) {
+function ManageDialogs({ roll, dialog, onDialog, onChange, people, onDeveloped }) {
   const toast = useToast();
   const [name, setName] = useState(roll.title);
   const [error, setError] = useState("");
+  if (dialog === "develop") {
+    return (
+      <ConfirmDialog title="Develop it now?" confirmLabel="Develop now" onClose={() => onDialog(null)}
+        body="Shooting ends and everyone in the roll gets every photo right away, instead of at the develop time. This can't be undone."
+        onConfirm={async () => {
+          try { await developRollNow(roll); onDialog(null); await onDeveloped?.(); toast({ title: "Developed" }); }
+          catch { toast({ tone: "error", title: "Couldn't develop it", body: "Only whoever started the roll can do that." }); }
+        }} />
+    );
+  }
   if (dialog === "rename") {
     const save = async (e) => {
       e.preventDefault();

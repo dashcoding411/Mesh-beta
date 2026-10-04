@@ -145,7 +145,8 @@ export default function Welcome({ signedIn, onBrowse }) {
         <section className="border-t border-line bg-surface px-4 py-14 text-center md:px-6">
           <h2 className="font-display text-title-1">Ready to get bored again?</h2>
           <p className="mx-auto mt-3 max-w-lg text-body text-fg-muted">
-            "A generation that cannot endure boredom will be a generation of little men." Bertrand Russell, 1930.
+            Boredom isn't wasted time. It's when your mind wanders, and a wandering mind is where ideas, plans and the big
+            questions come from. Fill every spare second with a feed and you lose that. Mesh gives it back.
           </p>
           {cta("footer")}
         </section>

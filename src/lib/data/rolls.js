@@ -118,6 +118,11 @@ export async function updateRoll(roll, fields) {
   await updateDoc(rollRef(roll.id), allowed);
 }
 
+/** Whoever started it (or Mesh staff, for testing): shooting ends and everyone sees every photo now. */
+export async function developRollNow(roll) {
+  await updateDoc(rollRef(roll.id), { developAt: serverTimestamp() });
+}
+
 /** Owner only: the photos (theirs and everyone's), then the roll. */
 export async function deleteRoll(roll) {
   const photos = await getDocs(query(collection(db, "rolls", roll.id, "photos"), limit(2000))).catch(() => null);
