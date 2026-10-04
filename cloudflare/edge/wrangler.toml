@@ -16,6 +16,7 @@ routes = [
   { pattern = "joinmesh.social/u/*", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/gatherings/*", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/circles/*", zone_name = "joinmesh.social" },
+  { pattern = "joinmesh.social/rolls/*", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/og/*", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/sitemap-news.xml", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/sitemap-gatherings.xml", zone_name = "joinmesh.social" },

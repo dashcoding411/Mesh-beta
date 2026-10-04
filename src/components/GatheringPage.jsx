@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, MapPin, Ticket, ExternalLink, Globe, Lock, Users, Check, Heart, Trash2, UserPlus, Pencil,
   CalendarX2, Megaphone, MessageSquare, X, Search as SearchIcon, Blend, CalendarPlus, Share2, Download,
-  ImagePlus, Images,
+  ImagePlus, Images, Aperture, ChevronRight,
 } from "lucide-react";
 import {
   fetchEvent, fetchMyRsvps, setRsvp, RSVP_OPTIONS, fetchGuestList, fetchEventPosts, addEventPost,
@@ -10,6 +10,7 @@ import {
   uninviteFromEvent, searchUsers, canPostInEvent, isEventFull, fetchGroupById, openUserProfile, me,
   eventIcs, googleCalendarUrl, eventUrl, fetchFriendsGoing, friendsGoingLabel, fetchProfiles,
   photosOpen, canAddEventPhotos, fetchEventPhotos, addEventPhotos, deleteEventPhoto, MAX_PHOTOS_AT_ONCE, PHOTOS_OPEN_DAYS,
+  fetchRoll, startGatheringRoll, isDeveloped, developLabel, tsMillis,
 } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent } from "../lib/moderation";
@@ -170,6 +171,8 @@ export default function GatheringPage({ eventId }) {
         )}
 
         {!past && <CalendarButtons event={event} />}
+
+        <GatheringRoll event={event} isHost={isHost} onStarted={(rollId) => setEvent((e) => ({ ...e, rollId }))} />
 
         {event.ticketUrl && (
           <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer nofollow ugc" onClick={(e) => followLink(event.ticketUrl, e)}
@@ -346,6 +349,55 @@ function Discussion({ event, status }) {
         </ul>
       )}
     </div>
+  );
+}
+
+// The gathering's roll: the host starts it; everyone who can see the gathering can join.
+function GatheringRoll({ event, isHost, onStarted }) {
+  const toast = useToast();
+  const [roll, setRoll] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [now] = useState(() => Date.now());
+  useEffect(() => {
+    if (event.rollId) fetchRoll(event.rollId).then(setRoll).catch(() => {});
+  }, [event.rollId]);
+  const recent = now < tsMillis(event.startsAt) + 86400000;
+
+  if (!event.rollId) {
+    if (!isHost || !recent) return null;
+    const start = async () => {
+      setBusy(true);
+      try {
+        const r = await startGatheringRoll(event);
+        onStarted(r.id);
+        navigate(`/rolls/${r.id}?invite=1`);
+      } catch { toast({ tone: "error", title: "Couldn't start the roll" }); setBusy(false); }
+    };
+    return (
+      <div className="mt-4 flex items-center gap-3 rounded-card border border-dashed border-field p-4">
+        <Aperture size={22} className="shrink-0 text-accent-text" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-callout font-semibold">Start a roll for it</span>
+          <span className="block text-caption text-fg-muted">A shared disposable camera for everyone coming. It develops the next morning at 9.</span>
+        </span>
+        <Button size="sm" variant="primary" loading={busy} onClick={start}>Start</Button>
+      </div>
+    );
+  }
+  if (!roll) return null;
+  const developed = isDeveloped(roll, now);
+  return (
+    <button type="button" onClick={() => navigate(`/rolls/${roll.id}`)}
+      className="press mt-4 flex w-full items-center gap-3 rounded-card bg-[#111114] p-4 text-left text-white">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ff9b2f] text-black"><Aperture size={22} aria-hidden="true" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-callout font-semibold">{developed ? "The roll has developed" : "There's a roll for this"}</span>
+        <span className="block text-caption text-white/70">
+          {developed ? `${roll.photoCount || 0} shots from the night` : `${roll.photoCount || 0} shots so far · develops ${developLabel(tsMillis(roll.developAt))}`}
+        </span>
+      </span>
+      <ChevronRight size={18} className="shrink-0 text-white/60" aria-hidden="true" />
+    </button>
   );
 }
 

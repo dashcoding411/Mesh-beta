@@ -24,7 +24,7 @@ const MEDIA_API = (import.meta.env.VITE_MEDIA_API || "").replace(/\/$/, "");
 export const MAX_CLOUD_BYTES = 100 * 1024 * 1024;
 
 /** True for a file on the Cloudflare media Worker. */
-export const isCloudMedia = (url) => !!MEDIA_API && typeof url === "string" && url.startsWith(`${MEDIA_API}/v/`);
+export const isCloudMedia = (url) => !!MEDIA_API && typeof url === "string" && (url.startsWith(`${MEDIA_API}/v/`) || url.startsWith(`${MEDIA_API}/r/`));
 
 /** Whether videos can be posted at all (Cloud Storage, or the Cloudflare Worker). */
 export async function videoUploadsAvailable() {
@@ -97,12 +97,21 @@ export class UploadError extends Error {
   constructor(message) { super(message); this.name = "UploadError"; }
 }
 
-function uploadToCloud(file, onProgress) {
+/**
+ * A roll photo: to the Cloudflare Worker at full quality, or stored inline
+ * (smaller) where the Worker isn't set up. The caller has already checked it.
+ */
+export async function uploadRollShot(file) {
+  if (!MEDIA_API) return storeInlineImage(file, { maxSide: 1600 });
+  return uploadToCloud(file, undefined, "roll");
+}
+
+function uploadToCloud(file, onProgress, kind = "") {
   if (file.size > MAX_CLOUD_BYTES) return Promise.reject(new UploadError("Videos can be up to 100 MB for now. Try a shorter clip."));
   return auth.currentUser?.getIdToken().then((token) => new Promise((resolve, reject) => {
     // XHR rather than fetch, for upload progress.
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", `${MEDIA_API}/upload`);
+    xhr.open("PUT", `${MEDIA_API}/upload${kind ? `?kind=${kind}` : ""}`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("Content-Type", file.type);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };

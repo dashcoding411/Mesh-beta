@@ -4,12 +4,14 @@ import { authPath, navigate } from "../../lib/router";
 import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
+import { useShell } from "./ShellContext";
 
 // Desktop nav: icon rail at md, labelled column at xl.
 export default function Sidebar({ page, profile, unread, notifications, onCreate }) {
   const guest = !profile;
   const current = activeNavId(page);
-  const counts = { unread, notifications };
+  const { rollsDot } = useShell();
+  const counts = { unread, notifications, rolls: rollsDot === "new" ? 1 : 0 };
   const go = (path) => (window.location.pathname === path ? scrollOrRefresh() : navigate(path));
 
   return (

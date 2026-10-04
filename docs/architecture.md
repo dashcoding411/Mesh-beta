@@ -38,6 +38,7 @@
 | `calls/{id}` | WebRTC signalling with `callerCandidates` / `calleeCandidates`; deleted after the call. |
 | `groups/{id}` | Circles. `members`, `joinRequests`, `guides/{id}/progress`. |
 | `events/{id}` | Gatherings. `rsvps`, `posts` (discussion), `photos` (from the start until 30 days on, by the host and people going), legacy `announcements`. |
+| `rolls/{id}` | Rolls (shared disposable cameras): `members`, `developAt`, `photoCount`. `photos` are unreadable until `developAt` (except by their author, for export and deletion); `shots/{uid}` counts each member's 27, tied to every photo by the rules. Images are digicam-graded on the device (`lib/digicam.js`) and stored on R2 under `r/{uid}/`. |
 | `activity/{uid}` | Staff stats: `lastActiveAt` and which of the first 60 days since `joinedAt` the account was used. One write a day per device; owner and staff only. |
 | `news/{id}` | Stories as parallel block arrays plus `script`. `revisions`, `presence`, `updates` (live blog), `correctionRequests`. `newsWriters/{uid}` lists writers and holds their bylines. |
 | `locks/{uid}`, `usage/{uid}_{year}-{day}`, `familyLinks/{teenUid}`, `brickStats/{uid}` | Brick mode. |

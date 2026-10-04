@@ -5,6 +5,7 @@ import { fetchGroups, fetchMembership, leaveGroup, deleteGroup } from "./circles
 import { me, snapToList } from "./core.js";
 import { deleteEvent, setRsvp } from "./events.js";
 import { deleteMyActivity, fetchMyActivity } from "./staff.js";
+import { deleteRoll, fetchMyRollPhotos, fetchMyRolls, leaveRoll } from "./rolls.js";
 import { clearThought, fetchThoughts } from "./chats.js";
 import { fetchMyBrickGroups, leaveBrickGroup, deleteBrickGroup } from "./brickGroups.js";
 import { fetchHighlights, fetchMyStoryArchive } from "./highlights.js";
@@ -46,6 +47,14 @@ export async function exportMyData() {
     gatheringPosts.push(...(await mineIn("posts")).map((p) => ({ gatheringId: g.gatheringId, ...p })));
   }
   const activity = await fetchMyActivity().catch(() => null);
+  const rolls = [];
+  for (const r of await fetchMyRolls().catch(() => [])) {
+    const mine = await fetchMyRollPhotos(r.id).catch(() => []);
+    rolls.push({
+      id: r.id, title: r.title, startedBy: r.ownerName, youStartedIt: r.ownerId === uid, developAt: r.developAt, people: (r.members || []).length,
+      yourPhotos: mine.map(({ url, width, height, createdAt }) => ({ url, width, height, createdAt })),
+    });
+  }
   const comments = [];
   for (const p of posts) {
     const cs = await fetchComments(p.id).catch(() => []);
@@ -93,6 +102,7 @@ export async function exportMyData() {
     gatheringPhotos,
     gatheringPosts,
     activity,
+    rolls,
     notifications,
     messages,
     stories,
@@ -141,6 +151,12 @@ export async function deleteMyAccountData() {
     if (event && event.hostId !== uid) await setRsvp(event, status, status).catch(() => {});
   }
   await deleteMyActivity();
+  // Rolls: ones you started go with everything in them; elsewhere, your photos go and you leave.
+  for (const r of await fetchMyRolls().catch(() => [])) {
+    if (r.ownerId === uid) { await deleteRoll(r).catch(() => {}); continue; }
+    for (const p of await fetchMyRollPhotos(r.id).catch(() => [])) await deleteDoc(doc(db, "rolls", r.id, "photos", p.id)).catch(() => {});
+    await leaveRoll(r).catch(() => {});
+  }
   for (const a of (await fetchMyAppeals().catch(() => [])).filter((x) => x.status === "open")) {
     await deleteDoc(doc(db, "appeals", a.id)).catch(() => {});
   }

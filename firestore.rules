@@ -152,6 +152,11 @@ service cloud.firestore {
     }
     // A video or poster frame on the Cloudflare media Worker (cloudflare/media),
     // stored under the writer's own uid. The host is the deployed Worker's.
+    // A roll photo on the Cloudflare media Worker, under the writer's own uid.
+    function ownRollMedia(url) {
+      return url is string
+        && url.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/r/' + request.auth.uid + '/[a-f0-9]{32}[.]jpg$');
+    }
     function ownCloudMedia(url, exts) {
       return url is string
         && url.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/v/' + request.auth.uid + '/[a-f0-9]{32}[.](' + exts + ')$');
@@ -1623,6 +1628,113 @@ service cloud.firestore {
     }
 
     // Inline media (Spark plan): get by id only, never listed.
+    // Rolls: a shared disposable camera. Anyone signed in with the link can
+    // see the roll's name and join while it's open. Members shoot up to 27
+    // photos each until it develops; nobody reads a photo before then.
+    function rollOf(id) {
+      return get(/databases/$(database)/documents/rolls/$(id)).data;
+    }
+    match /rolls/{rollId} {
+      function rollTitleOk(t) {
+        return t is string && t.size() >= 1 && t.size() <= 60 && hateFree(t);
+      }
+      function only(keys) {
+        return incomingData().diff(resource.data).affectedKeys().hasOnly(keys);
+      }
+      function added() {
+        return incomingData().members.toSet().difference(resource.data.members.toSet());
+      }
+      function removed() {
+        return resource.data.members.toSet().difference(incomingData().members.toSet());
+      }
+      allow get: if signedIn();
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn() && notSuspended()
+        && incomingData().keys().hasOnly(['title', 'ownerId', 'ownerName', 'gatheringId', 'members', 'open', 'photoCount', 'developAt', 'createdAt'])
+        && incomingData().ownerId == request.auth.uid
+        && isMyName(incomingData().ownerName)
+        && rollTitleOk(incomingData().title)
+        && incomingData().gatheringId is string && incomingData().gatheringId.size() <= 40
+        && incomingData().members == [request.auth.uid]
+        && incomingData().open == true
+        && incomingData().photoCount == 0
+        && incomingData().createdAt == request.time
+        && incomingData().developAt is timestamp
+        && incomingData().developAt > request.time + duration.value(30, 'm')
+        && incomingData().developAt < request.time + duration.value(15, 'd');
+      allow update: if signedIn() && (
+        // The owner renames, opens or closes joining, and removes people (never themselves).
+        (resource.data.ownerId == request.auth.uid
+          && only(['title', 'open', 'members'])
+          && rollTitleOk(incomingData().title)
+          && incomingData().open is bool
+          && added().size() == 0
+          && request.auth.uid in incomingData().members)
+        // Joining: yourself only, while it's open and before it develops.
+        || (only(['members'])
+          && added() == [request.auth.uid].toSet()
+          && removed().size() == 0
+          && resource.data.open == true
+          && request.time < resource.data.developAt
+          && incomingData().members.size() <= 50
+          && notSuspended())
+        // Leaving: yourself only; the owner deletes the roll instead.
+        || (only(['members'])
+          && removed() == [request.auth.uid].toSet()
+          && added().size() == 0
+          && resource.data.ownerId != request.auth.uid)
+        // The shot counter moves with a member's shot (see shots below).
+        || (only(['photoCount'])
+          && request.auth.uid in resource.data.members
+          && incomingData().photoCount == resource.data.photoCount + 1
+          && getAfter(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid)).data.count
+             == (exists(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid))
+                 ? get(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid)).data.count : 0) + 1)
+      );
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isStaff());
+
+      // Hidden from everyone until it develops. The app never shows you your
+      // own early; you can only look them up, for downloading your data or
+      // deleting your account.
+      match /photos/{photoId} {
+        allow read: if signedIn()
+          && ((request.auth.uid in rollOf(rollId).members && request.time >= rollOf(rollId).developAt)
+              || resource.data.authorId == request.auth.uid);
+        allow create: if signedIn() && notSuspended()
+          && incomingData().keys().hasOnly(['authorId', 'authorName', 'url', 'width', 'height', 'createdAt'])
+          && incomingData().authorId == request.auth.uid
+          && isMyName(incomingData().authorName)
+          && (ownRollMedia(incomingData().url) || ownInlineImage(incomingData().url))
+          && incomingData().width is int && incomingData().width > 0 && incomingData().width <= 4096
+          && incomingData().height is int && incomingData().height > 0 && incomingData().height <= 4096
+          && incomingData().createdAt == request.time
+          && request.auth.uid in rollOf(rollId).members
+          && request.time < rollOf(rollId).developAt
+          && getAfter(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid)).data.last == photoId;
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.authorId == request.auth.uid || rollOf(rollId).ownerId == request.auth.uid || isStaff());
+      }
+
+      // Each member's shot count: up by one with each photo, to 27.
+      match /shots/{uid} {
+        allow get: if isUser(uid);
+        allow list: if signedIn() && rollOf(rollId).ownerId == request.auth.uid;
+        allow create, update: if isUser(uid)
+          && incomingData().keys().hasOnly(['count', 'last'])
+          && incomingData().count == (resource == null ? 0 : resource.data.count) + 1
+          && incomingData().count <= 27
+          && incomingData().last is string
+          && existsAfter(/databases/$(database)/documents/rolls/$(rollId)/photos/$(incomingData().last))
+          && getAfter(/databases/$(database)/documents/rolls/$(rollId)/photos/$(incomingData().last)).data.authorId == uid
+          && getAfter(/databases/$(database)/documents/rolls/$(rollId)).data.photoCount == rollOf(rollId).photoCount + 1;
+        // Counts stay until it develops, so deleting can't buy more shots.
+        allow delete: if signedIn()
+          && (isUser(uid) || rollOf(rollId).ownerId == request.auth.uid)
+          && request.time >= rollOf(rollId).developAt;
+      }
+    }
+
     // Staff stats: when an account was last active and which of its first 60
     // days it came back on. At most one write per 10 minutes; owner and staff only.
     match /activity/{uid} {
@@ -2634,7 +2746,12 @@ service cloud.firestore {
         (isHost()
           && incomingData().diff(resource.data).affectedKeys()
                .hasOnly(['title', 'description', 'location', 'startsAt', 'ticketUrl', 'showGuestList',
-                         'privacy', 'capacity', 'guestPosting', 'invitees'])
+                         'privacy', 'capacity', 'guestPosting', 'invitees', 'rollId'])
+          // The gathering's roll: one the host started for it.
+          && (!('rollId' in incomingData()) || incomingData().rollId == resource.data.get('rollId', '')
+              || (incomingData().rollId is string
+                  && getAfter(/databases/$(database)/documents/rolls/$(incomingData().rollId)).data.ownerId == request.auth.uid
+                  && getAfter(/databases/$(database)/documents/rolls/$(incomingData().rollId)).data.gatheringId == eventId))
           && incomingData().privacy in ['public', 'private']
           && eventLimitsOk(incomingData())
           && eventContentOk(incomingData())

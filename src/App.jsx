@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
+import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { useTimeMeter } from "./lib/timeMeter";
 import { primeCard } from "./lib/profileCache";
@@ -61,6 +62,7 @@ const Welcome = lazy(() => import("./components/Welcome"));
 const WhatsOn = lazy(() => import("./components/WhatsOn"));
 const WeekRecap = lazy(() => import("./components/WeekRecap"));
 const StaffStats = lazy(() => import("./components/StaffStats"));
+const Rolls = lazy(() => import("./components/rolls/Rolls"));
 const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
 const Watch = lazy(() => import("./components/Watch"));
@@ -71,7 +73,7 @@ const InterestsDialog = named(() => import("./components/Interests"), "Interests
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
-  notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on",
+  notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on", rolls: "Rolls",
 };
 
 // Brick-mode section for a page. Messaging, notifications, settings and
@@ -300,12 +302,35 @@ export default function App() {
     }
   }, [saveMute, toast]);
   const hiddenAuthors = useMemo(() => new Set([...blocked, ...muted]), [blocked, muted]);
+
+  // Rolls: an orange dot while one of yours is shooting, and "your roll has
+  // developed" the first time you're back after it develops. Checked on
+  // sign-in, when Mesh comes back to the front, on leaving a roll, and every
+  // ten minutes.
+  const [rollSignal, setRollSignal] = useState({ dot: null, fresh: null });
+  const onRolls = loc.path.startsWith("/rolls");
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    let live = true;
+    const check = () => fetchMyRolls().then((list) => {
+      if (!live) return;
+      const now = Date.now();
+      const fresh = list.find((r) => isDeveloped(r, now) && now - tsMillis(r.developAt) < 3 * 86400000 && !rollSeen(r.id) && (r.photoCount || 0) > 0) || null;
+      setRollSignal({ dot: fresh ? "new" : list.some((r) => !isDeveloped(r, now)) ? "live" : null, fresh });
+    }).catch(() => {});
+    check();
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const t = setInterval(check, 10 * 60000);
+    return () => { live = false; document.removeEventListener("visibilitychange", onVisible); clearInterval(t); };
+  }, [signedIn, onRolls]);
+
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey, role, modOnly,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi,
-    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount,
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollsDot: rollSignal.dot,
   }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, modOnly, interests, openInterests, startCall, call, hiddenWords, hideAi,
-    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount]);
+    muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollSignal.dot]);
 
   const { page, overlay, bgQuery } = resolve(loc);
   usePageTitle(sectionTitle(page, overlay ? bgQuery : loc.query), 0);
@@ -389,6 +414,7 @@ export default function App() {
       case "notifications": content = <Notifications />; break;
       case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
       case "whatson": content = <WhatsOn />; break;
+      case "rolls": content = <Rolls rollId={page.id} />; break;
       default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
@@ -481,6 +507,9 @@ export default function App() {
             onNotificationsPage={page.tab === "home" && page.section === "notifications"} />
         )}
         <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+        {signedIn && rollSignal.fresh && !onRolls && (
+          <RollReady key={rollSignal.fresh.id} roll={rollSignal.fresh} onDone={() => setRollSignal((s) => ({ ...s, fresh: null }))} />
+        )}
         {(signedIn || guest) && (
           <Tour uid={user?.uid} guest={guest} profile={profile} prefsDone={tourDone} onSeen={() => setTourDone(true)}
             ready={page.tab === "home" && page.section === "foryou" && !overlay && !composer && !drawerOpen && !interestsDialog && !joinReason} />

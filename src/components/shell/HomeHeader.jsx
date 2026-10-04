@@ -1,4 +1,4 @@
-import { Bell, Menu, Plus, Search } from "lucide-react";
+import { Aperture, Bell, Menu, Plus, Search } from "lucide-react";
 import IconButton from "../ui/IconButton";
 import { sectionById } from "../../lib/surfaces";
 import { authPath, navigate } from "../../lib/router";
@@ -8,7 +8,7 @@ import { LogoMark } from "./Sidebar";
 // Home section header. Mobile adds drawer, search and create buttons;
 // `children` renders below on both (e.g. feed tabs).
 export default function HomeHeader({ section, children, actions, transparent = false }) {
-  const { openDrawer, openComposer, noticesUnread, guest } = useShell();
+  const { openDrawer, openComposer, noticesUnread, guest, rollsDot } = useShell();
   const meta = sectionById(section);
   const isFeed = section === "foryou" || section === "following";
 
@@ -31,6 +31,16 @@ export default function HomeHeader({ section, children, actions, transparent = f
             <h1 className="truncate text-title-3">{meta.label}</h1>
           )}
         </div>
+        {section !== "rolls" && (
+          // Rolls get their own button: an orange dot while one is shooting, accent when one has developed.
+          <span className="relative">
+            <IconButton icon={Aperture} label={rollsDot === "new" ? "Rolls, one has developed" : rollsDot === "live" ? "Rolls, one is shooting" : "Rolls"}
+              data-tour="rolls" onClick={() => navigate("/rolls")} tone={transparent ? "overlay" : "ghost"} />
+            {rollsDot && (
+              <span aria-hidden="true" className={`pointer-events-none absolute right-2 top-2 h-2.5 w-2.5 rounded-full ring-2 ring-canvas ${rollsDot === "new" ? "bg-accent" : "bg-[#ff9b2f]"}`} />
+            )}
+          </span>
+        )}
         {section !== "search" && (
           <IconButton icon={Search} label="Search" data-tour="search" onClick={() => navigate("/search")} tone={transparent ? "overlay" : "ghost"} />
         )}

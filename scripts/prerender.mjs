@@ -59,12 +59,14 @@ const PAGES = [
     path: "/welcome",
     priority: "0.9",
     title: "Mesh: social media for humans",
-    description: "Real people, real news and real plans, in an app that knows when to stop. Set a daily limit and Mesh locks itself when you hit it. 16+.",
+    description: "Rolls: a shared disposable camera for every night out that develops at 9am. Plus real news, and an app that knows when to stop. 16+.",
     body: `<main class="mx-auto max-w-2xl px-6 py-12">
         <p class="font-display text-title-3 font-extrabold">Mesh</p>
         <h1 class="mt-8 font-display text-title-1">Social media for humans.</h1>
         <p class="mt-2 text-title-3">Get bored again.</p>
-        <p class="mt-4 text-body text-fg-muted">Real people, real news and real plans, in an app that knows when to stop.</p>
+        <p class="mt-4 text-body text-fg-muted">A shared disposable camera for every night out, real news, and an app that knows when to stop.</p>
+        <h2 class="mt-10 text-title-2">Rolls: everyone shoots, nobody looks</h2>
+        <p class="mt-3 text-body text-fg-muted">Start a roll for a party, a trip or O-Week and send the link. Everyone gets 27 shots on one shared camera, with a 2000s digicam look and no previews. At 9am the next morning it develops, and everyone wakes up to every photo from the night.</p>
         <h2 class="mt-10 text-title-2">You control the scroll</h2>
         <p class="mt-3 text-body text-fg-muted">Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button. Loosening a limit takes 24 hours. Messages and calls always work.</p>
         <h2 class="mt-10 text-title-2">Made by humans</h2>

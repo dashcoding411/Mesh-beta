@@ -1,8 +1,9 @@
-import { BrickWall, CalendarDays, Fingerprint, Lock, MessageCircle, Newspaper, ShieldCheck, Sprout } from "lucide-react";
+import { Aperture, BrickWall, CalendarDays, Fingerprint, Lock, MessageCircle, Newspaper, ShieldCheck, Sprout } from "lucide-react";
 import { authPath, navigate } from "../lib/router";
 import { DOCUMENT_TITLES } from "../legal/titles.js";
 import { LogoMark } from "./shell/Sidebar";
 import Button from "./ui/Button";
+import SevenSeg from "./rolls/SevenSeg";
 
 const PILLARS = [
   { icon: Fingerprint, title: "Made by humans",
@@ -68,21 +69,39 @@ export default function Welcome({ signedIn, onBrowse }) {
               </h1>
               <p className="mt-3 font-display text-title-1 font-bold text-accent-text">Get bored again.</p>
               <p className="mt-5 max-w-xl text-body text-fg-muted">
-                Real people, real news and real plans, in an app that knows when to stop. Set a daily limit and Mesh locks itself when you hit it.
+                A shared disposable camera for every night out, real news, and an app that knows when to stop.
               </p>
               {cta("hero")}
               <p className="mt-5 text-caption text-fg-subtle">16+ · Made in Brisbane · In beta, so things may change</p>
             </div>
-            <BrickDemo />
+            <RollsDemo />
           </div>
         </section>
 
-        <section aria-labelledby="scroll-h" className="border-y border-line bg-surface">
+        <section aria-labelledby="rolls-h" className="border-y border-line bg-[#111114] text-white">
           <div className="mx-auto grid max-w-5xl gap-6 px-4 py-12 md:grid-cols-[auto_1fr] md:px-6">
-            <span className="flex h-12 w-12 items-center justify-center rounded-control bg-accent-soft text-accent-text" aria-hidden="true">
-              <BrickWall size={24} />
+            <span className="flex h-12 w-12 items-center justify-center rounded-control bg-[#ff9b2f] text-black" aria-hidden="true">
+              <Aperture size={24} />
             </span>
             <div>
+              <h2 id="rolls-h" className="font-display text-title-1">Rolls: everyone shoots, nobody looks</h2>
+              <p className="mt-3 max-w-2xl text-body text-white/75">
+                Start a roll for a party, a trip or O-Week and send the link. Everyone gets 27 shots on one shared camera, with a
+                2000s digicam look and no previews. At 9am the next morning it develops, and everyone wakes up to every photo from the night.
+              </p>
+              <p className="mt-3 flex items-center gap-2 text-callout font-medium">
+                <Fingerprint size={16} className="text-[#ff9b2f]" aria-hidden="true" /> Camera only, so every photo is real.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="scroll-h" className="border-b border-line bg-surface">
+          <div className="mx-auto grid max-w-5xl items-center gap-10 px-4 py-12 md:grid-cols-[1.2fr_1fr] md:px-6">
+            <div>
+              <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-control bg-accent-soft text-accent-text" aria-hidden="true">
+                <BrickWall size={24} />
+              </span>
               <h2 id="scroll-h" className="font-display text-title-1">You control the scroll</h2>
               <p className="mt-3 max-w-2xl text-body text-fg-muted">
                 Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button.
@@ -92,6 +111,7 @@ export default function Welcome({ signedIn, onBrowse }) {
                 <MessageCircle size={16} className="text-accent-text" aria-hidden="true" /> Messages and calls always work.
               </p>
             </div>
+            <BrickDemo />
           </div>
         </section>
 
@@ -137,6 +157,39 @@ export default function Welcome({ signedIn, onBrowse }) {
         ))}
       </footer>
     </div>
+  );
+}
+
+// A developed roll: a few prints with their date stamps.
+const PRINTS = [
+  { g: "from-amber-400 via-rose-500 to-fuchsia-800", d: "17 02 '27", r: "-rotate-6" },
+  { g: "from-sky-400 via-indigo-600 to-violet-900", d: "17 02 '27", r: "rotate-3" },
+  { g: "from-emerald-300 via-teal-600 to-slate-900", d: "18 02 '27", r: "-rotate-2" },
+  { g: "from-orange-300 via-red-500 to-rose-900", d: "18 02 '27", r: "rotate-6" },
+];
+
+function RollsDemo() {
+  return (
+    <figure aria-label="A roll that has developed: photos from the night with orange date stamps" className="mx-auto w-full max-w-sm">
+      <div className="rounded-[28px] border border-line-strong bg-[#111114] p-5 text-white shadow-overlay">
+        <div className="flex items-center justify-between text-caption font-semibold">
+          <span className="flex items-center gap-2"><Aperture size={15} className="text-[#ff9b2f]" aria-hidden="true" /> O-Week night 2</span>
+          <span className="rounded-full bg-[#ff9b2f] px-2.5 py-0.5 text-black">Developed 9:00</span>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 px-1" aria-hidden="true">
+          {PRINTS.map((p) => (
+            <div key={p.g} className={`rounded-[6px] bg-white p-1.5 pb-5 shadow-lg ${p.r}`}>
+              <div className={`relative aspect-[3/4] overflow-hidden rounded-[2px] bg-gradient-to-br ${p.g}`}>
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_45%_38%,rgba(255,255,255,.45),transparent_55%)]" />
+                <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={p.d} height={8} color="#ff9b2f" glow /></span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-5 text-center text-caption text-white/70">143 photos by 18 people</p>
+      </div>
+      <figcaption className="mt-3 text-center text-caption text-fg-subtle">What you wake up to</figcaption>
+    </figure>
   );
 }
 

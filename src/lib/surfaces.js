@@ -1,6 +1,6 @@
 import {
   Sparkles, Users, Clapperboard, Newspaper, Blend, Search,
-  House, MessageCircle, UserRound, Bell, Trophy, CalendarDays,
+  House, MessageCircle, UserRound, Bell, Trophy, CalendarDays, Aperture,
 } from "lucide-react";
 
 // Product surfaces. Format names are Mesh's own: Stills (photos), Strands
@@ -22,6 +22,7 @@ const ALL = {
   notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell, blurb: "Likes, comments, follows and invites" },
   leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "Who's kept Mesh bricked the longest" },
   whatson: { id: "whatson", path: "/whats-on", label: "What's on", icon: CalendarDays, blurb: "Public gatherings coming up" },
+  rolls: { id: "rolls", path: "/rolls", label: "Rolls", icon: Aperture, blurb: "Everyone shoots, nobody looks, it develops at 9am" },
 };
 
 export const FEED_TABS = [ALL.foryou, ALL.following];

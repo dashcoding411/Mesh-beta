@@ -1,11 +1,15 @@
 // Mesh media on Cloudflare: signed-in people upload videos (and their poster
-// frames) to R2; anyone with the link can watch, with seeking. Uploads are
+// frames) to R2; anyone with the link can watch, with seeking. Roll photos
+// (?kind=roll) are JPEGs kept under r/ with their own allowance. Uploads are
 // checked against the uploader's Firebase ID token, so files always live under
 // the uploader's own uid and only they can delete them.
 
 // The Workers free plan caps a request body at 100 MB.
 const MAX_BYTES = 100 * 1024 * 1024;
 const MAX_FILES_PER_PERSON = 60;
+// Roll photos: 27 a roll, so about 22 full rolls each, at up to 12 MB a photo.
+const MAX_ROLL_PHOTOS = 600;
+const MAX_ROLL_BYTES = 12 * 1024 * 1024;
 const TYPES = {
   "video/mp4": "mp4",
   "video/webm": "webm",
@@ -13,7 +17,8 @@ const TYPES = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
 };
-const FILE = /^\/v\/([A-Za-z0-9]{20,40})\/([a-f0-9]{32}\.(?:mp4|webm|mov|jpg|webp))$/;
+const FILE = /^\/(v|r)\/([A-Za-z0-9]{20,40})\/([a-f0-9]{32}\.(?:mp4|webm|mov|jpg|webp))$/;
+const PREFIXES = ["v", "r"];
 
 export default {
   async fetch(req, env) {
@@ -42,22 +47,24 @@ export default {
         const uid = await verifyToken(req, env);
         if (uid !== everything[1]) throw httpError(403, "Those files aren't yours.");
         let removed = 0;
-        for (;;) {
-          const page = await env.MEDIA.list({ prefix: `v/${uid}/`, limit: 1000 });
-          if (!page.objects.length) break;
-          await env.MEDIA.delete(page.objects.map((o) => o.key));
-          removed += page.objects.length;
-          if (!page.truncated) break;
+        for (const prefix of PREFIXES) {
+          for (;;) {
+            const page = await env.MEDIA.list({ prefix: `${prefix}/${uid}/`, limit: 1000 });
+            if (!page.objects.length) break;
+            await env.MEDIA.delete(page.objects.map((o) => o.key));
+            removed += page.objects.length;
+            if (!page.truncated) break;
+          }
         }
         return json({ ok: true, removed }, 200, cors);
       }
       const file = url.pathname.match(FILE);
-      if (file && (req.method === "GET" || req.method === "HEAD")) return serve(req, env, `v/${file[1]}/${file[2]}`);
+      if (file && (req.method === "GET" || req.method === "HEAD")) return serve(req, env, `${file[1]}/${file[2]}/${file[3]}`);
       if (file && req.method === "DELETE") {
         if (!trusted) throw httpError(403, "Deletes only come from Mesh.");
         const uid = await verifyToken(req, env);
-        if (uid !== file[1]) throw httpError(403, "That file isn't yours.");
-        await env.MEDIA.delete(`v/${file[1]}/${file[2]}`);
+        if (uid !== file[2]) throw httpError(403, "That file isn't yours.");
+        await env.MEDIA.delete(`${file[1]}/${file[2]}/${file[3]}`);
         return json({ ok: true }, 200, cors);
       }
       return new Response("Not found", { status: 404 });
@@ -69,19 +76,24 @@ export default {
 
 async function upload(req, env) {
   const uid = await verifyToken(req, env);
+  const roll = new URL(req.url).searchParams.get("kind") === "roll";
   const type = (req.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
-  const ext = TYPES[type];
-  if (!ext) throw httpError(415, "Use an MP4, WebM or MOV video.");
+  const ext = roll ? (type === "image/jpeg" ? "jpg" : null) : TYPES[type];
+  if (!ext) throw httpError(415, roll ? "Roll photos are JPEGs." : "Use an MP4, WebM or MOV video.");
   const size = Number(req.headers.get("Content-Length") || 0);
   if (!size) throw httpError(411, "The upload was empty.");
-  if (size > MAX_BYTES) throw httpError(413, "Videos can be up to 100 MB for now.");
+  if (size > (roll ? MAX_ROLL_BYTES : MAX_BYTES)) throw httpError(413, roll ? "That photo is too big." : "Videos can be up to 100 MB for now.");
 
-  const mine = await env.MEDIA.list({ prefix: `v/${uid}/`, limit: MAX_FILES_PER_PERSON });
-  if (mine.objects.length >= MAX_FILES_PER_PERSON) {
-    throw httpError(429, "You've reached the test upload limit. Delete an old video to add another.");
+  const prefix = roll ? "r" : "v";
+  const allowance = roll ? MAX_ROLL_PHOTOS : MAX_FILES_PER_PERSON;
+  const mine = await env.MEDIA.list({ prefix: `${prefix}/${uid}/`, limit: allowance });
+  if (mine.objects.length >= allowance) {
+    throw httpError(429, roll
+      ? "You've used all your roll photos for now. Delete an old roll to shoot more."
+      : "You've reached the test upload limit. Delete an old video to add another.");
   }
 
-  const key = `v/${uid}/${crypto.randomUUID().replaceAll("-", "")}.${ext}`;
+  const key = `${prefix}/${uid}/${crypto.randomUUID().replaceAll("-", "")}.${ext}`;
   await env.MEDIA.put(key, req.body, {
     httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
     customMetadata: { uid },

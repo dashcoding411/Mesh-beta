@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, CameraOff, Images, SwitchCamera, X } from "lucide-react";
-import { cameraSupported, pickCamera } from "../lib/cameras";
+import { cameraSupported, openStream } from "../lib/cameras";
 import { motionReduced } from "../lib/appearance";
 import { formatDuration } from "../lib/format";
 import Button from "./ui/Button";
@@ -17,19 +17,6 @@ const FACING_KEY = "mesh:camera-facing";
 const savedFacing = () => {
   try { return localStorage.getItem(FACING_KEY) || "environment"; } catch { return "environment"; }
 };
-
-async function openStream(facing, audio) {
-  const size = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-  const id = pickCamera(devices, facing);
-  const byFacing = { facingMode: { ideal: facing }, ...size };
-  try {
-    return await navigator.mediaDevices.getUserMedia({ video: id ? { deviceId: { exact: id }, ...size } : byFacing, audio });
-  } catch (err) {
-    if (!id || err?.name === "NotAllowedError") throw err;
-    return navigator.mediaDevices.getUserMedia({ video: byFacing, audio });
-  }
-}
 
 const recorderType = () => ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm"]
   .find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || "";

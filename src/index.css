@@ -186,6 +186,11 @@ body {
 /* Motion. Durations: 120ms micro, 200ms standard, 320ms emphasis. */
 
 @keyframes mesh-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mesh-print {
+  0% { opacity: 0; filter: brightness(2.2) sepia(0.8) blur(6px); transform: scale(0.96); }
+  35% { opacity: 1; filter: brightness(1.6) sepia(0.6) blur(3px); }
+  100% { opacity: 1; filter: none; transform: none; }
+}
 @keyframes mesh-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -232,6 +237,8 @@ body {
 }
 
 .anim-fade { animation: mesh-fade-in 200ms ease both; }
+/* A roll's prints developing: from washed-out and blurry to sharp. */
+.roll-print { animation: mesh-print 1600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-rise { animation: mesh-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-pop { animation: mesh-pop 200ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-heart { animation: mesh-heart 320ms cubic-bezier(0.175, 0.885, 0.32, 1.275); }

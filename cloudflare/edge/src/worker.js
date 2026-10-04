@@ -6,7 +6,7 @@
 // only what a signed-out visitor could already see (Firestore's REST API,
 // unauthenticated, so the security rules decide). People get the normal app.
 
-const PAGE = /^\/(news|p|u|gatherings|circles)\/([^/?#]+)\/?$|^\/@([a-z0-9_]{3,30})\/?$/i;
+const PAGE = /^\/(news|p|u|gatherings|circles|rolls)\/([^/?#]+)\/?$|^\/@([a-z0-9_]{3,30})\/?$/i;
 const FALLBACK_IMAGE = "/og-image.png";
 
 export default {
@@ -85,6 +85,17 @@ const imageFor = (env, url) => {
 
 /** Title, description and image for a shareable page, or null when it isn't public. */
 export async function describe(env, kind, id) {
+  // Roll invites: the same card for every roll, so a link never reveals its
+  // name or who's in it, and kept out of search.
+  if (kind === "rolls") {
+    return {
+      title: "You're invited to a roll",
+      description: "A shared disposable camera on Mesh. Everyone gets 27 shots, nobody sees a thing, and it all develops at 9am.",
+      image: `${env.SITE}${FALLBACK_IMAGE}`,
+      type: "website",
+      noindex: true,
+    };
+  }
   if (kind === "news") {
     const s = await getDoc(env, `news/${encodeURIComponent(id)}`);
     if (!s || s.status !== "approved") return null;
@@ -191,6 +202,7 @@ export function injectMeta(html, meta, site) {
     `<meta name="twitter:description" content="${esc(meta.description)}">`,
     `<meta name="twitter:image" content="${esc(meta.image)}">`,
   ];
+  if (meta.noindex) tags.push('<meta name="robots" content="noindex">');
   if (meta.article) {
     const a = meta.article;
     const ld = {

@@ -143,3 +143,29 @@ describe("media worker", () => {
     expect((await worker.fetch(new Request(`${BASE}/`), e)).status).toBe(404);
   });
 });
+
+describe("roll photos", () => {
+  const putRoll = async (e, { auth, type = "image/jpeg", body = new Uint8Array([255, 216, 255, 1]) } = {}) =>
+    worker.fetch(new Request(`${BASE}/upload?kind=roll`, {
+      method: "PUT", body,
+      headers: { Origin: ORIGIN, "Content-Type": type, "Content-Length": String(body.length), ...(auth ? { Authorization: `Bearer ${auth}` } : {}) },
+    }), e);
+
+  it("keeps roll photos under r/, JPEG only, and deletes them with the account", async () => {
+    const e = env();
+    const t = await token();
+    const res = await putRoll(e, { auth: t });
+    expect(res.status).toBe(200);
+    const { url } = await res.json();
+    expect(url).toMatch(new RegExp(`^${BASE}/r/${UID}/[a-f0-9]{32}\\.jpg$`));
+    expect((await putRoll(e, { auth: t, type: "video/mp4" })).status).toBe(415);
+    const got = await worker.fetch(new Request(url), e);
+    expect(got.status).toBe(200);
+    expect(got.headers.get("Content-Type")).toBe("image/jpeg");
+
+    await put(e, { auth: t });
+    const wipe = await worker.fetch(new Request(`${BASE}/v/${UID}`, { method: "DELETE", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}` } }), e);
+    expect((await wipe.json()).removed).toBe(2);
+    expect(e.MEDIA.files.size).toBe(0);
+  });
+});
