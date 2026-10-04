@@ -5,36 +5,44 @@ import { LogoMark } from "./shell/Sidebar";
 import { plural } from "../lib/format";
 import LiveAvatar from "./ui/LiveAvatar";
 
+// Solid badges with white icons, so the photo never shows through.
+const ACCENT = "bg-accent text-white";
+const LIKE = "bg-fuchsia-600 text-white";
+const GOOD = "bg-emerald-600 text-white";
+const ASK = "bg-amber-600 text-white";
 const ICONS = {
-  like: { icon: Heart, className: "bg-like/15 text-like" },
-  repost: { icon: Repeat2, className: "bg-success-text/15 text-success-text" },
-  comment: { icon: MessageCircle, className: "bg-accent-soft text-accent-text" },
-  reply: { icon: MessageCircle, className: "bg-accent-soft text-accent-text" },
-  mention: { icon: AtSign, className: "bg-accent-soft text-accent-text" },
-  follow: { icon: UserPlus, className: "bg-accent-soft text-accent-text" },
-  request: { icon: UserPlus, className: "bg-warning-text/15 text-warning-text" },
-  accept: { icon: UserCheck, className: "bg-success-text/15 text-success-text" },
-  family: { icon: ShieldCheck, className: "bg-accent-soft text-accent-text" },
-  familyok: { icon: ShieldCheck, className: "bg-success-text/15 text-success-text" },
-  familyask: { icon: ShieldCheck, className: "bg-warning-text/15 text-warning-text" },
-  invite: { icon: CalendarDays, className: "bg-accent-soft text-accent-text" },
-  joined: { icon: Blend, className: "bg-success-text/15 text-success-text" },
-  storylike: { icon: Heart, className: "bg-like/15 text-like" },
-  echo: { icon: Waves, className: "bg-accent-soft text-accent-text" },
-  appeal: { icon: Scale, className: "bg-accent-soft text-accent-text" },
+  like: { icon: Heart, className: LIKE },
+  repost: { icon: Repeat2, className: GOOD },
+  comment: { icon: MessageCircle, className: ACCENT },
+  reply: { icon: MessageCircle, className: ACCENT },
+  mention: { icon: AtSign, className: ACCENT },
+  follow: { icon: UserPlus, className: ACCENT },
+  request: { icon: UserPlus, className: ASK },
+  accept: { icon: UserCheck, className: GOOD },
+  family: { icon: ShieldCheck, className: ACCENT },
+  familyok: { icon: ShieldCheck, className: GOOD },
+  familyask: { icon: ShieldCheck, className: ASK },
+  invite: { icon: CalendarDays, className: ACCENT },
+  joined: { icon: Blend, className: GOOD },
+  storylike: { icon: Heart, className: LIKE },
+  echo: { icon: Waves, className: ACCENT },
+  appeal: { icon: Scale, className: ACCENT },
 };
 
 /** The actor's photo with a small icon for what they did. */
 export function NoticeAvatar({ n, size = 44 }) {
   const { icon: Icon, className } = ICONS[n.type] || ICONS.follow;
+  const badge = Math.max(18, Math.round(size * 0.45));
   return (
-    <span className="relative shrink-0">
+    // inline-flex so the badge is placed against the photo, not the line of text.
+    <span className="relative inline-flex shrink-0">
       {/* Appeal decisions come from Mesh, not the staff member who made them. */}
       {n.type === "appeal"
         ? <LogoMark size={size} />
         : <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={size} />}
-      <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
-        <Icon size={13} strokeWidth={2.4} aria-hidden="true" fill={n.type === "like" || n.type === "storylike" ? "currentColor" : "none"} />
+      <span style={{ width: badge, height: badge }}
+        className={`absolute -bottom-0.5 -right-1 flex items-center justify-center rounded-full ring-2 ring-canvas ${className}`}>
+        <Icon size={Math.round(badge * 0.55)} strokeWidth={2.5} aria-hidden="true" fill={n.type === "like" || n.type === "storylike" ? "currentColor" : "none"} />
       </span>
     </span>
   );

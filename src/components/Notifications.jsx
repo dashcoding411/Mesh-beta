@@ -204,7 +204,7 @@ function NoticeRow({ group, fresh, following }) {
   return (
     <li className={`relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface ${fresh ? "bg-accent-soft/40" : ""}`}>
       <button type="button" onClick={open} className="absolute inset-0" aria-label={`${n.actorName}: open`} tabIndex={-1} />
-      <span className="relative shrink-0"><NoticeAvatar n={n} /></span>
+      <span className="relative flex shrink-0"><NoticeAvatar n={n} /></span>
       <button type="button" onClick={open} className="relative min-w-0 flex-1 text-left">
         <span className="line-clamp-3 text-callout text-fg-muted"><NoticeLine n={n} others={others} /></span>
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={fullTime(at)} className="text-caption text-fg-subtle">{shortTime(at)}</time>}
