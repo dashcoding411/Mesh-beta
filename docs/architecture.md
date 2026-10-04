@@ -135,6 +135,18 @@ follow back and You don't follow back instead, comparing your full lists, up
 to 2,000 each); public accounts' lists are
 readable signed out too.
 
+Security notes: every edit rule re-validates what it lets change (gathering
+and circle edits run the same content checks as creation, including the hate
+filter and https-only ticket links; chat nicknames are bounded). External
+links in posts, gatherings and News sources all go through the leaving-Mesh
+check. Hosting sends CSP, HSTS (two years, subdomains), nosniff, frame denial,
+a strict referrer policy and a Permissions-Policy that also opts out of
+Topics. New 16 and 17 year old accounts start private with messages from
+people they follow. Passwords need 8+ characters and can't be a common one or
+contain the handle or email. `@grpc/grpc-js` is pinned past its advisory via
+`overrides`. Contact lookup codes can be brute-forced by someone guessing
+phone numbers, which is why being findable is opt-in.
+
 The legal pages (`src/legal`) must match this code. Until `business.js` has
 the operator's legal name and ABN, the policies name "the founders" rather
 than placeholders; the warning about missing details shows in development

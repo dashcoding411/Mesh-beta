@@ -110,6 +110,9 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
     // Server time, so consent can't be backdated.
     termsAcceptedAt: serverTimestamp(),
     termsVersion: POLICY_VERSION,
+    // Safer defaults for 16 and 17 year olds: private, and only people they
+    // follow can message them. They can change both in Settings.
+    ...(new Date().getFullYear() - birthYear < 18 ? { isPrivate: true, messagePolicy: "following" } : {}),
   });
   await batch.commit();
 }

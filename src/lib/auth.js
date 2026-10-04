@@ -153,7 +153,9 @@ export async function reauthenticateAndDelete(currentPassword) {
 const MESSAGES = {
   "auth/invalid-email": "That email address doesn't look right.",
   "auth/email-already-in-use": "An account with that email already exists. Try logging in instead.",
-  "auth/weak-password": "Password must be at least 8 characters.",
+  "auth/weak-password": "Passwords need at least 8 characters, with an uppercase letter, a number and a symbol.",
+  "auth/password-does-not-meet-requirements":
+    "Passwords need at least 8 characters, with an uppercase letter, a number and a symbol. Signing in with an older password? Use \"Forgot password\" to set a new one.",
   "auth/invalid-credential": "The email or password you entered is incorrect.",
   "auth/wrong-password": "The email or password you entered is incorrect.",
   "auth/user-not-found": "The email or password you entered is incorrect.",

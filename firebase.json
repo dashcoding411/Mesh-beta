@@ -45,11 +45,15 @@
           },
           {
             "key": "Permissions-Policy",
-            "value": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"
+            "value": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=(), interest-cohort=(), browsing-topics=()"
           },
           {
             "key": "Cross-Origin-Opener-Policy",
             "value": "same-origin-allow-popups"
+          },
+          {
+            "key": "Strict-Transport-Security",
+            "value": "max-age=63072000; includeSubDomains"
           }
         ]
       },

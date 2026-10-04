@@ -12,6 +12,7 @@ import {
 import { validateText } from "../lib/validate";
 import { checkContent } from "../lib/moderation";
 import { goBack, navigate } from "../lib/router";
+import { followLink } from "../lib/links";
 import { shortTime, fullTime, isoTime, plural } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import Tabs from "./ui/Tabs";
@@ -166,7 +167,7 @@ export default function GatheringPage({ eventId }) {
         {!past && <CalendarButtons event={event} />}
 
         {event.ticketUrl && (
-          <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer nofollow ugc"
+          <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer nofollow ugc" onClick={(e) => followLink(event.ticketUrl, e)}
             className="press mt-4 inline-flex min-h-11 items-center gap-2 rounded-control border border-line-strong px-4 text-callout font-semibold text-accent-text hover:bg-surface-2">
             <Ticket size={16} aria-hidden="true" /> Get tickets <ExternalLink size={13} aria-hidden="true" />
             <span className="sr-only">(opens in a new tab)</span>

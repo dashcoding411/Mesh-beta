@@ -42,3 +42,19 @@ describe("validateUsername", () => {
     expect(validateUsername("ab").error).toBeTruthy();
   });
 });
+
+import { passwordProblem } from "../validate";
+describe("passwordProblem", () => {
+  it("refuses short, common, repeated and identifying passwords", () => {
+    expect(passwordProblem("short")).toMatch(/8/);
+    expect(passwordProblem("harbour-42-tram")).toMatch(/uppercase/);
+    expect(passwordProblem("Harbour-tram")).toMatch(/number/);
+    expect(passwordProblem("Harbour42tram")).toMatch(/symbol/);
+    expect(passwordProblem("Password1!")).toMatch(/common/);
+    expect(passwordProblem("Qwerty123!")).toMatch(/common/);
+    expect(passwordProblem("Samjones-2026", { email: "samjones@example.com" })).toMatch(/email/);
+  });
+  it("accepts a reasonable password", () => {
+    expect(passwordProblem("Tram-violet-harbour-42")).toBe("");
+  });
+});

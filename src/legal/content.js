@@ -140,6 +140,7 @@ export const PRIVACY = {
       p: [
         "Mesh is for people 16 and over, as the Online Safety Amendment (Social Media Minimum Age) Act 2024 requires. Signing up asks for your birth year (and, if you turn 16 this year, whether you've had your birthday), and nobody under 16 can make an account. Accounts made before this were asked for a birth year; an account under 16 can only download its data and delete itself.",
         "Your birth year is stored where only your account can read it, and is used only for age rules: the 16+ minimum, 18+ ads and G-rated GIFs for under-18s. It's never shown on your profile.",
+        "Accounts for 16 and 17 year olds start private, with messages only from people they follow. They can change either in Settings.",
         "If you believe an account belongs to someone under 16, report it and we will act, including closing the account.",
       ],
     },

@@ -2,6 +2,7 @@ import { ExternalLink, ListChecks } from "lucide-react";
 import { CITE, hostOf } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
+import { followLink } from "../../lib/links";
 
 // Shared by the story page and the editor preview.
 export function StoryBody({ story }) {
@@ -87,7 +88,7 @@ export function StoryBody({ story }) {
           {sources.map((s, i) => (
             <li key={i} id={`${uid}-src-${i + 1}`} className="flex scroll-mt-24 gap-3">
               <span className="mt-2 w-6 shrink-0 text-right text-caption font-semibold text-fg-subtle tabular">{i + 1}</span>
-              <a href={s} target="_blank" rel="noopener noreferrer nofollow ugc"
+              <a href={s} target="_blank" rel="noopener noreferrer nofollow ugc" onClick={(e) => followLink(s, e)}
                 className="press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-2 px-3 py-2 hover:bg-surface-3">
                 <span className="min-w-0 flex-1">
                   <span className="block text-callout font-semibold text-fg">{hostOf(s)}</span>

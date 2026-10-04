@@ -5,7 +5,7 @@ import {
   signInEmail, signUpEmail, signInGoogle, signInApple,
   resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
 } from "../lib/auth";
-import { validateUsername, validBirthYear } from "../lib/validate";
+import { validateUsername, validBirthYear, passwordProblem } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile, saveOwnLimits } from "../lib/db";
 import { emptyLayer } from "../lib/brick";
@@ -99,7 +99,8 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
     e.preventDefault();
     setError(""); setNotice("");
     if (!email.trim()) return setError("Enter your email address.");
-    if (signup && password.length < 8) return setError("Choose a password of at least 8 characters.");
+    const weak = signup ? passwordProblem(password, { email }) : "";
+    if (weak) return setError(weak);
     if (!password) return setError("Enter your password.");
     setBusy(true);
     try {
@@ -223,8 +224,14 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
                   {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
                 </button>
               </div>
-              {signup && password.length > 0 && password.length < 8 && (
-                <p className="mt-1.5 text-caption text-fg-subtle">{8 - password.length} more character{8 - password.length === 1 ? "" : "s"} to go.</p>
+              {signup && (
+                <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-caption" aria-label="Password needs">
+                  {[["8+ characters", password.length >= 8], ["Uppercase", /[A-Z]/.test(password)], ["Number", /[0-9]/.test(password)], ["Symbol", /[^A-Za-z0-9]/.test(password)]].map(([label, ok]) => (
+                    <li key={label} className={ok ? "text-success-text" : "text-fg-subtle"}>
+                      {ok ? <Check size={12} className="mr-0.5 inline" aria-hidden="true" /> : "· "}{label}<span className="sr-only">{ok ? ", done" : ", needed"}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
               {capsOn && (
                 <p role="status" className="mt-1.5 flex items-center gap-1.5 text-caption text-warning-text">
@@ -429,6 +436,11 @@ function FinishProfile({ user, onCreated }) {
         <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
           value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2001" />
       </Field>
+      {validBirthYear(birthYear).year && new Date().getFullYear() - Number(birthYear) < 18 && (
+        <p className="text-caption text-fg-subtle">
+          Under 18: your account starts private, and only people you follow can message you. You can change both in Settings.
+        </p>
+      )}
       {validBirthYear(birthYear).borderline && (
         <label className="flex cursor-pointer items-start gap-3 text-callout text-fg-muted">
           <input type="checkbox" checked={turned16} onChange={(e) => setTurned16(e.target.checked)}

@@ -822,8 +822,11 @@ service cloud.firestore {
           'username', 'name', 'usernameChangedAt', 'bio',
           'pronouns', 'town', 'spouseUsername', 'photoURL',
           'followerCount', 'followingCount', 'createdAt',
-          'termsAcceptedAt', 'termsVersion'
+          'termsAcceptedAt', 'termsVersion', 'isPrivate', 'messagePolicy'
         ])
+        // Under-18s start private, with messages from people they follow only.
+        && incomingData().get('isPrivate', false) is bool
+        && incomingData().get('messagePolicy', 'everyone') in ['everyone', 'following']
         // Server-set, so account age can't be faked.
         && incomingData().createdAt == request.time
         // The handle must be claimed in the same write.
@@ -2096,6 +2099,7 @@ service cloud.firestore {
             && changed().hasOnly(['lastMessage', 'lastSenderId', 'updatedAt', 'theme', 'nicknames', 'name'])
             && incomingData().name is string
             && incomingData().name.size() <= 60
+            && incomingData().get('nicknames', {}) is map && incomingData().get('nicknames', {}).size() <= 300
             && incomingData().get('lastMessage', '') is string
             && incomingData().get('lastMessage', '').size() <= 200
             // Preview is the caller's and stamped now.
@@ -2402,6 +2406,9 @@ service cloud.firestore {
                          'screeningQuestions', 'automod', 'featuredPostIds', 'topics', 'chatId',
                          'bannerUrl', 'photoUrl', 'accent', 'welcome', 'memberTitle', 'hiddenTabs'])
           && incomingData().privacy in ['public', 'private', 'hidden']
+          && incomingData().name is string && incomingData().name.size() >= 3 && incomingData().name.size() <= 80
+          && incomingData().description is string && incomingData().description.size() <= 1000
+          && notSuspended()
           // Customise: accent colour, welcome note, what members are called, which tabs show.
           && incomingData().get('accent', 'violet') in ['violet', 'pink', 'blue', 'teal', 'green', 'amber', 'red']
           && incomingData().get('welcome', '') is string && incomingData().get('welcome', '').size() <= 300
@@ -2543,6 +2550,17 @@ service cloud.firestore {
               || (after == before - 1 && was && !now)
               || (after == before && was == now));
       }
+      // What a gathering says, checked on creation and on every edit.
+      function eventContentOk(e) {
+        return e.title is string && e.title.size() >= 3 && e.title.size() <= 150
+          && e.description is string && e.description.size() <= 2000
+          && e.location is string && e.location.size() <= 300
+          && e.get('showGuestList', true) is bool
+          && e.get('ticketUrl', '') is string && e.get('ticketUrl', '').size() <= 500
+          && (e.get('ticketUrl', '') == '' || e.ticketUrl.matches('^https?://[^ ]+$'))
+          && e.startsAt is timestamp && e.startsAt < request.time + duration.value(1100, 'd')
+          && hateFree(e.title + ' ' + e.description + ' ' + e.location);
+      }
       function eventLimitsOk(e) {
         return e.get('capacity', 0) is int
           && e.get('capacity', 0) >= 0
@@ -2589,7 +2607,7 @@ service cloud.firestore {
         && incomingData().goingCount == 1
         && incomingData().interestedCount == 0
         && eventLimitsOk(incomingData())
-        && (incomingData().ticketUrl == '' || incomingData().ticketUrl.matches('^https?://.*'))
+        && eventContentOk(incomingData())
         // Circle gatherings: members only; admins only if the circle restricts posting.
         && (incomingData().groupId == ''
             || (isMemberOf(incomingData().groupId)
@@ -2601,7 +2619,9 @@ service cloud.firestore {
                .hasOnly(['title', 'description', 'location', 'startsAt', 'ticketUrl', 'showGuestList',
                          'privacy', 'capacity', 'guestPosting', 'invitees'])
           && incomingData().privacy in ['public', 'private']
-          && eventLimitsOk(incomingData()))
+          && eventLimitsOk(incomingData())
+          && eventContentOk(incomingData())
+          && notSuspended())
         // Head counts move by at most one, only with the caller's own RSVP; going can't exceed capacity.
         || (canViewEvent(resource.data)
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['goingCount', 'interestedCount'])

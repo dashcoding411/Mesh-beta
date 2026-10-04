@@ -41,7 +41,7 @@ import Segmented from "./ui/Segmented";
 import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
 import { EmptyState } from "./ui/States";
-import { validBirthYear } from "../lib/validate";
+import { validBirthYear, passwordProblem } from "../lib/validate";
 import { navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
 import TopBar from "./shell/TopBar";
@@ -427,7 +427,8 @@ function PasswordDialog({ onClose }) {
     e.preventDefault();
     const errs = {};
     if (!current) errs.current = "Enter your current password.";
-    if (next.length < 8) errs.next = "Use at least 8 characters.";
+    const weak = passwordProblem(next, { email: auth.currentUser?.email || "" });
+    if (weak) errs.next = weak;
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true);
