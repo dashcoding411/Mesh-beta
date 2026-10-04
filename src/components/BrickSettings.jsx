@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus, Trophy, Flame, Share2,
-  ChevronDown, MessageCircle,
+  ChevronDown, ChevronRight, MessageCircle,
 } from "lucide-react";
 import {
   SECTIONS, DAYS, DAY_NAMES, COOL_OFF_MS, emptyLayer, windowsToSlots, windowLabel, clockLabel, isTighterOrSame,
@@ -35,7 +35,6 @@ const utcLabel = (offset) => `UTC${offset >= 0 ? "+" : "-"}${Math.floor(Math.abs
 
 export default function BrickSettings() {
   usePageTitle("Brick mode", 1);
-  const { profile } = useShell();
   const brick = useBrick();
   const toast = useToast();
   const { policy, raw, usage, now } = brick;
@@ -219,7 +218,15 @@ export default function BrickSettings() {
 
           <BrickedTime policy={policy} />
 
-          <FamilySection profile={profile} policy={policy} />
+          <button type="button" onClick={() => navigate("/account/family")}
+            className="press flex w-full items-center gap-3 rounded-card border border-line bg-surface p-4 text-left hover:bg-surface-2">
+            <Users size={20} className="shrink-0 text-fg-muted" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-callout font-medium">Parental controls</span>
+              <span className="block text-caption text-fg-subtle">Limits a parent adds on top of yours, with your agreement. They have their own page.</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -438,7 +445,7 @@ function BrickIntro() {
 
 // Parental controls
 
-function FamilySection({ profile, policy }) {
+export function FamilySection({ profile, policy }) {
   const year = new Date().getFullYear();
   const age = profile?.birthYear > 0 ? year - profile.birthYear : null;
   if (age === null) {
@@ -448,7 +455,15 @@ function FamilySection({ profile, policy }) {
       </Group>
     );
   }
-  return age < 18 ? <TeenFamily profile={profile} policy={policy} /> : age >= 19 ? <ParentFamily /> : null;
+  if (age < 18) return <TeenFamily profile={profile} policy={policy} />;
+  if (age >= 19) return <ParentFamily />;
+  return (
+    <Group icon={Users} title="Parental controls">
+      <p className="px-4 py-3 text-callout text-fg-subtle">
+        Parental controls are for under-18 accounts and their parents (19 and over). At 18 your account is fully your own.
+      </p>
+    </Group>
+  );
 }
 
 // Teen view: accept or decline, view the parent's limits, request changes.

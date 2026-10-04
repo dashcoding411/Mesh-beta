@@ -422,8 +422,8 @@ export async function setPostsVisibility(to) {
   return { done, total: posts.length };
 }
 
-export async function fetchFollowList(uid, kind /* 'followers' | 'following' */) {
-  const q = query(collection(db, "users", uid, kind), limit(200));
+export async function fetchFollowList(uid, kind /* 'followers' | 'following' */, max = 200) {
+  const q = query(collection(db, "users", uid, kind), limit(max));
   return snapToList(await getDocs(q));
 }
 

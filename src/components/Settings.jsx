@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
-  BookUser, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
+  BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
   SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie,
 } from "lucide-react";
@@ -15,6 +15,15 @@ import { openCookieChoices, optionalItems, useConsent } from "../lib/consent";
 import { clearAllDrafts } from "../lib/drafts";
 import { useBrick } from "../lib/useBrick";
 import { hasAnyLimit, parentActive } from "../lib/brick";
+
+/** Who parental controls are for, by the account's age. */
+function parentalSummary(profile) {
+  const age = profile?.birthYear > 0 ? new Date().getFullYear() - profile.birthYear : null;
+  if (age === null) return "Set your birth year to use them";
+  if (age < 18) return "Link with a parent, if you both agree";
+  if (age >= 19) return "Add limits to your teen's account, with their agreement";
+  return "For under-18s and their parents";
+}
 
 function brickSummary(brick) {
   if (brick.state("")) return "Bricked right now";
@@ -42,6 +51,7 @@ import Badge from "./ui/Badge";
 import { Field, Input, Checkbox } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import { BUSINESS } from "../legal/business";
 const ContactSync = lazy(() => import("./ContactSync"));
 
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
@@ -91,7 +101,19 @@ export default function Settings() {
             <Lock size={14} aria-hidden="true" /> Private: only you can see this page.
           </p>
 
-          <Group title="Sign-in">
+          {/* Who you are, then how you use Mesh, who sees you, what you see,
+              how it looks, your data, help, and finally leaving. */}
+          <button type="button" onClick={() => navigate("/account")}
+            className="press flex w-full items-center gap-3 rounded-card border border-line bg-surface p-4 text-left hover:bg-surface-2">
+            <Avatar profile={profile} size={52} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-callout font-semibold">{profile?.name || profile?.username}</span>
+              <span className="block truncate text-caption text-fg-subtle">@{profile?.username} · View and edit your profile</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+          </button>
+
+          <Group title="Account">
             <Row icon={Mail} label="Email" value={user?.email || "Not set"}
               meta={user?.email ? (user.emailVerified ? <Badge tone="accent">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null}
               help={user?.email && !user.emailVerified ? "Verifying lets you recover your account if you lose access." : null}
@@ -103,9 +125,25 @@ export default function Settings() {
               action={hasPassword
                 ? <Button size="sm" onClick={() => setDialog("password")}>Change</Button>
                 : user?.email && <SetPasswordButton email={user.email} />} />
+            <Row icon={CalendarDays} label="Birth year"
+              value={profile?.birthYear > 0 ? String(profile.birthYear) : "Not set"}
+              help={profile?.birthYear > 0
+                ? "Used only for age rules (Mesh is 16 and over) and never shown on your profile. It can't be changed once set, so contact us if it's wrong."
+                : "Mesh is 16 and over. It's used only for age rules and never shown to anyone."}
+              action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
           </Group>
 
-          <Group title="Privacy and safety">
+          <Group title="Your time">
+            <Row icon={BrickWall} label="Brick mode"
+              value={brickSummary(brick)}
+              help="Daily limits, scheduled times and instant bricks. Loosening waits 24 hours."
+              onClick={() => navigate("/account/brick")} />
+            <Row icon={Users} label="Parental controls"
+              value={parentalSummary(profile)}
+              onClick={() => navigate("/account/family")} />
+          </Group>
+
+          <Group title="Privacy">
             <div className="flex min-h-14 items-start gap-3 px-4 py-3">
               <Lock size={20} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
               <span className="min-w-0 flex-1">
@@ -124,36 +162,21 @@ export default function Settings() {
                 value={requests === null ? "Loading…" : requests.length ? `${requests.length} waiting` : "None waiting"}
                 onClick={() => setDialog("requests")} />
             )}
-            <Row icon={BookUser} label="Contacts" value="Find friends from your contacts, and choose whether they can find you"
-              onClick={() => setDialog("contacts")} />
             <Row icon={MessageCircle} label="Who can message you"
               value={profile?.messagePolicy === "following" ? "Only people you follow" : "Everyone (people you don't follow land in Requests)"}
               onClick={() => setDialog("messages")} />
             <Row icon={MessageSquare} label="Who can comment on your posts"
               value={{ following: "Only people you follow", off: "No one" }[profile?.commentPolicy] || "Everyone"}
               onClick={() => setDialog("comments")} />
-            <Row icon={VolumeX} label="Muted accounts"
-              value={muted.size ? `${muted.size} muted` : "No one"}
-              onClick={() => setDialog("muted")} />
-            <Row icon={Ban} label="Blocked accounts"
-              value={blockedList === null ? "Loading…" : blockedList.length ? `${blockedList.length} blocked` : "No one"}
-              onClick={() => setDialog("blocked")} />
-            <Row icon={Cookie} label="Cookies and storage"
-              value={consent === null ? "Not chosen yet: essential only"
-                : optionalItems().every((i) => consent[i.id]) ? "Everything allowed"
-                : optionalItems().some((i) => consent[i.id]) ? "Some extras allowed" : "Essential only"}
-              onClick={openCookieChoices} />
+            <Row icon={BookUser} label="Contacts" value="Find friends from your contacts, and choose whether they can find you"
+              onClick={() => setDialog("contacts")} />
           </Group>
 
-          <Group title="Your feed">
+          <Group title="What you see">
             <Row icon={Sparkles} label="Your interests"
               value={interests?.length ? interests.map((id) => interestById(id)?.label).filter(Boolean).join(", ") : "None picked yet"}
               help="Shapes For you, Flicks and circle suggestions. Private: nobody else can see them."
               onClick={openInterests} />
-            <Row icon={BrickWall} label="Brick mode"
-              value={brickSummary(brick)}
-              help="Lock Mesh down to messages and calls at set times, or after a daily limit. Loosening waits 24 hours."
-              onClick={() => navigate("/account/brick")} />
             <Row icon={EyeOff} label="Hidden words"
               value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
@@ -164,40 +187,49 @@ export default function Settings() {
               action={<Switch label="Hide posts edited with AI" checked={hideAi} onChange={toggleAi} />} />
           </Group>
 
+          <Group title="Blocked and muted">
+            <Row icon={VolumeX} label="Muted accounts"
+              value={muted.size ? `${muted.size} muted` : "No one"}
+              help="You won't see their posts or stories. They aren't told."
+              onClick={() => setDialog("muted")} />
+            <Row icon={Ban} label="Blocked accounts"
+              value={blockedList === null ? "Loading…" : blockedList.length ? `${blockedList.length} blocked` : "No one"}
+              help="They can't follow you, message you or comment on your posts. They aren't told."
+              onClick={() => setDialog("blocked")} />
+          </Group>
+
+          <AppearanceGroup />
+
           <Group title="Your data">
             <DataExportRow />
+            <Row icon={Cookie} label="Cookies and storage"
+              value={consent === null ? "Not chosen yet: essential only"
+                : optionalItems().every((i) => consent[i.id]) ? "Everything allowed"
+                : optionalItems().some((i) => consent[i.id]) ? "Some extras allowed" : "Essential only"}
+              onClick={openCookieChoices} />
+          </Group>
+
+          <Group title="Help and policies">
+            <Row icon={Compass} label="Take the tour" value="A quick look at where everything is in Mesh" onClick={replayTour} />
+            <Row icon={LifeBuoy} label="Contact Mesh" value={BUSINESS.supportEmail} onClick={() => { window.location.href = `mailto:${BUSINESS.supportEmail}`; }} />
+            <Row icon={BookOpen} label="Community Guidelines" value="What's allowed on Mesh, and how appeals work" onClick={() => navigate("/legal/guidelines")} />
             <Row icon={FileText} label="Terms and Privacy Policy"
               value={accepted ? `Version ${profile.termsVersion}, accepted ${new Date(accepted).toLocaleDateString()}` : "Accepted before this was recorded"}
               help={outdated ? "They've been updated since you accepted them. Worth a read." : null}
               onClick={() => navigate("/legal/privacy")} />
             <Row icon={Scale} label="All policies" value="Privacy, terms, cookies, guidelines, refunds" onClick={() => navigate("/legal")} />
-            <Row icon={Trash2} label="Delete account" value="Permanently delete your account and everything you've posted" danger onClick={() => setDialog("delete")} />
-          </Group>
-
-          <AppearanceGroup />
-
-          <Group title="Help">
-            <Row icon={Compass} label="Take the tour" value="A quick look at where everything is in Mesh" onClick={replayTour} />
           </Group>
 
           {role && (
-            <Group title="Moderation">
-              <Row icon={Gavel} label="Moderation queue" value="Review reports and suspensions" onClick={() => navigate("/account/moderation")} />
+            <Group title="Mesh staff">
+              <Row icon={Gavel} label="Moderation" value="Reports, appeals, suspensions, journalists and moderators" onClick={() => navigate("/account/moderation")} />
               <Row icon={Megaphone} label="Ads" value="Create, schedule and track ads in Home" onClick={() => navigate("/account/ads")} />
             </Group>
           )}
 
-          <Group title="Age">
-            <Row icon={CalendarDays} label="Birth year"
-              value={profile?.birthYear > 0 ? String(profile.birthYear) : "Not set"}
-              help={profile?.birthYear > 0
-                ? "Used only to apply age protections, and never shown on your profile. It can't be changed once set, so contact us if it's wrong."
-                : "Set it once to post publicly. It's used only for age protections and never shown to anyone."}
-              action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
-          </Group>
-
-          <Group title="Account">
+          <Group title="Sign out or leave">
             <Row icon={LogOut} label="Sign out" value="Of Mesh on this device" onClick={() => setDialog("signout")} />
+            <Row icon={Trash2} label="Delete account" value="Permanently delete your account and everything you've posted" danger onClick={() => setDialog("delete")} />
           </Group>
         </div>
       </div>
@@ -306,7 +338,7 @@ function AppearanceGroup() {
     { key: "autoplay", icon: PlayCircle, label: "Videos in feeds", help: "Autoplayed videos start muted. Tap to play saves data." },
   ];
   return (
-    <Group title="Appearance">
+    <Group title="Appearance and accessibility">
       {rows.map(({ key, icon: Icon, label, help }) => (
         <div key={key} className="px-4 py-3">
           <div className="flex items-start gap-3">

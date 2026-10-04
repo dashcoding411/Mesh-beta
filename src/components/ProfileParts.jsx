@@ -139,40 +139,62 @@ export function FollowListDialog({ uid, kind, onClose }) {
   const [lists, setLists] = useState({}); // "followers" | "following" -> [{ id, username }]
   const [profiles, setProfiles] = useState(() => new Map());
   const [q, setQ] = useState("");
-  const source = tab === "mutual" ? "followers" : tab;
+  // Which lists a tab needs. Your own "don't follow back" tabs compare both.
+  const needs = { mutual: ["followers"], notBack: ["following", "followers"], fans: ["followers", "following"] }[tab] || [tab];
+  const source = needs[0];
+  // Your own lists are read in full (up to 2,000) so the comparisons are right.
+  const max = mine ? 2000 : 200;
 
   useEffect(() => {
-    if (lists[source]) return undefined;
+    const missing = needs.filter((k) => !lists[k]);
+    if (!missing.length) return undefined;
     let live = true;
-    fetchFollowList(uid, source)
-      .then(async (items) => {
-        if (!live) return;
-        setLists((l) => ({ ...l, [source]: items }));
-        const found = await fetchProfiles(items.map((i) => i.id));
-        if (live) setProfiles((p) => new Map([...p, ...found]));
-      })
-      .catch(() => { if (live) setLists((l) => ({ ...l, [source]: [] })); });
+    for (const k of missing) {
+      fetchFollowList(uid, k, max)
+        .then(async (items) => {
+          if (!live) return;
+          setLists((l) => ({ ...l, [k]: items }));
+          const found = await fetchProfiles(items.slice(0, 300).map((i) => i.id));
+          if (live) setProfiles((p) => new Map([...p, ...found]));
+        })
+        .catch(() => { if (live) setLists((l) => ({ ...l, [k]: [] })); });
+    }
     return () => { live = false; };
-  }, [uid, source, lists]);
+    // `needs` is derived from `tab`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, tab, lists, max]);
 
   const items = useMemo(() => {
+    if (needs.some((k) => !lists[k])) return null;
     const raw = lists[source];
-    if (!raw) return null;
+    const followsMe = new Set((lists.followers || []).map((f) => f.id));
+    const iFollow = new Set((lists.following || []).map((f) => f.id));
     const term = q.trim().toLowerCase().replace(/^@/, "");
     return raw
       .filter((f) => tab !== "mutual" || following.has(f.id))
+      .filter((f) => tab !== "notBack" || !followsMe.has(f.id))
+      .filter((f) => tab !== "fans" || !iFollow.has(f.id))
+      .map((f) => ({ ...f, followsYou: mine && followsMe.has(f.id) }))
       .map((f) => ({ ...f, ...(profiles.get(f.id) || {}), id: f.id, username: profiles.get(f.id)?.username || f.username }))
       .filter((p) => !term || p.username?.toLowerCase().includes(term) || p.name?.toLowerCase().includes(term))
       .sort((a, b) => Number(following.has(b.id)) - Number(following.has(a.id)));
-  }, [lists, source, tab, q, profiles, following]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lists, source, tab, q, profiles, following, mine]);
 
-  const tabs = [["followers", "Followers"], ["following", "Following"], ...(mine ? [] : [["mutual", "People you know"]])];
+  const tabs = [
+    ["followers", "Followers"], ["following", "Following"],
+    ...(mine ? [["notBack", "Don't follow back"], ["fans", "You don't follow back"]] : [["mutual", "People you know"]]),
+  ];
+  const emptyTitle = q ? "No one matches" : {
+    followers: "No followers yet", following: "Not following anyone yet", mutual: "No one you follow follows them yet",
+    notBack: "Everyone you follow follows you back", fans: "You follow back everyone who follows you",
+  }[tab];
   return (
     <Dialog title={tabs.find(([id]) => id === tab)?.[1] || "Followers"} onClose={onClose}>
-      <div role="tablist" aria-label="Lists" className="mb-3 flex gap-1.5">
+      <div role="tablist" aria-label="Lists" className="no-scrollbar -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1">
         {tabs.map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            className={`press min-h-9 rounded-full px-3.5 text-caption font-semibold ${tab === id ? "bg-fg text-canvas" : "bg-surface-2 text-fg-muted hover:text-fg"}`}>
+            className={`press min-h-9 shrink-0 rounded-full px-3.5 text-caption font-semibold ${tab === id ? "bg-fg text-canvas" : "bg-surface-2 text-fg-muted hover:text-fg"}`}>
             {label}
           </button>
         ))}
@@ -182,7 +204,7 @@ export function FollowListDialog({ uid, kind, onClose }) {
         className="field mb-3 min-h-10 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
       {items === null && <div className="space-y-3 py-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>}
       {items?.length === 0 && (
-        <EmptyState compact icon={Users} title={q ? "No one matches" : tab === "followers" ? "No followers yet" : tab === "following" ? "Not following anyone yet" : "No one you follow follows them yet"} />
+        <EmptyState compact icon={Users} title={emptyTitle} />
       )}
       <ul className="space-y-1">
         {items?.map((p) => (
@@ -195,7 +217,9 @@ export function FollowListDialog({ uid, kind, onClose }) {
                   <span className="truncate">{p.name || p.username || "unknown"}</span>
                   {tickOf(p.badges) && <VerifiedTick size={13} pink={tickOf(p.badges) === "pink"} />}
                 </span>
-                <span className="block truncate text-caption text-fg-subtle">@{p.username || "unknown"}</span>
+                <span className="block truncate text-caption text-fg-subtle">
+                  @{p.username || "unknown"}{p.followsYou && tab === "following" ? " · Follows you" : ""}
+                </span>
               </span>
             </button>
             <FollowButton person={p} following={following} setFollowing={setFollowing} />

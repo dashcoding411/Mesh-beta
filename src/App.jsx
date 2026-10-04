@@ -54,6 +54,7 @@ const Moderation = lazy(() => import("./components/Moderation"));
 const StoryArchive = lazy(() => import("./components/StoryArchive"));
 const AdsManager = lazy(() => import("./components/AdsManager"));
 const AgeGate = lazy(() => import("./components/AgeGate"));
+const ParentalControls = lazy(() => import("./components/ParentalControls"));
 const NotFound = lazy(() => import("./components/NotFound"));
 const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
@@ -94,7 +95,7 @@ function sectionTitle(page, query) {
   if (page.tab === "auth") return page.mode === "signup" ? "Sign up" : "Log in";
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
-  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode", archive: "Story archive", ads: "Ads" }[page.view] || "Your profile";
+  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode", archive: "Story archive", ads: "Ads", family: "Parental controls" }[page.view] || "Your profile";
   if (page.section === "search" && query?.get("q")) return `${query.get("q").slice(0, 40)} · Search`;
   if (page.section === "circles" && page.gatheringId) return "Gatherings";
   return SECTION_TITLES[page.section] ?? null;
@@ -369,6 +370,8 @@ export default function App() {
     content = <StoryArchive />;
   } else if (page.view === "ads") {
     content = <AdsManager />;
+  } else if (page.view === "family") {
+    content = <ParentalControls />;
   } else if (page.view === "legal") {
     content = <Legal key={page.doc} doc={page.doc} />;
   } else {

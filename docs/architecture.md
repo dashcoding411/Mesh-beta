@@ -130,7 +130,9 @@ phone or email (`hashing.sha256`), so nobody can register someone else's.
 Only matched uids are kept, in `users/{uid}/private/contacts`, and they rank
 first in suggestions ("In your contacts"). Profiles show "Followed by …" (the
 target's followers you follow), and the follow-list sheet has Followers,
-Following and People you know with follow buttons; public accounts' lists are
+Following and People you know with follow buttons (on your own profile, Don't
+follow back and You don't follow back instead, comparing your full lists, up
+to 2,000 each); public accounts' lists are
 readable signed out too.
 
 The legal pages (`src/legal`) must match this code. Until `business.js` has
@@ -337,7 +339,8 @@ queries; the client closes those sections. Scheduled windows and instant
 bricks are enforced on every read.
 
 Parents (19+) can add a second layer to an under-18 account after the teen
-accepts. Only the parent can loosen it, and it lapses the year the teen turns
+accepts. Parental controls have their own page (`ParentalControls.jsx`,
+`/account/family`), apart from the person's own Brick mode. Only the parent can loosen it, and it lapses the year the teen turns
 18. The teen records that year (`untilYear`) on the link when accepting, since
 the parent can't read their birth year.
 

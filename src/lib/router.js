@@ -90,6 +90,7 @@ const PAGES = [
   [/^\/account\/moderation$/, () => ({ tab: "account", view: "moderation" })],
   [/^\/account\/archive$/, () => ({ tab: "account", view: "archive" })],
   [/^\/account\/ads$/, () => ({ tab: "account", view: "ads" })],
+  [/^\/account\/family$/, () => ({ tab: "account", view: "family" })],
   [/^\/legal(?:\/([a-z]+))?$/, (m) => ({ tab: "account", view: "legal", doc: m[1] || "privacy" })],
   [/^\/(login|signup)$/, (m) => ({ tab: "auth", mode: m[1] })],
 ];
