@@ -1661,7 +1661,8 @@ service cloud.firestore {
         && incomingData().createdAt == request.time
         && incomingData().developAt is timestamp
         && incomingData().developAt > request.time + duration.value(30, 'm')
-        && incomingData().developAt < request.time + duration.value(15, 'd');
+        // Up to a week for a roll on its own; a gathering's can wait for the gathering.
+        && incomingData().developAt < request.time + duration.value(incomingData().gatheringId == '' ? 15 : 400, 'd');
       allow update: if signedIn() && (
         // The owner renames, opens or closes joining, and removes people (never themselves).
         (resource.data.ownerId == request.auth.uid

@@ -15,10 +15,51 @@ import { EmptyState, ErrorState, Skeleton } from "../ui/States";
 import SevenSeg from "./SevenSeg";
 import RollPage from "./RollPage";
 
-/** Rolls: your shared disposable cameras, or one roll at /rolls/:id. */
+/** Rolls: your shared disposable cameras, or one roll at /rolls/:id. Phones only. */
 export default function Rolls({ rollId }) {
+  const desktop = useDesktop();
+  if (desktop) return <PhoneOnly />;
   if (rollId) return <RollPage key={rollId} rollId={rollId} />;
   return <RollsHome />;
+}
+
+const WIDE = "(min-width: 768px)";
+function useDesktop() {
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia?.(WIDE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(WIDE);
+    if (!mq) return undefined;
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
+// Rolls are a camera you carry, so on a computer they point you to your phone.
+function PhoneOnly() {
+  const [qr, setQr] = useState("");
+  const url = window.location.href;
+  useEffect(() => {
+    let live = true;
+    import("qrcode").then((m) => (m.default || m).toDataURL(url, { margin: 1, width: 440, color: { dark: "#111114", light: "#ffffff" } }))
+      .then((d) => { if (live) setQr(d); }).catch(() => {});
+    return () => { live = false; };
+  }, [url]);
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-10">
+      <div className="max-w-md text-center">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#111114] text-[#ff9b2f]"><Aperture size={26} aria-hidden="true" /></span>
+        <h1 className="mt-4 font-display text-title-1">Rolls live on your phone</h1>
+        <p className="mt-2 text-body text-fg-muted">
+          A roll is a camera you carry. Scan this with your phone to open it there, or tap the camera button at the top of Home in Mesh on your phone.
+        </p>
+        <div className="mx-auto mt-6 w-56 rounded-card bg-white p-3">
+          {qr ? <img src={qr} alt="QR code to open this page on your phone" className="block w-full" /> : <span className="block aspect-square w-full" />}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RollsHome() {

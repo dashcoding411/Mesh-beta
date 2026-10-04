@@ -195,11 +195,12 @@ export default function GatheringPage({ eventId }) {
 
       {dialog === "edit" && (
         <GatheringForm title="Edit gathering" submitLabel="Save changes" initial={event} groupId={event.groupId} onClose={() => setDialog(null)}
-          onSubmit={async (fields) => {
+          onSubmit={async (fields, { roll }) => {
             await updateEvent(event.id, fields);
-            setEvent((e) => ({ ...e, ...fields }));
+            const r = roll ? await startGatheringRoll({ ...event, ...fields }).catch(() => null) : null;
+            setEvent((e) => ({ ...e, ...fields, ...(r ? { rollId: r.id } : {}) }));
             setDialog(null);
-            toast({ title: "Gathering updated" });
+            toast({ title: "Gathering updated", body: r ? "Its roll is ready. Send people the link from the gathering." : undefined });
           }} />
       )}
       {dialog === "invite" && <InviteDialog event={event} onClose={() => setDialog(null)} onChange={(invitees) => setEvent((e) => ({ ...e, invitees }))} />}

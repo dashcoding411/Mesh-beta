@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import { MapPin, Globe, Lock, Users, ChevronRight, Check } from "lucide-react";
-import { createEvent, isEventFull, friendsGoingLabel } from "../lib/db";
+import { MapPin, Globe, Lock, Users, ChevronRight, Check, Aperture } from "lucide-react";
+import { createEvent, isEventFull, friendsGoingLabel, startGatheringRoll } from "../lib/db";
 import Avatar from "./ui/Avatar";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkName, markPosted } from "../lib/moderation";
@@ -92,6 +92,7 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
     showGuestList: initial?.showGuestList ?? true,
     capacity: initial?.capacity ? String(initial.capacity) : "",
     guestPosting: initial?.guestPosting || "guests",
+    roll: false,
   });
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -127,7 +128,7 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
         startsAt: Timestamp.fromDate(when), privacy: form.privacy,
         ticketUrl: form.ticketUrl.trim(), showGuestList: form.showGuestList,
         capacity: cap, guestPosting: form.guestPosting,
-      });
+      }, { roll: form.roll && !initial?.rollId });
     } catch (err) {
       console.error(err);
       setErrors({ submit: err?.code === "permission-denied"
@@ -216,6 +217,15 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
           description="Turn off to keep the guest list between you and each guest.">
           Let guests see who else is coming
         </Checkbox>
+
+        {initial?.rollId ? (
+          <p className="flex items-center gap-2 text-callout text-fg-muted"><Aperture size={16} className="text-accent-text" aria-hidden="true" /> This gathering has a roll.</p>
+        ) : (
+          <Checkbox checked={form.roll} onChange={(v) => setForm({ ...form, roll: v })}
+            description="A shared disposable camera for everyone coming: 27 shots each, nobody sees a thing, and it develops at 9am the morning after.">
+            Add a roll
+          </Checkbox>
+        )}
       </form>
     </Dialog>
   );
@@ -224,10 +234,12 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
 export function NewGatheringDialog({ onClose, onCreated, groupId = "" }) {
   return (
     <GatheringForm title="Plan a gathering" submitLabel="Create gathering" groupId={groupId} onClose={onClose}
-      onSubmit={async (fields) => {
+      onSubmit={async (fields, { roll }) => {
         const event = await createEvent({ ...fields, groupId });
         markPosted("gathering", fields.title);
-        onCreated(event);
+        // The gathering is made either way; a roll that fails can be added from its page.
+        const r = roll ? await startGatheringRoll(event).catch(() => null) : null;
+        onCreated(r ? { ...event, rollId: r.id } : event);
       }} />
   );
 }

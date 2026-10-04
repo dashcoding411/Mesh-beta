@@ -1,5 +1,5 @@
 import {
-  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy, Aperture,
+  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy,
 } from "lucide-react";
 import { sidebarSection } from "../../lib/surfaces";
 
@@ -7,7 +7,6 @@ import { sidebarSection } from "../../lib/surfaces";
 // counts prop; `account` items are hidden when signed out.
 export const MAIN_NAV = [
   { id: "foryou", label: "Home", icon: House, path: "/" },
-  { id: "rolls", label: "Rolls", icon: Aperture, path: "/rolls", badge: "rolls" },
   { id: "search", label: "Search", icon: Search, path: "/search" },
   { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
   { id: "messages", label: "Messages", icon: MessageCircle, path: "/messages", badge: "unread", account: true },

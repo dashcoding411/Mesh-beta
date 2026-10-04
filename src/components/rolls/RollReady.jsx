@@ -11,7 +11,7 @@ export default function RollReady({ roll, onDone }) {
   const close = () => { setGone(true); onDone?.(); };
   return (
     <aside aria-label="A roll has developed"
-      className="fixed inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-overlay flex items-center gap-1 rounded-card border border-line-strong bg-[#111114] py-2 pl-3 pr-1 text-white shadow-overlay anim-rise md:bottom-4 md:left-auto md:right-4 md:w-[380px]">
+      className="fixed inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-overlay flex items-center gap-1 rounded-card border border-line-strong bg-[#111114] py-2 pl-3 pr-1 text-white shadow-overlay anim-rise md:hidden">
       <button type="button" onClick={() => { close(); navigate(`/rolls/${roll.id}`); }} className="press flex min-w-0 flex-1 items-center gap-3 py-1 text-left">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ff9b2f] text-black"><Aperture size={22} aria-hidden="true" /></span>
         <span className="min-w-0">

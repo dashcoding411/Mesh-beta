@@ -1,11 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
   BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie, ChartColumn,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie, ChartColumn, Search as SearchIcon,
 } from "lucide-react";
 import { plural } from "../lib/format";
+import { highlightParts, searchSettings } from "../lib/settingsSearch";
+import { motionReduced } from "../lib/appearance";
 import { clearTime } from "../lib/timeMeter";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
@@ -82,6 +84,31 @@ export default function Settings() {
   const outdated = profile?.termsVersion && profile.termsVersion !== POLICY_VERSION;
 
   const toast = useToast();
+  const [query, setQuery] = useState("");
+  // Open what a search result points at: a page, a dialog, an action, or a row here.
+  const openResult = (item) => {
+    setQuery("");
+    const go = item.go;
+    if (go.path) return navigate(go.path);
+    if (go.run === "interests") return openInterests();
+    if (go.run === "tour") return replayTour();
+    if (go.run === "cookies") return openCookieChoices();
+    if (go.run === "contact") { window.location.href = `mailto:${BUSINESS.supportEmail}`; return undefined; }
+    if (go.dialog && !(go.dialog === "password" && !hasPassword)) return setDialog(go.dialog);
+    if (go.scroll) {
+      // After the list is back, bring the row into view and flash it.
+      setTimeout(() => {
+        const el = document.getElementById(`set-${go.scroll}`);
+        if (!el) return;
+        el.scrollIntoView({ block: "center", behavior: motionReduced() ? "auto" : "smooth" });
+        el.classList.remove("settings-flash");
+        void el.offsetWidth;
+        el.classList.add("settings-flash");
+        (el.matches("button") ? el : el.querySelector("button, input, [role=switch], [role=radio]"))?.focus({ preventScroll: true });
+      }, 60);
+    }
+    return undefined;
+  };
   const toggleAi = (on) => {
     setHideAi(on);
     saveHideAi(on).catch(() => {
@@ -98,6 +125,8 @@ export default function Settings() {
           <header className="hidden md:block">
             <h1 className="text-title-1">Settings</h1>
           </header>
+          <SettingsSearch query={query} onQuery={setQuery} onOpen={openResult} staff={!!role} />
+          {query.trim() ? null : (<>
           <p className="flex items-center gap-2 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted">
             <Lock size={14} aria-hidden="true" /> Private: only you can see this page.
           </p>
@@ -115,18 +144,18 @@ export default function Settings() {
           </button>
 
           <Group title="Account">
-            <Row icon={Mail} label="Email" value={user?.email || "Not set"}
+            <Row id="email" icon={Mail} label="Email" value={user?.email || "Not set"}
               meta={user?.email ? (user.emailVerified ? <Badge tone="accent">Verified</Badge> : <Badge tone="warning">Not verified</Badge>) : null}
               help={user?.email && !user.emailVerified ? "Verifying lets you recover your account if you lose access." : null}
               action={user?.email && !user.emailVerified && <VerifyEmailButton email={user.email} />} />
-            <Row icon={Phone} label="Phone" value={user?.phoneNumber || "Not set"} />
-            <Row icon={ShieldCheck} label="Signs in with" value={providers.map((p) => PROVIDERS[p] || p).join(", ") || "None"} />
-            <Row icon={KeyRound} label="Password"
+            <Row id="phone" icon={Phone} label="Phone" value={user?.phoneNumber || "Not set"} />
+            <Row id="signin" icon={ShieldCheck} label="Signs in with" value={providers.map((p) => PROVIDERS[p] || p).join(", ") || "None"} />
+            <Row id="password" icon={KeyRound} label="Password"
               value={hasPassword ? "••••••••" : "Managed by your sign-in provider"}
               action={hasPassword
                 ? <Button size="sm" onClick={() => setDialog("password")}>Change</Button>
                 : user?.email && <SetPasswordButton email={user.email} />} />
-            <Row icon={CalendarDays} label="Birth year"
+            <Row id="birthyear" icon={CalendarDays} label="Birth year"
               value={profile?.birthYear > 0 ? String(profile.birthYear) : "Not set"}
               help={profile?.birthYear > 0
                 ? "Used only for age rules (Mesh is 16 and over) and never shown on your profile. It can't be changed once set, so contact us if it's wrong."
@@ -148,7 +177,7 @@ export default function Settings() {
           </Group>
 
           <Group title="Privacy">
-            <div className="flex min-h-14 items-start gap-3 px-4 py-3">
+            <div id="set-private" className="flex min-h-14 items-start gap-3 px-4 py-3">
               <Lock size={20} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
               <span className="min-w-0 flex-1">
                 <label htmlFor="private-switch" className="block text-callout font-medium text-fg">Private account</label>
@@ -185,7 +214,7 @@ export default function Settings() {
               value={hiddenWords?.length ? plural(hiddenWords.length, "word or phrase", "words or phrases") : "None"}
               help="Posts and comments containing them are hidden for you, everywhere. Only you can see this list."
               onClick={() => setDialog("hidden")} />
-            <Row icon={WandSparkles} label="Hide posts edited with AI"
+            <Row id="hide-ai" icon={WandSparkles} label="Hide posts edited with AI"
               value={hideAi ? "Hidden from Home, Flicks and Explore" : "Shown, with an Edited with AI label"}
               help="Covers posts their authors labelled, and ones moderators labelled after a report. You'll still see them on people's profiles."
               action={<Switch label="Hide posts edited with AI" checked={hideAi} onChange={toggleAi} />} />
@@ -236,6 +265,7 @@ export default function Settings() {
             <Row icon={LogOut} label="Sign out" value="Of Mesh on this device" onClick={() => setDialog("signout")} />
             <Row icon={Trash2} label="Delete account" value="Permanently delete your account and everything you've posted" danger onClick={() => setDialog("delete")} />
           </Group>
+          </>)}
         </div>
       </div>
 
@@ -295,6 +325,66 @@ export default function Settings() {
   );
 }
 
+// Search box with live results. Arrow keys move, Enter opens, Escape clears.
+function SettingsSearch({ query, onQuery, onOpen, staff }) {
+  const [active, setActive] = useState(0);
+  const results = useMemo(() => searchSettings(query, { staff }), [query, staff]);
+  const listId = "settings-results";
+  const pick = (i) => { const item = results[i]; if (item) onOpen(item); };
+  const onKey = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(results.length - 1, a + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); pick(active); }
+    else if (e.key === "Escape" && query) { e.preventDefault(); e.stopPropagation(); onQuery(""); }
+  };
+  const show = !!query.trim();
+  return (
+    <div>
+      <div className="relative">
+        <SearchIcon size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+        <input type="search" value={query} onChange={(e) => { onQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
+          placeholder="Search settings" aria-label="Search settings" autoComplete="off" spellCheck={false}
+          role="combobox" aria-expanded={show} aria-controls={listId} aria-activedescendant={show && results[active] ? `sr-${results[active].id}` : undefined}
+          className="min-h-12 w-full rounded-control border border-field bg-surface px-10 text-input text-fg placeholder:text-fg-subtle focus:border-accent-text focus:outline-none [&::-webkit-search-cancel-button]:hidden" />
+        {query && (
+          <button type="button" onClick={() => onQuery("")} aria-label="Clear search"
+            className="press absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-fg-subtle hover:bg-surface-2 hover:text-fg">
+            <X size={16} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      {show && (
+        <div className="mt-3">
+          <p className="sr-only" aria-live="polite">{results.length ? `${results.length} ${results.length === 1 ? "result" : "results"}` : "No results"}</p>
+          {results.length ? (
+            <ul id={listId} role="listbox" aria-label="Matching settings" className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+              {results.map((r, i) => (
+                <li key={r.id} id={`sr-${r.id}`} role="option" aria-selected={i === active}>
+                  <button type="button" onClick={() => pick(i)} onMouseEnter={() => setActive(i)} tabIndex={-1}
+                    className={`flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors ${i === active ? "bg-surface-2" : ""}`}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-callout font-medium text-fg">
+                        {highlightParts(r.label, query).map((p, k) => (p.match ? <mark key={k} className="rounded-[3px] bg-accent-soft px-0.5 text-fg">{p.text}</mark> : <span key={k}>{p.text}</span>))}
+                      </span>
+                      <span className="mt-0.5 block truncate text-caption text-fg-subtle">{r.group} · {r.desc}</span>
+                    </span>
+                    <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="rounded-card border border-line bg-surface px-4 py-6 text-center">
+              <p className="text-callout font-medium">Nothing matches "{query.trim()}"</p>
+              <p className="mt-1 text-caption text-fg-muted">Try a word like password, dark mode, block or screen time.</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Group({ title, children }) {
   return (
     <section aria-labelledby={`g-${title}`}>
@@ -304,7 +394,7 @@ function Group({ title, children }) {
   );
 }
 
-function Row({ icon: Icon, label, value, meta, help, action, onClick, danger = false }) {
+function Row({ id, icon: Icon, label, value, meta, help, action, onClick, danger = false }) {
   const body = (
     <>
       <Icon size={20} className={`mt-0.5 shrink-0 ${danger ? "text-danger-text" : "text-fg-muted"}`} aria-hidden="true" />
@@ -317,7 +407,7 @@ function Row({ icon: Icon, label, value, meta, help, action, onClick, danger = f
   );
   if (onClick) {
     return (
-      <button type="button" onClick={onClick}
+      <button type="button" onClick={onClick} id={id ? `set-${id}` : undefined}
         className="press flex min-h-14 w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2">
         {body}
         <ChevronRight size={18} className="mt-0.5 shrink-0 self-center text-fg-subtle" aria-hidden="true" />
@@ -325,7 +415,7 @@ function Row({ icon: Icon, label, value, meta, help, action, onClick, danger = f
     );
   }
   return (
-    <div className="flex min-h-14 items-start gap-3 px-4 py-3">
+    <div id={id ? `set-${id}` : undefined} className="flex min-h-14 items-start gap-3 px-4 py-3">
       {body}
       {action && <div className="shrink-0 self-center">{action}</div>}
     </div>
@@ -345,7 +435,7 @@ function AppearanceGroup() {
   return (
     <Group title="Appearance and accessibility">
       {rows.map(({ key, icon: Icon, label, help }) => (
-        <div key={key} className="px-4 py-3">
+        <div key={key} id={`set-look-${key}`} className="px-4 py-3">
           <div className="flex items-start gap-3">
             <Icon size={20} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
             <span className="min-w-0 flex-1">
@@ -416,7 +506,7 @@ export function DataExportRow() {
     } finally { setBusy(false); }
   };
   return (
-    <Row icon={Download} label="Download your data" value="Everything Mesh holds about you, as a file"
+    <Row id="export" icon={Download} label="Download your data" value="Everything Mesh holds about you, as a file"
       action={<Button size="sm" loading={busy} onClick={run}>Download</Button>} />
   );
 }
