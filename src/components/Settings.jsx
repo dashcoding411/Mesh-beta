@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
-  Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
+  BookUser, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
   SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie,
 } from "lucide-react";
@@ -42,6 +42,7 @@ import Badge from "./ui/Badge";
 import { Field, Input, Checkbox } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+const ContactSync = lazy(() => import("./ContactSync"));
 
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
 
@@ -123,6 +124,8 @@ export default function Settings() {
                 value={requests === null ? "Loading…" : requests.length ? `${requests.length} waiting` : "None waiting"}
                 onClick={() => setDialog("requests")} />
             )}
+            <Row icon={BookUser} label="Contacts" value="Find friends from your contacts, and choose whether they can find you"
+              onClick={() => setDialog("contacts")} />
             <Row icon={MessageCircle} label="Who can message you"
               value={profile?.messagePolicy === "following" ? "Only people you follow" : "Everyone (people you don't follow land in Requests)"}
               onClick={() => setDialog("messages")} />
@@ -237,6 +240,7 @@ export default function Settings() {
           onSaved={(list) => { setHiddenWords(list); setDialog(null); }} />
       )}
       {dialog === "password" && <PasswordDialog onClose={() => setDialog(null)} />}
+      {dialog === "contacts" && <Suspense fallback={null}><ContactSync onClose={() => setDialog(null)} /></Suspense>}
       {dialog === "birthyear" && (
         <BirthYearDialog onClose={() => setDialog(null)} onSaved={(y) => { setProfile({ ...profile, birthYear: y }); setDialog(null); }} />
       )}

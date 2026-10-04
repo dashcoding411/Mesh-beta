@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapPin, Heart, CalendarDays, Users, Grid3x3, Lock } from "lucide-react";
 import {
-  fetchFollowList, updateProfileFields, changeUsername, usernameCooldown, USERNAME_COOLDOWN_DAYS,
+  fetchFollowList, fetchProfiles, updateProfileFields, changeUsername, usernameCooldown, USERNAME_COOLDOWN_DAYS,
   searchUsers, sendSpouseRequest, openUserProfile, me, tsMillis,
   fetchProfileByUsername,
 } from "../lib/db";
@@ -19,6 +19,8 @@ import { useToast } from "./ui/toast-context";
 import { ProfileBadges, VerifiedTick } from "./ui/Badges";
 import { useJournalist } from "../lib/journalists";
 import { badgesOf, tickOf, hasPinkCheck } from "../lib/badges";
+import { useShell } from "./shell/ShellContext";
+import { FollowButton } from "./SuggestedPeople";
 import { Tile } from "./Search";
 
 // Only shown when both profiles name each other.
@@ -126,30 +128,116 @@ function Stat({ label, value, onClick }) {
   );
 }
 
+/**
+ * Who follows someone, who they follow, and the people you both know, with
+ * photos, names and follow buttons. People you follow come first.
+ */
 export function FollowListDialog({ uid, kind, onClose }) {
-  const [items, setItems] = useState(null);
-  useEffect(() => {
-    fetchFollowList(uid, kind).then(setItems).catch(() => setItems([]));
-  }, [uid, kind]);
+  const { following, setFollowing } = useShell();
+  const mine = uid === me();
+  const [tab, setTab] = useState(kind);
+  const [lists, setLists] = useState({}); // "followers" | "following" -> [{ id, username }]
+  const [profiles, setProfiles] = useState(() => new Map());
+  const [q, setQ] = useState("");
+  const source = tab === "mutual" ? "followers" : tab;
 
+  useEffect(() => {
+    if (lists[source]) return undefined;
+    let live = true;
+    fetchFollowList(uid, source)
+      .then(async (items) => {
+        if (!live) return;
+        setLists((l) => ({ ...l, [source]: items }));
+        const found = await fetchProfiles(items.map((i) => i.id));
+        if (live) setProfiles((p) => new Map([...p, ...found]));
+      })
+      .catch(() => { if (live) setLists((l) => ({ ...l, [source]: [] })); });
+    return () => { live = false; };
+  }, [uid, source, lists]);
+
+  const items = useMemo(() => {
+    const raw = lists[source];
+    if (!raw) return null;
+    const term = q.trim().toLowerCase().replace(/^@/, "");
+    return raw
+      .filter((f) => tab !== "mutual" || following.has(f.id))
+      .map((f) => ({ ...f, ...(profiles.get(f.id) || {}), id: f.id, username: profiles.get(f.id)?.username || f.username }))
+      .filter((p) => !term || p.username?.toLowerCase().includes(term) || p.name?.toLowerCase().includes(term))
+      .sort((a, b) => Number(following.has(b.id)) - Number(following.has(a.id)));
+  }, [lists, source, tab, q, profiles, following]);
+
+  const tabs = [["followers", "Followers"], ["following", "Following"], ...(mine ? [] : [["mutual", "People you know"]])];
   return (
-    <Dialog title={kind === "followers" ? "Followers" : "Following"} onClose={onClose}>
-      {items === null && <div className="space-y-3 py-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-11" />)}</div>}
+    <Dialog title={tabs.find(([id]) => id === tab)?.[1] || "Followers"} onClose={onClose}>
+      <div role="tablist" aria-label="Lists" className="mb-3 flex gap-1.5">
+        {tabs.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+            className={`press min-h-9 rounded-full px-3.5 text-caption font-semibold ${tab === id ? "bg-fg text-canvas" : "bg-surface-2 text-fg-muted hover:text-fg"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <label htmlFor="follow-search" className="sr-only">Search this list</label>
+      <input id="follow-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" autoComplete="off"
+        className="field mb-3 min-h-10 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+      {items === null && <div className="space-y-3 py-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>}
       {items?.length === 0 && (
-        <EmptyState compact icon={Users} title={kind === "followers" ? "No followers yet" : "Not following anyone yet"} />
+        <EmptyState compact icon={Users} title={q ? "No one matches" : tab === "followers" ? "No followers yet" : tab === "following" ? "Not following anyone yet" : "No one you follow follows them yet"} />
       )}
       <ul className="space-y-1">
-        {items?.map((f) => (
-          <li key={f.id}>
-            <button type="button" onClick={() => { onClose(); openUserProfile(f.id); }}
-              className="press flex min-h-12 w-full items-center gap-3 rounded-control px-2 text-left hover:bg-surface-2">
-              <Avatar profile={{ username: f.username || "?" }} size={36} />
-              <span className="truncate text-callout font-medium">@{f.username || "unknown"}</span>
+        {items?.map((p) => (
+          <li key={p.id} className="flex items-center gap-2">
+            <button type="button" onClick={() => { onClose(); openUserProfile(p.id); }}
+              className="press flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-control px-2 text-left hover:bg-surface-2">
+              <Avatar profile={p} size={40} />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1 text-callout font-semibold">
+                  <span className="truncate">{p.name || p.username || "unknown"}</span>
+                  {tickOf(p.badges) && <VerifiedTick size={13} pink={tickOf(p.badges) === "pink"} />}
+                </span>
+                <span className="block truncate text-caption text-fg-subtle">@{p.username || "unknown"}</span>
+              </span>
             </button>
+            <FollowButton person={p} following={following} setFollowing={setFollowing} />
           </li>
         ))}
       </ul>
     </Dialog>
+  );
+}
+
+/** "Followed by @a, @b and 3 others you follow", on someone else's profile, before you follow them. */
+export function MutualFollowers({ uid, onOpen }) {
+  const { following, guest } = useShell();
+  const [mutual, setMutual] = useState(null);
+  useEffect(() => {
+    if (guest || uid === me()) return undefined;
+    let live = true;
+    fetchFollowList(uid, "followers")
+      .then(async (items) => {
+        const list = items.filter((i) => following.has(i.id));
+        const faces = await fetchProfiles(list.slice(0, 3).map((i) => i.id));
+        if (live) setMutual({ list, faces: list.slice(0, 3).map((i) => faces.get(i.id) || { id: i.id, username: i.username }) });
+      })
+      .catch(() => {});
+    return () => { live = false; };
+    // Worked out once per profile visit, so following someone here doesn't reshuffle it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, guest]);
+  if (!mutual?.list.length) return null;
+  const names = mutual.list.slice(0, 2).map((m) => `@${m.username}`);
+  const others = mutual.list.length - names.length;
+  return (
+    <button type="button" onClick={onOpen}
+      className="press mx-4 mb-3 flex max-w-full items-center gap-2.5 rounded-control text-left text-caption text-fg-muted hover:text-fg md:mx-6">
+      <span className="flex shrink-0 -space-x-2" aria-hidden="true">
+        {mutual.faces.map((p) => <span key={p.id} className="rounded-full ring-2 ring-canvas"><Avatar profile={p} size={22} /></span>)}
+      </span>
+      <span className="min-w-0">
+        Followed by <strong className="font-semibold text-fg">{names.join(", ")}</strong>
+        {others > 0 && <> and <strong className="font-semibold text-fg">{others} {others === 1 ? "other" : "others"}</strong></>} you follow
+      </span>
+    </button>
   );
 }
 

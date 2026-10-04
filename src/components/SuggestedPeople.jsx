@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from "react";
-import { UserCheck, UserPlus } from "lucide-react";
+import { lazy, Suspense, useEffect, useId, useState } from "react";
+import { BookUser, UserCheck, UserPlus } from "lucide-react";
 import { toggleFollow, openUserProfile, me } from "../lib/db";
 import { suggestedAccounts } from "../lib/suggest";
 import { tickOf } from "../lib/badges";
@@ -9,6 +9,7 @@ import { VerifiedTick } from "./ui/Badges";
 import Button from "./ui/Button";
 import { Skeleton } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+const ContactSync = lazy(() => import("./ContactSync"));
 
 // Computed once per visit and shared, so Home and Search agree and following
 // someone from the row doesn't reshuffle it.
@@ -23,6 +24,7 @@ export default function SuggestedPeople({ title = "People you might like", class
   const { following, setFollowing } = useShell();
   const [people, setPeople] = useState(null);
   const id = useId();
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,8 +38,13 @@ export default function SuggestedPeople({ title = "People you might like", class
   return (
     <section aria-labelledby={id} className={className}>
       <div className="mb-3 px-4 md:px-6">
-        <h2 id={id} className="text-title-3">{title}</h2>
-        <p className="text-caption text-fg-subtle">Based on who you follow and what you engage with. Never your contacts or location.</p>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 id={id} className="text-title-3">{title}</h2>
+            <p className="text-caption text-fg-subtle">From your contacts if you sync them, people your friends follow, and what you engage with.</p>
+          </div>
+          <Button size="sm" icon={BookUser} onClick={() => setSyncing(true)}>Find contacts</Button>
+        </div>
       </div>
       <ul className="flex gap-3 overflow-x-auto no-scrollbar px-4 md:px-6">
         {people === null && [0, 1, 2].map((i) => <li key={i}><Skeleton className="h-44 w-36 !rounded-card" /></li>)}
@@ -56,6 +63,7 @@ export default function SuggestedPeople({ title = "People you might like", class
           </li>
         ))}
       </ul>
+      {syncing && <Suspense fallback={null}><ContactSync onClose={() => setSyncing(false)} /></Suspense>}
     </section>
   );
 }

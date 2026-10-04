@@ -88,7 +88,7 @@ export function myProfile() {
 }
 
 // Bump on material policy changes. Profiles keep the version they accepted.
-export const POLICY_VERSION = "2026-10-04.3";
+export const POLICY_VERSION = "2026-10-04.4";
 
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
@@ -425,6 +425,16 @@ export async function setPostsVisibility(to) {
 export async function fetchFollowList(uid, kind /* 'followers' | 'following' */) {
   const q = query(collection(db, "users", uid, kind), limit(200));
   return snapToList(await getDocs(q));
+}
+
+/** Profiles for a list of uids, 30 at a time (a documentId 'in' query's limit). */
+export async function fetchProfiles(ids) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 30) {
+    const snap = await getDocs(query(collection(db, "users"), where(documentId(), "in", ids.slice(i, i + 30)))).catch(() => null);
+    snap?.docs.forEach((d) => out.set(d.id, { id: d.id, ...d.data() }));
+  }
+  return out;
 }
 
 export async function searchUsers(term) {

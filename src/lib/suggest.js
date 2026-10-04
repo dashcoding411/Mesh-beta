@@ -1,13 +1,15 @@
-// Follow suggestions from two signals: friends-of-friends (mutual-follow
-// overlap) and collaborative filtering over affinity. Contacts, IPs and
-// location are deliberately not used. New accounts fall back to the most
-// followed accounts.
+// Follow suggestions: people from your synced contacts (only if you chose to
+// sync them, see lib/contacts.js), friends-of-friends (mutual-follow overlap)
+// and collaborative filtering over affinity. IPs and location are never used.
+// New accounts fall back to the most followed accounts.
 
 import { db } from "../firebase";
 import { collection, getDocs, query, limit, where } from "firebase/firestore";
 import { fetchFollowList, fetchAffinity, me, tsMillis } from "./db";
+import { fetchContactMatches } from "./contacts";
 
 const REASONS = {
+  contacts: "In your contacts",
   mutual: (n) => `Followed by ${n} ${n === 1 ? "person" : "people"} you follow`,
   taste: "Because of accounts you engage with",
   popular: "Popular on Mesh",
@@ -26,6 +28,9 @@ export async function suggestedAccounts(followingSet, { max = 12 } = {}) {
     cur.reasons.add(reason);
     scores.set(target, cur);
   };
+
+  // Your contacts, if you synced them.
+  for (const target of await fetchContactMatches().catch(() => [])) add(target, 20, REASONS.contacts);
 
   // Friends of friends
   const mutualCounts = new Map();

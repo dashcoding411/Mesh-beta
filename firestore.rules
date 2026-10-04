@@ -172,10 +172,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
     // A private account's follow lists are for the owner and approved followers.
+    // Public accounts' lists are public, signed in or not.
     function canSeeFollows(owner) {
-      return signedIn() && (request.auth.uid == owner
-        || profileOf(owner).get('isPrivate', false) != true
-        || exists(/databases/$(database)/documents/users/$(owner)/followers/$(request.auth.uid)));
+      return (guest() && profileOf(owner).get('isPrivate', false) != true)
+        || (signedIn() && (request.auth.uid == owner
+          || profileOf(owner).get('isPrivate', false) != true
+          || exists(/databases/$(database)/documents/users/$(owner)/followers/$(request.auth.uid))));
     }
     // Online status and Notes: for mutual follows and people you have a 1:1 chat with.
     function dmWith(other) {
@@ -658,6 +660,29 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // Contact sync (src/lib/contacts.js): people who chose to be findable
+    // register a SHA-256 code of their own verified phone number or email; the
+    // rules recompute it from the sign-in, so nobody can claim another's.
+    // Others can only ask about a code they already hold (get, never list).
+    function contactCodeOf(value) {
+      return hashing.sha256('mesh-contact-v1:' + value).toHexString().lower();
+    }
+    match /contactKeys/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && incomingData().keys().hasOnly(['uid', 'kind', 'createdAt'])
+        && incomingData().uid == request.auth.uid
+        && incomingData().createdAt == request.time
+        && ((incomingData().kind == 'phone'
+              && request.auth.token.get('phone_number', '') != ''
+              && code == contactCodeOf(request.auth.token.phone_number))
+            || (incomingData().kind == 'email'
+              && request.auth.token.get('email_verified', false) == true
+              && code == contactCodeOf(request.auth.token.email.lower())));
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     // Ads: sold directly and run by staff. Anyone can see them (they're shown
     // in Home); targeting is limited to town, picked interests and 18+, and
     // counters are totals that signed-in viewers can only add one to.
@@ -978,6 +1003,14 @@ service cloud.firestore {
         allow read, write: if isUser(uid);
       }
       // Private preferences: interests, hidden words, mutes.
+      // Accounts found by contact sync: only the matched uids, owner only.
+      match /private/contacts {
+        allow read, delete: if isUser(uid);
+        allow create, update: if isUser(uid)
+          && incomingData().keys().hasOnly(['uids', 'syncedAt'])
+          && incomingData().uids is list && incomingData().uids.size() <= 500
+          && incomingData().syncedAt == request.time;
+      }
       match /private/{docId} {
         allow read: if isUser(uid);
         allow delete: if isUser(uid) && docId != 'age';

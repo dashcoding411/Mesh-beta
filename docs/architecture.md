@@ -121,6 +121,18 @@ listed, so ones a user owns aren't found yet. The data download includes
 messages they sent, stories, highlights, albums, news drafts, their note,
 Brick groups, appeals and interaction signals.
 
+Contact sync (`lib/contacts.js`, `ContactSync.jsx`) never uploads an address
+book: numbers (normalised to E.164, Australia by default) and emails are
+hashed on the device (SHA-256 of `mesh-contact-v1:` + value) and each code is
+looked up with a `get` on `contactKeys/{code}` (no listing). People opt in to
+being findable; the rules recompute the code from their verified sign-in
+phone or email (`hashing.sha256`), so nobody can register someone else's.
+Only matched uids are kept, in `users/{uid}/private/contacts`, and they rank
+first in suggestions ("In your contacts"). Profiles show "Followed by …" (the
+target's followers you follow), and the follow-list sheet has Followers,
+Following and People you know with follow buttons; public accounts' lists are
+readable signed out too.
+
 The legal pages (`src/legal`) must match this code. Until `business.js` has
 the operator's legal name and ABN, the policies name "the founders" rather
 than placeholders; the warning about missing details shows in development

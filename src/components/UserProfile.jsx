@@ -22,7 +22,7 @@ import { useBrick } from "../lib/useBrick";
 import LockScreen from "./LockScreen";
 import BrickHighlight from "./BrickHighlight";
 import Highlights from "./Highlights";
-import { ProfileHeader, FollowListDialog, PostGrid } from "./ProfileParts";
+import { ProfileHeader, FollowListDialog, MutualFollowers, PostGrid } from "./ProfileParts";
 import { JournalistCard, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { betaByJoinDate, FOUNDER_UID, hasPinkCheck } from "../lib/badges";
@@ -239,7 +239,7 @@ function ProfileView({ uid }) {
         {profile && (
           <>
             <ProfileHeader profile={profile} postCount={locked ? null : posts?.length ?? null}
-              onShowFollows={locked || guest ? undefined : setFollows}
+              onShowFollows={locked ? undefined : setFollows}
               actions={isBlocked ? (
                 <Button className="flex-1" icon={Ban} onClick={() => setDialog("block")}>Unblock</Button>
               ) : (
@@ -253,6 +253,7 @@ function ProfileView({ uid }) {
                 </>
               )} />
 
+            {!isBlocked && <MutualFollowers uid={uid} onOpen={() => setFollows("mutual")} />}
             {!isBlocked && !locked && !guest && <Highlights profile={profile} />}
             {!isBlocked && <BrickHighlight uid={uid} />}
             {!isBlocked && journalist && <JournalistCard uid={uid} journalist={journalist} stories={stories} />}

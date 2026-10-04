@@ -56,9 +56,10 @@ export const PRIVACY = {
         ["Brick groups", "The groups you make or join, and a copy of your bricked time and when your current brick ends, kept in each group so its members can compare."],
         ["Appeals", "If you appeal a block: the words that were blocked, the rule they matched, where you were posting, your reason, and the decision."],
         ["Ads", "Totals only: how many times each ad was seen and tapped. Nothing records who saw or tapped it."],
+        ["Contacts (only if you sync them)", "Your contacts' phone numbers and emails are turned into scrambled codes (SHA-256) on your device, and only those codes are sent to check for matches; they aren't stored, and their names, numbers and emails never leave your device. We keep only the Mesh accounts found, privately, to suggest them to you. If you choose to let your contacts find you, we store a scrambled code of your own verified phone number or email (never the number or email itself) linked to your account."],
       ],
       p: [
-        "We do not collect your contacts, your device's location, your device identifiers, or your browsing activity on other sites. A place you type on a post is only the words you chose to share; Mesh never reads where your device is. We do not buy personal information from data brokers.",
+        "We do not collect your device's location, your device identifiers, or your browsing activity on other sites. Contact sync is optional, and even then we never receive your contacts: see 'Contacts' above. A place you type on a post is only the words you chose to share; Mesh never reads where your device is. We do not buy personal information from data brokers.",
       ],
     },
     {
@@ -83,7 +84,7 @@ export const PRIVACY = {
       h: "Who can see what",
       list: [
         ["Browsing without an account", "Anyone can read public posts, profiles, circles, gatherings and news without an account. Liking, commenting, following, posting and messaging need one."],
-        ["Your profile", "Your handle, display name, photo, bio, pronouns, town, relationship link and follower counts are public. Your birth year is never shown: it's stored where only your account can read it."],
+        ["Your profile", "Your handle, display name, photo, bio, pronouns, town, relationship link and follower counts are public, and so, on a public account, are the lists of who you follow and who follows you. Your birth year is never shown: it's stored where only your account can read it."],
         ["Public posts", "Visible to anyone, including people without a Mesh account."],
         ["Private accounts", "If you make your account private, new followers need your approval, and your posts and stories are visible only to the followers you've approved."],
         ["Reposts", "Public. When you repost something, your followers see it with your name on it, and it appears on your profile's Reposts tab."],
@@ -107,6 +108,8 @@ export const PRIVACY = {
         ["Voice messages and photos in messages", "Like other messages, visible only to the people in that conversation. Unsending one deletes the recording or photo."],
         ["Reports", "If you report something, moderators see what you reported, why, and anything you add. The person reported isn't told who reported them. Reporting a message shares that one message's text with moderators, not the rest of the conversation."],
         ["Your hidden words", "Visible only to you."],
+        ["Being findable by your contacts", "Off unless you turn it on. Then anyone who has your phone number or email in their contacts and syncs them can find your account. Turn it off in Settings → Contacts."],
+        ["Accounts found in your contacts", "Visible only to you."],
         ["Notes", "Your note is visible to mutual follows and people you have a one-to-one chat with. Only you see who liked it."],
         ["Saved albums and your story archive", "Visible only to you."],
         ["Brick groups", "A group's members see each other's handle, bricked time this week and in total, streak, and when a current brick ends, even if your bricked time isn't public. Leave the group to stop sharing it."],
@@ -143,7 +146,7 @@ export const PRIVACY = {
     {
       h: "How long we keep it",
       p: [
-        "We keep your account data for as long as your account exists. Deleting your account removes your profile and handle, posts and their photos and videos (including uploads you never posted), stories, highlights and your story archive, saved posts and albums, news drafts, your note, circles and gatherings you host and your place in other circles, Brick groups, notifications, brick mode limits and minutes, bricked time, gathering replies list and parental-control links. Notifications you caused in other people's inboxes, and comments you left on other people's posts, stay until they or you delete them, like a sent message. Decided appeals and reports are kept as moderation records.",
+        "We keep your account data for as long as your account exists. Deleting your account removes your profile and handle, posts and their photos and videos (including uploads you never posted), stories, highlights and your story archive, saved posts and albums, news drafts, your note, circles and gatherings you host and your place in other circles, Brick groups, contact-sync matches and findable codes, notifications, brick mode limits and minutes, bricked time, gathering replies list and parental-control links. Notifications you caused in other people's inboxes, and comments you left on other people's posts, stay until they or you delete them, like a sent message. Decided appeals and reports are kept as moderation records.",
         "Messages you have sent may remain visible to the people you sent them to, in the same way a sent text message does. Use unsend to remove an individual message for everyone.",
         "Brick mode keeps your daily minutes for 7 days; older days are deleted when you next open Mesh. Notifications are kept until you delete them, and ones older than 90 days are removed when you open the notifications page. Parental controls end on 1 January of the year the teen turns 18, or earlier if the parent removes them.",
         "Backups and server logs may persist for a short period after deletion before being overwritten.",

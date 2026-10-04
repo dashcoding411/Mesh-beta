@@ -11,6 +11,7 @@ import { fetchAlbums } from "./albums.js";
 import { fetchMyAppeals } from "./appeals.js";
 import { fetchMyStories } from "./newsroom.js";
 import { deleteAllCloudMedia } from "./uploads.js";
+import { clearContactMatches, fetchContactMatches, isFindable, setFindable } from "../contacts.js";
 import { deleteNews } from "./news.js";
 import { deleteStory } from "./stories.js";
 import { deletePost, fetchComments, fetchPostsByAuthor, fetchRepostsBy } from "./posts.js";
@@ -49,6 +50,9 @@ export async function exportMyData() {
     const sent = await getDocs(query(collection(db, "chats", c.id, "messages"), where("senderId", "==", uid), limit(1000))).then(snapToList).catch(() => []);
     messages.push({ chatId: c.id, chatName: c.name || "", members: c.members, sent });
   }
+  const [contactMatches, findableByPhone, findableByEmail] = await Promise.all([
+    fetchContactMatches().catch(() => []), isFindable("phone").catch(() => false), isFindable("email").catch(() => false),
+  ]);
   const [stories, highlights, albums, appeals, newsStories, thought, brickGroups, saved, affinity] = await Promise.all([
     fetchMyStoryArchive().catch(() => []),
     fetchHighlights(uid).catch(() => []),
@@ -87,6 +91,7 @@ export async function exportMyData() {
     brickGroups,
     appeals,
     interactionSignals: affinity,
+    contacts: { accountsFound: contactMatches, findableByPhone, findableByEmail },
   };
 }
 
@@ -97,6 +102,9 @@ export async function deleteMyAccountData() {
   // Uploaded videos and posters (including ones never posted), your note and
   // its likes, Brick groups, circles and gatherings, open appeals and staff role.
   await deleteAllCloudMedia();
+  await setFindable("phone", false).catch(() => {});
+  await setFindable("email", false).catch(() => {});
+  await clearContactMatches();
   await clearThought().catch(() => {});
   for (const g of await fetchMyBrickGroups().catch(() => [])) {
     await (g.ownerId === uid ? deleteBrickGroup(g) : leaveBrickGroup(g)).catch(() => {});
