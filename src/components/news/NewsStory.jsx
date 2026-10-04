@@ -19,6 +19,7 @@ import { LiveUpdates } from "./LiveUpdates";
 import { Byline } from "./Journalist";
 import { KindBadge, TopicLabel } from "./parts";
 import { readMinutes, storyUrl } from "./text";
+import { markStoryRead } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
@@ -47,7 +48,11 @@ export function NewsStory({ id }) {
   const mine = !!story && (story.authors || [story.authorId]).includes(me());
   useEffect(() => { (async () => { await load(); })(); }, [load]);
   // Counts once per signed-in reader, so journalists see their real audience.
-  useEffect(() => { if (story) recordNewsRead(story).catch(() => {}); }, [story]);
+  useEffect(() => {
+    if (!story) return;
+    recordNewsRead(story).catch(() => {});
+    if (story.status === "approved") markStoryRead(story.id);
+  }, [story]);
   const kind = labelOf(story?.label);
 
   const share = async () => {

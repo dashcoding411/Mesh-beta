@@ -14,6 +14,7 @@ export default {
     const url = new URL(req.url);
     try {
       if (url.pathname === "/sitemap-news.xml") return cached(req, ctx, () => sitemap(env));
+      if (url.pathname === "/sitemap-gatherings.xml") return cached(req, ctx, () => gatheringsSitemap(env));
       const media = url.pathname.match(/^\/og\/media\/([A-Za-z0-9_-]{1,64})$/);
       if (media) return cached(req, ctx, () => inlineImage(env, media[1]));
 
@@ -138,6 +139,15 @@ export async function describe(env, kind, id) {
       description: clip([when, g.description].filter(Boolean).join(" · "), 200),
       image: imageFor(env, g.coverUrl || g.photoUrl),
       type: "website",
+      event: g.startsAt ? {
+        name: clip(g.title, 150),
+        startsAt: g.startsAt,
+        when,
+        location: clip(g.location, 300),
+        description: clip(g.description, 2000),
+        host: g.hostName || "",
+        ticketUrl: /^https:\/\//.test(g.ticketUrl || "") ? g.ticketUrl : "",
+      } : null,
     };
   }
   if (kind === "circles") {
@@ -196,13 +206,82 @@ export function injectMeta(html, meta, site) {
     };
     tags.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`);
   }
+  if (meta.event) tags.push(`<script type="application/ld+json">${JSON.stringify(eventLd(meta, site)).replace(/</g, "\\u003c")}</script>`);
   out = out.replace(/<head([^>]*)>/i, `<head$1>\n${tags.join("\n")}`);
+  if (meta.event) {
+    const e = meta.event;
+    const text = `<noscript><article><h1>${esc(e.name)}</h1><p>${esc(e.when)}${e.location ? ` · ${esc(e.location)}` : ""}</p>`
+      + `${e.host ? `<p>Hosted by @${esc(e.host)}</p>` : ""}${e.description ? `<p>${esc(e.description)}</p>` : ""}</article></noscript>`;
+    out = out.replace(/<\/body>/i, `${text}</body>`);
+  }
   if (meta.article) {
     const text = `<noscript><article><h1>${esc(meta.article.headline)}</h1><p>${esc(meta.description)}</p>`
       + `<p>By ${esc(meta.byline)}</p>${meta.article.body.map((p) => `<p>${esc(p)}</p>`).join("")}</article></noscript>`;
     out = out.replace(/<\/body>/i, `${text}</body>`);
   }
   return out;
+}
+
+const ONLINE = /^(https?:\/\/|online\b|zoom\b|discord\b|google meet\b)/i;
+
+/** schema.org Event for a public gathering, so search engines can list it as an event. */
+export function eventLd(meta, site) {
+  const e = meta.event;
+  const start = new Date(e.startsAt);
+  const online = ONLINE.test(e.location || "");
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: e.name,
+    startDate: start.toISOString(),
+    // Gatherings have no end time; Mesh's calendar files assume two hours.
+    endDate: new Date(start.getTime() + 2 * 3600000).toISOString(),
+    eventStatus: "https://schema.org/EventScheduled",
+    eventAttendanceMode: online ? "https://schema.org/OnlineEventAttendanceMode" : "https://schema.org/OfflineEventAttendanceMode",
+    description: e.description || meta.description,
+    image: [meta.image],
+    url: meta.url,
+  };
+  if (online) ld.location = { "@type": "VirtualLocation", url: /^https?:\/\//i.test(e.location) ? e.location : meta.url };
+  else if (e.location) ld.location = { "@type": "Place", name: e.location, address: e.location };
+  if (e.host) ld.organizer = { "@type": "Person", name: `@${e.host}`, url: `${site}/@${e.host}` };
+  if (e.ticketUrl) ld.offers = { "@type": "Offer", url: e.ticketUrl };
+  return ld;
+}
+
+// Public gatherings outside circles from the last 60 days onwards, for search engines.
+async function gatheringsSitemap(env) {
+  const since = new Date(Date.now() - 60 * 86400000).toISOString();
+  const res = await fetch(`${dbUrl(env)}:runQuery`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: "events" }],
+        where: {
+          compositeFilter: {
+            op: "AND",
+            filters: [
+              { fieldFilter: { field: { fieldPath: "privacy" }, op: "EQUAL", value: { stringValue: "public" } } },
+              { fieldFilter: { field: { fieldPath: "groupId" }, op: "EQUAL", value: { stringValue: "" } } },
+              { fieldFilter: { field: { fieldPath: "startsAt" }, op: "GREATER_THAN_OR_EQUAL", value: { timestampValue: since } } },
+            ],
+          },
+        },
+        orderBy: [{ field: { fieldPath: "startsAt" }, direction: "ASCENDING" }],
+        limit: 1000,
+      },
+    }),
+  });
+  const rows = res.ok ? await res.json() : [];
+  const urls = [`<url><loc>${env.SITE}/whats-on</loc><changefreq>daily</changefreq></url>`];
+  for (const r of rows) {
+    if (!r.document) continue;
+    const id = r.document.name.split("/").pop();
+    urls.push(`<url><loc>${env.SITE}/gatherings/${esc(id)}</loc><lastmod>${esc(r.document.updateTime)}</lastmod></url>`);
+  }
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
+  return new Response(xml, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=900" } });
 }
 
 // Published stories, newest first, for search engines.

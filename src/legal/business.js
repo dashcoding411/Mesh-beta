@@ -18,7 +18,7 @@ export const BUSINESS = {
   copyrightEmail: "legal@joinmesh.social",
 
   website: "https://joinmesh.social",
-  lastUpdated: "4 October 2026",
+  lastUpdated: "5 October 2026",
 };
 
 export function missingFields() {

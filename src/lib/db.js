@@ -21,3 +21,4 @@ export * from "./data/highlights.js";
 export * from "./data/albums.js";
 export * from "./data/appeals.js";
 export * from "./data/ads.js";
+export * from "./data/week.js";

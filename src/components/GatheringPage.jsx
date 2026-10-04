@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, MapPin, Ticket, ExternalLink, Globe, Lock, Users, Check, Heart, Trash2, UserPlus, Pencil,
   CalendarX2, Megaphone, MessageSquare, X, Search as SearchIcon, Blend, CalendarPlus, Share2, Download,
+  ImagePlus, Images,
 } from "lucide-react";
 import {
   fetchEvent, fetchMyRsvps, setRsvp, RSVP_OPTIONS, fetchGuestList, fetchEventPosts, addEventPost,
   deleteEventPost, toggleEventPostLike, fetchAnnouncements, updateEvent, deleteEvent, inviteToEvent,
   uninviteFromEvent, searchUsers, canPostInEvent, isEventFull, fetchGroupById, openUserProfile, me,
-  eventIcs, googleCalendarUrl, eventUrl,
+  eventIcs, googleCalendarUrl, eventUrl, fetchFriendsGoing, friendsGoingLabel, fetchProfiles,
+  photosOpen, canAddEventPhotos, fetchEventPhotos, addEventPhotos, deleteEventPhoto, MAX_PHOTOS_AT_ONCE, PHOTOS_OPEN_DAYS,
 } from "../lib/db";
 import { validateText } from "../lib/validate";
 import { checkContent } from "../lib/moderation";
@@ -16,6 +18,7 @@ import { followLink } from "../lib/links";
 import { shortTime, fullTime, isoTime, plural } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import Tabs from "./ui/Tabs";
+import MediaImg from "./ui/MediaImg";
 import Button from "./ui/Button";
 import IconButton from "./ui/IconButton";
 import Badge from "./ui/Badge";
@@ -36,7 +39,7 @@ export default function GatheringPage({ eventId }) {
   usePageTitle(event?.title || null, 1);
   const [circle, setCircle] = useState(null);
   const [status, setStatus] = useState(null);
-  const [tab, setTab] = useState("discussion");
+  const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "discussion"));
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null); // "edit" | "invite" | "delete"
 
@@ -71,6 +74,7 @@ export default function GatheringPage({ eventId }) {
 
   const date = event.startsAt?.toDate ? event.startsAt.toDate() : null;
   const past = date && date < new Date();
+  const started = !!date && date <= new Date();
   const isHost = event.hostId === me();
   const full = isEventFull(event);
   const options = RSVP_OPTIONS[event.privacy === "private" ? "private" : "public"];
@@ -124,6 +128,7 @@ export default function GatheringPage({ eventId }) {
           {past && <li><Badge>Past</Badge></li>}
           {event.guestPosting === "host" && <li><Badge icon={Megaphone}>Host posts only</Badge></li>}
         </ul>
+        <FriendsGoing event={event} />
 
         <p className="mt-3 text-caption text-fg-subtle">
           Hosted by{" "}
@@ -174,12 +179,14 @@ export default function GatheringPage({ eventId }) {
           </a>
         )}
 
-        <Tabs variant="underline" label="Gathering" value={tab} onChange={setTab} className="mt-6"
-          tabs={[{ id: "discussion", label: "Discussion" }, { id: "guests", label: "Guests" }]} />
+        <Tabs variant="underline" label="Gathering" value={started ? tab : tab === "photos" ? "discussion" : tab} onChange={setTab} className="mt-6"
+          tabs={[{ id: "discussion", label: "Discussion" }, { id: "guests", label: "Guests" }, ...(started ? [{ id: "photos", label: "Photos" }] : [])]} />
         <div role="tabpanel" className="pt-5">
-          {tab === "discussion"
-            ? <Discussion event={event} status={status} />
-            : <Guests event={event} isHost={isHost} status={status} />}
+          {tab === "photos" && started
+            ? <Photos event={event} status={status} />
+            : tab === "guests"
+              ? <Guests event={event} isHost={isHost} status={status} />
+              : <Discussion event={event} status={status} />}
         </div>
       </div>
 
@@ -337,6 +344,134 @@ function Discussion({ event, status }) {
             );
           })}
         </ul>
+      )}
+    </div>
+  );
+}
+
+// People you follow who replied Going, when the guest list is shown.
+function FriendsGoing({ event }) {
+  const { following } = useShell();
+  const [friends, setFriends] = useState([]);
+  const [photos, setPhotos] = useState(new Map());
+
+  useEffect(() => {
+    let live = true;
+    fetchFriendsGoing([event], following).then(async (m) => {
+      const list = m.get(event.id) || [];
+      if (!live) return;
+      setFriends(list);
+      if (list.length) setPhotos(await fetchProfiles(list.slice(0, 3).map((f) => f.id)).catch(() => new Map()));
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [event, following]);
+
+  if (!friends.length) return null;
+  return (
+    <p className="mt-3 flex items-center gap-2 text-caption font-medium text-fg-muted">
+      <span className="flex -space-x-2" aria-hidden="true">
+        {friends.slice(0, 3).map((f) => (
+          <span key={f.id} className="rounded-full ring-2 ring-canvas"><Avatar profile={photos.get(f.id) || { username: f.username }} size={22} /></span>
+        ))}
+      </span>
+      {friendsGoingLabel(friends)}
+    </p>
+  );
+}
+
+// Photos from the day, shared by the host and people who went.
+function Photos({ event, status }) {
+  const toast = useToast();
+  const [photos, setPhotos] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState("");
+  const [viewing, setViewing] = useState(null);
+  const fileRef = useRef(null);
+  const canAdd = canAddEventPhotos(event, status);
+  const open = photosOpen(event);
+  const isHost = event.hostId === me();
+
+  useEffect(() => {
+    fetchEventPhotos(event.id).then(setPhotos).catch(() => setPhotos([]));
+  }, [event.id]);
+
+  const add = async (e) => {
+    const files = [...(e.target.files || [])].filter((f) => f.type.startsWith("image/"));
+    e.target.value = "";
+    if (!files.length) return;
+    if (files.length > MAX_PHOTOS_AT_ONCE) toast({ tone: "info", title: `Adding the first ${MAX_PHOTOS_AT_ONCE}`, body: "Add the rest in another go." });
+    setError("");
+    setProgress(0);
+    try {
+      const added = await addEventPhotos(event.id, files, setProgress);
+      setPhotos((prev) => [...added, ...(prev || [])]);
+      toast({ title: added.length === 1 ? "Photo added" : `${added.length} photos added` });
+    } catch (err) {
+      setError(err?.name === "UnsafeImageError" || err?.message?.startsWith("You're uploading")
+        ? err.message
+        : err?.code === "permission-denied" ? "Only the host and people who went can add photos." : "Couldn't add the photos. Check your connection and try again.");
+    } finally { setProgress(null); }
+  };
+
+  const remove = async (p) => {
+    try {
+      await deleteEventPhoto(event.id, p);
+      setPhotos((prev) => prev.filter((x) => x.id !== p.id));
+      setViewing(null);
+      toast({ title: "Photo removed" });
+    } catch { toast({ tone: "error", title: "Couldn't remove that photo" }); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {canAdd ? (
+        <div className="rounded-card border border-line bg-surface p-4">
+          <p className="text-callout font-semibold">Share photos from the day</p>
+          <p className="mt-1 text-caption text-fg-muted">
+            Everyone who can see this gathering can see them. Photos are checked on your device first, and AI-generated images aren't allowed.
+          </p>
+          <Button size="sm" variant="primary" icon={ImagePlus} className="mt-3" loading={progress !== null} onClick={() => fileRef.current?.click()}>
+            {progress !== null ? `Adding ${progress}%` : "Add photos"}
+          </Button>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={add} tabIndex={-1} aria-hidden="true" />
+          <div aria-live="polite" className="mt-2"><InlineMessage>{error}</InlineMessage></div>
+        </div>
+      ) : open && !isHost && (
+        <p className="flex items-start gap-2 rounded-card border border-line bg-surface p-4 text-callout text-fg-muted">
+          <Images size={18} className="mt-0.5 shrink-0" aria-hidden="true" /> People who went can add photos here for {PHOTOS_OPEN_DAYS} days after it starts.
+        </p>
+      )}
+
+      {photos === null && <div className="grid grid-cols-3 gap-1.5">{[0, 1, 2].map((i) => <Skeleton key={i} className="aspect-square !rounded-control" />)}</div>}
+      {photos?.length === 0 && (
+        <EmptyState compact icon={Images} title="No photos yet"
+          body={canAdd ? "Add the first ones from the day." : "When people who went add photos, they show here."} />
+      )}
+      {photos?.length > 0 && (
+        <ul className="grid grid-cols-3 gap-1.5" aria-label="Photos">
+          {photos.map((p) => (
+            <li key={p.id}>
+              <button type="button" onClick={() => setViewing(p)} aria-label={`Photo by @${p.authorName}`}
+                className="press block aspect-square w-full overflow-hidden rounded-control bg-surface-2">
+                <MediaImg src={p.url} alt="" loading="lazy" className="h-full w-full object-cover" placeholderClass="h-full w-full" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {viewing && (
+        <Dialog title={`Photo by @${viewing.authorName}`} onClose={() => setViewing(null)} variant="center" size="lg">
+          <MediaImg src={viewing.url} alt={`Photo from ${event.title} by @${viewing.authorName}`}
+            className="max-h-[70vh] w-full rounded-control object-contain" placeholderClass="aspect-[4/3] w-full rounded-control" />
+          <div className="mt-3 flex items-center gap-3">
+            <button type="button" onClick={() => openUserProfile(viewing.authorId)} className="text-callout font-semibold hover:underline">@{viewing.authorName}</button>
+            <time dateTime={isoTime(viewing.createdAt)} className="text-caption text-fg-subtle">{shortTime(viewing.createdAt)}</time>
+            {(viewing.authorId === me() || isHost) && (
+              <Button size="sm" variant="danger-ghost" icon={Trash2} className="ml-auto" onClick={() => remove(viewing)}>Remove</Button>
+            )}
+          </div>
+        </Dialog>
       )}
     </div>
   );

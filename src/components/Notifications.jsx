@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CalendarDays, CheckCheck, ChevronRight, Sparkles, X } from "lucide-react";
 import {
   markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis,
 } from "../lib/db";
@@ -10,6 +10,7 @@ import { shortTime, fullTime, whenLabel, spanLabel } from "../lib/format";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
 import Button from "./ui/Button";
+import IconButton from "./ui/IconButton";
 import { EmptyState, Skeleton, Loading } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
@@ -73,6 +74,7 @@ export default function Notifications() {
               ))}
             </Loading>
           )}
+          <WeekReady />
           {soon.length > 0 && (
             <section aria-labelledby="n-soon">
               <h2 id="n-soon" className="px-4 pb-1 pt-5 text-label font-semibold uppercase tracking-wider text-fg-subtle">Coming up</h2>
@@ -123,6 +125,40 @@ export default function Notifications() {
         </div>
       </div>
     </>
+  );
+}
+
+// Saturday and Sunday: "Your week on Mesh" is ready, once per week unless dismissed.
+const weekSeenKey = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return `mesh:week-seen:${d.toDateString()}`;
+};
+
+function WeekReady() {
+  const [hidden, setHidden] = useState(() => {
+    const day = new Date().getDay();
+    if (![6, 0].includes(day)) return true;
+    try { return !!localStorage.getItem(weekSeenKey()); } catch { return true; }
+  });
+  if (hidden) return null;
+  const dismiss = () => {
+    try { localStorage.setItem(weekSeenKey(), "1"); } catch { /* storage blocked */ }
+    setHidden(true);
+  };
+  return (
+    <div className="mx-4 mt-4 flex items-center gap-1 rounded-card border border-line bg-surface pr-1">
+      <button type="button" onClick={() => { dismiss(); navigate("/account/week"); }}
+        className="press flex min-h-16 min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text"><Sparkles size={20} aria-hidden="true" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-callout font-semibold">Your week on Mesh is ready</span>
+          <span className="block text-caption text-fg-muted">Time on Mesh, gatherings, posts and more</span>
+        </span>
+        <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+      </button>
+      <IconButton icon={X} label="Dismiss" size={16} onClick={dismiss} />
+    </div>
   );
 }
 

@@ -3,9 +3,10 @@ import { signOut } from "firebase/auth";
 import {
   BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
-  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie,
+  SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie, ChartColumn,
 } from "lucide-react";
 import { plural } from "../lib/format";
+import { clearTime } from "../lib/timeMeter";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
@@ -141,6 +142,9 @@ export default function Settings() {
             <Row icon={Users} label="Parental controls"
               value={parentalSummary(profile)}
               onClick={() => navigate("/account/family")} />
+            <Row icon={Sparkles} label="Your week on Mesh"
+              value="Time on Mesh, gatherings and more, Monday to now"
+              onClick={() => navigate("/account/week")} />
           </Group>
 
           <Group title="Privacy">
@@ -224,6 +228,7 @@ export default function Settings() {
             <Group title="Mesh staff">
               <Row icon={Gavel} label="Moderation" value="Reports, appeals, suspensions, journalists and moderators" onClick={() => navigate("/account/moderation")} />
               <Row icon={Megaphone} label="Ads" value="Create, schedule and track ads in Home" onClick={() => navigate("/account/ads")} />
+              <Row icon={ChartColumn} label="Stats" value="Sign-ups, active people, who comes back, and links to every dashboard" onClick={() => navigate("/account/stats")} />
             </Group>
           )}
 
@@ -509,9 +514,11 @@ export function DeleteDialog({ hasPassword, onClose }) {
     if (hasPassword && !password) return setError("Enter your password to confirm it's you.");
     setBusy(true);
     try {
+      const uid = auth.currentUser?.uid;
       await deleteMyAccountData();
       await reauthenticateAndDelete(hasPassword ? password : null);
       clearAllDrafts();
+      clearTime(uid);
       navigate("/", { replace: true });
     } catch (err) {
       setError(authMessage(err));

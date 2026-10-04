@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Timestamp } from "firebase/firestore";
 import { MapPin, Globe, Lock, Users, ChevronRight, Check } from "lucide-react";
-import { createEvent, isEventFull } from "../lib/db";
+import { createEvent, isEventFull, friendsGoingLabel } from "../lib/db";
+import Avatar from "./ui/Avatar";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkName, markPosted } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -24,7 +25,21 @@ export function DateBlock({ date, size = 56 }) {
   );
 }
 
-export function GatheringCard({ event, myStatus }) {
+export function FriendsLine({ friends, people }) {
+  if (!friends?.length) return null;
+  return (
+    <span className="mt-2 flex items-center gap-2 text-caption font-medium text-fg-muted">
+      <span className="flex -space-x-2" aria-hidden="true">
+        {friends.slice(0, 3).map((f) => (
+          <span key={f.id} className="rounded-full ring-2 ring-surface"><Avatar profile={people?.get(f.id) || { username: f.username }} size={20} /></span>
+        ))}
+      </span>
+      <span className="min-w-0 truncate">{friendsGoingLabel(friends)}</span>
+    </span>
+  );
+}
+
+export function GatheringCard({ event, myStatus, friends, people }) {
   const date = event.startsAt?.toDate ? event.startsAt.toDate() : null;
   const past = date && date < new Date();
   const full = isEventFull(event);
@@ -52,6 +67,7 @@ export function GatheringCard({ event, myStatus }) {
           {past && <Badge>Past</Badge>}
           {myStatus && <Badge tone="accent" icon={Check}>{STATUS_LABEL[myStatus]}</Badge>}
         </span>
+        <FriendsLine friends={friends} people={people} />
       </span>
       <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
     </button>

@@ -25,6 +25,6 @@ export const navFor = (items, guest) => (guest ? items.filter((i) => !i.account)
 
 export function activeNavId(page) {
   if (page.tab === "home") return page.section === "leaderboard" ? page.section : sidebarSection(page.section);
-  if (page.tab === "account") return { settings: "settings", brick: "brick", family: "settings", ads: "settings", archive: "profile", profile: "profile" }[page.view] || null;
+  if (page.tab === "account") return { settings: "settings", brick: "brick", week: "brick", stats: "settings", family: "settings", ads: "settings", archive: "profile", profile: "profile" }[page.view] || null;
   return page.tab;
 }

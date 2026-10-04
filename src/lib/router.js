@@ -78,6 +78,8 @@ const PAGES = [
   [/^\/circles(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "circles", id: m[1] || null })],
   [/^\/gatherings\/([^/]+)$/, (m) => ({ tab: "home", section: "circles", gatheringId: m[1] })],
   [/^\/search$/, () => ({ tab: "home", section: "search" })],
+  [/^\/whats-on$/, () => ({ tab: "home", section: "whatson" })],
+  [/^\/welcome$/, () => ({ tab: "welcome" })],
   // Saved lives on your profile now; old links land there.
   [/^\/saved$/, () => ({ tab: "account", view: "profile", profileTab: "saved" })],
   [/^\/notifications$/, () => ({ tab: "home", section: "notifications" })],
@@ -91,6 +93,8 @@ const PAGES = [
   [/^\/account\/archive$/, () => ({ tab: "account", view: "archive" })],
   [/^\/account\/ads$/, () => ({ tab: "account", view: "ads" })],
   [/^\/account\/family$/, () => ({ tab: "account", view: "family" })],
+  [/^\/account\/week$/, () => ({ tab: "account", view: "week" })],
+  [/^\/account\/stats$/, () => ({ tab: "account", view: "stats" })],
   [/^\/legal(?:\/([a-z]+))?$/, (m) => ({ tab: "account", view: "legal", doc: m[1] || "privacy" })],
   [/^\/(login|signup)$/, (m) => ({ tab: "auth", mode: m[1] })],
 ];

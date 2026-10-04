@@ -1,7 +1,9 @@
 // Mesh staff: admins (set in the console) and the moderators they appoint.
-import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  arrayUnion, collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where,
+} from "firebase/firestore";
 import { db } from "../../firebase";
-import { me, snapToList } from "./core.js";
+import { me, snapToList, tsMillis } from "./core.js";
 import { isAdmin } from "./news.js";
 
 let roleCheck = { uid: null, result: null };
@@ -35,4 +37,54 @@ export async function addModerator({ uid, username }) {
 export async function removeModerator(uid) {
   await deleteDoc(doc(db, "moderators", uid));
   if (uid === me()) roleCheck = { uid: null, result: null };
+}
+
+// Activity, for the staff stats: when each account was last active and which
+// of its first 60 days it came back on. No content and no times of day; one
+// write a day per device at most, readable by the owner and staff only.
+
+export const ACTIVITY_DAYS = 60;
+// The day activity records began; earlier sign-ups can't show whether they came back.
+export const ACTIVITY_SINCE = new Date(2026, 9, 5).getTime();
+
+export async function recordActivity(profile) {
+  const uid = me();
+  if (!uid || !profile?.createdAt?.toMillis) return;
+  const key = `mesh:active:${uid}`;
+  const today = new Date().toDateString();
+  try { if (localStorage.getItem(key) === today) return; } catch { return; }
+  const day = Math.floor((Date.now() - tsMillis(profile.createdAt)) / 86400000);
+  const data = { joinedAt: profile.createdAt, lastActiveAt: serverTimestamp() };
+  if (day >= 0 && day <= ACTIVITY_DAYS) data.days = arrayUnion(day);
+  await setDoc(doc(db, "activity", uid), data, { merge: true });
+  try { localStorage.setItem(key, today); } catch { /* storage blocked */ }
+}
+
+export async function fetchMyActivity() {
+  const snap = await getDoc(doc(db, "activity", me())).catch(() => null);
+  return snap?.exists() ? snap.data() : null;
+}
+
+export async function deleteMyActivity() {
+  await deleteDoc(doc(db, "activity", me())).catch(() => {});
+}
+
+/** Everything the staff stats page shows. Staff only (the rules). */
+export async function fetchStaffStats(now = Date.now()) {
+  const DAY = 86400000;
+  const ts = (ms) => Timestamp.fromMillis(ms);
+  const count = (q) => getCountFromServer(q).then((s) => s.data().count).catch(() => null);
+  const [members, signups, activity, posts, gatherings, circles, stories, reports] = await Promise.all([
+    count(collection(db, "users")),
+    getDocs(query(collection(db, "users"), where("createdAt", ">=", ts(now - 30 * DAY)), orderBy("createdAt", "asc"), limit(5000)))
+      .then((s) => s.docs.map((d) => tsMillis(d.data().createdAt))).catch(() => null),
+    getDocs(query(collection(db, "activity"), limit(5000)))
+      .then((s) => s.docs.map((d) => ({ joined: tsMillis(d.data().joinedAt), last: tsMillis(d.data().lastActiveAt), days: d.data().days || [] }))).catch(() => null),
+    count(query(collection(db, "posts"), where("visibility", "==", "public"), where("groupId", "==", ""), where("createdAt", ">=", ts(now - 7 * DAY)), orderBy("createdAt", "desc"))),
+    count(query(collection(db, "events"), where("privacy", "==", "public"), where("startsAt", ">=", ts(now)), orderBy("startsAt", "asc"))),
+    count(query(collection(db, "groups"), where("privacy", "in", ["public", "private"]))),
+    count(query(collection(db, "news"), where("status", "==", "approved"))),
+    count(query(collection(db, "reports"), where("status", "==", "open"))),
+  ]);
+  return { members, signups, activity, posts, gatherings, circles, stories, reports };
 }

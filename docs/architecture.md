@@ -37,7 +37,8 @@
 | `chats/{id}` | 1:1 ids are the sorted uid pair. Subcollections: `messages`, `media` (voice notes, photos), `typing`, `reads`. |
 | `calls/{id}` | WebRTC signalling with `callerCandidates` / `calleeCandidates`; deleted after the call. |
 | `groups/{id}` | Circles. `members`, `joinRequests`, `guides/{id}/progress`. |
-| `events/{id}` | Gatherings. `rsvps`, `discussion`, legacy `announcements`. |
+| `events/{id}` | Gatherings. `rsvps`, `posts` (discussion), `photos` (from the start until 30 days on, by the host and people going), legacy `announcements`. |
+| `activity/{uid}` | Staff stats: `lastActiveAt` and which of the first 60 days since `joinedAt` the account was used. One write a day per device; owner and staff only. |
 | `news/{id}` | Stories as parallel block arrays plus `script`. `revisions`, `presence`, `updates` (live blog), `correctionRequests`. `newsWriters/{uid}` lists writers and holds their bylines. |
 | `locks/{uid}`, `usage/{uid}_{year}-{day}`, `familyLinks/{teenUid}`, `brickStats/{uid}` | Brick mode. |
 | `reports/{type}_{id}_{uid}`, `suspensions/{uid}` | Moderation. |

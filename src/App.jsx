@@ -2,8 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { restoreSession } from "./lib/auth";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances } from "./lib/db";
+import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity } from "./lib/db";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
+import { useTimeMeter } from "./lib/timeMeter";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
 
@@ -56,6 +57,10 @@ const AdsManager = lazy(() => import("./components/AdsManager"));
 const AgeGate = lazy(() => import("./components/AgeGate"));
 const ParentalControls = lazy(() => import("./components/ParentalControls"));
 const NotFound = lazy(() => import("./components/NotFound"));
+const Welcome = lazy(() => import("./components/Welcome"));
+const WhatsOn = lazy(() => import("./components/WhatsOn"));
+const WeekRecap = lazy(() => import("./components/WeekRecap"));
+const StaffStats = lazy(() => import("./components/StaffStats"));
 const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
 const Watch = lazy(() => import("./components/Watch"));
@@ -66,7 +71,7 @@ const InterestsDialog = named(() => import("./components/Interests"), "Interests
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
-  notifications: "Notifications", leaderboard: "Leaderboard",
+  notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on",
 };
 
 // Brick-mode section for a page. Messaging, notifications, settings and
@@ -95,7 +100,7 @@ function sectionTitle(page, query) {
   if (page.tab === "auth") return page.mode === "signup" ? "Sign up" : "Log in";
   if (page.notFound) return "Page not found";
   if (page.tab === "messages") return "Messages";
-  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode", archive: "Story archive", ads: "Ads", family: "Parental controls" }[page.view] || "Your profile";
+  if (page.tab === "account") return { settings: "Settings", moderation: "Moderation", brick: "Brick mode", archive: "Story archive", ads: "Ads", family: "Parental controls", week: "Your week", stats: "Stats" }[page.view] || "Your profile";
   if (page.section === "search" && query?.get("q")) return `${query.get("q").slice(0, 40)} · Search`;
   if (page.section === "circles" && page.gatheringId) return "Gatherings";
   return SECTION_TITLES[page.section] ?? null;
@@ -111,6 +116,8 @@ export default function App() {
   const [hiddenWords, setHiddenWords] = useState([]);
   const [hideAi, setHideAi] = useState(false);
   const [tourDone, setTourDone] = useState(null); // from private prefs; null until known
+  // First-time signed-out visitors see the welcome page at / until they choose to look around.
+  const [welcomed, setWelcomed] = useState(() => { try { return !!localStorage.getItem("mesh:welcomed"); } catch { return true; } });
   const [muted, setMutedSet] = useState(() => new Set());
   const [interestsDialog, setInterestsDialog] = useState(null); // null | "first" | "edit"
   const [incoming, setIncoming] = useState([]);
@@ -305,9 +312,20 @@ export default function App() {
   // Already signed in on /login or /signup.
   const onAuthPage = page.tab === "auth";
   useEffect(() => { if (signedIn && onAuthPage) navigate(afterAuthPath(), { replace: true }); }, [signedIn, onAuthPage]);
+  // Arriving anywhere else first (a shared post, a gathering, the news) counts as looking around.
+  const browsingElsewhere = guest && !welcomed && !onAuthPage && page.tab !== "welcome" && page.view !== "legal"
+    && !(page.tab === "home" && page.section === "foryou" && !overlay);
+  if (browsingElsewhere) setWelcomed(true);
+  useEffect(() => {
+    if (!welcomed) return;
+    try { localStorage.setItem("mesh:welcomed", "1"); } catch { /* storage blocked */ }
+  }, [welcomed]);
   const lockSection = lockSectionOf(page);
   // Meter usage for capped sections (the player counts as Flicks).
   useUsageMeter(brick, overlay ? (overlay.overlay === "watch" ? "flicks" : overlay.overlay === "post" ? "feed" : null) : lockSection);
+  useTimeMeter(signedIn ? user.uid : null);
+  const joinedAt = profile?.createdAt;
+  useEffect(() => { if (signedIn) recordActivity({ createdAt: joinedAt }).catch(() => {}); }, [signedIn, joinedAt]);
 
   if (!authReady) {
     return (
@@ -334,6 +352,20 @@ export default function App() {
   if (guest && onAuthPage) return <AuthPage initialMode={page.mode} onCreated={enter} />;
   if (onAuthPage) return null;
 
+  const firstVisit = guest && !welcomed && page.tab === "home" && page.section === "foryou" && !page.notFound && !overlay;
+  if (page.tab === "welcome" || firstVisit) {
+    const browse = () => {
+      setWelcomed(true);
+      if (page.tab === "welcome") navigate("/");
+    };
+    return (
+      <Suspense fallback={<div className="flex h-dvh items-center justify-center" role="status" aria-label="Loading Mesh"><div className="animate-pulse"><LogoMark size={56} /></div></div>}>
+        <Welcome signedIn={signedIn} onBrowse={browse} />
+        <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+      </Suspense>
+    );
+  }
+
   const query = overlay ? bgQuery : loc.query;
   const immersive = page.tab === "home" && page.section === "flicks" && !!page.id && !overlay;
 
@@ -356,6 +388,7 @@ export default function App() {
       case "search": content = <Search initialQuery={query.get("q") || ""} filter={query.get("type") || "top"} />; break;
       case "notifications": content = <Notifications />; break;
       case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
+      case "whatson": content = <WhatsOn />; break;
       default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
@@ -372,6 +405,10 @@ export default function App() {
     content = <AdsManager />;
   } else if (page.view === "family") {
     content = <ParentalControls />;
+  } else if (page.view === "week") {
+    content = <WeekRecap />;
+  } else if (page.view === "stats") {
+    content = <StaffStats />;
   } else if (page.view === "legal") {
     content = <Legal key={page.doc} doc={page.doc} />;
   } else {

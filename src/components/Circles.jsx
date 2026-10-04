@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus, Search as SearchIcon, Sparkles, X } from "lucide-react";
+import { Plus, Blend, CalendarDays, Globe, Lock, EyeOff, ChevronRight, CalendarPlus, MapPin, Search as SearchIcon, Sparkles, X } from "lucide-react";
 import { INTERESTS, interestById } from "../lib/interests";
 import { CircleAvatar } from "./circle/CircleImages";
 import { useShell } from "./shell/ShellContext";
@@ -18,6 +18,7 @@ import { Field, Input, Textarea } from "./ui/Field";
 import { EmptyState, ErrorState, Skeleton, InlineMessage } from "./ui/States";
 import CirclePage from "./CirclePage";
 import { GatheringCard, NewGatheringDialog } from "./Events";
+import { useFriendsGoing } from "../lib/useFriendsGoing";
 
 export default function Circles({ circleId, view }) {
   const { needsAccount } = useShell();
@@ -47,6 +48,17 @@ export default function Circles({ circleId, view }) {
             onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
             {tab === "circles" ? "Start a circle" : "Plan a gathering"}
           </Button>
+          {tab === "gatherings" && (
+            <button type="button" onClick={() => navigate("/whats-on")}
+              className="press mb-5 flex min-h-14 w-full items-center gap-3 rounded-card border border-line bg-surface px-4 text-left hover:border-line-strong">
+              <MapPin size={18} className="shrink-0 text-accent-text" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-callout font-semibold">What's on near you</span>
+                <span className="block text-caption text-fg-muted">Public gatherings by day, for your suburb or city</span>
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
+            </button>
+          )}
           {tab === "circles" ? <CircleList onCreate={() => create("circle")} /> : <GatheringList onCreate={() => create("gathering")} />}
         </div>
       </div>
@@ -228,6 +240,7 @@ function GatheringList({ onCreate }) {
   const [invited, setInvited] = useState([]);
   const [rsvps, setRsvps] = useState(new Map());
   const [error, setError] = useState(false);
+  const { friends, people } = useFriendsGoing(events && [...invited, ...events]);
 
   const load = useCallback(async () => {
     try {
@@ -257,13 +270,13 @@ function GatheringList({ onCreate }) {
       {invited.length > 0 && (
         <section aria-label="Invited">
           <h2 className="mb-3 text-title-3">You're invited</h2>
-          <div className="space-y-3">{invited.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} />)}</div>
+          <div className="space-y-3">{invited.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} friends={friends.get(ev.id)} people={people} />)}</div>
         </section>
       )}
       {events.length > 0 && (
         <section aria-label="Upcoming">
           <h2 className="mb-3 text-title-3">Upcoming</h2>
-          <div className="space-y-3 stagger">{events.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} />)}</div>
+          <div className="space-y-3 stagger">{events.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} friends={friends.get(ev.id)} people={people} />)}</div>
         </section>
       )}
     </div>

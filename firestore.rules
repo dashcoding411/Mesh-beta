@@ -1623,6 +1623,23 @@ service cloud.firestore {
     }
 
     // Inline media (Spark plan): get by id only, never listed.
+    // Staff stats: when an account was last active and which of its first 60
+    // days it came back on. At most one write per 10 minutes; owner and staff only.
+    match /activity/{uid} {
+      allow get: if isUser(uid) || isStaff();
+      allow list: if isStaff();
+      allow create, update: if isUser(uid)
+        && incomingData().keys().hasOnly(['joinedAt', 'lastActiveAt', 'days'])
+        && incomingData().lastActiveAt == request.time
+        && incomingData().joinedAt == get(/databases/$(database)/documents/users/$(uid)).data.get('createdAt', null)
+        && incomingData().get('days', []) is list
+        && incomingData().get('days', []).size() <= 61
+        && (resource == null
+            || (request.time > resource.data.lastActiveAt + duration.value(10, 'm')
+                && incomingData().get('days', []).toSet().difference(resource.data.get('days', []).toSet()).size() <= 1));
+      allow delete: if isUser(uid);
+    }
+
     match /media/{mediaId} {
       allow get: if true;
       // Owner only, for account deletion.
@@ -2693,6 +2710,34 @@ service cloud.firestore {
                == [request.auth.uid].toSet();
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid || ev().hostId == request.auth.uid);
+      }
+
+      // Photos from the day: the host and anyone going, from the start until
+      // 30 days after. Images are checked on the device before upload.
+      match /photos/{photoId} {
+        function ev() {
+          return get(/databases/$(database)/documents/events/$(eventId)).data;
+        }
+        allow read: if signedIn() && canViewEvent(ev());
+        allow create: if signedIn()
+          && incomingData().keys().hasOnly(['authorId', 'authorName', 'url', 'width', 'height', 'createdAt'])
+          && incomingData().authorId == request.auth.uid
+          && isMyName(incomingData().authorName)
+          && incomingData().url is string
+          && incomingData().url != ''
+          && photoOk(incomingData().url)
+          && incomingData().width is int && incomingData().width >= 0 && incomingData().width <= 20000
+          && incomingData().height is int && incomingData().height >= 0 && incomingData().height <= 20000
+          && incomingData().createdAt == request.time
+          && notSuspended()
+          && canViewEvent(ev())
+          && request.time >= ev().startsAt
+          && request.time < ev().startsAt + duration.value(30, 'd')
+          && (ev().hostId == request.auth.uid
+              || get(/databases/$(database)/documents/events/$(eventId)/rsvps/$(request.auth.uid)).data.get('status', '') == 'going');
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.authorId == request.auth.uid || ev().hostId == request.auth.uid || isStaff());
       }
 
       // Legacy announcements (read-only).

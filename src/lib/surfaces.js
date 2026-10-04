@@ -1,6 +1,6 @@
 import {
   Sparkles, Users, Clapperboard, Newspaper, Blend, Search,
-  House, MessageCircle, UserRound, Bell, Trophy,
+  House, MessageCircle, UserRound, Bell, Trophy, CalendarDays,
 } from "lucide-react";
 
 // Product surfaces. Format names are Mesh's own: Stills (photos), Strands
@@ -21,6 +21,7 @@ const ALL = {
   news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Stories reviewed against their sources" },
   notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell, blurb: "Likes, comments, follows and invites" },
   leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "Who's kept Mesh bricked the longest" },
+  whatson: { id: "whatson", path: "/whats-on", label: "What's on", icon: CalendarDays, blurb: "Public gatherings coming up" },
 };
 
 export const FEED_TABS = [ALL.foryou, ALL.following];
@@ -28,4 +29,4 @@ export const FEED_TABS = [ALL.foryou, ALL.following];
 export const sectionById = (id) => ALL[id] || ALL.foryou;
 
 /** Sidebar item for a section; feed tabs map to For you. */
-export const sidebarSection = (id) => (id === "following" ? "foryou" : id);
+export const sidebarSection = (id) => (id === "following" ? "foryou" : id === "whatson" ? "circles" : id);

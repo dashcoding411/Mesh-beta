@@ -1,4 +1,4 @@
-import { ChevronDown, MapPin, Newspaper, PenLine, Radio } from "lucide-react";
+import { Check, ChevronDown, MapPin, Newspaper, PenLine, Radio, Sunrise } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
@@ -6,7 +6,8 @@ import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { KindBadge, Meta, TopicLabel } from "./parts";
 import { AuthorLine } from "./Journalist";
-import { summaryOf } from "./text";
+import { readMinutes, summaryOf } from "./text";
+import { BRIEF_SIZE, pickBrief, readStoryIds } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
@@ -75,6 +76,8 @@ export function NewsHome() {
 
           <HowItWorks writer={writer} />
 
+          {topic === "all" && items?.length > 0 && <TodaysBrief items={items} />}
+
           <section aria-labelledby="stories-h" className="mt-6">
             <h2 id="stories-h" className="sr-only">{topic === "all" ? "Top stories" : `${newsTopicById(topic)?.label} stories`}</h2>
             {error && <ErrorState title="Couldn't load the news" onRetry={load} />}
@@ -105,6 +108,63 @@ export function NewsHome() {
       </div>
 
     </>
+  );
+}
+
+// Five stories, then done: a news habit with an end.
+function TodaysBrief({ items }) {
+  const [now] = useState(() => Date.now());
+  const [read] = useState(() => readStoryIds());
+  const brief = useMemo(() => pickBrief(items, now, publishedAt), [items, now]);
+  if (brief.length < 2) return null;
+  const done = brief.filter((s) => read.has(s.id)).length;
+  const finished = done === brief.length;
+  const minutes = brief.reduce((m, s) => m + readMinutes(s.script), 0);
+
+  return (
+    <section aria-labelledby="brief-h" className="mt-4 rounded-card border border-line bg-surface">
+      <div className="flex items-start gap-3 px-4 pt-4">
+        <Sunrise size={20} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <h2 id="brief-h" className="text-title-3">Today's brief</h2>
+          <p className="text-caption text-fg-muted">
+            {finished
+              ? "You're done for today. That's the news."
+              : `${brief.length === BRIEF_SIZE ? "Five" : brief.length} stories, about ${minutes} min. Read them and you're up to date.`}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-caption font-semibold tabular text-fg-muted" aria-label={`${done} of ${brief.length} read`}>
+          {done}/{brief.length}
+        </span>
+      </div>
+      <ol className="mt-2 divide-y divide-line">
+        {brief.map((s, i) => {
+          const seen = read.has(s.id);
+          return (
+            <li key={s.id}>
+              <button type="button" onClick={() => navigate(`/news/${s.id}`)} className="press group flex w-full items-start gap-3 px-4 py-3 text-left">
+                <span aria-hidden="true" className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-caption font-bold tabular ${
+                  seen ? "bg-accent text-white" : "bg-surface-2 text-fg-muted"
+                }`}>
+                  {seen ? <Check size={14} /> : i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-callout font-semibold group-hover:underline decoration-fg-subtle underline-offset-2 ${seen ? "text-fg-muted" : ""}`}>
+                    {s.title}{seen && <span className="sr-only"> (read)</span>}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-2 text-label"><TopicLabel id={s.topic} />{s.live && <Badge tone="danger" icon={Radio}>Live</Badge>}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {finished && (
+        <p className="border-t border-line px-4 py-3 text-caption text-fg-muted">
+          Nothing else you need to know right now. The rest is below if you want it.
+        </p>
+      )}
+    </section>
   );
 }
 

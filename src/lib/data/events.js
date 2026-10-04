@@ -1,12 +1,14 @@
 // Gatherings (events): RSVPs, invites, discussion and calendar export.
 import {
-  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, increment, limit,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, getDoc, getDocs, increment, limit,
   orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { myProfile } from "./users.js";
 import { notify } from "./notifications.js";
+import { uploadPhotos } from "./uploads.js";
+import { deleteInline } from "./posts.js";
 
 // Public gatherings: going/interested. Private: going/maybe/not going.
 
@@ -49,6 +51,24 @@ export async function fetchEvents(groupId = "", { member = false } = {}) {
       // Signed out, circle gatherings are listed on the circle's page.
       : query(collection(db, "events"), where("privacy", "==", "public"), where("groupId", "==", ""), limit(100));
   return snapToList(await getDocs(q)).sort((a, b) => tsMillis(a.startsAt) - tsMillis(b.startsAt));
+}
+
+/**
+ * Public gatherings from a few hours ago onwards, soonest first. Signed out,
+ * only those outside circles (the rules). Falls back to the unordered list
+ * while the index is still building.
+ */
+export async function fetchUpcomingPublicEvents(max = 150) {
+  const since = Timestamp.fromMillis(Date.now() - 3 * 3600000);
+  const filters = me()
+    ? [where("privacy", "==", "public")]
+    : [where("privacy", "==", "public"), where("groupId", "==", "")];
+  try {
+    return snapToList(await getDocs(query(collection(db, "events"), ...filters, where("startsAt", ">=", since), orderBy("startsAt", "asc"), limit(max))));
+  } catch (err) {
+    if (err?.code !== "failed-precondition") throw err;
+    return (await fetchEvents()).filter((e) => e.privacy === "public" && tsMillis(e.startsAt) >= since.toMillis());
+  }
 }
 
 export async function fetchInvitedEvents() {
@@ -99,7 +119,12 @@ export async function updateEvent(eventId, fields) {
   await updateDoc(doc(db, "events", eventId), fields);
 }
 
+/** Clears the discussion and photos first; the host may delete both. */
 export async function deleteEvent(eventId) {
+  for (const sub of ["photos", "posts"]) {
+    const snap = await getDocs(query(collection(db, "events", eventId, sub), limit(300))).catch(() => null);
+    for (const d of snap?.docs || []) await deleteDoc(d.ref).catch(() => {});
+  }
   await deleteDoc(doc(db, "events", eventId));
 }
 
@@ -250,6 +275,81 @@ export async function toggleEventPostLike(eventId, post, liked) {
   await updateDoc(doc(db, "events", eventId, "posts", post.id), {
     likedBy: liked ? arrayRemove(me()) : arrayUnion(me()),
   });
+}
+
+// Friends going: people you follow among a gathering's Going replies. Only
+// where the guest list is shown (the rules check), at most 90 follows a card.
+
+export async function fetchFriendsGoing(events, followingIds) {
+  const out = new Map();
+  const ids = [...followingIds].slice(0, 90);
+  if (!me() || !ids.length) return out;
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+  await Promise.all(events.map(async (ev) => {
+    if (ev.showGuestList === false && ev.hostId !== me()) return;
+    const snaps = await Promise.all(chunks.map((c) => getDocs(query(collection(db, "events", ev.id, "rsvps"), where(documentId(), "in", c))).catch(() => null)));
+    const going = snaps.flatMap((s) => s?.docs || []).filter((d) => d.data().status === "going")
+      .map((d) => ({ id: d.id, username: d.data().username || "" }));
+    if (going.length) out.set(ev.id, going);
+  }));
+  return out;
+}
+
+/** "@ana is going", "@ana and @ben are going", "@ana and 3 others you follow are going". */
+export function friendsGoingLabel(friends) {
+  const names = friends.map((f) => `@${f.username || "someone"}`);
+  if (names.length === 1) return `${names[0]} is going`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are going`;
+  return `${names[0]} and ${names.length - 1} others you follow are going`;
+}
+
+// Photos from the day: once a gathering starts, the host and anyone going can
+// add photos for everyone who can see the gathering, for 30 days.
+
+export const PHOTOS_OPEN_DAYS = 30;
+export const MAX_PHOTOS_AT_ONCE = 6;
+
+export function photosOpen(event, now = Date.now()) {
+  const start = tsMillis(event?.startsAt);
+  return !!start && now >= start && now < start + PHOTOS_OPEN_DAYS * 86400000;
+}
+
+export function canAddEventPhotos(event, myStatus, now = Date.now()) {
+  return photosOpen(event, now) && (event.hostId === me() || myStatus === "going");
+}
+
+export async function fetchEventPhotos(eventId) {
+  const q = query(collection(db, "events", eventId, "photos"), orderBy("createdAt", "desc"), limit(200));
+  return snapToList(await getDocs(q));
+}
+
+/** Checks and stores the photos (lib/imageCheck.js runs first), then adds them to the gathering. */
+export async function addEventPhotos(eventId, files, onProgress) {
+  const profile = await myProfile();
+  const stored = await uploadPhotos(files.slice(0, MAX_PHOTOS_AT_ONCE), onProgress);
+  const batch = writeBatch(db);
+  const added = stored.map((s) => {
+    const ref_ = doc(collection(db, "events", eventId, "photos"));
+    const photo = {
+      authorId: me(), authorName: profile?.username || "", url: s.url,
+      width: Math.round(s.width || 0), height: Math.round(s.height || 0), createdAt: serverTimestamp(),
+    };
+    batch.set(ref_, photo);
+    return { id: ref_.id, ...photo, createdAt: Timestamp.now() };
+  });
+  try { await batch.commit(); }
+  catch (err) {
+    stored.forEach((s) => deleteInline(s.url).catch(() => {}));
+    throw err;
+  }
+  return added;
+}
+
+/** The photo's author or the host. The image itself goes when its author removes it. */
+export async function deleteEventPhoto(eventId, photo) {
+  await deleteDoc(doc(db, "events", eventId, "photos", photo.id));
+  if (photo.authorId === me()) await deleteInline(photo.url).catch(() => {});
 }
 
 // Legacy announcements, shown as host posts.

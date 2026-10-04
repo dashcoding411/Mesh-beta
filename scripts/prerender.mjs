@@ -1,5 +1,6 @@
-// Post-build: renders the policy pages to static HTML (title, description,
-// canonical URL, full text) and writes sitemap.xml.
+// Post-build: renders the policy pages, the welcome page and What's on to
+// static HTML (title, description, canonical URL, text) and writes sitemap.xml.
+// The app replaces the text once it loads.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { DOCUMENTS } from "../src/legal/content.js";
@@ -52,6 +53,53 @@ const template = await readFile(new URL("index.html", dist), "utf8");
 const today = new Date().toISOString().slice(0, 10);
 const urls = [{ loc: `${SITE_URL}/`, priority: "1.0" }];
 
+// Public pages people land on from search and shared links.
+const PAGES = [
+  {
+    path: "/welcome",
+    priority: "0.9",
+    title: "Mesh: social media for humans",
+    description: "Real people, real news and real plans, in an app that knows when to stop. Set a daily limit and Mesh locks itself when you hit it. 16+.",
+    body: `<main class="mx-auto max-w-2xl px-6 py-12">
+        <p class="font-display text-title-3 font-extrabold">Mesh</p>
+        <h1 class="mt-8 font-display text-title-1">Social media for humans.</h1>
+        <p class="mt-2 text-title-3">Get bored again.</p>
+        <p class="mt-4 text-body text-fg-muted">Real people, real news and real plans, in an app that knows when to stop.</p>
+        <h2 class="mt-10 text-title-2">You control the scroll</h2>
+        <p class="mt-3 text-body text-fg-muted">Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button. Loosening a limit takes 24 hours. Messages and calls always work.</p>
+        <h2 class="mt-10 text-title-2">Made by humans</h2>
+        <p class="mt-3 text-body text-fg-muted">AI-generated photos and videos aren't allowed. Editing your own photos is fine. Fakes aren't.</p>
+        <h2 class="mt-10 text-title-2">Real news</h2>
+        <p class="mt-3 text-body text-fg-muted">Mesh News is written by journalists whose identity is verified. Every story cites its sources.</p>
+        <h2 class="mt-10 text-title-2">Mesh together</h2>
+        <p class="mt-3 text-body text-fg-muted">Circles are communities with their own rules. Gatherings get you off your phone. <a href="/whats-on">See what's on</a>.</p>
+        <h2 class="mt-10 text-title-2">Hate stopped at the door</h2>
+        <p class="mt-3 text-body text-fg-muted">Slurs and attacks are stopped before they post. Every block can be appealed to a person.</p>
+        <h2 class="mt-10 text-title-2">Not greedy</h2>
+        <p class="mt-3 text-body text-fg-muted">Ads are labelled and never track what you do. Your data is never sold.</p>
+        <p class="mt-10"><a href="/signup">Sign up, it's free</a> · <a href="/">Look around</a></p>
+      </main>`,
+  },
+  {
+    path: "/whats-on",
+    priority: "0.8",
+    title: "What's on · Mesh",
+    description: "Runs, dinners, gigs and meetups people are putting on, by day. See what's on near you, no account needed.",
+    body: `<main class="mx-auto max-w-2xl px-6 py-12">
+        <p><a href="/" class="font-display text-title-3 font-extrabold">Mesh</a></p>
+        <h1 class="mt-8 font-display text-title-1">What's on</h1>
+        <p class="mt-4 text-body text-fg-muted">Runs, dinners, gigs and meetups people are putting on. Public gatherings only. Anyone can look, and replying is free with a Mesh account.</p>
+      </main>`,
+  },
+];
+
+for (const p of PAGES) {
+  const dir = new URL(`${p.path.slice(1)}/`, dist);
+  await mkdir(dir, { recursive: true });
+  await writeFile(new URL("index.html", dir), page(template, p));
+  urls.push({ loc: `${SITE_URL}${p.path}`, priority: p.priority });
+}
+
 for (const doc of DOCUMENTS) {
   const path = `/legal/${doc.id}`;
   const dir = new URL(`legal/${doc.id}/`, dist);
@@ -68,4 +116,4 @@ ${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><priorit
 </urlset>
 `);
 
-console.log(`prerender: ${DOCUMENTS.length} policy pages and sitemap.xml (${urls.length} URLs)`);
+console.log(`prerender: ${DOCUMENTS.length} policy pages, ${PAGES.length} public pages and sitemap.xml (${urls.length} URLs)`);

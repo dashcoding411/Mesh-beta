@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchEvents, fetchMyRsvps } from "../../lib/db";
 import { navigate } from "../../lib/router";
 import { GatheringCard, NewGatheringDialog } from "../Events";
+import { useFriendsGoing } from "../../lib/useFriendsGoing";
 import { postingStatus } from "./status";
 import { EmptyState, ErrorState, Skeleton } from "../ui/States";
 
@@ -12,6 +13,7 @@ export function CircleGatherings({ group, membership }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(false);
   const status = postingStatus(group, membership);
+  const { friends, people } = useFriendsGoing(events);
 
   const load = useCallback(async () => {
     try {
@@ -41,7 +43,7 @@ export function CircleGatherings({ group, membership }) {
           body={membership ? "Gatherings made here are visible to members by default." : "Public gatherings from this circle show here."} />
       )}
       <div className="space-y-3">
-        {events?.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} />)}
+        {events?.map((ev) => <GatheringCard key={ev.id} event={ev} myStatus={rsvps.get(ev.id) || null} friends={friends.get(ev.id)} people={people} />)}
       </div>
       {creating && (
         <NewGatheringDialog groupId={group.id} onClose={() => setCreating(false)}

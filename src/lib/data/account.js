@@ -3,7 +3,8 @@ import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, query, s
 import { auth, db } from "../../firebase";
 import { fetchGroups, fetchMembership, leaveGroup, deleteGroup } from "./circles.js";
 import { me, snapToList } from "./core.js";
-import { deleteEvent } from "./events.js";
+import { deleteEvent, setRsvp } from "./events.js";
+import { deleteMyActivity, fetchMyActivity } from "./staff.js";
 import { clearThought, fetchThoughts } from "./chats.js";
 import { fetchMyBrickGroups, leaveBrickGroup, deleteBrickGroup } from "./brickGroups.js";
 import { fetchHighlights, fetchMyStoryArchive } from "./highlights.js";
@@ -36,6 +37,15 @@ export async function exportMyData() {
   const family = await getDoc(doc(db, "familyLinks", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
   const brickedTime = await getDoc(doc(db, "brickStats", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null);
   const gatherings = await getDocs(query(collection(db, "users", uid, "rsvps"), limit(500))).then((s) => s.docs.map((d) => ({ gatheringId: d.id, ...d.data() }))).catch(() => []);
+  // Photos and posts you added to gatherings you replied to.
+  const gatheringPhotos = [];
+  const gatheringPosts = [];
+  for (const g of gatherings) {
+    const mineIn = (sub) => getDocs(query(collection(db, "events", g.gatheringId, sub), where("authorId", "==", uid), limit(200))).then(snapToList).catch(() => []);
+    gatheringPhotos.push(...(await mineIn("photos")).map((p) => ({ gatheringId: g.gatheringId, ...p })));
+    gatheringPosts.push(...(await mineIn("posts")).map((p) => ({ gatheringId: g.gatheringId, ...p })));
+  }
+  const activity = await fetchMyActivity().catch(() => null);
   const comments = [];
   for (const p of posts) {
     const cs = await fetchComments(p.id).catch(() => []);
@@ -80,6 +90,9 @@ export async function exportMyData() {
     mutedAccounts: prefs?.muted || [],
     brickMode: { limits, usage, parentLink: family, brickedTime },
     gatheringReplies: gatherings,
+    gatheringPhotos,
+    gatheringPosts,
+    activity,
     notifications,
     messages,
     stories,
@@ -116,6 +129,18 @@ export async function deleteMyAccountData() {
   // Every gathering you host, private ones included.
   const hosted = await getDocs(query(collection(db, "events"), where("hostId", "==", uid), limit(500))).then(snapToList).catch(() => []);
   for (const e of hosted) await deleteEvent(e.id).catch(() => {});
+  // Gatherings you replied to: your photos and posts there, then the reply itself (and its head count).
+  const replied = await getDocs(query(collection(db, "users", uid, "rsvps"), limit(500))).then((s) => s.docs).catch(() => []);
+  for (const r of replied) {
+    for (const sub of ["photos", "posts"]) {
+      const snap = await getDocs(query(collection(db, "events", r.id, sub), where("authorId", "==", uid), limit(200))).catch(() => null);
+      for (const d of snap?.docs || []) await deleteDoc(d.ref).catch(() => {});
+    }
+    const status = r.data().status;
+    const event = await getDoc(doc(db, "events", r.id)).then((s) => (s.exists() ? { id: s.id, ...s.data() } : null)).catch(() => null);
+    if (event && event.hostId !== uid) await setRsvp(event, status, status).catch(() => {});
+  }
+  await deleteMyActivity();
   for (const a of (await fetchMyAppeals().catch(() => [])).filter((x) => x.status === "open")) {
     await deleteDoc(doc(db, "appeals", a.id)).catch(() => {});
   }
