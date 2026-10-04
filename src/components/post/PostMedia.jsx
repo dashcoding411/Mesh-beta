@@ -10,26 +10,11 @@ import MediaImg from "../ui/MediaImg";
 import Lightbox from "../ui/Lightbox";
 import { GifView } from "../GifPicker";
 import { PollCard } from "../Poll";
-import { cardClassFor, fitsCard } from "../../lib/strandCards";
 
 export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged }) {
   const short = post.kind === "text" && post.text.length <= 140 && !post.text.includes("\n");
-  // Short Strands show on the background their author picked, like text posts on Instagram.
-  const card = post.kind === "text" && fitsCard(post) ? cardClassFor(post) : null;
 
-  if (card) {
-    return (
-      <div className="px-4 pt-3" onDoubleClick={onDoubleTap}>
-        <div className={`relative flex min-h-[220px] items-center justify-center overflow-hidden rounded-card bg-gradient-to-br px-6 py-10 text-center ${card}`}>
-          <RichText text={post.text} highlight={highlight}
-            className="font-display text-title-1 font-extrabold leading-tight text-white [overflow-wrap:anywhere] [&_a]:text-white [&_a]:decoration-white/60" />
-          {burst && <Heart size={88} className="anim-heart pointer-events-none absolute text-white drop-shadow-lg" fill="currentColor" aria-hidden="true" />}
-        </div>
-      </div>
-    );
-  }
-
-  // Longer Strands sit on their own panel so they read as a post, not a line of a timeline.
+  // Strands sit on their own panel so they read as a post, not a line of a timeline.
   if (post.kind === "text") {
     return (
       <div className="px-4 pt-3">
