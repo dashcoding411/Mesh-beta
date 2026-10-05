@@ -6,6 +6,7 @@ import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyP
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { useTimeMeter } from "./lib/timeMeter";
+import { justAgeLocked } from "./lib/ageLock";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
 
@@ -140,7 +141,8 @@ export default function App() {
         // Signing in or out after load starts a fresh page, so no feed,
         // cache or listener carries over between visitor and account.
         if (!initial) {
-          if (!u) return window.location.replace("/");
+          // An under-16 sign-up that just ended goes back to say why; everyone else goes Home.
+          if (!u) return window.location.replace(justAgeLocked() ? "/signup" : "/");
           if (await fetchOwnProfile(u.uid).catch(() => null)) return window.location.replace(afterAuthPath());
           // Signed in without a profile: sign-up continues.
           setProfile(null);

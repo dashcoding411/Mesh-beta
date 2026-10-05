@@ -142,7 +142,7 @@ export const PRIVACY = {
     {
       h: "Age",
       p: [
-        "Mesh is for people 16 and over, as the Online Safety Amendment (Social Media Minimum Age) Act 2024 requires. Signing up asks for your birth year (and, if you turn 16 this year, whether you've had your birthday), and nobody under 16 can make an account. Accounts made before this were asked for a birth year; an account under 16 can only download its data and delete itself.",
+        "Mesh is for people 16 and over, as the Online Safety Amendment (Social Media Minimum Age) Act 2024 requires. Signing up asks for your real birth year (and, if you turn 16 this year, whether you've had your birthday) and for confirmation that it's true, and nobody under 16 can make an account. If someone gives an under-16 birth year, nothing they entered is kept and that device can't start another sign-up for 30 days, using one key stored on the device ('mesh:age-lock'). Accounts made before this were asked for a birth year; an account under 16 can only download its data and delete itself.",
         "Your birth year is stored where only your account can read it, and is used only for age rules: the 16+ minimum, 18+ ads and G-rated GIFs for under-18s. It's never shown on your profile.",
         "Accounts for 16 and 17 year olds start private, with messages only from people they follow. They can change either in Settings.",
         "If you believe an account belongs to someone under 16, report it and we will act, including closing the account.",
@@ -192,7 +192,7 @@ export const TERMS = {
     {
       h: "Who can use Mesh",
       p: [
-        "You must be 16 or over to have a Mesh account, as Australian law requires, and old enough to use social media where you live. If you're under 16, don't make an account; if we find an account belongs to someone under 16, we close it.",
+        "You must be 16 or over to have a Mesh account, as Australian law requires, and old enough to use social media where you live. You must give your real birth year when you sign up. If you're under 16, don't make an account; if we find an account belongs to someone under 16, or was made with a false age, we close it.",
         "One person, one account, and the details you give us should be true. You are responsible for what happens under your account.",
       ],
     },
@@ -232,7 +232,7 @@ export const TERMS = {
         "Every story is labelled as a report, analysis, explainer or opinion, so readers know what they're reading. Passing opinion off as reporting isn't allowed. A published story can be updated for developing news, with a note readers see; mistakes are fixed with corrections.",
         "Each journalist is the publisher of their own stories and is responsible for them, under the journalist agreement they accept before publishing. Mesh hosts stories: it doesn't commission, write, edit or approve them, and lists them newest first rather than ranking them by importance. A story needs a headline, the full text, at least two source links cited in the text, a description for every image, and the journalist's confirmation that it is accurate. A story flagged for a legal read can't be published until that's cleared.",
         "Mesh checks who journalists are before they can publish: their identity, and their work as a journalist (for example published stories, an outlet confirming them, or a press or union card). A record of that check is kept privately by the Mesh team.",
-        "If you think a story is defamatory or otherwise unlawful, report it or email legal@joinmesh.social. Mesh will look at it within 7 days, and may restrict or remove the story while it's considered, and tell the journalist so they can respond.",
+        `If you think a story is defamatory or otherwise unlawful, report it or email ${B.legalEmail}. Mesh will look at it within 7 days, and may restrict or remove the story while it's considered, and tell the journalist so they can respond.`,
         "Readers can request a correction on any story, and corrections are published on the story itself. None of this is a fact-checking certification or a guarantee that a story is true. Form your own view and follow the sources.",
       ],
     },
@@ -258,7 +258,7 @@ export const TERMS = {
       p: [
         "Use the report control on any post. Reports go to a review queue and are not visible to the person you reported.",
         `To report a copyright infringement, email ${B.copyrightEmail} with a link to the content, proof of your ownership, and your contact details. We remove infringing content once we've checked the notice, and close the accounts of repeat infringers.`,
-        `If you believe something on Mesh is defamatory of you, email ${B.supportEmail} with a link to it, what's wrong with it and how to reach you. We'll acknowledge it, look at it within 7 days, and tell you what we've done, which may include removing it or passing your complaint to the person who posted it. Journalists and other posters are responsible for what they publish.`,
+        `If you believe something on Mesh is defamatory of you, email ${B.legalEmail} with a link to it, what's wrong with it and how to reach you. We'll acknowledge it, look at it within 7 days, and tell you what we've done, which may include removing it or passing your complaint to the person who posted it. Journalists and other posters are responsible for what they publish.`,
         "Australians can also complain to the eSafety Commissioner about serious cyberbullying, adult cyber abuse, image-based abuse and illegal content, at esafety.gov.au.",
       ],
     },

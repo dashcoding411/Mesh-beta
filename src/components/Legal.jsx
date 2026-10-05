@@ -108,6 +108,7 @@ export default function Legal({ doc = "privacy" }) {
                 <dt>General</dt><dd className="text-fg-muted">{BUSINESS.supportEmail}</dd>
                 <dt>Privacy</dt><dd className="text-fg-muted">{BUSINESS.privacyEmail}</dd>
                 <dt>Copyright</dt><dd className="text-fg-muted">{BUSINESS.copyrightEmail}</dd>
+                <dt>Legal and defamation</dt><dd className="text-fg-muted">{BUSINESS.legalEmail}</dd>
               </dl>
             </footer>
           </article>

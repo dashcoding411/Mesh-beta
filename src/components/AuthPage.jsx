@@ -16,6 +16,8 @@ import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Segmented from "./ui/Segmented";
 import { isNativeApp } from "../lib/native";
+import { ageLockedUntil, lockAge, underSixteen, LOCK_DAYS } from "../lib/ageLock";
+import { BUSINESS } from "../legal/business";
 
 // Inputs are 16px so iOS Safari doesn't zoom on focus.
 const FIELD =
@@ -72,6 +74,8 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [pendingUser, setPendingUser] = useState(signedInUser);
+  // Someone gave an under-16 birth year on this device recently: no new sign-ups.
+  const [ageLocked, setAgeLocked] = useState(() => ageLockedUntil() > 0);
 
   const recaptchaRef = useRef(null);
   const ids = { email: useId(), password: useId(), phone: useId(), code: useId(), remember: useId() };
@@ -152,10 +156,23 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
 
+  if (ageLocked && (signup || pendingUser)) {
+    return (
+      <Shell>
+        <UnderSixteen onLogIn={() => {
+          // A half-made account (no profile yet) is signed out first.
+          if (auth.currentUser) signOut(auth).catch(() => {});
+          setPendingUser(null);
+          switchMode("login");
+        }} />
+      </Shell>
+    );
+  }
+
   if (pendingUser) {
     return (
       <Shell finishing>
-        <FinishProfile user={pendingUser} onCreated={onCreated} />
+        <FinishProfile user={pendingUser} onCreated={onCreated} onUnderSixteen={() => setAgeLocked(true)} />
       </Shell>
     );
   }
@@ -333,16 +350,36 @@ function handleFrom(text) {
   return base.length >= 3 ? base : "";
 }
 
+// Shown after an under-16 birth year, and on that device for 30 days after.
+function UnderSixteen({ onLogIn }) {
+  return (
+    <div className="anim-fade space-y-4">
+      <h2 className="text-title-1 font-display">You can't make a Mesh account yet</h2>
+      <p className="text-callout text-fg-muted">
+        Mesh is for people 16 and over. Australian law sets that age for social media, so we can't let anyone younger sign up.
+        Nothing you entered has been kept.
+      </p>
+      <p className="text-callout text-fg-muted">
+        This device can't start a new sign-up for {LOCK_DAYS} days. If you entered the wrong year by mistake, email{" "}
+        <span className="font-semibold text-fg">{BUSINESS.supportEmail}</span>.
+      </p>
+      <button type="button" onClick={onLogIn} className={LINK}>Log in to an existing account</button>
+    </div>
+  );
+}
+
 // Step two: how you appear. The handle is suggested from the name and checked as you type.
-function FinishProfile({ user, onCreated }) {
+function FinishProfile({ user, onCreated, onUnderSixteen }) {
   const [displayName, setDisplayName] = useState(user.displayName || "");
   const [username, setUsername] = useState(() => handleFrom(user.displayName) || handleFrom(user.email));
   const [handleEdited, setHandleEdited] = useState(false);
   const [handleState, setHandleState] = useState({ for: "", ok: false, message: "" });
   const [birthYear, setBirthYear] = useState("");
   const [consent, setConsent] = useState(false);
-  // Born 16 years ago: only allowed once they've had this year's birthday.
-  const [turned16, setTurned16] = useState(false);
+  // "This is my real birth year", ticked by the person themselves.
+  const [truthful, setTruthful] = useState(false);
+  // Born 16 years ago: they say whether they've had this year's birthday (null until they answer).
+  const [turned16, setTurned16] = useState(null);
   // Minutes a day for Home and Flicks; 0 is no limit. Nothing is forced.
   const [limit, setLimit] = useState(null);
   const [error, setError] = useState("");
@@ -382,9 +419,20 @@ function FinishProfile({ user, onCreated }) {
     if (v.error) return setError(v.error);
     const named = checkName(v.username);
     if (named.error) return setError(named.error);
+    if (!/^\d{4}$/.test(birthYear)) return setError("Enter your birth year, like 2004.");
+    if (!truthful) return setError("Confirm that this is your real birth year.");
+    const borderline = validBirthYear(birthYear).borderline;
+    if (borderline && turned16 === null) return setError("Say whether you've had your birthday this year.");
+    // Under 16: no account, nothing kept, and no second try from this device.
+    if ((underSixteen(birthYear) && !borderline) || (borderline && turned16 === false)) {
+      lockAge();
+      setBusy(true);
+      await user.delete().catch(() => signOut(auth).catch(() => {}));
+      onUnderSixteen();
+      return undefined;
+    }
     const year = validBirthYear(birthYear);
     if (year.error) return setError(year.error);
-    if (year.borderline && !turned16) return setError("Mesh is for people 16 and over. Tick the box once you've had your 16th birthday.");
     if (!consent) return setError("Accept the Terms and Privacy Policy to create your account.");
     setBusy(true);
     try {
@@ -432,21 +480,42 @@ function FinishProfile({ user, onCreated }) {
             : checked.message}
         </p>
       </div>
-      <Field id={ids.year} label="Birth year" hint="Only used to apply age protections. It's never shown on your profile.">
-        <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
-          value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2001" />
-      </Field>
+      <div className="space-y-2.5 rounded-card border border-warning-text/30 bg-warning-text/5 p-3.5">
+        <p className="flex items-start gap-2 text-callout font-semibold text-fg">
+          <AlertTriangle size={17} className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
+          Use your real birth year
+        </p>
+        <p className="text-caption text-fg-muted">
+          Australian law sets a minimum age for social media, and Mesh has to follow it. Your birth year can't be changed later,
+          and accounts with a false age are closed. It's never shown on your profile.
+        </p>
+        <Field id={ids.year} label="Your birth year">
+          <input id={ids.year} className={FIELD} inputMode="numeric" maxLength={4} autoComplete="bday-year"
+            value={birthYear} onChange={(e) => { setBirthYear(e.target.value.replace(/\D/g, "")); setTurned16(null); }} placeholder="YYYY" />
+        </Field>
+        <label className="flex cursor-pointer items-start gap-3 text-callout text-fg">
+          <input type="checkbox" checked={truthful} onChange={(e) => setTruthful(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
+          This is my real birth year. I understand my account will be closed if it isn&apos;t.
+        </label>
+      </div>
       {validBirthYear(birthYear).year && new Date().getFullYear() - Number(birthYear) < 18 && (
         <p className="text-caption text-fg-subtle">
           Under 18: your account starts private, and only people you follow can message you. You can change both in Settings.
         </p>
       )}
       {validBirthYear(birthYear).borderline && (
-        <label className="flex cursor-pointer items-start gap-3 text-callout text-fg-muted">
-          <input type="checkbox" checked={turned16} onChange={(e) => setTurned16(e.target.checked)}
-            className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-field bg-surface-2 accent-violet-600" />
-          I&apos;ve already had my 16th birthday. (Mesh is for people 16 and over.)
-        </label>
+        <fieldset>
+          <legend className="mb-1.5 text-callout font-medium text-fg">Have you had your birthday yet this year?</legend>
+          <div role="radiogroup" className="grid grid-cols-2 gap-2">
+            {[[true, "Yes"], [false, "Not yet"]].map(([v, label]) => (
+              <button key={label} type="button" role="radio" aria-checked={turned16 === v} onClick={() => setTurned16(v)}
+                className={`press min-h-11 rounded-control border px-3 text-callout font-semibold ${turned16 === v ? "border-accent bg-accent-soft text-fg" : "border-field bg-surface-2 text-fg-muted hover:text-fg"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
       )}
       <fieldset>
         <legend id={ids.limit} className="mb-1.5 block text-callout font-medium text-fg">How long do you want Mesh each day?</legend>

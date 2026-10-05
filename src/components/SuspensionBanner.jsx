@@ -24,7 +24,7 @@ export default function SuspensionBanner({ profile }) {
         </p>
         <p className="text-caption text-fg-muted">
           You can still browse, but you can't post, comment, message or create anything.
-          {info?.reason ? ` Reason: ${info.reason}` : ""} If you think this is a mistake, email {BUSINESS.privacyEmail} to appeal.
+          {info?.reason ? ` Reason: ${info.reason}` : ""} If you think this is a mistake, email {BUSINESS.supportEmail} to appeal.
         </p>
       </div>
     </div>

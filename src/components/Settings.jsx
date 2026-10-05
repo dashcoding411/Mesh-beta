@@ -557,14 +557,17 @@ function PasswordDialog({ onClose }) {
 
 export function BirthYearDialog({ onClose, onSaved, title = "Set your birth year", dismissible = true }) {
   const [year, setYear] = useState("");
-  const [turned16, setTurned16] = useState(false);
+  const [turned16, setTurned16] = useState(null);
+  const [truthful, setTruthful] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
+    if (!truthful) return setError("Confirm that this is your real birth year.");
     const v = validBirthYear(year);
     if (v.error) return setError(v.error);
-    if (v.borderline && !turned16) return setError("Mesh is for people 16 and over. Tick the box once you've had your 16th birthday.");
+    if (v.borderline && turned16 === null) return setError("Say whether you've had your birthday this year.");
+    if (v.borderline && turned16 === false) return setError("Mesh is for people 16 and over.");
     setBusy(true);
     try {
       await setMyBirthYear(v.year);
@@ -578,15 +581,27 @@ export function BirthYearDialog({ onClose, onSaved, title = "Set your birth year
     <Dialog title={title} onClose={onClose} size="sm" dismissible={dismissible}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <p className="text-callout text-fg-muted">
-          This can only be set once, so check it. It's used for age protections and never shown to anyone.
+          Use your real birth year. Australian law sets a minimum age for social media, it can only be set once, and accounts with a
+          false age are closed. It's never shown to anyone.
         </p>
-        <Field label="Birth year" error={error}>
+        <Field label="Your birth year" error={error}>
           <Input inputMode="numeric" autoComplete="bday-year" value={year} maxLength={4}
-            onChange={(e) => { setYear(e.target.value.replace(/\D/g, "")); setError(""); }} placeholder="e.g. 2001" />
+            onChange={(e) => { setYear(e.target.value.replace(/\D/g, "")); setTurned16(null); setError(""); }} placeholder="YYYY" />
         </Field>
         {validBirthYear(year).borderline && (
-          <Checkbox checked={turned16} onChange={setTurned16}>I&apos;ve already had my 16th birthday.</Checkbox>
+          <fieldset>
+            <legend className="mb-1.5 text-callout font-medium">Have you had your birthday yet this year?</legend>
+            <div role="radiogroup" className="grid grid-cols-2 gap-2">
+              {[[true, "Yes"], [false, "Not yet"]].map(([v, label]) => (
+                <button key={label} type="button" role="radio" aria-checked={turned16 === v} onClick={() => setTurned16(v)}
+                  className={`press min-h-11 rounded-control border px-3 text-callout font-semibold ${turned16 === v ? "border-accent bg-accent-soft text-fg" : "border-field bg-surface-2 text-fg-muted hover:text-fg"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
         )}
+        <Checkbox checked={truthful} onChange={setTruthful}>This is my real birth year. I understand my account will be closed if it isn&apos;t.</Checkbox>
         <Button type="submit" variant="primary" full loading={busy}>Save birth year</Button>
       </form>
     </Dialog>

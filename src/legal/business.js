@@ -12,13 +12,15 @@ export const BUSINESS = {
   state: "Queensland",
   address: "TODO: registered or business address",
 
-  // The privacy contact must be monitored (access/correction requests).
-  supportEmail: "legal@joinmesh.social",
+  // General help (support, appeals, account mix-ups) goes to admin@; legal,
+  // privacy and copyright to legal@. Both must be monitored.
+  supportEmail: "admin@joinmesh.social",
   privacyEmail: "legal@joinmesh.social",
   copyrightEmail: "legal@joinmesh.social",
+  legalEmail: "legal@joinmesh.social",
 
   website: "https://joinmesh.social",
-  lastUpdated: "5 October 2026",
+  lastUpdated: "6 October 2026",
 };
 
 export function missingFields() {

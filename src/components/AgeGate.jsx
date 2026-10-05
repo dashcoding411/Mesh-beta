@@ -8,6 +8,7 @@ import { LogoMark } from "./shell/Sidebar";
 import Button from "./ui/Button";
 import { useToast } from "./ui/toast-context";
 import { BirthYearDialog, DeleteDialog } from "./Settings";
+import { BUSINESS } from "../legal/business";
 
 /**
  * Mesh is 16 and over (Online Safety Amendment (Social Media Minimum Age) Act
@@ -64,7 +65,7 @@ function UnderAge() {
         you&apos;re younger than that. You can download what you&apos;ve posted and then delete the account. Come back when you&apos;re 16.
       </p>
       <p className="mt-2 max-w-md text-caption text-fg-subtle">
-        If your birth year is wrong, email legal@joinmesh.social from the address on your account.
+        If your birth year is wrong, email {BUSINESS.supportEmail} from the address on your account.
       </p>
       <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
         <Button icon={Download} loading={busy} onClick={download}>Download my data</Button>
