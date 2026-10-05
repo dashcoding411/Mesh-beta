@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Aperture, ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Lock, LogOut, MoreHorizontal,
-  Pencil, QrCode, Share2, Sunrise, Trash2, UserMinus, Users, X,
+  Pencil, QrCode, Share2, Sunrise, Trash2, UserMinus, Users, X, Bell,
 } from "lucide-react";
 import {
   fetchRoll, fetchMyShotCount, fetchRollPhotos, fetchProfiles, joinRoll, leaveRoll, removeFromRoll, updateRoll, deleteRoll,
@@ -23,6 +23,8 @@ import { Field, Input } from "../ui/Field";
 import { EmptyState, Skeleton } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 import { usePageTitle } from "../../lib/usePageTitle";
+import { enablePush, pushState, remind } from "../../lib/push";
+import InstallDialog from "../InstallDialog";
 import RollCamera from "./RollCamera";
 import SevenSeg from "./SevenSeg";
 
@@ -151,6 +153,8 @@ function Shooting({ roll, now, onChange, reload }) {
 
   useEffect(() => { fetchMyShotCount(roll.id).then(setUsed).catch(() => setUsed(0)); }, [roll.id]);
   useEffect(() => onShotQueue(setQueue), []);
+  // With notifications on, make sure this roll will tell you when it develops.
+  useEffect(() => { remind("roll", roll.id).catch(() => {}); }, [roll.id]);
   useEffect(() => { fetchProfiles(roll.members || []).then(setPeople).catch(() => {}); }, [roll.members]);
   // Refresh the shot total now and then while it's open.
   useEffect(() => {
@@ -381,6 +385,21 @@ function InviteDialog({ roll, onClose }) {
 }
 
 function RemindDialog({ roll, onClose }) {
+  const toast = useToast();
+  const [push, setPush] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [install, setInstall] = useState(false);
+  useEffect(() => { pushState().then(setPush).catch(() => setPush("unsupported")); }, []);
+  const notifyMe = async () => {
+    setBusy(true);
+    try {
+      const s = await enablePush();
+      setPush(s);
+      if (s === "on" && await remind("roll", roll.id)) { toast({ title: "You'll get a notification", body: `When it develops, ${developLabel(tsMillis(roll.developAt))}.` }); onClose(); }
+      if (s === "install") setInstall(true);
+    } catch { toast({ tone: "error", title: "Couldn't turn on notifications" }); }
+    finally { setBusy(false); }
+  };
   const download = () => {
     const blob = new Blob([rollIcs(roll)], { type: "text/calendar;charset=utf-8" });
     const href = URL.createObjectURL(blob);
@@ -392,14 +411,24 @@ function RemindDialog({ roll, onClose }) {
   };
   return (
     <Dialog title="Remind me when it develops" onClose={onClose} size="sm">
-      <p className="text-callout text-fg-muted">Add it to your calendar and your phone will tell you {developLabel(tsMillis(roll.developAt))}.</p>
-      <div className="mt-4 grid gap-2">
+      {push === "on" ? (
+        <p className="flex items-start gap-2 rounded-control bg-accent-soft p-3 text-callout text-fg">
+          <Bell size={16} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" /> Notifications are on: this phone will tell you when it develops, {developLabel(tsMillis(roll.developAt))}.
+        </p>
+      ) : push === "off" || push === "install" ? (
+        <Button variant="primary" full icon={Bell} loading={busy} onClick={push === "install" ? () => setInstall(true) : notifyMe}>
+          {push === "install" ? "Add Mesh to your home screen to get notified" : "Notify me on this phone"}
+        </Button>
+      ) : null}
+      <p className="mt-4 text-callout text-fg-muted">Or add it to your calendar, and your calendar will remind you {developLabel(tsMillis(roll.developAt))}.</p>
+      <div className="mt-3 grid gap-2">
         <a href={rollGoogleCalendarUrl(roll)} target="_blank" rel="noopener noreferrer"
           className="press inline-flex min-h-11 items-center justify-center gap-2 rounded-control border border-line-strong px-4 text-callout font-semibold hover:bg-surface-2">
           Google Calendar <ExternalLink size={14} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span>
         </a>
         <Button icon={Download} onClick={download}>Apple, Outlook and others</Button>
       </div>
+      {install && <InstallDialog reason="On iPhone, Mesh can only send notifications once it's on your home screen." onClose={() => setInstall(false)} />}
     </Dialog>
   );
 }

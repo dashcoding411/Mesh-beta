@@ -1,0 +1,22 @@
+# Mesh push: notifications to phones and computers (cloudflare/push/src).
+# Deploy with `npm run push:deploy` from the project root. The private
+# VAPID key is a secret (`wrangler secret put VAPID_PRIVATE_KEY`), never here.
+name = "mesh-push"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT = "mesh-a293c"
+ALLOWED_ORIGINS = "https://joinmesh.social,https://mesh-a293c.web.app,https://mesh-a293c.firebaseapp.com,http://localhost:5173"
+VAPID_PUBLIC_KEY = "BCyuhLsutwnb_1NVtqVynndGW-0VAbDRpS2hzocrRe-kKHByoawBS6GimBlyiL8oyo64brkAeDfgZJny0JEo0M0"
+VAPID_SUBJECT = "mailto:admin@joinmesh.social"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mesh-push"
+database_id = "25cb8207-b7fe-4f70-b998-64429f882821"
+
+# Every minute: rolls developing and gathering reminders that are due.
+[triggers]
+crons = ["* * * * *"]

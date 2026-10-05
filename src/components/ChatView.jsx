@@ -1,3 +1,4 @@
+import { enablePush, shouldOfferPush } from "../lib/push";
 import {
   ArrowDown, ArrowLeft, Ban, ChartBar, Check, ImagePlus, Info, Mic, Pencil, Phone, Reply, SendHorizontal,
   Sticker, Trash2, Video, X,
@@ -234,9 +235,17 @@ export default function ChatView({ chat }) {
     setSending(true);
     try {
       if (wasEditing) await editMessage(chat.id, wasEditing, t);
-      else await sendMessage(chat.id, t, wasReply
-        ? { replyTo: { id: wasReply.id, text: (wasReply.text || "").slice(0, 90), senderId: wasReply.senderId } }
-        : {});
+      else {
+        await sendMessage(chat.id, t, wasReply
+          ? { replyTo: { id: wasReply.id, text: (wasReply.text || "").slice(0, 90), senderId: wasReply.senderId } }
+          : {});
+        // Once in a while, offer notifications so replies don't go unseen.
+        shouldOfferPush().then((offer) => offer && toast({
+          title: "Know when they reply?",
+          body: "Turn on notifications for messages on this device.",
+          action: { label: "Turn on", onClick: () => enablePush().catch(() => {}) },
+        }));
+      }
     } catch (err) {
       console.error(err);
       // Restore input state for retry.

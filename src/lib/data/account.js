@@ -6,6 +6,7 @@ import { me, snapToList } from "./core.js";
 import { deleteEvent, setRsvp } from "./events.js";
 import { deleteMyActivity, fetchMyActivity } from "./staff.js";
 import { deleteRoll, fetchMyRollPhotos, fetchMyRolls, leaveRoll } from "./rolls.js";
+import { deletePushData } from "../push.js";
 import { clearThought, fetchThoughts } from "./chats.js";
 import { fetchMyBrickGroups, leaveBrickGroup, deleteBrickGroup } from "./brickGroups.js";
 import { fetchHighlights, fetchMyStoryArchive } from "./highlights.js";
@@ -125,6 +126,7 @@ export async function deleteMyAccountData() {
   // Uploaded videos and posters (including ones never posted), your note and
   // its likes, Brick groups, circles and gatherings, open appeals and staff role.
   await deleteAllCloudMedia();
+  await deletePushData();
   await setFindable("phone", false).catch(() => {});
   await setFindable("email", false).catch(() => {});
   await clearContactMatches();

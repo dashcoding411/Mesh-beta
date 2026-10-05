@@ -9,6 +9,10 @@ import {
 import { db } from "../../firebase";
 import { me, tsMillis } from "./core.js";
 import { myProfile } from "./users.js";
+import { pushNotice } from "../push.js";
+
+// Never pushed: Mesh doesn't buzz people about likes and reposts.
+const IN_APP_ONLY = new Set(["like", "repost", "storylike"]);
 
 export const NOTICE_TYPES = ["like", "comment", "reply", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo", "appeal"];
 
@@ -34,7 +38,8 @@ export async function notify(recipientId, type, { postId = "", commentId = "", t
   if (!actor || !recipientId || recipientId === actor) return;
   try {
     const p = await myProfile();
-    await setDoc(doc(db, "users", recipientId, "notifications", noticeId(type, { actor, postId, commentId, ref })), {
+    const id = noticeId(type, { actor, postId, commentId, ref });
+    await setDoc(doc(db, "users", recipientId, "notifications", id), {
       type,
       actorId: actor,
       actorName: p?.username || "",
@@ -46,6 +51,7 @@ export async function notify(recipientId, type, { postId = "", commentId = "", t
       read: false,
       createdAt: serverTimestamp(),
     });
+    if (!IN_APP_ONLY.has(type)) pushNotice(recipientId, id);
   } catch { /* already sent, or not allowed (blocked): the action stands either way */ }
 }
 

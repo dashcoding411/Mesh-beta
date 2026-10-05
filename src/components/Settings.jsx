@@ -9,6 +9,7 @@ import { plural } from "../lib/format";
 import { highlightParts, searchSettings } from "../lib/settingsSearch";
 import { motionReduced } from "../lib/appearance";
 import { clearTime } from "../lib/timeMeter";
+import NotificationSettings from "./NotificationSettings";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
@@ -163,6 +164,8 @@ export default function Settings() {
                 : "Mesh is 16 and over. It's used only for age rules and never shown to anyone."}
               action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
           </Group>
+
+          <NotificationSettings Group={Group} />
 
           <Group title="Your time">
             <Row icon={BrickWall} label="Brick mode"

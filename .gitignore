@@ -25,3 +25,7 @@ dist-ssr
 
 # Firebase CLI deploy cache
 .firebase/
+
+# Cloudflare Worker secrets for local runs (never committed)
+.dev.vars
+.wrangler/

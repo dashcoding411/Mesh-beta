@@ -30,7 +30,8 @@ export const SETTINGS_INDEX = [
   { id: "comments", label: "Who can comment on your posts", group: "Privacy", keywords: ["comments", "replies", "turn off comments", "disable comments"], desc: "Everyone, people you follow, or no one", go: { dialog: "comments" } },
   { id: "contacts", label: "Contacts", group: "Privacy", keywords: ["find friends", "sync contacts", "address book", "phone contacts", "findable", "people you may know"], desc: "Find friends, and whether they can find you", go: { dialog: "contacts" } },
 
-  { id: "notifications", label: "Notifications", group: "Activity", keywords: ["alerts", "push", "notify", "likes", "follows", "mentions"], desc: "Your notifications. There's nothing to switch on or off yet", go: { path: "/notifications" } },
+  { id: "notifications", label: "Push notifications", group: "Notifications", keywords: ["notifications", "alerts", "push", "notify", "buzz", "sound", "lock screen", "badge"], desc: "Turn them on for this device, and choose what you hear about", go: { scroll: "push" } },
+  { id: "install", label: "Install Mesh", group: "Notifications", keywords: ["app", "home screen", "add to home screen", "download", "pwa", "iphone", "android"], desc: "Put Mesh on your home screen like an app", go: { scroll: "install" } },
 
   // What you see
   { id: "interests", label: "Your interests", group: "What you see", keywords: ["topics", "feed", "for you", "recommendations", "algorithm"], desc: "Shapes For you, Flicks and suggestions", go: { run: "interests" } },

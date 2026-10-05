@@ -988,9 +988,11 @@ service cloud.firestore {
           && incomingData().startsAt is timestamp
           && incomingData().updatedAt == request.time;
       }
-      // Owner reads/updates/deletes; the actor may retract (unlike, unfollow).
+      // Owner reads/updates/deletes; the actor may retract (unlike, unfollow),
+      // and read back their own notice (the push Worker checks it with their sign-in).
       match /notifications/{noticeId} {
         allow read: if isUser(uid);
+        allow get: if signedIn() && resource.data.actorId == request.auth.uid;
         allow update: if isUser(uid) && onlyKey('read') && incomingData().read == true;
         allow delete: if isUser(uid) || (signedIn() && resource.data.actorId == request.auth.uid);
         allow create: if signedIn() && uid != request.auth.uid

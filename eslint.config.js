@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // ios/ holds a copy of the built site inside the iPhone app.
-  globalIgnores(['dist', 'ios']),
+  globalIgnores(['dist', 'ios', '**/.wrangler']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

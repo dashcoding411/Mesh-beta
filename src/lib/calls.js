@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { sendMessage } from "./db";
+import { pushCall } from "./push";
 import { pickCamera } from "./cameras";
 import { formatDuration } from "./format";
 
@@ -334,6 +335,7 @@ export class CallSession {
       offer: { type: offer.type, sdp: offer.sdp },
       offerRev: 0,
     });
+    pushCall(this.signal.id);
     this.docReady = true;
     this.pendingCandidates.splice(0).forEach((c) => this.signal.sendCandidate(this.mySide, c).catch(() => {}));
     if (this.state === "ended") {

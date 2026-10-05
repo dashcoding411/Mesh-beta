@@ -12,6 +12,7 @@ import { myProfile } from "./users.js";
 import { deleteCloudMedia, uploadRollShot } from "./uploads.js";
 import { deleteInline } from "./posts.js";
 import { assertSafe } from "../imageCheck";
+import { forget, pushRollDeveloped, remind } from "../push.js";
 
 export const SHOTS_PER_PERSON = 27;
 export const MAX_MEMBERS = 50;
@@ -80,6 +81,7 @@ export async function createRoll({ title, developAt, gatheringId = "" }) {
     createdAt: serverTimestamp(),
   };
   await setDoc(ref_, roll);
+  remind("roll", ref_.id).catch(() => {});
   return { id: ref_.id, ...roll, createdAt: Timestamp.now() };
 }
 
@@ -100,10 +102,12 @@ export async function fetchMyRolls() {
 
 export async function joinRoll(roll) {
   await updateDoc(rollRef(roll.id), { members: arrayUnion(me()) });
+  remind("roll", roll.id).catch(() => {});
 }
 
 export async function leaveRoll(roll) {
   await updateDoc(rollRef(roll.id), { members: arrayRemove(me()) });
+  forget("roll", roll.id);
 }
 
 /** Owner only. Their photos stay unless the owner deletes them. */
@@ -121,6 +125,8 @@ export async function updateRoll(roll, fields) {
 /** Whoever started it (or Mesh staff, for testing): shooting ends and everyone sees every photo now. */
 export async function developRollNow(roll) {
   await updateDoc(rollRef(roll.id), { developAt: serverTimestamp() });
+  // Everyone's "developed" notification goes out now rather than at the old time.
+  pushRollDeveloped(roll.id);
 }
 
 /** Owner only: the photos (theirs and everyone's), then the roll. */
@@ -134,6 +140,7 @@ export async function deleteRoll(roll) {
   const shots = await getDocs(query(collection(db, "rolls", roll.id, "shots"), limit(100))).catch(() => null);
   for (const d of shots?.docs || []) await deleteDoc(d.ref).catch(() => {});
   await deleteDoc(rollRef(roll.id));
+  forget("roll", roll.id);
 }
 
 /** How many of your 27 you've used. */

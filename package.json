@@ -15,7 +15,8 @@
     "app:open": "npx cap open ios",
     "app:assets": "sh scripts/app-assets.sh",
     "media:deploy": "npx wrangler@4 deploy --config cloudflare/media/wrangler.toml",
-    "edge:deploy": "npx wrangler@4 deploy --config cloudflare/edge/wrangler.toml"
+    "edge:deploy": "npx wrangler@4 deploy --config cloudflare/edge/wrangler.toml",
+    "push:deploy": "npx wrangler@4 deploy --config cloudflare/push/wrangler.toml"
   },
   "engines": {
     "node": ">=20.19"

@@ -8,6 +8,7 @@ import { storeChatPhoto, storeVoiceNote } from "../media";
 import { assertSafe } from "../imageCheck";
 import { me, snapToList, tsMillis } from "./core.js";
 import { fetchProfile, myProfile } from "./users.js";
+import { pushMessage } from "../push.js";
 
 // Every bubble colour keeps white text at WCAG AA contrast (4.5:1+).
 export const CHAT_THEMES = {
@@ -173,7 +174,9 @@ export async function sendMessage(chatId, text, extras = {}) {
     createdAt: serverTimestamp(),
     ...extras,
   };
-  await addDoc(collection(db, "chats", chatId, "messages"), msg);
+  const sent = await addDoc(collection(db, "chats", chatId, "messages"), msg);
+  // Call logs aren't pushed; the call itself rang.
+  if (!extras.call) pushMessage(chatId, sent.id);
   await updateDoc(chatDoc(chatId), {
     lastMessage: (extras.poll ? `Poll: ${extras.poll.question}`
       : extras.voice ? `Voice message · ${Math.floor(extras.voice.duration / 60)}:${String(extras.voice.duration % 60).padStart(2, "0")}`

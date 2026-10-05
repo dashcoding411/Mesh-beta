@@ -1,7 +1,7 @@
 {
   "name": "Mesh",
   "short_name": "Mesh",
-  "description": "Posts, short and long video, communities and news that has to cite its sources.",
+  "description": "Social media for humans: posts, Flicks, Rolls, circles and gatherings, news from verified journalists, and limits that lock.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,8 +9,70 @@
   "theme_color": "#0b0b0f",
   "lang": "en-AU",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/mesh.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/mesh.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "id": "/",
+  "categories": [
+    "social",
+    "lifestyle",
+    "news"
+  ],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Rolls",
+      "short_name": "Rolls",
+      "url": "/rolls",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "url": "/messages",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "What's on",
+      "short_name": "What's on",
+      "url": "/whats-on",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

@@ -9,6 +9,7 @@ import { myProfile } from "./users.js";
 import { notify } from "./notifications.js";
 import { uploadPhotos } from "./uploads.js";
 import { deleteInline } from "./posts.js";
+import { forget, remind } from "../push.js";
 
 // Public gatherings: going/interested. Private: going/maybe/not going.
 
@@ -186,6 +187,9 @@ export async function setRsvp(event, previous, next) {
   if (delta.interestedCount) counters.interestedCount = increment(delta.interestedCount);
   if (Object.keys(counters).length) batch.update(eventRef, counters);
   await batch.commit();
+  // A reminder 2 hours before, on devices with notifications on.
+  if (result && result !== "cant") remind("gathering", event.id).catch(() => {});
+  else forget("gathering", event.id);
   return result;
 }
 

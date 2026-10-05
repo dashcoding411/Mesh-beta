@@ -7,6 +7,7 @@ import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { useTimeMeter } from "./lib/timeMeter";
 import { justAgeLocked } from "./lib/ageLock";
+import { syncPush } from "./lib/push";
 import { primeCard } from "./lib/profileCache";
 import { CallSession, listenIncomingCalls, callsSupported, refuseCall, ringExpired } from "./lib/calls";
 
@@ -192,6 +193,24 @@ export default function App() {
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
   const brick = useBrickEngine(signedIn);
+
+  // Tapping a notification while Mesh is open moves here instead of reloading.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.serviceWorker) return undefined;
+    const onMessage = (e) => {
+      if (e.data?.type !== "mesh:open") return;
+      try { const u = new URL(e.data.url); if (u.origin === window.location.origin) navigate(u.pathname + u.search); } catch { /* ignore */ }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
+  // Keep this device's notification subscription current, and quiet while an
+  // instant brick runs (messages and calls still come through).
+  const brickUntil = Math.max(brick.policy?.self?.until || 0, brick.policy?.parent?.until || 0);
+  useEffect(() => {
+    if (signedIn && brick.loaded) syncPush({ quietUntil: brickUntil > Date.now() ? brickUntil : 0 }).catch(() => {});
+  }, [signedIn, brick.loaded, brickUntil]);
   // Moderator accounts only moderate: Home is the queue and they don't post.
   const [role, setRole] = useState(null);
   useEffect(() => {

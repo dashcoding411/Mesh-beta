@@ -520,6 +520,26 @@ HTML. `/og/media/{id}` serves inline photos as images for previews, and
 `/sitemap-news.xml` lists published stories. Everything else goes straight to
 Firebase.
 
+## Push notifications (`cloudflare/push`, `lib/push.js`)
+
+Web Push with VAPID, sent by the `mesh-push` Cloudflare Worker (no Firebase
+paid plan needed). Devices register their push subscription and the kinds
+they want (`POST /devices`); subscriptions live in D1 (`mesh-push`, Oceania;
+schema in `cloudflare/push/schema.sql`). After a message, notice or call, the
+sender's app calls `POST /notify`; the Worker reads that record from
+Firestore's REST API **with the sender's own ID token**, so the security rules
+decide, checks it's theirs and under two minutes old, sends each event once
+(`sent` table), and drops subscriptions the push service reports gone.
+Payloads are encrypted end to end (RFC 8291, tested against the RFC's
+example). Message previews only show when the chat isn't a request for the
+recipient. Likes and reposts are never pushed. Rolls and gatherings set
+reminders (`POST /alerts`) that a once-a-minute cron sends. A device in an
+instant brick only gets messages and calls. `public/sw.js` shows
+notifications and opens the page; it doesn't cache anything. The private
+VAPID key is a Worker secret (`VAPID_PRIVATE_KEY`), locally in the gitignored
+`cloudflare/push/.dev.vars`; run the Worker locally with the `mesh-push-dev`
+launch config, which the dev app uses automatically.
+
 ## Media storage
 
 On the Spark plan images are compressed client-side (WebP or JPEG, under

@@ -7,7 +7,10 @@ import "@fontsource-variable/plus-jakarta-sans/wght.css";
 import "./lib/appearance";
 import App from "./App.jsx";
 import { ToastProvider } from "./components/ui/Toast.jsx";
-import { startNative } from "./lib/native";
+import { startNative, isNativeApp } from "./lib/native";
+// Catches the browser's install prompt before anything else can miss it.
+import "./lib/install";
+import { registerServiceWorker } from "./lib/push";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -19,3 +22,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );
 
 startNative();
+// The service worker only shows notifications; the iPhone app shell has its own.
+if (!isNativeApp) registerServiceWorker();

@@ -17,6 +17,20 @@
         "scripts/preview-prod.mjs"
       ],
       "port": 4174
+    },
+    {
+      "name": "mesh-push-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler@4",
+        "dev",
+        "--config",
+        "cloudflare/push/wrangler.toml",
+        "--port",
+        "8787",
+        "--test-scheduled"
+      ],
+      "port": 8787
     }
   ]
 }

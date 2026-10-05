@@ -41,7 +41,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://www.googletagservices.com https://adservice.google.com https://partner.googleadservices.com https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://mesh-media.meshadmin9.workers.dev https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://*.google.com https://*.gstatic.com data: blob: https://*.giphy.com https://firebasestorage.googleapis.com https://*.googleusercontent.com; media-src 'self' https://mesh-media.meshadmin9.workers.dev data: blob: https://*.giphy.com https://firebasestorage.googleapis.com; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com https://pagead2.googlesyndication.com https://*.adtrafficquality.google https://*.doubleclick.net https://fundingchoicesmessages.google.com https://*.google.com https://mesh-media.meshadmin9.workers.dev https://photon.komoot.io https://*.googleapis.com https://*.metered.live https://api.giphy.com https://www.google.com https://mesh-a293c.firebaseapp.com; frame-src 'self' https://mesh-a293c.firebaseapp.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://www.google.com https://recaptcha.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+            "value": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://www.googletagservices.com https://adservice.google.com https://partner.googleadservices.com https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://mesh-media.meshadmin9.workers.dev https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://*.google.com https://*.gstatic.com data: blob: https://*.giphy.com https://firebasestorage.googleapis.com https://*.googleusercontent.com; media-src 'self' https://mesh-media.meshadmin9.workers.dev data: blob: https://*.giphy.com https://firebasestorage.googleapis.com; font-src 'self' data:; connect-src 'self' https://mesh-push.meshadmin9.workers.dev https://cloudflareinsights.com https://pagead2.googlesyndication.com https://*.adtrafficquality.google https://*.doubleclick.net https://fundingchoicesmessages.google.com https://*.google.com https://mesh-media.meshadmin9.workers.dev https://photon.komoot.io https://*.googleapis.com https://*.metered.live https://api.giphy.com https://www.google.com https://mesh-a293c.firebaseapp.com; frame-src 'self' https://mesh-a293c.firebaseapp.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://www.google.com https://recaptcha.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
           },
           {
             "key": "Permissions-Policy",
@@ -63,6 +63,15 @@
           {
             "key": "Cache-Control",
             "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
           }
         ]
       }

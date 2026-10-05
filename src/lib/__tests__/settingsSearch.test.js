@@ -17,6 +17,7 @@ describe("settings search", () => {
     expect(top("turn off comments")).toBe("comments");
     expect(top("find friends")).toBe("contacts");
     expect(top("notifcations")).toBe("notifications");
+    expect(top("add to home screen")).toBe("install");
   });
 
   it("forgives small typos", () => {
