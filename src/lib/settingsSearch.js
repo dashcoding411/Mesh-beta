@@ -59,6 +59,7 @@ export const SETTINGS_INDEX = [
   { id: "contact", label: "Contact Mesh", group: "Help", keywords: ["support", "help", "email us", "report a problem", "bug", "feedback"], desc: "Email the Mesh team", go: { run: "contact" } },
   { id: "guidelines", label: "Community Guidelines", group: "Help", keywords: ["rules", "what's allowed", "appeals", "banned"], desc: "What's allowed, and how appeals work", go: { path: "/legal/guidelines" } },
   { id: "privacy-policy", label: "Privacy Policy", group: "Help", keywords: ["privacy", "data", "policy"], desc: "What Mesh collects and why", go: { path: "/legal/privacy" } },
+  { id: "licenses", label: "Open-source licences", group: "Help", keywords: ["licenses", "open source", "credits", "third party", "attribution"], desc: "The open-source software Mesh is built with", go: { run: "licenses" } },
   { id: "terms", label: "Terms of Service", group: "Help", keywords: ["terms", "tos", "conditions", "agreement"], desc: "The agreement for using Mesh", go: { path: "/legal/terms" } },
 
   // Staff

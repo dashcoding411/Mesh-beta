@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import licenses from "./scripts/licenses-plugin.mjs";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), licenses()],
   build: {
     // The Firebase chunk (~590 kB) can't be split safely; see manualChunks.
     chunkSizeWarningLimit: 650,

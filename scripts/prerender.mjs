@@ -76,9 +76,9 @@ const PAGES = [
         <h2 class="mt-10 text-title-2">Mesh together</h2>
         <p class="mt-3 text-body text-fg-muted">Circles are communities with their own rules. Gatherings get you off your phone. <a href="/whats-on">See what's on</a>.</p>
         <h2 class="mt-10 text-title-2">Hate stopped at the door</h2>
-        <p class="mt-3 text-body text-fg-muted">Slurs and attacks are stopped before they post. Every block can be appealed to a person.</p>
+        <p class="mt-3 text-body text-fg-muted">Slurs and attacks are caught before they post. Every block can be appealed to a person.</p>
         <h2 class="mt-10 text-title-2">Not greedy</h2>
-        <p class="mt-3 text-body text-fg-muted">Ads are labelled and never track what you do. Your data is never sold.</p>
+        <p class="mt-3 text-body text-fg-muted">Ads are labelled and never target you based on what you do. Your data is never sold.</p>
         <p class="mt-10"><a href="/signup">Sign up, it's free</a> · <a href="/">Look around</a></p>
       </main>`,
   },

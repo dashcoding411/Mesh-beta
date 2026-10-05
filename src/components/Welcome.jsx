@@ -15,14 +15,14 @@ const PILLARS = [
     body: "Circles are communities with their own rules. Gatherings get you off your phone: runs, dinners, gigs, study sessions.",
     link: { label: "See what's on", to: "/whats-on" } },
   { icon: ShieldCheck, title: "Hate stopped at the door",
-    body: "Slurs and attacks are stopped before they post, not after they spread. Every block can be appealed to a person." },
+    body: "Slurs and attacks are caught before they post, not after they spread. Every block can be appealed to a person." },
   { icon: Sprout, title: "Not greedy",
-    body: "Ads are labelled and never track what you do. Your data is never sold. Safety tools are never paid extras." },
+    body: "Ads are labelled and never target you based on what you do. Your data is never sold. Safety tools are never paid extras." },
 ];
 
 const NEVER = [
   "Sell your data",
-  "Target ads by tracking you",
+  "Target ads based on what you do",
   "Let you skip your own limits",
   "Allow AI-generated photos or videos",
   "Charge for safety tools",
@@ -156,6 +156,7 @@ export default function Welcome({ signedIn, onBrowse }) {
         {Object.entries(DOCUMENT_TITLES).map(([id, title]) => (
           <a key={id} href={`/legal/${id}`} onClick={(e) => { e.preventDefault(); navigate(`/legal/${id}`); }} className="hover:text-fg hover:underline">{title}</a>
         ))}
+        <a href="/licenses.txt" target="_blank" rel="noopener" className="hover:text-fg hover:underline">Open-source licences</a>
       </footer>
     </div>
   );

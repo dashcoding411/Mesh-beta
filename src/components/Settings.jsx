@@ -94,6 +94,7 @@ export default function Settings() {
     if (go.run === "tour") return replayTour();
     if (go.run === "cookies") return openCookieChoices();
     if (go.run === "contact") { window.location.href = `mailto:${BUSINESS.supportEmail}`; return undefined; }
+    if (go.run === "licenses") { window.open("/licenses.txt", "_blank", "noopener"); return undefined; }
     if (go.dialog && !(go.dialog === "password" && !hasPassword)) return setDialog(go.dialog);
     if (go.scroll) {
       // After the list is back, bring the row into view and flash it.
@@ -251,6 +252,7 @@ export default function Settings() {
               help={outdated ? "They've been updated since you accepted them. Worth a read." : null}
               onClick={() => navigate("/legal/privacy")} />
             <Row icon={Scale} label="All policies" value="Privacy, terms, cookies, guidelines, refunds" onClick={() => navigate("/legal")} />
+            <Row id="licenses" icon={FileText} label="Open-source licences" value="The open-source software Mesh is built with" onClick={() => window.open("/licenses.txt", "_blank", "noopener")} />
           </Group>
 
           {role && (
