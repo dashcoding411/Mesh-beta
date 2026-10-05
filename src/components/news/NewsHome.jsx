@@ -53,14 +53,14 @@ export function NewsHome() {
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-4 pb-16 pt-4 md:px-6">
-          {/* The masthead: News's own slogan, not the app's. */}
+          {/* Journalists publish here; Mesh hosts them. Not Mesh's own publication. */}
           <div className="mb-4 border-b border-line pb-3">
-            <p className="font-display text-title-2 font-extrabold tracking-tight">Mesh News</p>
-            <p className="text-callout text-fg-muted">Making Every Story Heard.</p>
+            <p className="font-display text-title-2 font-extrabold tracking-tight">News on Mesh</p>
+            <p className="text-callout text-fg-muted">Independent, verified journalists publishing their own stories. Making Every Story Heard.</p>
           </div>
           {liveTopics.length > 1 && (
             <div role="radiogroup" aria-label="News topics" className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:px-0">
-              {[{ id: "all", label: "Top stories" }, ...liveTopics].map((t) => {
+              {[{ id: "all", label: "Latest" }, ...liveTopics].map((t) => {
                 const on = topic === t.id;
                 return (
                   <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => setTopic(t.id)}
@@ -79,7 +79,7 @@ export function NewsHome() {
           {topic === "all" && items?.length > 0 && <TodaysBrief items={items} />}
 
           <section aria-labelledby="stories-h" className="mt-6">
-            <h2 id="stories-h" className="sr-only">{topic === "all" ? "Top stories" : `${newsTopicById(topic)?.label} stories`}</h2>
+            <h2 id="stories-h" className="sr-only">{topic === "all" ? "Latest stories" : `${newsTopicById(topic)?.label} stories`}</h2>
             {error && <ErrorState title="Couldn't load the news" onRetry={load} />}
             {!error && items === null && (
               <div className="space-y-4" role="status" aria-label="Loading stories">
@@ -89,7 +89,7 @@ export function NewsHome() {
             )}
             {items?.length === 0 && (
               <EmptyState icon={Newspaper} title="No stories published yet"
-                body="Stories published by Mesh News journalists will appear here."
+                body="Stories journalists publish on Mesh will appear here, newest first."
                 action={writer ? <Button variant="primary" icon={PenLine} onClick={() => navigate("/news/desk")}>Write the first story</Button> : null} />
             )}
             {items?.length > 0 && shown.length === 0 && (
@@ -130,7 +130,7 @@ function TodaysBrief({ items }) {
           <p className="text-caption text-fg-muted">
             {finished
               ? "You're done for today. That's the news."
-              : `${brief.length === BRIEF_SIZE ? "Five" : brief.length} stories, about ${minutes} min. Read them and you're up to date.`}
+              : `The ${brief.length === BRIEF_SIZE ? "five" : brief.length} newest stories across topics, picked automatically. About ${minutes} min.`}
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-caption font-semibold tabular text-fg-muted" aria-label={`${done} of ${brief.length} read`}>
@@ -222,16 +222,16 @@ function HowItWorks({ writer }) {
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <VerifiedTick size={22} decorative />
         <span className="min-w-0 flex-1">
-          <span className="block text-callout font-semibold">Reported by verified journalists</span>
-          <span className="block text-caption text-fg-subtle">How Mesh News works</span>
+          <span className="block text-callout font-semibold">Published by journalists, hosted by Mesh</span>
+          <span className="block text-caption text-fg-subtle">How news on Mesh works</span>
         </span>
         <ChevronDown size={18} className="shrink-0 text-fg-subtle transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="space-y-2 border-t border-line px-4 py-4 text-callout text-fg-muted">
-        <p>Mesh News is written by journalists whose identity Mesh has verified, whether they work for an outlet or independently. Each story carries the journalist's name, outlet, region and any declared political affiliation.</p>
-        <p>Journalists publish their own work. Mesh does not edit or approve stories before publication.</p>
+        <p>Stories here are written and published by journalists whose identity Mesh has checked, whether they work for an outlet or independently. Each story carries the journalist's name, outlet, region and any declared political affiliation.</p>
+        <p>Each journalist is the publisher of their own stories and answers for them. Mesh hosts them: it doesn't commission, write, edit or approve them, and it lists them newest first rather than choosing which matter most.</p>
         <p>Every story must cite at least two sources by number in the text, and the journalist confirms its accuracy when publishing. AI may not be used to fabricate evidence, such as generated images, footage, audio or quotations presented as genuine.</p>
-        <p>Readers can request a correction on any story. Corrections are published on the story itself and are never removed.</p>
+        <p>Readers can request a correction on any story. Corrections are published on the story itself and are never removed. If you think a story is defamatory or unlawful, report it and Mesh will look at it within 7 days.</p>
         <p className="text-fg">Read the sources and form your own view.</p>
         {writer && <Button size="sm" variant="primary" icon={PenLine} className="mt-2 md:hidden" onClick={() => navigate("/news/desk")}>Open the newsroom</Button>}
       </div>

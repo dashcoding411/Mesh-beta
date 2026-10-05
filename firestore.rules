@@ -1939,11 +1939,13 @@ service cloud.firestore {
                     + d.get('keyPoints', []).join(' ') + ' ' + d.get('blockAlts', []).join(' '));
     }
     // Submittable: headline, body, two or more sources, and an accuracy attestation.
-    // Approved journalists publish their own stories; there's no review step.
+    // Approved journalists publish their own stories; there's no review step,
+    // but the one publishing must have accepted the journalist agreement.
     function readyToPublish(d) {
       return d.title.size() >= 10 && d.script.size() >= 100 && d.sources.size() >= 2
         && d.attestedAt == request.time && d.submittedAt == request.time && d.publishedAt == request.time
-        && d.get('legalHold', false) != true;
+        && d.get('legalHold', false) != true
+        && get(/databases/$(database)/documents/newsWriters/$(request.auth.uid)).data.get('agreedAt', null) != null;
     }
     function isStoryAuthor(d) {
       return d.authorId == request.auth.uid || request.auth.uid in d.get('authors', []);
@@ -1952,13 +1954,34 @@ service cloud.firestore {
     // Journalists: admins add them; each keeps the byline shown on their stories
     // and profile: outlet ('' = independent), logo, region and any political
     // affiliation they declare. Public, like the stories.
+    // How a journalist was checked before they could publish. Staff only.
+    match /journalistChecks/{uid} {
+      allow read: if isStaff();
+      allow create, update: if isStaff()
+        && incomingData().keys().hasOnly(['identity', 'method', 'evidence', 'outlet', 'checkedBy', 'checkedAt'])
+        && incomingData().identity == true
+        && incomingData().method in ['in person', 'video call', 'id document']
+        && incomingData().evidence is string && incomingData().evidence.size() >= 5 && incomingData().evidence.size() <= 500
+        && incomingData().outlet is string && incomingData().outlet.size() <= 80
+        && incomingData().checkedBy == request.auth.uid
+        && incomingData().checkedAt == request.time;
+      allow delete: if isStaff();
+    }
+
     match /newsWriters/{uid} {
       allow read: if true;
-      // Public, so it doesn't say which admin added them (that would name the admins).
+      // Public, so it doesn't say which admin added them (that would name the
+      // admins). Only with a recorded check of who they are.
       allow create: if isStaff()
         && incomingData().keys().hasOnly(['username', 'addedAt'])
         && incomingData().username == profileOf(uid).username
-        && incomingData().addedAt == request.time;
+        && incomingData().addedAt == request.time
+        && getAfter(/databases/$(database)/documents/journalistChecks/$(uid)).data.identity == true;
+      // The journalist accepts the journalist agreement themselves.
+      allow update: if isUser(uid)
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['agreedAt', 'agreementVersion'])
+        && incomingData().agreedAt == request.time
+        && incomingData().agreementVersion is string && incomingData().agreementVersion.size() <= 20;
       allow update: if (isUser(uid) || isStaff())
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['outlet', 'logoUrl', 'region', 'affiliation', 'updatedAt'])
         && incomingData().get('outlet', '') is string && incomingData().get('outlet', '').size() <= 80

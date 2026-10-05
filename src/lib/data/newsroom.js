@@ -38,11 +38,25 @@ export async function fetchWriters() {
   return snapToList(await getDocs(query(collection(db, "newsWriters"), limit(200))));
 }
 
-export async function addWriter(handle) {
+/**
+ * Staff only. `check` records how they were verified ({ method, evidence,
+ * outlet }), privately; the rules won't add a journalist without it.
+ */
+export async function addWriter(handle, check) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
   const p = await fetchProfile(uid);
-  await setDoc(doc(db, "newsWriters", uid), { username: p.username, addedAt: serverTimestamp() });
+  const batch = writeBatch(db);
+  batch.set(doc(db, "journalistChecks", uid), {
+    identity: true,
+    method: check.method,
+    evidence: check.evidence.trim().slice(0, 500),
+    outlet: (check.outlet || "").trim().slice(0, 80),
+    checkedBy: me(),
+    checkedAt: serverTimestamp(),
+  });
+  batch.set(doc(db, "newsWriters", uid), { username: p.username, addedAt: serverTimestamp() });
+  await batch.commit();
   writersOnce = null;
   if (writerCheck.uid === uid) writerCheck = { uid: null, result: null };
   return { id: uid, username: p.username };
@@ -52,6 +66,24 @@ export async function removeWriter(uid) {
   await deleteDoc(doc(db, "newsWriters", uid));
   writersOnce = null;
   if (writerCheck.uid === uid) writerCheck = { uid: null, result: null };
+}
+
+// The journalist agreement, accepted before a journalist's first story. A
+// new version asks again.
+export const AGREEMENT_VERSION = "2026-10-05";
+
+export const JOURNALIST_AGREEMENT = [
+  ["You're the publisher", "Your stories are yours: you write them, publish them and answer for them. Mesh hosts them; it doesn't commission, write, edit or approve them."],
+  ["Accurate and sourced", "What you publish is accurate to the best of your knowledge, cites its sources, and gives people a fair chance to respond to serious claims about them before you publish."],
+  ["Within the law", "You follow Australian law, including defamation, contempt of court, privacy and copyright, and the MEAA Journalist Code of Ethics. When a story carries legal risk, you get advice before publishing."],
+  ["Nothing fabricated", "No invented quotes or sources, and no AI-generated or AI-altered images, footage or audio presented as real."],
+  ["Honest about yourself", "You declare who you work for, any political affiliation, and any conflict of interest in a story."],
+  ["Fix and respond", "You correct mistakes promptly, on the story, and reply to complaints Mesh passes on to you within 2 business days."],
+  ["Mesh can step in", "Mesh may restrict or remove a story while a complaint is looked at, and may end your publishing access if you break this agreement."],
+];
+
+export async function acceptJournalistAgreement() {
+  await updateDoc(doc(db, "newsWriters", me()), { agreedAt: serverTimestamp(), agreementVersion: AGREEMENT_VERSION });
 }
 
 // Journalist profiles: the byline on every story a writer publishes.
@@ -255,7 +287,7 @@ export async function coAuthorFor(handle) {
   const uid = await uidForUsername(handle);
   if (!uid) throw new Error("There's no account with that handle.");
   if (uid === me()) throw new Error("That's you.");
-  if (!(await isNewsWriter(uid))) throw new Error(`@${handle} isn't a Mesh News writer. An admin can add them.`);
+  if (!(await isNewsWriter(uid))) throw new Error(`@${handle} isn't a journalist on Mesh yet. Staff can add them.`);
   const p = await fetchProfile(uid);
   return { id: uid, username: p.username };
 }

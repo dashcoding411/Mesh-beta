@@ -124,7 +124,7 @@ export function NewsStory({ id }) {
               {story.status === "approved" ? (
                 <p className="mt-4 flex items-start gap-2 rounded-control bg-accent-soft p-3 text-caption text-fg-muted">
                   <VerifiedTick size={16} decorative className="mt-0.5" />
-                  <span>Published by the journalist{story.authors?.length > 1 ? "s" : ""} named above, citing {plural((story.sources || []).length, "source")}, listed below. Read the sources and form your own view.</span>
+                  <span>Written and published by the journalist{story.authors?.length > 1 ? "s" : ""} named above, citing {plural((story.sources || []).length, "source")}, listed below. Mesh hosts this story; it doesn't write, edit or approve it. Read the sources and form your own view.</span>
                 </p>
               ) : (
                 <p className="mt-4 flex items-center gap-2 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">

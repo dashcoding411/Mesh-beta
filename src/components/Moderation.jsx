@@ -621,17 +621,24 @@ function Writers() {
   const toast = useToast();
   const [list, setList] = useState(null);
   const [handle, setHandle] = useState("");
+  const [method, setMethod] = useState("video call");
+  const [evidence, setEvidence] = useState("");
+  const [outlet, setOutlet] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const load = () => fetchWriters().then((l) => setList(l.sort((a, b) => a.username.localeCompare(b.username)))).catch(() => setList([]));
   useEffect(() => { load(); }, []);
+  const ready = handle.trim().length >= 3 && evidence.trim().length >= 5 && confirmed;
   const add = async (e) => {
     e.preventDefault();
+    if (!ready) return setError("Fill in how you checked them, and confirm you've seen their ID.");
     setBusy(true);
     setError("");
     try {
-      const w = await addWriter(handle.trim().replace(/^@/, "").toLowerCase());
-      toast({ title: `@${w.username} has been added as a journalist`, body: "They can now publish on Mesh News." });
+      const w = await addWriter(handle.trim().replace(/^@/, "").toLowerCase(), { method, evidence, outlet });
+      setEvidence(""); setOutlet(""); setConfirmed(false);
+      toast({ title: `@${w.username} has been added as a journalist`, body: "They can publish once they've accepted the journalist agreement." });
       setHandle("");
       load();
     } catch (err) { setError(err?.code === "permission-denied" ? "Only admins and moderators can add journalists." : err.message); }
@@ -639,17 +646,46 @@ function Writers() {
   };
   return (
     <section className="space-y-4">
-      <p className="text-caption text-fg-muted">
-        Add journalists whose identity you have verified. Journalists publish their own stories on Mesh News under their name and byline, without review. Each story must cite at least two sources, and readers can request corrections.
-      </p>
-      <form onSubmit={add} className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <label htmlFor="writer-handle" className="sr-only">Handle</label>
+      <div className="space-y-2 text-caption text-fg-muted">
+        <p>Journalists publish their own stories on Mesh under their name, without review, and answer for them. Before adding someone, check two things:</p>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li><span className="font-semibold text-fg">Who they are:</span> see photo ID matching their name, in person or on a video call. Don't keep a copy of the ID.</li>
+          <li><span className="font-semibold text-fg">That they're a journalist:</span> published work under that name, an editor at their outlet confirming them, or a press or union card.</li>
+        </ol>
+        <p>They'll accept the journalist agreement themselves before their first story. The record below is private to staff.</p>
+      </div>
+      <form onSubmit={add} className="space-y-3 rounded-card border border-line bg-surface p-4">
+        <div>
+          <label htmlFor="writer-handle" className="mb-1 block text-callout font-medium">Their handle</label>
           <input id="writer-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
             className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
-          <InlineMessage>{error}</InlineMessage>
         </div>
-        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add journalist</Button>
+        <div>
+          <label htmlFor="writer-method" className="mb-1 block text-callout font-medium">How you saw their ID</label>
+          <select id="writer-method" value={method} onChange={(e) => setMethod(e.target.value)}
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg">
+            <option value="video call">On a video call</option>
+            <option value="in person">In person</option>
+            <option value="id document">A copy they sent, since deleted</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="writer-evidence" className="mb-1 block text-callout font-medium">Proof they're a journalist</label>
+          <input id="writer-evidence" value={evidence} maxLength={500} onChange={(e) => setEvidence(e.target.value)}
+            placeholder="A link to their published work, or who confirmed them"
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+        </div>
+        <div>
+          <label htmlFor="writer-outlet" className="mb-1 block text-callout font-medium">Outlet <span className="font-normal text-fg-subtle">(blank if independent)</span></label>
+          <input id="writer-outlet" value={outlet} maxLength={80} onChange={(e) => setOutlet(e.target.value)}
+            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+        </div>
+        <label className="flex items-start gap-2 text-callout">
+          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-1 h-4 w-4 accent-violet-600" />
+          I've seen photo ID matching their name, and checked they work as a journalist.
+        </label>
+        <InlineMessage>{error}</InlineMessage>
+        <Button type="submit" variant="primary" loading={busy} disabled={!ready}>Add journalist</Button>
       </form>
       {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
         <EmptyState compact icon={ShieldCheck} title="No journalists yet" body="Add a verified journalist by their handle." />

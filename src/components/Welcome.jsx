@@ -9,7 +9,7 @@ const PILLARS = [
   { icon: Fingerprint, title: "Made by humans",
     body: "AI-generated photos and videos aren't allowed. Editing your own photos is fine. Fakes aren't." },
   { icon: Newspaper, title: "Real news",
-    body: "Mesh News is written by journalists whose identity is verified. Every story cites its sources, and corrections stay on the story.",
+    body: "Independent journalists whose identity Mesh has checked publish their own stories here. Every story cites its sources, and corrections stay on the story.",
     link: { label: "Read the news", to: "/news" } },
   { icon: CalendarDays, title: "Mesh together",
     body: "Circles are communities with their own rules. Gatherings get you off your phone: runs, dinners, gigs, study sessions.",

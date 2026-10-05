@@ -6,6 +6,7 @@ import {
 import {
   listenStory, saveStory, publishStory, publishUpdate, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
   clearStoryPresence, coAuthorFor, uploadMedia, deleteNews, me,
+  fetchJournalist, acceptJournalistAgreement, JOURNALIST_AGREEMENT, AGREEMENT_VERSION,
 } from "../../lib/db";
 import { mergeStory, newBlock, storyStats, reviewProblems, same, MAX_BLOCKS, legalRisks, STORY_LABELS } from "../../lib/storyDoc";
 import { NEWS_TOPICS } from "../../lib/interests";
@@ -272,7 +273,7 @@ export default function StoryEditor({ id }) {
           const { story } = await publishStory(id, baseRef.current, localRef.current);
           setBase(story); setLocal(story);
           setDialog(null);
-          toast({ title: "Published", body: "Your story is now live on Mesh News." });
+          toast({ title: "Published", body: "Your story is now live on Mesh, under your name." });
           navigate(`/news/${id}`);
         }} />
       )}
@@ -537,7 +538,7 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
             <Button type="submit" size="sm" loading={adding} disabled={handle.trim().length < 3}>Add</Button>
           </form>
         )}
-        <p className="mt-2 text-caption text-fg-subtle">Co-authors must be Mesh News writers. They see and edit the draft with you.</p>
+        <p className="mt-2 text-caption text-fg-subtle">Co-authors must be journalists on Mesh. They see and edit the draft with you.</p>
       </section>
 
       <section className={cls} aria-label="Legal">
@@ -633,11 +634,41 @@ function UpdateDialog({ story, onClose, onPublish }) {
   );
 }
 
+// The journalist agreement, shown before your first story (and when it changes).
+function AgreementCard({ onAccepted }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div className="mt-4 rounded-card border border-accent-text/40 bg-accent-soft p-4">
+      <p className="text-callout font-semibold">Before your first story: the journalist agreement</p>
+      <dl className="mt-3 space-y-2.5">
+        {JOURNALIST_AGREEMENT.map(([term, text]) => (
+          <div key={term}>
+            <dt className="text-callout font-medium text-fg">{term}</dt>
+            <dd className="text-caption text-fg-muted">{text}</dd>
+          </div>
+        ))}
+      </dl>
+      <div aria-live="polite" className="mt-2"><InlineMessage>{error}</InlineMessage></div>
+      <Button size="sm" variant="primary" className="mt-3" loading={busy} onClick={async () => {
+        setBusy(true); setError("");
+        try { await acceptJournalistAgreement(); onAccepted(); }
+        catch { setError("Couldn't save that. Check your connection and try again."); setBusy(false); }
+      }}>I agree</Button>
+    </div>
+  );
+}
+
 function PublishDialog({ story, onClose, onPublish }) {
   const [attest, setAttest] = useState(false);
   const [legalOk, setLegalOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // null while checking; true once the current agreement is accepted.
+  const [agreed, setAgreed] = useState(null);
+  useEffect(() => {
+    fetchJournalist(me()).then((j) => setAgreed(!!j?.agreedAt && j.agreementVersion === AGREEMENT_VERSION)).catch(() => setAgreed(false));
+  }, []);
   const problems = reviewProblems(story);
   const words = checkContent(`${story.title}\n${story.standfirst}\n${story.blocks.map((b) => b.text).join("\n")}`, { key: "news", skipCooldown: true, allowQuoted: true });
   const all = words.error ? [...problems, words.error] : problems;
@@ -649,7 +680,7 @@ function PublishDialog({ story, onClose, onPublish }) {
           <div aria-live="polite"><InlineMessage>{error}</InlineMessage></div>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} disabled={busy}>Keep editing</Button>
-            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest || story.legalHold || legalBlocked} onClick={async () => {
+            <Button variant="primary" icon={Send} loading={busy} disabled={all.length > 0 || !attest || !agreed || story.legalHold || legalBlocked} onClick={async () => {
               setBusy(true); setError("");
               try { await onPublish(); } catch (err) { console.error(err); setBusy(false); setError("The story could not be published. Check your connection and that the story has saved, then try again."); }
             }}>Publish</Button>
@@ -666,6 +697,7 @@ function PublishDialog({ story, onClose, onPublish }) {
       )}
       {story.legalHold && <p className="mt-3 rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">This story is marked as requiring legal review. Clear that mark in the story details once the review is complete, then publish.</p>}
       <LegalCheck story={story} checked={legalOk} onChange={setLegalOk} />
+      {agreed === false && <AgreementCard onAccepted={() => setAgreed(true)} />}
       <div className="mt-4 rounded-card border border-line bg-surface p-3">
         <Checkbox checked={attest} onChange={setAttest} description="Your confirmation is recorded with the story.">
           I confirm this story is accurate to the best of my knowledge, that its sources are cited, and that no image, footage, audio or quotation in it was generated or altered by AI to appear genuine.

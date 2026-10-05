@@ -37,8 +37,8 @@ export default function Newsroom() {
 
           {writer === undefined && <Skeleton className="h-32 !rounded-card" />}
           {writer === false && (
-            <EmptyState icon={Newspaper} title="Mesh News is written by verified journalists"
-              body="Publishing on Mesh News is limited to journalists whose identity Mesh has verified. Anyone can read stories and request corrections."
+            <EmptyState icon={Newspaper} title="News on Mesh is published by verified journalists"
+              body="Publishing news on Mesh is limited to journalists whose identity Mesh has checked. Anyone can read stories and request corrections."
               action={<Button onClick={() => navigate("/news")}>Read the news</Button>} />
           )}
           {writer && (
