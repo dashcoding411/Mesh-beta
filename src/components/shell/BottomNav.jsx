@@ -30,7 +30,7 @@ export default function BottomNav({ page, profile, unread, immersive }) {
   return (
     <nav aria-label="Main" data-theme={immersive ? "dark" : undefined}
       className={`md:hidden shrink-0 border-t pb-safe ${
-        immersive ? "border-white/10 bg-black" : "border-line bg-canvas/95 backdrop-blur"
+        immersive ? "border-white/10 bg-black" : "border-line bg-canvas/95 backdrop-blur glass-solid"
       }`}>
       <ul className="grid h-14 grid-cols-3">
         {tabs.map((t) => {

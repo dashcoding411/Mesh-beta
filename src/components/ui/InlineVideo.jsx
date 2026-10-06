@@ -76,7 +76,7 @@ export default function InlineVideo({
       ) : !playing && (
         <button type="button" onClick={toggle} aria-label={`Play ${label}`}
           className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur glass-lite">
             <Play size={26} fill="currentColor" aria-hidden="true" />
           </span>
         </button>
@@ -86,7 +86,7 @@ export default function InlineVideo({
           focus with a mouse, and always on touch screens. */}
       {playing && !failed && (
         <button type="button" onClick={toggle} aria-label={`Pause ${label}`}
-          className="absolute bottom-2 left-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+          className="absolute bottom-2 left-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur glass-lite transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
           <Pause size={18} fill="currentColor" aria-hidden="true" />
         </button>
       )}
@@ -94,7 +94,7 @@ export default function InlineVideo({
       {showMute && !failed && (
         <button type="button" onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
           aria-label={muted ? "Unmute" : "Mute"} aria-pressed={!muted}
-          className="absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur">
+          className="absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur glass-lite">
           {muted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
         </button>
       )}

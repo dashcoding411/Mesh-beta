@@ -179,7 +179,7 @@ export default function Watch({ postId }) {
   return (
     <div ref={trap} role="dialog" aria-modal="true" aria-label={post?.title || "Video"}
       className="fixed inset-0 z-overlay overflow-y-auto overflow-x-hidden scroll-pt-16 bg-canvas anim-fade">
-      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur glass-solid">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/flicks")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{post?.title || "Watch"}</p>
       </header>

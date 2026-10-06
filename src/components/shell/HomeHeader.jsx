@@ -16,7 +16,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
     <header className={`top-0 z-nav shrink-0 ${
       transparent
         ? "absolute inset-x-0 bg-gradient-to-b from-black/70 via-black/30 to-transparent text-white md:sticky md:bg-canvas/90 md:bg-none md:text-fg md:backdrop-blur md:border-b md:border-line"
-        : `sticky bg-canvas/90 backdrop-blur ${isFeed ? "" : "border-b border-line"}`
+        : `sticky bg-canvas/90 backdrop-blur glass-solid ${isFeed ? "" : "border-b border-line"}`
     }`}>
       <div className="flex h-14 items-center gap-1 px-2 pt-safe md:hidden">
         <IconButton icon={Menu} label="Open Home sections" data-tour="sections" onClick={openDrawer} tone={transparent ? "overlay" : "ghost"} />

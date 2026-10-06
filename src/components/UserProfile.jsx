@@ -215,7 +215,7 @@ function ProfileView({ uid }) {
   return (
     <div ref={trap} role="dialog" aria-modal="true" aria-label={profile ? `@${profile.username}` : "Profile"}
       className={`${OVERLAY} ${hasPinkCheck(profile?.badges) ? "theme-pink" : ""}`}>
-      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur glass-solid">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{profile ? `@${profile.username}` : ""}</p>
         {profile && <IconButton icon={Link2} label="Share profile" onClick={share} />}

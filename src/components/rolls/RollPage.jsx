@@ -62,7 +62,7 @@ export default function RollPage({ rollId }) {
 function Frame({ children, title, right }) {
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur glass-solid">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/rolls")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{title || "Roll"}</p>
         {right}

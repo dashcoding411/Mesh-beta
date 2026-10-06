@@ -9,7 +9,9 @@ import { db, auth } from "../firebase";
 
 export const INLINE_PREFIX = "mesh-media:";
 const MAX_DATA_CHARS = 900_000; // base64 chars; also enforced by the rules
-const cache = new Map(); // id -> Promise<string>
+const cache = new Map(); // id -> Promise<string>, the data URL
+const objectUrls = new Map(); // id -> Promise<string>, a blob: URL for display
+const ready = new Map(); // id -> blob: URL once loaded, so a remount shows it at once
 
 export const isInline = (url) => typeof url === "string" && url.startsWith(INLINE_PREFIX);
 
@@ -117,14 +119,16 @@ export async function storeChatPhoto(chatId, file) {
 }
 
 export function useChatMedia(chatId, mediaId) {
+  const url = mediaId ? INLINE_PREFIX + mediaId : "";
   const [loaded, setLoaded] = useState({ id: null, src: "" });
   useEffect(() => {
     let alive = true;
-    if (!chatId || !mediaId) return;
-    fetchInline(INLINE_PREFIX + mediaId, chatId).then((d) => { if (alive) setLoaded({ id: mediaId, src: d || "" }); }).catch(() => {});
+    if (!chatId || !mediaId || ready.has(keyOf(url, chatId))) return;
+    inlineSrc(url, chatId).then((s) => { if (alive) setLoaded({ id: mediaId, src: s || "" }); }).catch(() => {});
     return () => { alive = false; };
-  }, [chatId, mediaId]);
-  return loaded.id === mediaId ? loaded.src : "";
+  }, [chatId, mediaId, url]);
+  if (!chatId || !mediaId) return "";
+  return ready.get(keyOf(url, chatId)) || (loaded.id === mediaId ? loaded.src : "");
 }
 
 export async function storeVoiceNote(chatId, blob, duration) {
@@ -145,9 +149,14 @@ export async function storeVoiceNote(chatId, blob, duration) {
   return ref_.id;
 }
 
+const keyOf = (url, chatId) => {
+  const id = url.slice(INLINE_PREFIX.length);
+  return chatId ? `${chatId}/${id}` : id;
+};
+
 export function fetchInline(url, chatId) {
   const id = url.slice(INLINE_PREFIX.length);
-  const key = chatId ? `${chatId}/${id}` : id;
+  const key = keyOf(url, chatId);
   if (!cache.has(key)) {
     const ref_ = chatId ? doc(db, "chats", chatId, "media", id) : doc(db, "media", id);
     const p = getDoc(ref_).then((s) => (s.exists() ? s.data().data : null));
@@ -157,14 +166,51 @@ export function fetchInline(url, chatId) {
   return cache.get(key);
 }
 
+// A data URL as a blob: URL. Safari in particular is slow with images whose
+// src is a long data URL (each is a string of up to a megabyte, parsed and
+// held in memory), and fast with blob: URLs, which load like a file.
+function toObjectUrl(data) {
+  const comma = data.indexOf(",");
+  const head = data.slice(0, comma);
+  if (!head.startsWith("data:") || !head.endsWith(";base64")) return data;
+  try {
+    const bin = atob(data.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: head.slice(5, -7) }));
+  } catch {
+    return data;
+  }
+}
+
+/** A `mesh-media:` image as a blob: URL to show, cached per session. */
+export function inlineSrc(url, chatId) {
+  const key = keyOf(url, chatId);
+  if (!objectUrls.has(key)) {
+    const p = fetchInline(url, chatId).then((data) => {
+      // Only the binary copy is kept; a download or share fetches the data again.
+      cache.delete(key);
+      if (!data) return null;
+      const src = toObjectUrl(data);
+      ready.set(key, src);
+      return src;
+    });
+    p.catch(() => objectUrls.delete(key));
+    objectUrls.set(key, p);
+  }
+  return objectUrls.get(key);
+}
+
 /** Resolves `mesh-media:` URLs (cached per session); other URLs pass through. */
 export function useMediaSrc(url) {
-  const [src, setSrc] = useState(isInline(url) ? "" : url || "");
+  const inline = isInline(url);
+  const [loaded, setLoaded] = useState({ url: null, src: "" });
   useEffect(() => {
     let alive = true;
-    if (!isInline(url)) return;
-    fetchInline(url).then((d) => { if (alive) setSrc(d || ""); }).catch(() => {});
+    if (!inline || ready.has(keyOf(url))) return;
+    inlineSrc(url).then((s) => { if (alive) setLoaded({ url, src: s || "" }); }).catch(() => {});
     return () => { alive = false; };
-  }, [url]);
-  return isInline(url) ? src : url || "";
+  }, [url, inline]);
+  if (!inline) return url || "";
+  return ready.get(keyOf(url)) || (loaded.url === url ? loaded.src : "");
 }

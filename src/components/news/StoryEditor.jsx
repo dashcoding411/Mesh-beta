@@ -175,7 +175,7 @@ export default function StoryEditor({ id }) {
 
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto scroll-pt-20">
-      <header className="sticky top-0 z-nav flex min-h-14 flex-wrap items-center gap-2 border-b border-line bg-canvas/90 px-2 py-2 pt-safe backdrop-blur md:px-4">
+      <header className="sticky top-0 z-nav flex min-h-14 flex-wrap items-center gap-2 border-b border-line bg-canvas/90 px-2 py-2 pt-safe backdrop-blur glass-solid md:px-4">
         <IconButton icon={ArrowLeft} label="Back to the newsroom" onClick={() => goBack("/news/desk")} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-callout font-semibold">{local.title || "Untitled story"}</p>

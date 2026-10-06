@@ -335,6 +335,15 @@ body {
 }
 :root[data-motion="reduce"] .skeleton { animation: none; }
 
+/* Frosted glass on WebKit (Safari, and every browser on iPhone). WebKit
+   redraws the blur behind a frosted element on every frame that anything
+   under it moves, so frosted bars over a scrolling feed, or chips over a
+   playing video, make scrolling stutter. There the nearly opaque bars
+   (.glass-solid) are solid and the small chips (.glass-lite) are unblurred. */
+:root[data-webkit] .glass-solid { background-color: rgb(var(--canvas)); }
+:root[data-webkit] .glass-solid,
+:root[data-webkit] .glass-lite { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
 /* Safe-area helpers for notched phones. */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 .pt-safe { padding-top: env(safe-area-inset-top); }

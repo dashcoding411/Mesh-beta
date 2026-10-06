@@ -43,7 +43,7 @@ export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged
           className="aspect-[4/5] w-full bg-black"
           onOpen={() => navigate(`/flicks/${post.id}`)}
           onView={() => recordSignal(post, "view").catch(() => {})} />
-        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur">
+        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur glass-lite">
           <Clapperboard size={12} aria-hidden="true" /> Flick
         </span>
       </div>
@@ -57,7 +57,7 @@ export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged
         <InlineVideo src={post.mediaUrl} poster={post.posterUrl} start={post.trailerStart || 0} length={30} rounded={false}
           label={`Trailer for ${post.title || "a video"}`} className="aspect-video w-full bg-black"
           onOpen={() => openWatch(post.id)} />
-        <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur">
+        <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-label font-semibold text-white backdrop-blur glass-lite">
           Trailer
         </span>
         {post.duration > 0 && (

@@ -102,7 +102,7 @@ export default function GatheringPage({ eventId }) {
 
   return (
     <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
-      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur">
+      <header className="sticky top-0 z-nav flex h-14 items-center gap-2 border-b border-line bg-canvas/90 px-2 pt-safe backdrop-blur glass-solid">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack(event.groupId ? `/circles/${event.groupId}` : "/circles?view=gatherings")} />
         <p className="min-w-0 flex-1 truncate text-callout font-semibold">{event.title}</p>
         <IconButton icon={Share2} label="Share invite" onClick={() => shareGathering(event, toast)} />

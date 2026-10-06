@@ -103,3 +103,11 @@ systemDark?.addEventListener?.("change", emit);
 systemReduce?.addEventListener?.("change", emit);
 systemMoreContrast?.addEventListener?.("change", emit);
 apply();
+
+// Safari, and every browser on iPhone and iPad (they all run on WebKit). The
+// CSS uses it to skip effects WebKit draws slowly (see .glass-solid).
+if (typeof navigator !== "undefined" && typeof document !== "undefined") {
+  const ua = navigator.userAgent;
+  const apple = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (apple || (/AppleWebKit/.test(ua) && !/Chrome|Chromium|Android/.test(ua))) document.documentElement.dataset.webkit = "";
+}
