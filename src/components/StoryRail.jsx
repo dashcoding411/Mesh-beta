@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { fetchActiveStories, uploadMedia, createStory, me, storySeen, videoUploadsAvailable, StorageUnavailableError } from "../lib/db";
+import { fetchActiveStories, uploadMedia, createStory, me, storySeen, videoUploadsAvailable, StorageUnavailableError, deleteInline, deleteCloudMedia } from "../lib/db";
+import { storeOverlay } from "../lib/media";
 import { cameraSupported } from "../lib/cameras";
 import { validateMediaFile } from "../lib/validate";
 import { useShell } from "./shell/ShellContext";
@@ -9,6 +10,7 @@ import { Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 const StoryViewer = lazy(() => import("./StoryViewer"));
 const Camera = lazy(() => import("./Camera"));
+const StoryEditor = lazy(() => import("./story/StoryEditor"));
 
 // Phones open the camera first, like Instagram and Snapchat; computers pick a file.
 const cameraFirst = () => cameraSupported() && window.matchMedia("(pointer: coarse)").matches;
@@ -29,6 +31,7 @@ export default function StoryRail() {
   const [viewing, setViewing] = useState(null); // { list, at }
   const [uploading, setUploading] = useState(false);
   const [camera, setCamera] = useState(null); // { video }
+  const [editing, setEditing] = useState(null); // { file, fromCamera }
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -51,19 +54,36 @@ export default function StoryRail() {
   const addStory = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
-    if (file) publishStory(file);
+    if (file) openEditor(file, false);
   };
 
-  const publishStory = async (file) => {
+  // Every story goes through the editor first, from the camera or a file.
+  const openEditor = async (file, fromCamera) => {
     const kind = file.type.startsWith("video/") ? "video" : "image";
     const v = validateMediaFile(file, kind);
     if (v.error) return toast({ tone: "error", title: v.error });
+    if (kind === "video" && !(await videoUploadsAvailable().catch(() => false))) {
+      return toast({ tone: "error", title: "Video stories aren't switched on yet", body: "Photos work, so try one of those." });
+    }
+    setEditing({ file, fromCamera });
+  };
+
+  // `story` comes from the editor: the file, and for videos the drawn layer over it.
+  const publishStory = async (story) => {
     setUploading(true);
+    let uploaded = [];
     try {
-      const { url, path } = await uploadMedia(file);
-      await createStory({ mediaUrl: url, mediaPath: path, mediaType: file.type });
+      const { url, path } = await uploadMedia(story.file);
+      uploaded = [url];
+      const overlay = story.overlay ? await storeOverlay(story.overlay) : null;
+      if (overlay) uploaded.push(overlay.url);
+      await createStory({
+        mediaUrl: url, mediaPath: path, mediaType: story.file.type, audience: story.audience,
+        fit: story.fit, filter: story.filter, overlayUrl: overlay?.url, gifs: story.gifs, text: story.text, seconds: story.seconds, muted: story.muted,
+      });
+      uploaded = [];
       await load();
-      toast({ title: "Added to your story", body: "It disappears after 24 hours." });
+      toast({ title: "Added to your story", body: story.audience === "followers" ? "Your followers can see it for 24 hours." : "It disappears after 24 hours." });
     } catch (err) {
       console.error(err);
       toast({
@@ -74,6 +94,8 @@ export default function StoryRail() {
           : err instanceof StorageUnavailableError ? "Strands still work, so try posting words instead." : "Check your connection and try again.",
       });
     } finally {
+      // A story that didn't post leaves nothing behind.
+      for (const url of uploaded) { deleteInline(url).catch(() => {}); deleteCloudMedia(url).catch(() => {}); }
       setUploading(false);
     }
   };
@@ -119,13 +141,18 @@ export default function StoryRail() {
       {camera && (
         <Suspense fallback={null}>
           <Camera title="Add to your story" photo video={camera.video}
-            actions={[{ id: "post", label: "Post" }, { id: "story", label: "Your story", primary: true }]}
             onClose={() => setCamera(null)}
-            onDone={(action, file) => {
-              setCamera(null);
-              if (action === "story") publishStory(file);
-              else openComposer({ kind: file.type.startsWith("video/") ? "video" : "post", files: [file] });
-            }} />
+            onCapture={(file) => { setCamera(null); openEditor(file, true); }} />
+        </Suspense>
+      )}
+
+      {editing && (
+        <Suspense fallback={null}>
+          <StoryEditor file={editing.file} privateAccount={!!profile?.isPrivate}
+            backLabel={editing.fromCamera ? "Retake" : "Cancel"}
+            onBack={() => { const again = editing.fromCamera; setEditing(null); if (again) startStory(); }}
+            onSendToPost={editing.fromCamera ? (file) => { setEditing(null); openComposer({ kind: file.type.startsWith("video/") ? "video" : "post", files: [file] }); } : undefined}
+            onPost={(story) => { setEditing(null); publishStory(story); }} />
         </Suspense>
       )}
 

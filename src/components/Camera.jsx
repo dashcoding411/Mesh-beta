@@ -27,9 +27,11 @@ const recorderType = () => ["video/mp4", "video/webm;codecs=vp9,opus", "video/we
  * shutter, library and flip sit at the bottom, in reach of a thumb. After a
  * capture the preview offers `actions` ({ id, label, primary }) and calls
  * `onDone(id, file)`. `onLibrary(files)` takes library picks directly;
- * without it a pick goes to the preview like a capture.
+ * without it a pick goes to the preview like a capture. `onCapture(file)`
+ * skips the preview: each capture or pick goes straight to it (the story
+ * editor has its own).
  */
-export default function Camera({ onClose, onDone, onLibrary, actions, photo = true, video = false, title = "Camera" }) {
+export default function Camera({ onClose, onDone, onLibrary, onCapture, actions, photo = true, video = false, title = "Camera" }) {
   const [status, setStatus] = useState(() => (cameraSupported() ? "starting" : "unavailable")); // starting | live | denied | unavailable
   const [facing, setFacing] = useState(savedFacing);
   const [cameras, setCameras] = useState(0);
@@ -108,6 +110,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `mesh-${Date.now()}.jpg`, { type: "image/jpeg" });
+      if (onCapture) { stop(); onCapture(file); return; }
       setShot({ file, url: URL.createObjectURL(file), kind: "image" });
     }, "image/jpeg", 0.92);
   };
@@ -126,6 +129,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
       const blob = new Blob(chunks, { type: mime });
       if (!blob.size) return;
       const file = new File([blob], `mesh-${Date.now()}.${mime.includes("mp4") ? "mp4" : "webm"}`, { type: mime });
+      if (onCapture) { stop(); onCapture(file); return; }
       setShot({ file, url: URL.createObjectURL(file), kind: "video" });
     };
     rec.start(250);
@@ -177,6 +181,7 @@ export default function Camera({ onClose, onDone, onLibrary, actions, photo = tr
     if (!files.length) return;
     if (onLibrary) { stop(); onLibrary(files); return; }
     const file = files[0];
+    if (onCapture) { stop(); onCapture(file); return; }
     setShot({ file, url: URL.createObjectURL(file), kind: file.type.startsWith("video/") ? "video" : "image" });
   };
 

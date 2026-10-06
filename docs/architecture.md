@@ -266,6 +266,24 @@ accounts show "New account". Staff stats list posts with 8 or more fresh
 actions within an hour in the last day (`fetchFreshActivity`, `freshBursts`),
 read through collection-group queries that only return fresh records.
 
+## Story editor (`components/story`, `lib/storyCanvas.js`)
+
+Every story goes through a Snapchat-style editor first, from the camera
+(which hands over captures with `onCapture`) or a file. It works on a 9:16
+frame: the photo fills it or fits inside a blurred copy of itself; text
+(caption bar, big, label, glow), freehand drawing, emoji, time, date and
+digicam date-stamp stickers, and GIFs sit on top; swiping changes the filter.
+The same functions draw the preview and the export (`drawPhoto`,
+`applyFilter`, `drawOverlay`), and filters are CSS filter strings, drawn with
+the canvas filter or the same maths per pixel where a browser has none.
+Photos post as one 1080x1920 JPEG. Videos post unchanged, with the drawing
+as a see-through image (`overlayUrl`, inline media, WebP or PNG) and the
+filter, fit and sound as story fields, so nothing is re-encoded. GIFs stay
+animated as `gifs` metadata on both. The words go in `text`, for screen
+readers, and the rules run the hate filter over them; the editor runs
+`checkContent` first. Stories with `fit` render in a 9:16 frame
+(`StoryFrame` in StoryViewer); older ones as before.
+
 ## Help (`/help`, `lib/helpGuides.js`)
 
 Plain-language guides for people of any technical experience, grouped by

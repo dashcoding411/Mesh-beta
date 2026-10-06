@@ -154,6 +154,16 @@ service cloud.firestore {
     function gifOk(g) {
       return g is map && g.url is string && g.url.matches('^https://media[0-9]*[.]giphy[.]com/.*$');
     }
+    // Animated stickers on a story: up to 3, placed in fractions of the frame.
+    function storyGifOk(l, i) {
+      return l.size() <= i || (gifOk(l[i])
+        && l[i].keys().hasOnly(['url', 'x', 'y', 'w', 'r', 'ratio'])
+        && l[i].x is number && l[i].y is number && l[i].w is number && l[i].r is number && l[i].ratio is number
+        && l[i].w > 0 && l[i].w <= 1.5 && l[i].ratio > 0 && l[i].ratio <= 10);
+    }
+    function storyGifsOk(l) {
+      return l is list && l.size() <= 3 && storyGifOk(l, 0) && storyGifOk(l, 1) && storyGifOk(l, 2);
+    }
     function commentImageOk(img) {
       return img is map && img.keys().hasOnly(['url', 'w', 'h'])
         && img.get('w', 0) is int && img.get('h', 0) is int
@@ -1844,8 +1854,18 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'mediaUrl', 'mediaPath', 'mediaType',
-          'audience', 'day', 'createdAt'
+          'audience', 'day', 'createdAt',
+          // From the story editor: see src/lib/data/stories.js.
+          'fit', 'filter', 'overlayUrl', 'gifs', 'text', 'seconds', 'muted'
         ])
+        && incomingData().get('fit', 'contain') in ['cover', 'contain']
+        && incomingData().get('filter', 'none') in ['none', 'vivid', 'warm', 'cool', 'fade', 'dream', 'mono', 'noir']
+        && (!('overlayUrl' in incomingData()) || ownInlineImage(incomingData().overlayUrl))
+        && storyGifsOk(incomingData().get('gifs', []))
+        && incomingData().get('text', '') is string && incomingData().get('text', '').size() <= 1000
+        && hateFree(incomingData().get('text', ''))
+        && incomingData().get('seconds', 5) in [3, 5, 8, 10]
+        && incomingData().get('muted', false) is bool
         && incomingData().day is string
         && incomingData().day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && authorIsMe(incomingData())

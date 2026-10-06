@@ -9,5 +9,6 @@ export function mediaAlt(post) {
 
 export function storyAlt(item, authorName) {
   const written = (item?.alt || "").trim();
-  return written || `Story from @${authorName || "someone"}`;
+  const words = (item?.text || "").trim().replace(/\s+/g, " ");
+  return written || `Story from @${authorName || "someone"}${words ? `, with the words: ${words}` : ""}`;
 }

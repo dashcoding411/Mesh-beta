@@ -14,10 +14,11 @@ import LiveAvatar from "./ui/LiveAvatar";
 import MediaImg from "./ui/MediaImg";
 import IconButton from "./ui/IconButton";
 import { useFocusTrap } from "../lib/useFocusTrap";
+import { useMediaSrc } from "../lib/media";
+import { filterById, vignetteCss } from "../lib/storyCanvas";
 
 const AddToHighlight = lazy(() => import("./Highlights").then((m) => ({ default: m.AddToHighlight })));
 
-const IMAGE_MS = 5000;
 
 // Auto-advance is pausable (WCAG 2.2.2) via button, press-and-hold, space.
 // Viewers can reply (DM), react, like and echo; authors see activity.
@@ -40,6 +41,8 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   const closeRef = useRef(null);
   const item = thread.items[idx];
   const isVideo = item.mediaType?.startsWith("video/");
+  // A photo shows for as long as its author chose (5 seconds unless they changed it).
+  const imageMs = (item.seconds || 5) * 1000;
   const mine = item.authorId === me();
   const info = meta[item.id] || {};
   const patch = (id, p) => setMeta((m) => ({ ...m, [id]: { ...m[id], ...p } }));
@@ -121,7 +124,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 
   useEffect(() => {
     if (isVideo || held) return;
-    const t = setTimeout(next, IMAGE_MS);
+    const t = setTimeout(next, imageMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, thread, held]);
@@ -163,7 +166,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
               {i < idx && <div className="h-full w-full bg-white" />}
               {i === idx && !isVideo && (
                 <div key={item.id} className="h-full bg-white"
-                  style={{ animation: `mesh-story-bar ${IMAGE_MS}ms linear both`, animationPlayState: held ? "paused" : "running" }} />
+                  style={{ animation: `mesh-story-bar ${imageMs}ms linear both`, animationPlayState: held ? "paused" : "running" }} />
               )}
               {i === idx && isVideo && <div className="h-full w-full bg-white/70" />}
             </div>
@@ -188,7 +191,9 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 
         <div className="flex h-full w-full items-center justify-center bg-surface"
           onPointerDown={() => setPaused(true)} onPointerUp={() => setPaused(false)} onPointerLeave={() => setPaused(false)}>
-          {isVideo ? (
+          {item.fit ? (
+            <StoryFrame key={item.id} item={item} held={held} onEnded={next} alt={storyAlt(item, thread.authorName)} />
+          ) : isVideo ? (
             <video key={item.id} src={item.mediaUrl} className="h-full w-full object-contain" autoPlay playsInline
               onEnded={next} aria-label={storyAlt(item, thread.authorName)} ref={(el) => { if (el) { if (held) el.pause(); else el.play?.().catch(() => {}); } }} />
           ) : (
@@ -406,6 +411,33 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
           </div>
         </form>
       )}
+    </div>
+  );
+}
+
+// A story made in the story editor: a 9:16 frame with the photo or video,
+// its filter (videos), its drawn text layer (videos) and animated GIFs on top.
+function StoryFrame({ item, held, onEnded, alt }) {
+  const isVideo = item.mediaType?.startsWith("video/");
+  const overlay = useMediaSrc(item.overlayUrl || "");
+  const look = filterById(item.filter);
+  return (
+    <div className="flex h-full w-full items-center justify-center" style={{ containerType: "size" }}>
+      <div className="relative overflow-hidden bg-black" style={{ width: "min(100cqw, calc(100cqh * 9 / 16))", aspectRatio: "9 / 16" }}>
+        {isVideo ? (
+          <video src={item.mediaUrl} autoPlay playsInline muted={!!item.muted} onEnded={onEnded} aria-label={alt}
+            className="absolute inset-0 h-full w-full" style={{ objectFit: item.fit === "cover" ? "cover" : "contain", filter: look.css || undefined }}
+            ref={(el) => { if (el) { el.muted = !!item.muted; if (held) el.pause(); else el.play?.().catch(() => {}); } }} />
+        ) : (
+          <MediaImg src={item.mediaUrl} alt={alt} className="absolute inset-0 h-full w-full object-cover anim-fade" placeholderClass="absolute inset-0 h-full w-full" />
+        )}
+        {isVideo && look.vignette && <span aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: vignetteCss(look.vignette) }} />}
+        {overlay && <img src={overlay} alt="" className="pointer-events-none absolute inset-0 h-full w-full" />}
+        {(item.gifs || []).map((g, i) => (
+          <img key={i} src={g.url} alt="" className="pointer-events-none absolute"
+            style={{ left: `${g.x * 100}%`, top: `${g.y * 100}%`, width: `${g.w * 100}%`, transform: `translate(-50%, -50%) rotate(${g.r}rad)` }} />
+        ))}
+      </div>
     </div>
   );
 }

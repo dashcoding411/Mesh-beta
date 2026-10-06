@@ -53,6 +53,30 @@ export async function compressImage(file, { maxSide = 1440, budget = MAX_DATA_CH
 /** Resolves to { url: "mesh-media:<id>", path, width, height }. */
 export async function storeInlineImage(file, { maxSide } = {}) {
   const { data, width, height } = await compressImage(file, maxSide ? { maxSide } : undefined);
+  return saveInline(data, width, height);
+}
+
+/**
+ * A see-through layer (the text and drawing over a video story), stored like
+ * a photo but keeping its transparency: WebP where the browser can make it,
+ * otherwise PNG, scaled down until it fits.
+ */
+export async function storeOverlay(canvas) {
+  let c = canvas;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let data = c.toDataURL("image/webp", 0.9);
+    if (!data.startsWith("data:image/webp")) data = c.toDataURL("image/png");
+    if (data.length <= MAX_DATA_CHARS * 0.95) return saveInline(data, c.width, c.height);
+    const smaller = document.createElement("canvas");
+    smaller.width = Math.round(c.width * 0.75);
+    smaller.height = Math.round(c.height * 0.75);
+    smaller.getContext("2d").drawImage(c, 0, 0, smaller.width, smaller.height);
+    c = smaller;
+  }
+  throw new Error("The text and drawing on this story are too detailed to save. Try removing some.");
+}
+
+async function saveInline(data, width, height) {
   // The rules require the media rate-limit stamp in the same batch.
   const ref_ = doc(collection(db, "media"));
   const batch = writeBatch(db);

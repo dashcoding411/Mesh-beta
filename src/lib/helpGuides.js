@@ -120,14 +120,18 @@ export const GUIDES = [
     summary: "A photo or video that disappears after 24 hours.",
     steps: [
       "On Home, tap the **+** on your own picture at the start of the stories row.",
-      "Take a photo or video, or pick one, and share it.",
-      "It shows at the top of your friends' Home for 24 hours, then disappears.",
+      "Take a photo or video, or pick one. It opens in the story editor.",
+      "Tap the photo to add a caption. Swipe left or right for filters.",
+      "Down the right: **Text** (tap **Aa** for other styles), **Draw**, **Stickers** (emoji, the time, a date stamp and GIFs), **Fill** or **Fit**, and how long a photo shows.",
+      "Drag things to move them. Pinch, or scroll on a computer, to resize and turn them. Drag one to the bin to remove it.",
+      "Choose **Everyone** or **Followers**, then tap **Your story**.",
     ],
     tips: [
+      "It shows at the top of your friends' Home for 24 hours, then disappears.",
       "Replying to someone's story sends them a private message. An **echo** is a public reply everyone who sees the story can read.",
       "Your old stories are kept in your story archive, which only you can see.",
     ],
-    keywords: ["story", "stories", "24 hours", "disappear", "echo", "echoes", "archive"],
+    keywords: ["story", "stories", "24 hours", "disappear", "echo", "echoes", "archive", "editor", "filter", "filters", "caption", "draw", "sticker", "text on photo"],
   },
   {
     id: "edit-delete", topic: "posting", title: "Editing or deleting a post",

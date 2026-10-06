@@ -17,7 +17,14 @@ export const storyExpired = (story, now = Date.now()) => now - tsMillis(story.cr
 const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 // `day` lets the last 24h be queried with an `in` filter instead of a composite index.
-export async function createStory({ mediaUrl, mediaPath, mediaType }) {
+// From the story editor (components/story/StoryEditor.jsx), as well:
+//   fit      how the photo or video sits in the 9:16 frame: "cover" or "contain"
+//   filter   a video's filter (photos have theirs drawn in)
+//   overlayUrl  a video's text and drawing, as a see-through image
+//   gifs     animated stickers over it: [{ url, x, y, w, r, ratio }]
+//   text     the words on it, for screen readers (and the hate filter)
+//   seconds  how long a photo shows; muted: a video plays without sound
+export async function createStory({ mediaUrl, mediaPath, mediaType, audience, ...extra }) {
   const profile = await myProfile();
   const story = {
     authorId: me(),
@@ -27,10 +34,17 @@ export async function createStory({ mediaUrl, mediaPath, mediaType }) {
     mediaUrl,
     mediaPath,
     mediaType,
-    audience: profile?.isPrivate ? "followers" : "public",
+    audience: profile?.isPrivate || audience === "followers" ? "followers" : "public",
     day: dayKey(Date.now()),
     createdAt: serverTimestamp(),
   };
+  if (extra.fit) story.fit = extra.fit;
+  if (extra.filter && extra.filter !== "none") story.filter = extra.filter;
+  if (extra.overlayUrl) story.overlayUrl = extra.overlayUrl;
+  if (extra.gifs?.length) story.gifs = extra.gifs;
+  if (extra.text?.trim()) story.text = extra.text.trim().slice(0, 1000);
+  if (extra.seconds) story.seconds = extra.seconds;
+  if (extra.muted) story.muted = true;
   await addDoc(collection(db, "stories"), story);
 }
 
@@ -45,6 +59,7 @@ export async function deleteStory(story) {
   }
   await deleteDoc(doc(db, "stories", story.id));
   await deleteInline(story.mediaUrl);
+  await deleteInline(story.overlayUrl);
   await deleteCloudMedia(story.mediaUrl);
 }
 
