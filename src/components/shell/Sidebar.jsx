@@ -94,7 +94,7 @@ function MoreMenu({ page, guest }) {
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key); };
   }, [open]);
 
-  const inSettings = ["settings", "brick", "leaderboard"].includes(activeNavId(page));
+  const inSettings = ["settings", "brick", "leaderboard", "help"].includes(activeNavId(page));
   return (
     <div ref={wrap} className="relative shrink-0">
       {open && (

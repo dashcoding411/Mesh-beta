@@ -266,6 +266,20 @@ accounts show "New account". Staff stats list posts with 8 or more fresh
 actions within an hour in the last day (`fetchFreshActivity`, `freshBursts`),
 read through collection-group queries that only return fresh records.
 
+## Help (`/help`, `lib/helpGuides.js`)
+
+Plain-language guides for people of any technical experience, grouped by
+topic, each with numbered steps naming the buttons people see (in
+`**bold**`), tips and a button to the screen it's about. Search reuses the
+settings ranking (`searchSettings`) with filler words dropped ("how do I
+delete my account" finds the delete guide). Signed-in people get a
+first-steps checklist ticked off from their profile, interests, follows,
+notification and install state. "Words Mesh uses" explains Mesh's own names
+(Still, Strand, Roll…). Help is in the More menu and the phone drawer,
+works signed out, and Brick mode never locks it. Feature pages link to their
+guide with `HelpLink`. When a screen changes, change its guide:
+`helpGuides.test.js` checks structure and search, not wording.
+
 ## Flicks
 
 Flicks home is a chooser rather than a feed: a row of short Flicks and a grid

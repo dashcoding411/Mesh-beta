@@ -1,5 +1,5 @@
 import {
-  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy,
+  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy, LifeBuoy,
 } from "lucide-react";
 import { sidebarSection } from "../../lib/surfaces";
 
@@ -19,6 +19,7 @@ export const MORE_NAV = [
   { id: "settings", label: "Settings", icon: Settings, path: "/account/settings", account: true },
   { id: "brick", label: "Brick mode", icon: BrickWall, path: "/account/brick", account: true },
   { id: "leaderboard", label: "Leaderboard", icon: Trophy, path: "/leaderboard" },
+  { id: "help", label: "Help", icon: LifeBuoy, path: "/help" },
 ];
 
 export const navFor = (items, guest) => (guest ? items.filter((i) => !i.account) : items);

@@ -13,6 +13,7 @@ import Dialog from "../ui/Dialog";
 import { Field, Input } from "../ui/Field";
 import { EmptyState, ErrorState, Skeleton } from "../ui/States";
 import SevenSeg from "./SevenSeg";
+import HelpLink from "../ui/HelpLink";
 import RollPage from "./RollPage";
 
 /** Rolls: your shared disposable cameras, or one roll at /rolls/:id. Phones only. */
@@ -138,6 +139,7 @@ function Intro({ onStart, compact, guest }) {
           <li><span className="font-semibold text-fg">2.</span> Shoot all night, with the camera only</li>
           <li><span className="font-semibold text-fg">3.</span> Wake up to everyone's photos</li>
         </ol>
+        <div className="mt-2"><HelpLink guide="rolls">More about Rolls</HelpLink></div>
         <Button variant="primary" icon={guest ? undefined : Plus} className="mt-5" onClick={guest ? () => navigate(authPath("signup")) : onStart}>
           {guest ? "Sign up to start a roll" : "Start a roll"}
         </Button>

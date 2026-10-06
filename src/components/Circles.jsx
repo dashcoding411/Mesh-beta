@@ -10,6 +10,7 @@ import { checkName } from "../lib/moderation";
 import { navigate } from "../lib/router";
 import { plural } from "../lib/format";
 import HomeHeader from "./shell/HomeHeader";
+import HelpLink from "./ui/HelpLink";
 import Tabs from "./ui/Tabs";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
@@ -48,6 +49,9 @@ export default function Circles({ circleId, view }) {
             onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
             {tab === "circles" ? "Start a circle" : "Plan a gathering"}
           </Button>
+          <HelpLink guide={tab === "circles" ? "circles" : "gatherings"} className="-mt-2 mb-3">
+            {tab === "circles" ? "How circles work" : "How gatherings work"}
+          </HelpLink>
           {tab === "gatherings" && (
             <button type="button" onClick={() => navigate("/whats-on")}
               className="press mb-5 flex min-h-14 w-full items-center gap-3 rounded-card border border-line bg-surface px-4 text-left hover:border-line-strong">

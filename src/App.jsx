@@ -62,6 +62,7 @@ const ParentalControls = lazy(() => import("./components/ParentalControls"));
 const NotFound = lazy(() => import("./components/NotFound"));
 const Welcome = lazy(() => import("./components/Welcome"));
 const WhatsOn = lazy(() => import("./components/WhatsOn"));
+const Help = lazy(() => import("./components/Help"));
 const WeekRecap = lazy(() => import("./components/WeekRecap"));
 const StaffStats = lazy(() => import("./components/StaffStats"));
 const Rolls = lazy(() => import("./components/rolls/Rolls"));
@@ -75,7 +76,7 @@ const InterestsDialog = named(() => import("./components/Interests"), "Interests
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
-  notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on", rolls: "Rolls",
+  notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on", rolls: "Rolls", help: "Help",
 };
 
 // Brick-mode section for a page. Messaging, notifications, settings and
@@ -435,6 +436,7 @@ export default function App() {
       case "notifications": content = <Notifications />; break;
       case "leaderboard": content = <Leaderboard groupId={page.groupId} />; break;
       case "whatson": content = <WhatsOn />; break;
+      case "help": content = <Help key={page.id || "home"} guideId={page.id} />; break;
       case "rolls": content = <Rolls rollId={page.id} />; break;
       default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }

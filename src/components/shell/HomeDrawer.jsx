@@ -51,7 +51,7 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
       </nav>
 
       <nav aria-label="More" className="shrink-0 border-t border-line pt-2">
-        <ul className="grid grid-cols-3 gap-1">
+        <ul className="grid gap-1" style={{ gridTemplateColumns: `repeat(${navFor(MORE_NAV, guest).length}, minmax(0, 1fr))` }}>
           {navFor(MORE_NAV, guest).map(({ id, label, icon: Icon, path }) => (
             <li key={id}>
               <button type="button" onClick={() => go(path)} aria-current={current === id ? "page" : undefined}

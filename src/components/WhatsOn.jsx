@@ -5,6 +5,7 @@ import { areaChoices, groupWhatsOn, inArea } from "../lib/whatson";
 import { authPath, navigate } from "../lib/router";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
+import HelpLink from "./ui/HelpLink";
 import { GatheringCard, NewGatheringDialog } from "./Events";
 import { useFriendsGoing } from "../lib/useFriendsGoing";
 import Button from "./ui/Button";
@@ -56,6 +57,7 @@ export default function WhatsOn() {
           <p className="text-callout text-fg-muted">
             Runs, dinners, gigs and meetups people are putting on. Public gatherings only. Anyone can look, and replying is free with a Mesh account.
           </p>
+          <HelpLink guide="gatherings">How gatherings work</HelpLink>
 
           <div className="mt-4">
             <label htmlFor="whatson-area" className="mb-1.5 block text-callout font-medium">Near</label>

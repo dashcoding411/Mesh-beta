@@ -19,6 +19,7 @@ import Switch from "./ui/Switch";
 import { useBrick } from "../lib/useBrick";
 import { useShell } from "./shell/ShellContext";
 import TopBar from "./shell/TopBar";
+import HelpLink from "./ui/HelpLink";
 import Button from "./ui/Button";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import Badge from "./ui/Badge";
@@ -109,6 +110,7 @@ export default function BrickSettings() {
             <h1 className="text-title-1">Brick mode</h1>
           </header>
           <BrickIntro />
+          <HelpLink guide="brick">How Brick mode works</HelpLink>
 
               <section aria-labelledby="brick-now" data-tour="brick-now" className="rounded-card border border-line bg-surface p-4">
             <div className="flex items-start gap-3">

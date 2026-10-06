@@ -49,7 +49,7 @@ const MEMBER_STEPS = [
       more: "Brick mode, the Leaderboard and Settings are under More, so you can change your limits any time.",
       sections: "Brick mode is in this menu too, so you can change your limits any time.",
     } },
-  { title: "You're all set", body: "Replay this tour any time from Settings." },
+  { title: "You're all set", body: "Stuck on anything? Help, in the menu, has short guides to everything. You can replay this tour from there too." },
 ];
 
 const GUEST_STEPS = [
@@ -58,6 +58,7 @@ const GUEST_STEPS = [
     body: "Video with limits you set, news from verified journalists, and communities. Browsing is free." },
   { targets: ["search", "nav-search", "tab-search"], title: "Search", body: "Find people, posts, circles and news." },
   { targets: ["login"], title: "Make an account", body: "Log in or sign up to post, follow people and message." },
+  { targets: ["sections", "more"], title: "Help", body: "Help, in this menu, explains everything in Mesh in plain words." },
   { title: "Enjoy Mesh", body: "Ads never target what you do, your data is never sold, and the scroll ends." },
 ];
 

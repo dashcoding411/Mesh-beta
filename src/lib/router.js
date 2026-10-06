@@ -81,6 +81,7 @@ const PAGES = [
   [/^\/whats-on$/, () => ({ tab: "home", section: "whatson" })],
   [/^\/rolls(?:\/([^/]+))?$/, (m) => ({ tab: "home", section: "rolls", id: m[1] ? decodeURIComponent(m[1]) : null })],
   [/^\/welcome$/, () => ({ tab: "welcome" })],
+  [/^\/help(?:\/([a-z0-9-]+))?$/, (m) => ({ tab: "home", section: "help", id: m[1] || null })],
   // Saved lives on your profile now; old links land there.
   [/^\/saved$/, () => ({ tab: "account", view: "profile", profileTab: "saved" })],
   [/^\/notifications$/, () => ({ tab: "home", section: "notifications" })],

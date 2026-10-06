@@ -247,6 +247,7 @@ export default function Settings() {
           </Group>
 
           <Group title="Help and policies">
+            <Row icon={BookOpen} label="Help and guides" value="How to do anything in Mesh, in plain words" onClick={() => navigate("/help")} />
             <Row icon={Compass} label="Take the tour" value="A quick look at where everything is in Mesh" onClick={replayTour} />
             <Row icon={LifeBuoy} label="Contact Mesh" value={BUSINESS.supportEmail} onClick={() => { window.location.href = `mailto:${BUSINESS.supportEmail}`; }} />
             <Row icon={BookOpen} label="Community Guidelines" value="What's allowed on Mesh, and how appeals work" onClick={() => navigate("/legal/guidelines")} />
