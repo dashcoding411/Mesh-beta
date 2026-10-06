@@ -1,15 +1,25 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { isNativeApp } from "./lib/native";
 import { allowed, onConsent } from "./lib/consent";
 
-// Google's account picker names this domain. To show joinmesh.social, add
-// https://joinmesh.social/__/auth/handler as a redirect URI on the project's
-// OAuth web client in Google Cloud, then use "joinmesh.social" here when
-// location.hostname is joinmesh.social. Until then it must stay as is, or
-// Google sign-in fails with redirect_uri_mismatch.
-const AUTH_DOMAIN = "mesh-a293c.firebaseapp.com";
+// Where Google and Apple sign-in run. On joinmesh.social it should be the
+// site itself: Safari blocks the cross-site storage the firebaseapp.com
+// helper needs, which makes sign-in slow, loses the result after a redirect,
+// and breaks it in the iPhone home-screen app. Google's account picker also
+// names this domain. Firebase Hosting serves the helper on our domain
+// (/__/auth/handler), but Google has to allow it first: the OAuth web client
+// in Google Cloud must list https://joinmesh.social/__/auth/handler (and the
+// www one) as redirect URIs. Until SITE_AUTH is true, it stays on
+// firebaseapp.com, or Google sign-in fails with redirect_uri_mismatch.
+const SITE_AUTH = false;
+const SITE_AUTH_HOSTS = ["joinmesh.social", "www.joinmesh.social"];
+const FIREBASE_AUTH_DOMAIN = "mesh-a293c.firebaseapp.com";
+const AUTH_DOMAIN = SITE_AUTH && typeof location !== "undefined" && SITE_AUTH_HOSTS.includes(location.hostname)
+  ? location.hostname : FIREBASE_AUTH_DOMAIN;
+/** Sign-in runs on this site, so a full-page redirect works in every browser. */
+export const sameSiteAuth = AUTH_DOMAIN !== FIREBASE_AUTH_DOMAIN;
 
 // Public client config; access control is in firestore.rules and storage.rules.
 const firebaseConfig = {
@@ -52,7 +62,13 @@ async function startAppCheck() {
 if (allowed("recaptcha")) startAppCheck();
 onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
 
-export const auth = getAuth(app);
+// Without a popup/redirect resolver here. Given one, Firebase loads Google's
+// sign-in frame and script on every page in Safari and on every phone, and
+// holds back the signed-in user until they arrive (a second or more, longer
+// in Safari). lib/auth.js passes the resolver only when someone signs in.
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+});
 // Auto-detected long polling for proxies that break streaming.
 export const db = initializeFirestore(app, {
   experimentalAutoDetectLongPolling: true,

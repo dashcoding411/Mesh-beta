@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { auth } from "../firebase";
 import { signInWithPhoneNumber, RecaptchaVerifier, signOut } from "firebase/auth";
 import {
-  signInEmail, signUpEmail, signInGoogle, signInApple,
+  signInEmail, signUpEmail, signInGoogle, signInApple, finishRedirect, redirectPending,
   resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
 } from "../lib/auth";
 import { validateUsername, validBirthYear, passwordProblem } from "../lib/validate";
@@ -71,7 +71,9 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   const [confirmation, setConfirmation] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Back from Google or Apple's own page: busy until that sign-in finishes.
+  const [returning] = useState(redirectPending);
+  const [busy, setBusy] = useState(returning);
   const [showReset, setShowReset] = useState(false);
   const [pendingUser, setPendingUser] = useState(signedInUser);
   // Someone gave an under-16 birth year on this device recently: no new sign-ups.
@@ -98,6 +100,20 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
     const profile = await fetchProfile(cred.user.uid).catch(() => null);
     if (!profile) setPendingUser(cred.user);
   };
+
+  // Finishes a sign-in that went to the provider's page and back (a blocked
+  // popup, or the iPhone home-screen app). With none pending, this readies
+  // the popup so the first tap on Google opens it straight away.
+  useEffect(() => {
+    let live = true;
+    finishRedirect()
+      .then((cred) => (live ? afterSignIn(cred) : null))
+      .catch((err) => { if (live) fail(err); })
+      .finally(() => { if (live && returning) setBusy(false); });
+    return () => { live = false; };
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEmail = async (e) => {
     e.preventDefault();

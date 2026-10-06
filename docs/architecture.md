@@ -107,6 +107,23 @@ are on. The preview uses CSS; the edits are drawn into a new JPEG on "Use
 photo". Music isn't supported: there's no licensed catalogue and no server to
 mix audio.
 
+## Sign-in (`firebase.js`, `lib/auth.js`)
+
+Auth starts without Firebase's popup/redirect resolver. With it, Firebase
+loads Google's sign-in frame and script on every page in Safari and on every
+phone, and holds back the signed-in user until they arrive. The resolver is
+passed only to the sign-in calls, as a subclass so lib/auth.js can start it
+when the sign-in page opens (`finishRedirect`); a tap then opens Google's
+popup at once, which Safari needs. A blocked popup falls back to a redirect,
+which the sign-in page finishes when it loads again.
+
+Sign-in still runs through mesh-a293c.firebaseapp.com, which Safari treats as
+another site (blocked storage, lost redirect results, no sign-in from the
+iPhone home-screen app). `SITE_AUTH` in firebase.js moves it to
+joinmesh.social once Google's OAuth web client lists
+https://joinmesh.social/__/auth/handler (and the www one) as redirect URIs;
+then the iPhone home-screen app signs in with a redirect.
+
 ## Privacy
 
 Mesh is 16 and over (Online Safety Amendment (Social Media Minimum Age) Act

@@ -1,10 +1,13 @@
 // Authentication helpers: providers, persistence, recovery, error mapping.
-import { auth } from "../firebase";
+import { auth, sameSiteAuth } from "../firebase";
+import { isIOS, isStandalone } from "./install";
 import {
   GoogleAuthProvider,
   OAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
+  browserPopupRedirectResolver,
+  getRedirectResult,
+  signInWithPopup as popup,
+  signInWithRedirect as redirect,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -100,13 +103,47 @@ export async function signUpEmail(email, password, remember) {
 // Provider sign-in opens its popup in the same tick as the tap: phones
 // (iPhones especially) block popups opened after an await. Persistence is
 // already local by default. If the popup is blocked anyway, fall back to a
-// full-page redirect.
+// full-page redirect, which finishes in finishRedirect when the page loads
+// again. An iPhone home-screen app can't get a popup's result back, so it
+// redirects from the start, once sign-in runs on this site.
+// The popup and redirect machinery goes with each call, not on auth itself
+// (see firebase.js). Firebase keeps one instance per class it's given, so a
+// subclass of our own lets us hold that instance and start it on the sign-in
+// page (finishRedirect). Then a tap opens Google's popup at once: Safari
+// blocks popups that open more than a moment after the tap.
+let resolver = null;
+class Resolver extends browserPopupRedirectResolver {
+  constructor() { super(); resolver = this; }
+}
+const signInWithPopup = (a, p) => popup(a, p, Resolver);
+const signInWithRedirect = (a, p) => redirect(a, p, Resolver);
+
 function withPopup(provider, remember) {
   markPersistence(remember);
+  if (sameSiteAuth && isIOS() && isStandalone()) return signInWithRedirect(auth, provider);
   return signInWithPopup(auth, provider).catch((err) => {
     if (err?.code === "auth/popup-blocked") return signInWithRedirect(auth, provider);
     throw err;
   });
+}
+
+/** True while coming back from a provider's sign-in page (Firebase marks it in this tab). */
+export function redirectPending() {
+  try { return Object.keys(sessionStorage).some((k) => k.startsWith("firebase:pendingRedirect")); } catch { return false; }
+}
+
+/**
+ * Finishes a redirect sign-in (the credential, or null), and readies the
+ * popup machinery so the next tap opens it straight away.
+ */
+export function finishRedirect() {
+  const result = getRedirectResult(auth, Resolver);
+  // Firebase makes the resolver once auth has started, so this waits for
+  // that. `_initialize` is Firebase's own (tested in auth.test.js); if it
+  // ever goes, the first popup just takes a moment longer to open.
+  const warm = () => { try { resolver?._initialize?.(auth)?.catch?.(() => {}); } catch { /* still works, just slower */ } };
+  result.then(warm, warm);
+  return result;
 }
 
 export function signInGoogle(remember) {
@@ -164,6 +201,10 @@ const MESSAGES = {
   "auth/network-request-failed": "Can't reach the network. Check your connection.",
   "auth/requires-recent-login": "For security, log in again before changing this.",
   "auth/popup-blocked": "Your browser blocked the sign-in popup. Allow popups and retry.",
+  "auth/web-storage-unsupported":
+    "Your browser is blocking what sign-in needs. In Safari, leave Private Browsing, and check Block All Cookies is off (Settings, then Safari).",
+  "auth/unauthorized-domain": "Sign-in isn't set up for this web address. Open joinmesh.social and try again.",
+  "auth/internal-error": "Sign-in didn't finish. Try again, or use your email address instead.",
   "auth/account-exists-with-different-credential":
     "You already have an account with that email using a different sign-in method.",
   "auth/operation-not-allowed": "That sign-in method isn't enabled for this app yet.",
