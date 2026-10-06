@@ -1,4 +1,4 @@
-import { ExternalLink, ListChecks } from "lucide-react";
+import { ExternalLink, Timer } from "lucide-react";
 import { CITE, hostOf } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
@@ -34,9 +34,9 @@ export function StoryBody({ story }) {
   return (
     <>
       {story.keyPoints?.filter(Boolean).length > 0 && (
-        <section aria-label="Key points" className="mt-6 rounded-card border border-line bg-surface p-4">
+        <section aria-label="The 60-second version" className="mt-6 rounded-card border border-line bg-surface p-4">
           <h2 className="mb-2 flex items-center gap-2 text-label font-semibold uppercase tracking-wider text-fg-subtle">
-            <ListChecks size={14} aria-hidden="true" /> Key points
+            <Timer size={14} aria-hidden="true" /> The 60-second version
           </h2>
           <ul className="space-y-1.5">
             {story.keyPoints.filter(Boolean).map((k, i) => (

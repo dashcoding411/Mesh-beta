@@ -59,6 +59,14 @@ describe("ready for review", () => {
   });
   it("passes a complete story", () => {
     const text = "A long enough paragraph about the council's new budget, which rose by four per cent this year [1], according to its own papers [2].";
-    expect(reviewProblems(story([blk("a", text)], { title: "Council budget rises four per cent", sources: ["https://a.example/1", "https://b.example/2"] }))).toEqual([]);
+    const keyPoints = ["The council's budget rose four per cent.", "Rates go up to pay for it.", "Councillors vote on it next month."];
+    expect(reviewProblems(story([blk("a", text)], { title: "Council budget rises four per cent", sources: ["https://a.example/1", "https://b.example/2"], keyPoints }))).toEqual([]);
+  });
+  it("needs the 60-second version, three full points", () => {
+    const text = "A long enough paragraph about the council's new budget, which rose by four per cent this year [1], according to its own papers [2].";
+    const base = { title: "Council budget rises four per cent", sources: ["https://a.example/1", "https://b.example/2"] };
+    expect(reviewProblems(story([blk("a", text)], base)).join(" ")).toMatch(/60-second version: all three/);
+    const short = { ...base, keyPoints: ["Budget up.", "Rates go up to pay for it.", "Councillors vote on it next month."] };
+    expect(reviewProblems(story([blk("a", text)], short)).join(" ")).toMatch(/full sentence/);
   });
 });

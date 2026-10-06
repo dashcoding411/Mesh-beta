@@ -1,6 +1,6 @@
 // Mesh staff: admins (set in the console) and the moderators they appoint.
 import {
-  arrayUnion, collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where,
+  arrayUnion, collection, collectionGroup, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
@@ -86,5 +86,32 @@ export async function fetchStaffStats(now = Date.now()) {
     count(query(collection(db, "news"), where("status", "==", "approved"))),
     count(query(collection(db, "reports"), where("status", "==", "open"))),
   ]);
-  return { members, signups, activity, posts, gatherings, circles, stories, reports };
+  return { members, signups, activity, posts, gatherings, circles, stories, reports, fresh: await fetchFreshActivity(now) };
+}
+
+/**
+ * The last day's likes, comments and reposts from accounts under a week old
+ * (lib/fresh.js), as [{ postId, kind, at }], for spotting fake crowds. Null
+ * when they can't be read.
+ */
+export async function fetchFreshActivity(now = Date.now()) {
+  const since = Timestamp.fromMillis(now - 86400000);
+  const recent = (q) => getDocs(query(q, where("fresh", "==", true), where("createdAt", ">=", since), orderBy("createdAt", "desc"), limit(3000)));
+  try {
+    const [likes, comments, reposts] = await Promise.all([
+      recent(collectionGroup(db, "likes")),
+      recent(collectionGroup(db, "comments")),
+      recent(collection(db, "reposts")),
+    ]);
+    // posts/{postId}/likes/…, posts/{postId}/comments/{id}/likes/… and posts/{postId}/comments/…
+    const onPost = (d) => (d.ref.path.startsWith("posts/") ? d.ref.path.split("/")[1] : null);
+    return [
+      ...likes.docs.map((d) => ({ postId: onPost(d), kind: d.ref.path.includes("/comments/") ? "comment like" : "like", at: tsMillis(d.data().createdAt) })),
+      ...comments.docs.map((d) => ({ postId: onPost(d), kind: "comment", at: tsMillis(d.data().createdAt) })),
+      ...reposts.docs.map((d) => ({ postId: d.data().postId, kind: "repost", at: tsMillis(d.data().createdAt) })),
+    ].filter((r) => r.postId && r.at);
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }

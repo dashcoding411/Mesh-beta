@@ -12,6 +12,7 @@
 
 import { tsMillis, isHeld } from "./db";
 import { assessText, hitsHiddenWords } from "./moderation";
+import { settled } from "./fresh";
 
 const textOf = (p) => `${p.title || ""}\n${p.text || ""}\n${p.poll ? p.poll.options.join("\n") : ""}`;
 const verdicts = new Map(); // post id + text length -> "ok" | "quoted" | "borderline" | "block"
@@ -64,18 +65,19 @@ function interestValue(post, affinity) {
 // Social: follows, reposts by followed accounts, and comment activity.
 function socialValue(post, followingSet) {
   const connected = followingSet.has(post.authorId);
-  const msi = Math.log2(1 + (post.commentCount || 0)) * 1.8;
+  const msi = Math.log2(1 + settled(post.commentCount, post.freshComments)) * 1.8;
   const vouches = post.repostedBy?.length || 0;
   return (connected ? 4 : 0) + msi * (connected ? 1.5 : 1) + Math.log2(1 + vouches) * 3;
 }
 
-// Endorsement: saves and sends weigh more than likes.
+// Endorsement: saves and sends weigh more than likes. Those from accounts
+// under a week old count a quarter (lib/fresh.js), so new accounts can't lift a post.
 function endorsementValue(post) {
   return (
-    Math.log2(1 + (post.likeCount || 0)) * 0.9 +
-    Math.log2(1 + (post.saveCount || 0)) * 1.8 +
-    Math.log2(1 + (post.sendCount || 0)) * 2.6 +
-    Math.log2(1 + (post.repostCount || 0)) * 2.2
+    Math.log2(1 + settled(post.likeCount, post.freshLikes)) * 0.9 +
+    Math.log2(1 + settled(post.saveCount, post.freshSaves)) * 1.8 +
+    Math.log2(1 + settled(post.sendCount, post.freshSends)) * 2.6 +
+    Math.log2(1 + settled(post.repostCount, post.freshReposts)) * 2.2
   );
 }
 

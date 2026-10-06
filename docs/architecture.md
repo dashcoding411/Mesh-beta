@@ -255,6 +255,17 @@ slots, met progressively to avoid clustering. A diversity pass limits
 repeated authors and formats. Borderline content is never recommended to
 non-followers and is spaced apart; reports reduce reach.
 
+Fake crowds (`lib/fresh.js`): likes, saves, sends, reposts, comments and
+comment likes from accounts under a week old carry `fresh: true`, and each
+count has a twin (`freshLikes`, `freshSaves`, `freshSends`, `freshReposts`,
+`freshComments`; `freshLikes` on comments). The rules (`newAccount`,
+`freshOk`, `tiedFresh`) make the stamp match the account's age and move the
+twin with the count. Ranking, comment order and search use `settled()`, which
+counts fresh ones at a quarter; the visible counts stay true. Comments by new
+accounts show "New account". Staff stats list posts with 8 or more fresh
+actions within an hour in the last day (`fetchFreshActivity`, `freshBursts`),
+read through collection-group queries that only return fresh records.
+
 ## Flicks
 
 Flicks home is a chooser rather than a feed: a row of short Flicks and a grid
@@ -432,8 +443,10 @@ their profile, which opens on their published stories. Drafts are private to the
 lead plus up to three co-authors). Saves run in a transaction on `version`,
 with a three-way block merge on conflict (`storyDoc.mergeStory`) and per-block
 presence locks. Journalists publish their own stories; there is no review
-step. Publishing (`readyToPublish`) requires a headline, body, two sources and
-the journalist's attestation, records a revision, and is blocked while the
+step. Publishing (`readyToPublish`) requires a headline, body, two sources,
+the 60-second version (`keyPoints`: three points of 20 characters or more,
+shown at the top of the story and in Quick read) and the journalist's
+attestation, records a revision, and is blocked while the
 story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
@@ -507,7 +520,9 @@ Ad spaces with no local ad fall back to Google AdSense (`GoogleAdCard.jsx`,
 turned on the "Google ads" cookie choice (off by default). The script loads
 only then, requests non-personalised ads, and a space Google leaves
 `unfilled` is removed. The CSP allows Google's ad domains; the site carries
-the AdSense ownership meta tag and `ads.txt`. Auto ads stay off.
+the AdSense ownership meta tag and `ads.txt`. Auto ads stay off. Political
+and issue ads aren't accepted; in AdSense the Politics sensitive category is
+blocked in the account's blocking controls (a console setting, not code).
 
 ## Edge (`cloudflare/edge`)
 

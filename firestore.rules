@@ -81,6 +81,21 @@ service cloud.firestore {
         && ((after == before + 1 && existsAfter(rel) && !exists(rel))
             || (after == before - 1 && !existsAfter(rel) && exists(rel)));
     }
+    // Fake crowds (src/lib/fresh.js): what an account under a week old adds is
+    // stamped fresh, and the count's fresh twin moves with the count.
+    function newAccount() {
+      return myProfile().get('createdAt', timestamp.value(0)) > request.time - duration.value(7, 'd');
+    }
+    function freshOk(d) {
+      return d.get('fresh', false) == newAccount();
+    }
+    function tiedFresh(self, field, twin, rel) {
+      let delta = incomingData().get(field, 0) - resource.data.get(field, 0);
+      let fresh = existsAfter(rel) ? getAfter(rel).data.get('fresh', false) : get(rel).data.get('fresh', false);
+      return tiedCount(self, field, rel)
+        && incomingData().get(twin, 0) == resource.data.get(twin, 0) + (fresh ? delta : 0)
+        && getAfter(self).data.get(twin, 0) == incomingData().get(twin, 0);
+    }
     // Rate limiting: each write kind stamps rateLimits/{uid} with request.time in
     // the same batch and is refused if the previous stamp is too recent.
     function rateOk(kind, seconds) {
@@ -1430,18 +1445,23 @@ service cloud.firestore {
           && isModOf(resource.data.groupId)
           && ((circleOf(resource.data.groupId).privacy == 'public' && incomingData().visibility == 'public')
               || (circleOf(resource.data.groupId).privacy != 'public' && incomingData().visibility == 'circle')))
-        // Counts move only with the record they count (tiedCount).
-        || (onlyKey('likeCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'likeCount',
+        // Counts move only with the record they count (tiedCount), and their
+        // fresh twins with fresh records (tiedFresh).
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['likeCount', 'freshLikes'])
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId), 'likeCount', 'freshLikes',
               /databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid)))
-        || (onlyKey('saveCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'saveCount',
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['saveCount', 'freshSaves'])
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId), 'saveCount', 'freshSaves',
               /databases/$(database)/documents/posts/$(postId)/saves/$(request.auth.uid)))
-        || (onlyKey('sendCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'sendCount',
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['sendCount', 'freshSends'])
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId), 'sendCount', 'freshSends',
               /databases/$(database)/documents/posts/$(postId)/sends/$(request.auth.uid)))
-        || (onlyKey('repostCount') && tiedCount(/databases/$(database)/documents/posts/$(postId), 'repostCount',
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['repostCount', 'freshReposts'])
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId), 'repostCount', 'freshReposts',
               /databases/$(database)/documents/reposts/$(postId + '_' + request.auth.uid)))
-        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['commentCount', 'lastCommentId'])
+        || (incomingData().diff(resource.data).affectedKeys().hasOnly(['commentCount', 'lastCommentId', 'freshComments'])
           && incomingData().lastCommentId is string
-          && tiedCount(/databases/$(database)/documents/posts/$(postId), 'commentCount',
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId), 'commentCount', 'freshComments',
               /databases/$(database)/documents/posts/$(postId)/comments/$(incomingData().lastCommentId)))
         // Poll totals move only with the voter's first vote.
         || (onlyKey('pollVotes0') && incomingData().pollVotes0 == resource.data.get('pollVotes0', 0) + 1 && votedNow(0))
@@ -1479,8 +1499,9 @@ service cloud.firestore {
         allow read: if (guest() && get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public')
           || (signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data));
         allow create: if isUser(uid)
-          && incomingData().keys().hasOnly(['username', 'createdAt'])
+          && incomingData().keys().hasOnly(['username', 'createdAt', 'fresh'])
           && isMyName(incomingData().username)
+          && freshOk(incomingData())
           && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
         allow update: if false;
         allow delete: if isUser(uid);
@@ -1489,7 +1510,8 @@ service cloud.firestore {
       match /sends/{uid} {
         allow read: if isUser(uid);
         allow create: if isUser(uid)
-          && incomingData().keys().hasOnly(['createdAt'])
+          && incomingData().keys().hasOnly(['createdAt', 'fresh'])
+          && freshOk(incomingData())
           && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
         allow update, delete: if false;
       }
@@ -1498,7 +1520,8 @@ service cloud.firestore {
       match /saves/{uid} {
         allow read: if isUser(uid);
         allow create: if isUser(uid)
-          && incomingData().keys().hasOnly(['createdAt'])
+          && incomingData().keys().hasOnly(['createdAt', 'fresh'])
+          && freshOk(incomingData())
           && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data);
         allow update: if false;
         allow delete: if isUser(uid);
@@ -1515,8 +1538,9 @@ service cloud.firestore {
         // photo (an owned inline image or a Storage URL).
         allow create: if signedIn()
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'gif', 'sensitive',
-                                            'parentId', 'image', 'likeCount', 'createdAt'])
+                                            'parentId', 'image', 'likeCount', 'createdAt', 'fresh'])
           && authorIsMe(incomingData())
+          && freshOk(incomingData())
           && incomingData().createdAt == request.time
           && rateOk('comment', 3)
           && incomingData().get('sensitive', false) is bool
@@ -1540,9 +1564,9 @@ service cloud.firestore {
                           && follows(parentPost().authorId, request.auth.uid)))));
         // Like counts move only with the liker's record.
         allow update: if signedIn()
-          && incomingData().diff(resource.data).affectedKeys().hasOnly(['likeCount', 'lastLiker'])
+          && incomingData().diff(resource.data).affectedKeys().hasOnly(['likeCount', 'lastLiker', 'freshLikes'])
           && incomingData().lastLiker == request.auth.uid
-          && tiedCount(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId), 'likeCount',
+          && tiedFresh(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId), 'likeCount', 'freshLikes',
                        /databases/$(database)/documents/posts/$(postId)/comments/$(commentId)/likes/$(request.auth.uid));
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid
@@ -1553,8 +1577,9 @@ service cloud.firestore {
           allow read: if (guest() && get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public')
             || (signedIn() && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data));
           allow create: if isUser(uid)
-            && incomingData().keys().hasOnly(['createdAt'])
+            && incomingData().keys().hasOnly(['createdAt', 'fresh'])
             && incomingData().createdAt == request.time
+            && freshOk(incomingData())
             && canReadPost(get(/databases/$(database)/documents/posts/$(postId)).data)
             && notSuspended();
           allow update: if false;
@@ -1777,11 +1802,21 @@ service cloud.firestore {
     }
 
     // Reposts: id `{postId}_{uid}`; only others' public posts.
+    // Staff look for bursts of fresh likes and comments (fake crowds) across
+    // posts. Only fresh records can be listed this way.
+    match /{path=**}/likes/{likeId} {
+      allow list: if isStaff() && resource.data.get('fresh', false) == true;
+    }
+    match /{path=**}/comments/{commentId} {
+      allow list: if isStaff() && resource.data.get('fresh', false) == true;
+    }
+
     match /reposts/{repostId} {
       allow read: if true;
       allow create: if signedIn()
-        && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt'])
+        && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt', 'fresh'])
         && incomingData().uid == request.auth.uid
+        && freshOk(incomingData())
         && isMyName(incomingData().username)
         && repostId == incomingData().postId + '_' + request.auth.uid
         && incomingData().createdAt == request.time
@@ -1945,6 +1980,9 @@ service cloud.firestore {
     // but the one publishing must have accepted the journalist agreement.
     function readyToPublish(d) {
       return d.title.size() >= 10 && d.script.size() >= 100 && d.sources.size() >= 2
+        // The 60-second version: three points, each a sentence.
+        && d.get('keyPoints', []).size() == 3
+        && d.keyPoints[0].size() >= 20 && d.keyPoints[1].size() >= 20 && d.keyPoints[2].size() >= 20
         && d.attestedAt == request.time && d.submittedAt == request.time && d.publishedAt == request.time
         && d.get('legalHold', false) != true
         && get(/databases/$(database)/documents/newsWriters/$(request.auth.uid)).data.get('agreedAt', null) != null;

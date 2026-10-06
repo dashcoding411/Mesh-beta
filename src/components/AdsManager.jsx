@@ -245,6 +245,9 @@ function AdEditor({ ad, onClose, onSaved }) {
             <Switch checked={form.adultsOnly} onChange={(v) => set({ adultsOnly: v })} label="18 and over only" />
             18 and over only <span className="text-caption text-fg-subtle">(required for alcohol; gambling, tobacco, vaping and adult ads aren't accepted)</span>
           </label>
+          <p className="text-caption text-fg-subtle">
+            No political or issue ads: nothing from or about a party, candidate, election or referendum, and nothing arguing one side of a political issue.
+          </p>
           <InlineMessage>{error}</InlineMessage>
         </div>
         <div>

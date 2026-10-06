@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Lock, RefreshCw } from "lucide-react";
+import { ExternalLink, Lock, RefreshCw, ShieldCheck, Users } from "lucide-react";
 import { ACTIVITY_SINCE, fetchStaffStats, staffRole } from "../lib/db";
-import { activeCounts, retention, signupsByDay } from "../lib/stats";
+import { navigate } from "../lib/router";
+import { activeCounts, freshBursts, retention, signupsByDay } from "../lib/stats";
 import TopBar from "./shell/TopBar";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState, Skeleton } from "./ui/States";
@@ -42,6 +43,7 @@ export default function StaffStats() {
   const active = useMemo(() => (stats?.activity ? activeCounts(stats.activity, now) : null), [stats, now]);
   const kept = useMemo(() => (stats?.activity ? retention(stats.activity, now, ACTIVITY_SINCE) : null), [stats, now]);
   const days = useMemo(() => (stats?.signups ? signupsByDay(stats.signups, now) : null), [stats, now]);
+  const bursts = useMemo(() => (stats?.fresh ? freshBursts(stats.fresh) : null), [stats]);
   const week = days ? days.slice(-7).reduce((s, d) => s + d.count, 0) : null;
   const month = days ? days.reduce((s, d) => s + d.count, 0) : null;
 
@@ -88,6 +90,11 @@ export default function StaffStats() {
                 </div>
               </Section>
 
+              <Section title="Possible fake crowds"
+                note="Posts that got 8 or more likes, comments or reposts within an hour from accounts under a week old, in the last day. A farm of new accounts looks like this, but so can a real post at O-Week, when everyone is new: open it and look before acting.">
+                <FakeCrowds bursts={bursts} />
+              </Section>
+
               <Section title="Everything else" note="Each opens in a new tab, signed in as you.">
                 <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
                   {ELSEWHERE.map((e) => (
@@ -106,7 +113,7 @@ export default function StaffStats() {
               </Section>
 
               <p className="text-caption text-fg-subtle">
-                Loading this page reads each account that joined in the last 30 days and every activity record, so it uses some of the free database allowance. Refresh only when you need to.
+                Loading this page reads each account that joined in the last 30 days, every activity record and the last day's likes, comments and reposts from new accounts, so it uses some of the free database allowance. Refresh only when you need to.
               </p>
             </div>
           )}
@@ -123,6 +130,37 @@ function Section({ title, note, children }) {
       {note && <p className="mt-1 text-caption text-fg-muted">{note}</p>}
       <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+const KIND_NAMES = { like: ["like", "likes"], "comment like": ["comment like", "comment likes"], comment: ["comment", "comments"], repost: ["repost", "reposts"] };
+const clock = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+function FakeCrowds({ bursts }) {
+  if (!bursts) return <p className="text-callout text-fg-muted">Couldn't check. Refresh to try again.</p>;
+  if (!bursts.length) {
+    return (
+      <p className="flex items-center gap-2 rounded-card border border-line bg-surface p-4 text-callout text-fg-muted">
+        <ShieldCheck size={18} className="shrink-0 text-success-text" aria-hidden="true" /> Nothing in the last day.
+      </p>
+    );
+  }
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+      {bursts.slice(0, 20).map((b) => (
+        <li key={b.postId}>
+          <button type="button" onClick={() => navigate(`/p/${b.postId}`)} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2">
+            <Users size={18} className="shrink-0 text-warning-text" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-callout font-semibold">{b.count} from new accounts, {clock(b.from)} to {clock(b.to)}</span>
+              <span className="block text-caption text-fg-muted">
+                {Object.entries(b.kinds).map(([k, n]) => `${n} ${KIND_NAMES[k]?.[n === 1 ? 0 : 1] || k}`).join(", ")}
+              </span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

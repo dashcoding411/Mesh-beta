@@ -20,7 +20,7 @@ export const BUSINESS = {
   legalEmail: "legal@joinmesh.social",
 
   website: "https://joinmesh.social",
-  lastUpdated: "6 October 2026",
+  lastUpdated: "7 October 2026",
 };
 
 export function missingFields() {

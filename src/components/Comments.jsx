@@ -315,6 +315,9 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
         </button>
         <AuthorMarks uid={node.authorId} username={node.authorName} />
         {node.authorId === ctx.post.authorId && <span className="rounded bg-accent-soft px-1.5 text-label font-semibold text-accent-text">Author</span>}
+        {node.fresh && node.authorId !== ctx.post.authorId && (
+          <span title="Written when this account was under a week old" className="rounded bg-surface-2 px-1.5 text-label font-semibold text-fg-muted">New account</span>
+        )}
         <time dateTime={isoTime(node.createdAt)} title={fullTime(node.createdAt)} className="text-caption text-fg-subtle">{shortTime(node.createdAt)}</time>
       </p>
       {replyingTo && <p className="text-caption text-fg-subtle">Replying to @{replyingTo}</p>}

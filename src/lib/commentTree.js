@@ -1,4 +1,9 @@
 import { tsMillis } from "./data/core.js";
+import { settled } from "./fresh.js";
+
+// Likes from accounts under a week old count a quarter (lib/fresh.js), so a
+// burst of new accounts can't lift a comment to the top.
+const likesOf = (c) => settled(c.likeCount, c.freshLikes);
 
 // Reddit's confidence for "Best" (80%).
 const Z = 1.281551565545;
@@ -23,7 +28,7 @@ export function bestScores(list) {
   const newestFirst = [...list].sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
   for (const c of newestFirst) {
     const seenBy = after.size - (after.has(c.authorId) ? 1 : 0);
-    const likes = c.likeCount || 0;
+    const likes = likesOf(c);
     scores.set(c.id, wilsonLower(likes, likes + seenBy));
     if (c.authorId) after.add(c.authorId);
   }
@@ -49,7 +54,7 @@ export function buildCommentTree(list, sort = "best") {
     parent.children.push(c);
   }
   const oldest = (a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt);
-  const likes = (a, b) => (b.likeCount || 0) - (a.likeCount || 0);
+  const likes = (a, b) => likesOf(b) - likesOf(a);
   let order;
   if (sort === "new") order = (a, b) => -oldest(a, b);
   else if (sort === "top") order = (a, b) => likes(a, b) || oldest(a, b);

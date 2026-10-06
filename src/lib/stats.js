@@ -44,3 +44,32 @@ export function signupsByDay(createdMs, now = Date.now(), days = 30) {
   }
   return out;
 }
+
+/**
+ * Possible fake crowds: posts that got at least `min` likes, comments or
+ * reposts from accounts under a week old (lib/fresh.js) within `windowMs`.
+ * `records` are [{ postId, kind, at }]. Busiest first, each with its busiest
+ * window: { postId, count, kinds: { like: n, … }, from, to }.
+ */
+export function freshBursts(records, { windowMs = 3600000, min = 8 } = {}) {
+  const byPost = new Map();
+  for (const r of records) {
+    if (!r.postId || !r.at) continue;
+    if (!byPost.has(r.postId)) byPost.set(r.postId, []);
+    byPost.get(r.postId).push(r);
+  }
+  const out = [];
+  for (const [postId, list] of byPost) {
+    list.sort((a, b) => a.at - b.at);
+    let best = null;
+    for (let i = 0, j = 0; j < list.length; j++) {
+      while (list[j].at - list[i].at > windowMs) i++;
+      if (!best || j - i + 1 > best.count) best = { count: j - i + 1, i, j };
+    }
+    if (best.count < min) continue;
+    const kinds = {};
+    for (const r of list.slice(best.i, best.j + 1)) kinds[r.kind] = (kinds[r.kind] || 0) + 1;
+    out.push({ postId, count: best.count, kinds, from: list[best.i].at, to: list[best.j].at });
+  }
+  return out.sort((a, b) => b.count - a.count);
+}

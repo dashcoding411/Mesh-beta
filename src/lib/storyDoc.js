@@ -117,6 +117,9 @@ export function reviewProblems(story) {
   const body = blocksToDoc(story.blocks).script;
   if ((story.title || "").trim().length < 10) out.push("Write a headline of at least 10 characters.");
   if (body.replace(/\s/g, "").length < 100) out.push("The story needs at least a paragraph or two (100 characters).");
+  const points = (story.keyPoints || []).map((k) => (k || "").trim());
+  if (points.filter(Boolean).length < 3) out.push("Write the 60-second version: all three points.");
+  else if (points.some((k) => k.length < 20)) out.push("Make each point of the 60-second version a full sentence (at least 20 characters).");
   const sources = (story.sources || []).filter(Boolean);
   if (sources.length < 2) out.push("List at least two sources.");
   const { cited } = storyStats(story);

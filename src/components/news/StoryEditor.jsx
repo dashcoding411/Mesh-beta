@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowDown, ArrowUp, Trash2, Plus, ImagePlus, History, Eye, Send, Scale, Radio, Users, X, Check, Info,
-  Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, ListChecks, Pencil, RefreshCw, TriangleAlert,
+  Heading2, Heading3, Pilcrow, Quote, List, Image as ImageIcon, Minus, BookmarkPlus, Pencil, Timer, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import {
   listenStory, saveStory, publishStory, publishUpdate, reopenStory, saveRevision, fetchRevisions, listenStoryPresence, setStoryPresence,
@@ -502,11 +502,15 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
         </div>
       </section>
 
-      <section className={cls} aria-label="Key points and sources">
-        <p className="mb-2 flex items-center gap-1.5 text-callout font-semibold"><ListChecks size={16} aria-hidden="true" /> Key points <span className="font-normal text-fg-subtle">Up to 3</span></p>
+      <section className={cls} aria-label="The 60-second version and sources">
+        <p className="flex items-center gap-1.5 text-callout font-semibold"><Timer size={16} aria-hidden="true" /> The 60-second version <span className="font-normal text-fg-subtle">Required, 3 points</span></p>
+        <p className="mb-2 mt-0.5 text-caption text-fg-subtle">
+          It sits at the top of your story and in Quick read. Someone who reads only this should still know what happened, why it matters and what happens next. Write it yourself: Mesh never uses AI summaries.
+        </p>
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <Input key={i} aria-label={`Key point ${i + 1}`} value={story.keyPoints[i]} readOnly={!editable} maxLength={200} placeholder={`Point ${i + 1}`}
+            <Input key={i} aria-label={`60-second version, point ${i + 1}`} value={story.keyPoints[i]} readOnly={!editable} maxLength={200}
+              placeholder={["What happened", "Why it matters", "What happens next"][i]}
               onChange={(e) => { const k = [...story.keyPoints]; k[i] = e.target.value; update({ keyPoints: k }); }} />
           ))}
         </div>

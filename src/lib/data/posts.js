@@ -12,6 +12,7 @@ import { myProfile, uidForUsername } from "./users.js";
 import { deleteCloudMedia, isCloudMedia } from "./uploads.js";
 import { removeFromAllAlbums } from "./albums.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
+import { isFreshAccount } from "../fresh.js";
 
 // post: photo (Still), text: up to 500 chars (Strand), short: video up to
 // three minutes (Flick), video: longer Flick, shown in feeds as a
@@ -293,22 +294,44 @@ export async function bumpAffinity(authorId, amount) {
   );
 }
 
+// Fresh records (lib/fresh.js): an account under a week old stamps what it
+// adds, and the count's fresh twin moves with the count.
+const twin = (field, by, fresh) => (fresh ? { [field]: increment(by) } : {});
+const stamp = (fresh) => (fresh ? { fresh: true } : {});
+const wasFresh = async (ref_) => (await getDoc(ref_).catch(() => null))?.data()?.fresh === true;
+
+// The rules judge freshness by the server's clock. If this device's clock
+// disagrees right at the one-week mark the write is refused, so it's tried
+// once the other way. `write(fresh)` must build a new batch each time.
+async function asFresh(write, profile) {
+  const fresh = isFreshAccount(profile || await myProfile());
+  try { return await write(fresh); }
+  catch (err) {
+    if (err?.code !== "permission-denied") throw err;
+    return write(!fresh);
+  }
+}
+
 // Counters only change in the same batch as the record they count; the rules check both.
 export async function toggleLike(post, currentlyLiked) {
   const uid = me();
   const likeRef = doc(db, "posts", post.id, "likes", uid);
   const postRef = doc(db, "posts", post.id);
-  const batch = writeBatch(db);
   if (currentlyLiked) {
+    const fresh = await wasFresh(likeRef);
+    const batch = writeBatch(db);
     batch.delete(likeRef);
-    batch.update(postRef, { likeCount: increment(-1) });
+    batch.update(postRef, { likeCount: increment(-1), ...twin("freshLikes", -1, fresh) });
     await batch.commit();
     unnotify(post.authorId, "like", { postId: post.id });
   } else {
     const profile = await myProfile();
-    batch.set(likeRef, { username: profile?.username || "", createdAt: serverTimestamp() });
-    batch.update(postRef, { likeCount: increment(1) });
-    await batch.commit();
+    await asFresh((fresh) => {
+      const batch = writeBatch(db);
+      batch.set(likeRef, { username: profile?.username || "", createdAt: serverTimestamp(), ...stamp(fresh) });
+      batch.update(postRef, { likeCount: increment(1), ...twin("freshLikes", 1, fresh) });
+      return batch.commit();
+    }, profile);
     bumpAffinity(post.authorId, SIGNAL.like).catch(() => {});
     notify(post.authorId, "like", { postId: post.id });
   }
@@ -361,18 +384,22 @@ export async function toggleSave(post, currentlySaved) {
   const uid = me();
   const saveRef = doc(db, "posts", post.id, "saves", uid);
   const postRef = doc(db, "posts", post.id);
-  const batch = writeBatch(db);
   if (currentlySaved) {
+    const fresh = await wasFresh(saveRef);
+    const batch = writeBatch(db);
     batch.delete(saveRef);
     batch.delete(doc(db, "users", uid, "saved", post.id));
-    batch.update(postRef, { saveCount: increment(-1) });
+    batch.update(postRef, { saveCount: increment(-1), ...twin("freshSaves", -1, fresh) });
     await batch.commit();
     removeFromAllAlbums(post.id).catch(() => {});
   } else {
-    batch.set(saveRef, { createdAt: serverTimestamp() });
-    batch.set(doc(db, "users", uid, "saved", post.id), { createdAt: serverTimestamp() });
-    batch.update(postRef, { saveCount: increment(1) });
-    await batch.commit();
+    await asFresh((fresh) => {
+      const batch = writeBatch(db);
+      batch.set(saveRef, { createdAt: serverTimestamp(), ...stamp(fresh) });
+      batch.set(doc(db, "users", uid, "saved", post.id), { createdAt: serverTimestamp() });
+      batch.update(postRef, { saveCount: increment(1), ...twin("freshSaves", 1, fresh) });
+      return batch.commit();
+    });
     bumpAffinity(post.authorId, SIGNAL.save).catch(() => {});
   }
 }
@@ -420,10 +447,12 @@ export async function sendPostTo(post, chatId, note = "") {
   const sendRef = doc(db, "posts", post.id, "sends", uid);
   const already = await getDoc(sendRef).catch(() => null);
   if (!already?.exists()) {
-    const b2 = writeBatch(db);
-    b2.set(sendRef, { createdAt: serverTimestamp() });
-    b2.update(doc(db, "posts", post.id), { sendCount: increment(1) });
-    await b2.commit().catch(() => {});
+    await asFresh((fresh) => {
+      const b2 = writeBatch(db);
+      b2.set(sendRef, { createdAt: serverTimestamp(), ...stamp(fresh) });
+      b2.update(doc(db, "posts", post.id), { sendCount: increment(1), ...twin("freshSends", 1, fresh) });
+      return b2.commit();
+    }).catch(() => {});
   }
   bumpAffinity(post.authorId, SIGNAL.send).catch(() => {});
 }
@@ -448,23 +477,28 @@ export async function toggleRepost(post, currentlyReposted) {
   const uid = me();
   const ref_ = doc(db, "reposts", repostId(post.id, uid));
   const postRef = doc(db, "posts", post.id);
-  const batch = writeBatch(db);
   if (currentlyReposted) {
+    const fresh = await wasFresh(ref_);
+    const batch = writeBatch(db);
     batch.delete(ref_);
-    batch.update(postRef, { repostCount: increment(-1) });
+    batch.update(postRef, { repostCount: increment(-1), ...twin("freshReposts", -1, fresh) });
     await batch.commit();
     unnotify(post.authorId, "repost", { postId: post.id });
   } else {
     const profile = await myProfile();
-    batch.set(ref_, {
-      postId: post.id,
-      postAuthorId: post.authorId,
-      uid,
-      username: profile?.username || "",
-      createdAt: serverTimestamp(),
-    });
-    batch.update(postRef, { repostCount: increment(1) });
-    await batch.commit();
+    await asFresh((fresh) => {
+      const batch = writeBatch(db);
+      batch.set(ref_, {
+        postId: post.id,
+        postAuthorId: post.authorId,
+        uid,
+        username: profile?.username || "",
+        createdAt: serverTimestamp(),
+        ...stamp(fresh),
+      });
+      batch.update(postRef, { repostCount: increment(1), ...twin("freshReposts", 1, fresh) });
+      return batch.commit();
+    }, profile);
     bumpAffinity(post.authorId, SIGNAL.repost).catch(() => {});
     notify(post.authorId, "repost", { postId: post.id });
   }
@@ -491,7 +525,7 @@ export async function removeMyReposts() {
   for (const r of list) {
     const batch = writeBatch(db);
     batch.delete(doc(db, "reposts", r.id));
-    batch.update(doc(db, "posts", r.postId), { repostCount: increment(-1) });
+    batch.update(doc(db, "posts", r.postId), { repostCount: increment(-1), ...twin("freshReposts", -1, r.fresh === true) });
     // The post may be gone; the repost still goes.
     await batch.commit().catch(() => deleteDoc(doc(db, "reposts", r.id)).catch(() => {}));
   }
@@ -570,11 +604,14 @@ export async function addComment(post, text, { gif = null, image = null, parent 
   };
   // lastCommentId lets the rules tie the count change to this comment.
   const ref_ = doc(collection(db, "posts", post.id, "comments"));
-  const batch = writeBatch(db);
-  batch.set(ref_, comment);
-  batch.set(doc(db, "rateLimits", user.uid), { comment: serverTimestamp() }, { merge: true });
-  batch.update(doc(db, "posts", post.id), { commentCount: increment(1), lastCommentId: ref_.id });
-  await batch.commit();
+  const fresh = await asFresh((f) => {
+    const batch = writeBatch(db);
+    batch.set(ref_, { ...comment, ...stamp(f) });
+    batch.set(doc(db, "rateLimits", user.uid), { comment: serverTimestamp() }, { merge: true });
+    batch.update(doc(db, "posts", post.id), { commentCount: increment(1), lastCommentId: ref_.id, ...twin("freshComments", 1, f) });
+    return batch.commit().then(() => f);
+  }, profile);
+  if (fresh) comment.fresh = true;
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
   const notice = { postId: post.id, commentId: ref_.id, text: text.slice(0, 140) };
   if (parent) notify(parent.authorId, "reply", notice);
@@ -585,11 +622,20 @@ export async function addComment(post, text, { gif = null, image = null, parent 
 export async function toggleCommentLike(post, comment, liked) {
   const uid = me();
   const ref_ = doc(db, "posts", post.id, "comments", comment.id);
-  const batch = writeBatch(db);
-  if (liked) batch.delete(doc(ref_, "likes", uid));
-  else batch.set(doc(ref_, "likes", uid), { createdAt: serverTimestamp() });
-  batch.update(ref_, { likeCount: increment(liked ? -1 : 1), lastLiker: uid });
-  await batch.commit();
+  const likeRef = doc(ref_, "likes", uid);
+  if (liked) {
+    const fresh = await wasFresh(likeRef);
+    const batch = writeBatch(db);
+    batch.delete(likeRef);
+    batch.update(ref_, { likeCount: increment(-1), lastLiker: uid, ...twin("freshLikes", -1, fresh) });
+    return batch.commit();
+  }
+  await asFresh((fresh) => {
+    const batch = writeBatch(db);
+    batch.set(likeRef, { createdAt: serverTimestamp(), ...stamp(fresh) });
+    batch.update(ref_, { likeCount: increment(1), lastLiker: uid, ...twin("freshLikes", 1, fresh) });
+    return batch.commit();
+  });
 }
 
 /** Ids of the comments the viewer has liked. Only comments with likes are checked. */
@@ -605,9 +651,10 @@ export async function fetchMyCommentLikes(postId, comments) {
 }
 
 export async function deleteCommentAndCount(postId, commentId) {
+  const fresh = await wasFresh(doc(db, "posts", postId, "comments", commentId));
   const batch = writeBatch(db);
   batch.delete(doc(db, "posts", postId, "comments", commentId));
-  batch.update(doc(db, "posts", postId), { commentCount: increment(-1), lastCommentId: commentId });
+  batch.update(doc(db, "posts", postId), { commentCount: increment(-1), lastCommentId: commentId, ...twin("freshComments", -1, fresh) });
   try { await batch.commit(); }
   catch (err) {
     // Post deleted or count already settled: remove the comment alone.

@@ -230,7 +230,7 @@ export const TERMS = {
       h: "News on Mesh",
       p: [
         "Only journalists whose identity the Mesh team has verified can write for the news section. Nobody else can publish there.",
-        "Every story is labelled as a report, analysis, explainer or opinion, so readers know what they're reading. Passing opinion off as reporting isn't allowed. A published story can be updated for developing news, with a note readers see; mistakes are fixed with corrections.",
+        "Every story is labelled as a report, analysis, explainer or opinion, so readers know what they're reading. Passing opinion off as reporting isn't allowed. Every story also opens with a 60-second version, three points its journalist writes (never AI), which must be as accurate as the story itself. A published story can be updated for developing news, with a note readers see; mistakes are fixed with corrections.",
         "Each journalist is the publisher of their own stories and is responsible for them, under the journalist agreement they accept before publishing. Mesh hosts stories: it doesn't commission, write, edit or approve them, and lists them newest first rather than ranking them by importance. A story needs a headline, the full text, at least two source links cited in the text, a description for every image, and the journalist's confirmation that it is accurate. A story flagged for a legal read can't be published until that's cleared.",
         "Mesh checks who journalists are before they can publish: their identity, and their work as a journalist (for example published stories, an outlet confirming them, or a press or union card). A record of that check is kept privately by the Mesh team.",
         `If you think a story is defamatory or otherwise unlawful, report it or email ${B.legalEmail}. Mesh will look at it within 7 days, and may restrict or remove the story while it's considered, and tell the journalist so they can respond.`,
@@ -251,7 +251,7 @@ export const TERMS = {
       p: [
         "Mesh shows a small number of ads in Home to pay for its servers and moderators. Every ad is labelled \"Ad\" and \"Sponsored\", none appear in Messages, and nobody can pay to boost an ordinary post or to change what's in your feed.",
         "Ads from local businesses, clubs and events are matched only to the town on your profile, the interests you picked and whether you're 18 or over. If you turn on Google ads in your cookie choices (18 and over), Google AdSense may fill spaces no local ad is booked for, with ads that aren't personalised.",
-        "Ads must be truthful, clearly identifiable as ads and follow the AANA Code of Ethics. Alcohol ads are shown only to people 18 and over; gambling, tobacco, vaping, weapons and adult content aren't accepted. We may refuse or remove any ad. Advertisers are invoiced directly under a separate agreement, and are responsible for their ads and the pages they link to.",
+        "Ads must be truthful, clearly identifiable as ads and follow the AANA Code of Ethics. Alcohol ads are shown only to people 18 and over; gambling, tobacco, vaping, weapons and adult content aren't accepted. Political and issue ads aren't accepted either: no ads from or about a party, candidate, election or referendum, and none arguing one side of a political issue, and Google ads are set to block them. We may refuse or remove any ad. Advertisers are invoiced directly under a separate agreement, and are responsible for their ads and the pages they link to.",
       ],
     },
     {
@@ -392,6 +392,15 @@ export const GUIDELINES = {
       h: "What Mesh is for",
       p: [
         "Mesh exists to make ordinary people's stories reachable without an advertising machine deciding which ones deserve an audience. A few labelled ads pay for the servers and moderators, but they never decide what you see: we don't rank content by what pays best, and nobody can pay to boost a post.",
+      ],
+    },
+    {
+      h: "Mesh can't be bought",
+      p: [
+        "Money doesn't buy reach here. Nobody can pay to boost a post or a news story, Mesh doesn't run political or issue ads, and advertisers never decide what's in your feed or in News.",
+        "Money doesn't buy a crowd either. Likes, saves, reposts and comments from accounts under a week old count for very little in what Mesh shows other people, a comment written by an account that new is marked \"New account\", and staff look into sudden bursts of them. The numbers you see are still the real numbers.",
+        "News on Mesh is written by named journalists who declare who they work for, any political affiliation and any conflict of interest. Stories aren't ranked by likes or clicks, so nobody can push one up by buying engagement.",
+        "Mesh isn't a company yet. When it becomes one, we plan to write these promises into its rules, so a new owner or investor can't quietly drop them.",
       ],
     },
     {

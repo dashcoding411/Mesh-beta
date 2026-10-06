@@ -16,6 +16,7 @@ import { db } from "../firebase";
 import { collection, getDocs, limit, query } from "firebase/firestore";
 import { interestById, newsTopicById } from "./interests";
 import { assessText, hitsHiddenWords } from "./moderation";
+import { settled } from "./fresh";
 
 const topicWords = (ids) => (ids || []).map((id) => interestById(id)?.label || "").join(" ");
 
@@ -180,8 +181,8 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
       q, qTokens
     );
     const engagement =
-      log1p(p.likeCount) * 0.05 + log1p(p.commentCount) * 0.07 +
-      log1p(p.saveCount) * 0.08 + log1p(p.repostCount) * 0.08;
+      log1p(settled(p.likeCount, p.freshLikes)) * 0.05 + log1p(settled(p.commentCount, p.freshComments)) * 0.07 +
+      log1p(settled(p.saveCount, p.freshSaves)) * 0.08 + log1p(settled(p.repostCount, p.freshReposts)) * 0.08;
     const personal = (following.has(p.authorId) ? 0.35 : 0) + Math.min(log1p(affinity.get(p.authorId)) * 0.08, 0.4);
     const prior = engagement + personal + 0.4 * decay(p.createdAt, 14);
         const damp = !following.has(p.authorId) && assessText(`${p.title || ""}\n${p.text || ""}`).level !== "ok" ? 0.2 : 1;

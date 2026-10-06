@@ -1,4 +1,4 @@
-import { Check, ChevronDown, MapPin, Newspaper, PenLine, Radio, Sunrise } from "lucide-react";
+import { Check, ChevronDown, MapPin, Newspaper, PenLine, Radio, Sunrise, Timer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
@@ -6,7 +6,8 @@ import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { KindBadge, Meta, TopicLabel } from "./parts";
 import { AuthorLine } from "./Journalist";
-import { readMinutes, summaryOf } from "./text";
+import { quickMinutes, readMinutes, summaryOf } from "./text";
+import QuickBrief from "./QuickBrief";
 import { BRIEF_SIZE, pickBrief, readStoryIds } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
@@ -114,7 +115,9 @@ export function NewsHome() {
 // Five stories, then done: a news habit with an end.
 function TodaysBrief({ items }) {
   const [now] = useState(() => Date.now());
-  const [read] = useState(() => readStoryIds());
+  const [read, setRead] = useState(() => readStoryIds());
+  const [quick, setQuick] = useState(false);
+  const onRead = useCallback((id) => setRead((r) => (r.has(id) ? r : new Set(r).add(id))), []);
   const brief = useMemo(() => pickBrief(items, now, publishedAt), [items, now]);
   if (brief.length < 2) return null;
   const done = brief.filter((s) => read.has(s.id)).length;
@@ -137,6 +140,12 @@ function TodaysBrief({ items }) {
           {done}/{brief.length}
         </span>
       </div>
+      <div className="px-4 pt-3">
+        <Button size="sm" icon={Timer} onClick={() => setQuick(true)}>
+          Quick read <span className="font-normal text-fg-muted">· just the 60-second versions, about {quickMinutes(brief)} min</span>
+        </Button>
+      </div>
+      {quick && <QuickBrief stories={brief} onRead={onRead} onClose={() => setQuick(false)} />}
       <ol className="mt-2 divide-y divide-line">
         {brief.map((s, i) => {
           const seen = read.has(s.id);
