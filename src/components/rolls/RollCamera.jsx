@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CameraOff, SwitchCamera, X, Zap, ZapOff } from "lucide-react";
+import { Check, CameraOff, SwitchCamera, Volume2, VolumeX, X, Zap, ZapOff } from "lucide-react";
 import { cameraSupported, openStream } from "../../lib/cameras";
 import { centreCrop, developFrame, stampText, STAMP_COLOR } from "../../lib/digicam";
 import SevenSeg from "./SevenSeg";
 import { SHOTS_PER_PERSON, developLabel, queueShot } from "../../lib/data/rolls";
 import { tsMillis } from "../../lib/db";
+import { shutterBuzz, shutterClick, wakeShutter } from "../../lib/shutter";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import Button from "../ui/Button";
 import { Spinner } from "../ui/States";
@@ -14,6 +15,7 @@ import { useToast } from "../ui/toast-context";
 const ASPECT = 3 / 4; // portrait 4:3, like a compact held upright
 const FACING_KEY = "mesh:camera-facing";
 const FLASH_KEY = "mesh:roll-flash";
+const SOUND_KEY = "mesh:roll-sound";
 const read = (k, fallback) => { try { return localStorage.getItem(k) || fallback; } catch { return fallback; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
 
@@ -27,9 +29,11 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   const [status, setStatus] = useState(() => (cameraSupported() ? "starting" : "unavailable"));
   const [facing, setFacing] = useState(() => read(FACING_KEY, "environment"));
   const [flash, setFlash] = useState(() => read(FLASH_KEY, "on") === "on");
+  const [sound, setSound] = useState(() => read(SOUND_KEY, "on") === "on");
   const [cameras, setCameras] = useState(0);
   const [taken, setTaken] = useState(used);
-  const [blink, setBlink] = useState(""); // "" | "shutter" | "flash"
+  const [blink, setBlink] = useState(false); // the screen lighting a selfie
+  const [shot, setShot] = useState(0); // shots this visit; each one replays the shutter
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const videoRef = useRef(null);
@@ -75,6 +79,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
     setFacing(next);
   };
   const toggleFlash = () => { write(FLASH_KEY, flash ? "off" : "on"); setFlash(!flash); };
+  const toggleSound = () => { write(SOUND_KEY, sound ? "off" : "on"); setSound(!sound); };
 
   // The back camera's torch where the browser allows it; the screen lights a selfie.
   const torch = async (on) => {
@@ -87,10 +92,11 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
     const el = videoRef.current;
     if (status !== "live" || busy || left <= 0 || !el?.videoWidth) return;
     setBusy(true);
-    navigator.vibrate?.(12);
+    shutterBuzz();
+    if (sound) wakeShutter();
     try {
       if (flash) {
-        if (mirrored) { setBlink("flash"); await new Promise((r) => setTimeout(r, 140)); }
+        if (mirrored) { setBlink(true); await new Promise((r) => setTimeout(r, 140)); }
         else if (await torch(true)) await new Promise((r) => setTimeout(r, 260));
       }
       const crop = centreCrop(el.videoWidth, el.videoHeight, ASPECT);
@@ -100,8 +106,9 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
       frame.height = crop.h;
       frame.getContext("2d").drawImage(el, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
       if (flash && !mirrored) torch(false);
-      setBlink("shutter");
-      setTimeout(() => setBlink(""), 160);
+      if (sound) shutterClick();
+      setBlink(false);
+      setShot((n) => n + 1);
       setTaken((n) => n + 1);
       onShot?.(1);
       const developed = await developFrame(frame, { x: 0, y: 0, w: crop.w, h: crop.h }, { flash, mirrored });
@@ -114,6 +121,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
       toast({ tone: "error", title: "Couldn't take that shot" });
     } finally {
       setBusy(false);
+      setBlink(false);
       if (flash && !mirrored) torch(false);
     }
   };
@@ -127,11 +135,17 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
         <button type="button" onClick={onClose} aria-label="Close the camera" className="press flex h-11 w-11 items-center justify-center rounded-full">
           <X size={24} aria-hidden="true" />
         </button>
-        <p className="min-w-0 truncate px-2 text-center text-callout font-semibold">{roll.title}</p>
-        <button type="button" onClick={toggleFlash} aria-pressed={flash} aria-label={flash ? "Flash on" : "Flash off"}
-          className={`press flex h-11 w-11 items-center justify-center rounded-full ${flash ? "text-[#ffd34d]" : "text-white/70"}`}>
-          {flash ? <Zap size={22} fill="currentColor" aria-hidden="true" /> : <ZapOff size={22} aria-hidden="true" />}
-        </button>
+        <p className="min-w-0 flex-1 truncate px-2 text-center text-callout font-semibold">{roll.title}</p>
+        <div className="flex">
+          <button type="button" onClick={toggleSound} aria-pressed={sound} aria-label={sound ? "Shutter sound on" : "Shutter sound off"}
+            className={`press flex h-11 w-11 items-center justify-center rounded-full ${sound ? "text-white" : "text-white/70"}`}>
+            {sound ? <Volume2 size={22} aria-hidden="true" /> : <VolumeX size={22} aria-hidden="true" />}
+          </button>
+          <button type="button" onClick={toggleFlash} aria-pressed={flash} aria-label={flash ? "Flash on" : "Flash off"}
+            className={`press flex h-11 w-11 items-center justify-center rounded-full ${flash ? "text-[#ffd34d]" : "text-white/70"}`}>
+            {flash ? <Zap size={22} fill="currentColor" aria-hidden="true" /> : <ZapOff size={22} aria-hidden="true" />}
+          </button>
+        </div>
       </div>
 
       {/* The digicam screen. */}
@@ -164,20 +178,32 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
                 <span className="h-full w-3/4 bg-white/90" />
               </span>
             </span>
-            {/* Focus brackets */}
-            <span className="absolute left-1/2 top-1/2 h-16 w-20 -translate-x-1/2 -translate-y-1/2">
+            {/* Focus brackets: green for a moment as each shot is taken. */}
+            <span key={shot} className={`absolute left-1/2 top-1/2 h-16 w-20 -translate-x-1/2 -translate-y-1/2 ${shot ? "af-lock" : ""}`}>
               {["left-0 top-0 border-l-2 border-t-2", "right-0 top-0 border-r-2 border-t-2", "left-0 bottom-0 border-l-2 border-b-2", "right-0 bottom-0 border-r-2 border-b-2"]
                 .map((c) => <span key={c} className={`absolute h-3 w-3 border-white/90 ${c}`} />)}
             </span>
+            {shot > 0 && (
+              <span key={`taken-${shot}`} className="osd-taken absolute left-1/2 top-[calc(50%+3rem)] flex -translate-x-1/2 items-center gap-1 rounded-[3px] bg-black/45 px-2 py-0.5 text-[12px]">
+                <Check size={14} strokeWidth={3} className="text-[#4ade80]" />TAKEN
+              </span>
+            )}
             <span className="absolute bottom-3 left-3 flex items-baseline gap-1">
-              <SevenSeg text={String(left).padStart(2, "0")} height={22} color="#ffffff" />
+              <span key={shot} className={`inline-block origin-bottom-left ${shot ? "anim-heart" : ""}`}>
+                <SevenSeg text={String(left).padStart(2, "0")} height={22} color="#ffffff" />
+              </span>
               <span className="text-[11px] text-white/80">left</span>
             </span>
             <span className="absolute bottom-3 right-3"><SevenSeg text={today} height={14} color={STAMP_COLOR} glow /></span>
           </div>
         )}
-        {blink === "flash" && <span className="pointer-events-none absolute inset-0 bg-white" aria-hidden="true" />}
-        {blink === "shutter" && <span className="pointer-events-none absolute inset-0 bg-black anim-fade" aria-hidden="true" />}
+        {blink && <span className="pointer-events-none absolute inset-0 bg-white" aria-hidden="true" />}
+        {shot > 0 && (
+          <span key={shot} aria-hidden="true">
+            <span className="shutter-top pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-black" />
+            <span className="shutter-bottom pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-black" />
+          </span>
+        )}
         {left === 0 && status === "live" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 px-8 text-center">
             <p className="font-display text-title-1">That's your 27</p>
@@ -200,7 +226,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
           </button>
         ) : <span />}
       </div>
-      <p className="sr-only" aria-live="polite">{left} shots left</p>
+      <p className="sr-only" aria-live="polite">{shot > 0 ? "Photo taken. " : ""}{left} shots left</p>
     </div>,
     document.body,
   );

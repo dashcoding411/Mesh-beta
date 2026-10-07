@@ -1,5 +1,5 @@
 // Authentication helpers: providers, persistence, recovery, error mapping.
-import { auth, sameSiteAuth } from "../firebase";
+import { auth, releaseAppCheck, sameSiteAuth } from "../firebase";
 import { isIOS, isStandalone } from "./install";
 import { googleAnswer } from "./googleAnswer";
 import {
@@ -185,6 +185,9 @@ function signInGoogleDirect(remember) {
 }
 
 let directError = null;
+
+/** Whether this page load is Google answering Mesh's own sign-in (for "Finishing sign-in…"). */
+export const googleReturning = () => typeof window !== "undefined" && /(^#|&)(id_token|error)=/.test(window.location.hash);
 /** A sign-in error from coming back from Google, for the sign-in page to show (once). */
 export function takeSignInError() {
   const err = directError;
@@ -210,10 +213,21 @@ export async function finishGoogleDirect() {
   try {
     const answer = googleAnswer(fragment, saved);
     if (!answer || answer.cancelled) return null;
-    return await signInWithCredential(auth, GoogleAuthProvider.credential(answer.idToken));
+    // Never hang on the loading screen: after 20 seconds, say so and let them retry.
+    let timer;
+    const late = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error("timeout"), { code: "auth/timeout" })), 20_000);
+    });
+    try {
+      return await Promise.race([signInWithCredential(auth, GoogleAuthProvider.credential(answer.idToken)), late]);
+    } finally {
+      clearTimeout(timer);
+    }
   } catch (err) {
     directError = err;
     return null;
+  } finally {
+    releaseAppCheck();
   }
 }
 
@@ -278,6 +292,7 @@ const MESSAGES = {
     "Your browser is blocking what sign-in needs. In Safari, leave Private Browsing, and check Block All Cookies is off (Settings, then Safari).",
   "auth/unauthorized-domain": "Sign-in isn't set up for this web address. Open joinmesh.social and try again.",
   "auth/internal-error": "Sign-in didn't finish. Try again, or use your email address instead.",
+  "auth/timeout": "Signing in took too long. Check your connection and try again.",
   "auth/account-exists-with-different-credential":
     "You already have an account with that email using a different sign-in method.",
   "auth/operation-not-allowed": "That sign-in method isn't enabled for this app yet.",
@@ -294,6 +309,13 @@ export const CANCELLED_CODES = [
 
 export function isCancellation(err) {
   return CANCELLED_CODES.includes(err?.code);
+}
+
+/** The message, with the error's code after it so a problem can be reported exactly. */
+export function authMessageWithCode(err) {
+  const message = authMessage(err);
+  const code = [String(err?.code || "").replace(/^auth\//, ""), err?.reason].filter(Boolean).join(", ");
+  return code ? `${message} (code: ${code})` : message;
 }
 
 export function authMessage(err) {

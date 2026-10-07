@@ -3,7 +3,7 @@ import { auth } from "../firebase";
 import { signInWithPhoneNumber, RecaptchaVerifier, signOut } from "firebase/auth";
 import {
   signInEmail, signUpEmail, signInGoogle, signInApple, finishRedirect, redirectPending, takeSignInError,
-  resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
+  resetPassword, applyPersistence, authMessageWithCode, isCancellation, storageBlocked,
 } from "../lib/auth";
 import { validateUsername, validBirthYear, passwordProblem } from "../lib/validate";
 import { checkName } from "../lib/moderation";
@@ -84,7 +84,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
 
   useEffect(() => { applyPersistence(remember).catch(() => {}); }, [remember]);
 
-  const fail = (err) => setError(isCancellation(err) ? "" : authMessage(err));
+  const fail = (err) => setError(isCancellation(err) ? "" : authMessageWithCode(err));
   const onPasswordKey = (e) => setCapsOn(e.getModifierState?.("CapsLock") ?? false);
   const signup = mode === "signup";
 

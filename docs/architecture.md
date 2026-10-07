@@ -134,6 +134,15 @@ returns to /__/auth/handler with the token in the fragment and no query
 string, the edge Worker forwards that to /login, and the app checks the
 state and nonce (`lib/googleAnswer.js`), clears the address and calls
 signInWithCredential before reading auth state, so it opens signed in.
+While it does, the loading screen says "Finishing sign-in with Google…",
+the security check (App Check's reCAPTCHA) waits until it's done (every
+sign-in request waits for a reCAPTCHA token first, and a slow start there
+fails the sign-in as a network error after a minute on phones), and after
+20 seconds it gives up with `auth/timeout` rather than hang. M.A.T.H keeps
+the signed-in account in local storage rather than IndexedDB, which can stop
+answering in a home-screen app after a trip out to Google. Sign-in errors
+show their code (and which check failed, for Google's answer) after the
+message, so a report says exactly what went wrong.
 The edge Worker keeps Firebase's helper pages (/__/auth/handler and iframe)
 at Cloudflare's edge for 30 minutes, keyed by path: about 35 ms instead of
 half a second each, and sign-in passes through them up to three times.

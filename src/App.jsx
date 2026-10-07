@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { finishGoogleDirect, restoreSession } from "./lib/auth";
+import { finishGoogleDirect, googleReturning, restoreSession } from "./lib/auth";
 import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
@@ -113,6 +113,8 @@ function sectionTitle(page, query) {
 
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
+  // Read before finishGoogleDirect clears the address bar.
+  const [finishingSignIn] = useState(googleReturning);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [following, setFollowing] = useState(new Set());
@@ -378,8 +380,9 @@ export default function App() {
 
   if (!authReady) {
     return (
-      <div className="flex h-dvh items-center justify-center" role="status" aria-label="Loading Mesh">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4" role="status" aria-label={finishingSignIn ? "Finishing sign-in" : "Loading Mesh"}>
         <div className="animate-pulse"><LogoMark size={56} /></div>
+        {finishingSignIn && <p className="text-callout text-fg-muted">Finishing sign-in with Google…</p>}
       </div>
     );
   }

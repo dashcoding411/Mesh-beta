@@ -45,9 +45,22 @@ const APP_CHECK_PROVIDER = import.meta.env.VITE_APPCHECK_PROVIDER || "enterprise
 // security check (lib/consent.js), never by default. It only runs on approved
 // websites, so the iPhone app skips it; that will use App Attest once App
 // Check is enforced. Its code loads only then, so most visitors never download it.
+//
+// Back from Google with a sign-in (M.A.T.H's own route, lib/auth.js), it
+// waits until that sign-in has finished: every sign-in request waits for a
+// reCAPTCHA token first, and if reCAPTCHA is slow to start (as it can be in
+// M.A.T.H) the sign-in fails as a network error after a minute.
+let appCheckHeld = typeof location !== "undefined" && /(^#|&)id_token=/.test(location.hash);
 let appCheckStarted = false;
+/** Lets the security check start once a Google sign-in has finished. */
+export function releaseAppCheck() {
+  if (!appCheckHeld) return;
+  appCheckHeld = false;
+  if (allowed("recaptcha")) startAppCheck();
+}
+if (appCheckHeld) setTimeout(releaseAppCheck, 30_000);
 async function startAppCheck() {
-  if (appCheckStarted || !APP_CHECK_SITE_KEY || typeof window === "undefined" || isNativeApp) return;
+  if (appCheckHeld || appCheckStarted || !APP_CHECK_SITE_KEY || typeof window === "undefined" || isNativeApp) return;
   appCheckStarted = true;
   // Local dev uses a registered debug token from .env.local (dev builds only).
   if (import.meta.env.DEV && import.meta.env.VITE_APPCHECK_DEBUG_TOKEN) {
@@ -90,8 +103,14 @@ const returningFromSignIn = (() => {
     return notes.length > 0;
   } catch { return false; }
 })();
+// In M.A.T.H, sign-ins are kept in local storage, not IndexedDB: on iPhones
+// a home-screen app's IndexedDB often stops answering after the app is left
+// and reopened (as on the trip to Google), and Firebase then waits on it
+// until sign-in fails as a network error. Elsewhere IndexedDB comes first.
 export const auth = initializeAuth(app, {
-  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  persistence: homeScreenIOS
+    ? [browserLocalPersistence, browserSessionPersistence]
+    : [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
   ...(returningFromSignIn ? { popupRedirectResolver: browserPopupRedirectResolver } : {}),
 });
 // Auto-detected long polling for proxies that break streaming.

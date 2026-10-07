@@ -27,6 +27,16 @@ describe("googleAnswer", () => {
     expect(() => googleAnswer(`#id_token=${token({ nonce: "n1" })}&state=s1`, null, now)).toThrow();
     expect(() => googleAnswer("#id_token=garbage&state=s1", saved, now)).toThrow();
   });
+
+  it("names the check that failed, for the error's code", () => {
+    const reason = (fragment, s) => { try { googleAnswer(fragment, s, now); } catch (err) { return err.reason; } return null; };
+    expect(reason(`#id_token=${token({ nonce: "n1" })}&state=other`, saved)).toBe("state");
+    expect(reason(`#id_token=${token({ nonce: "nX" })}&state=s1`, saved)).toBe("nonce");
+    expect(reason(`#id_token=${token({ nonce: "n1" })}&state=s1`, { ...saved, at: now - 20 * 60_000 })).toBe("expired");
+    expect(reason(`#id_token=${token({ nonce: "n1" })}&state=s1`, null)).toBe("not-started-here");
+    expect(reason("#id_token=garbage&state=s1", saved)).toBe("bad-token");
+    expect(reason("#error=server_error", saved)).toBe("google-server_error");
+  });
   it("reads claims without padding", () => {
     expect(tokenClaims(token({ nonce: "abc" })).nonce).toBe("abc");
   });
