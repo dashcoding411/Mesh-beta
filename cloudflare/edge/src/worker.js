@@ -219,17 +219,18 @@ export function injectMeta(html, meta, site) {
     tags.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`);
   }
   if (meta.event) tags.push(`<script type="application/ld+json">${JSON.stringify(eventLd(meta, site)).replace(/</g, "\\u003c")}</script>`);
-  out = out.replace(/<head([^>]*)>/i, `<head$1>\n${tags.join("\n")}`);
+  // Replacer functions, so a "$&" or "$'" in someone's title is just text.
+  out = out.replace(/<head([^>]*)>/i, (_, attrs) => `<head${attrs}>\n${tags.join("\n")}`);
   if (meta.event) {
     const e = meta.event;
     const text = `<noscript><article><h1>${esc(e.name)}</h1><p>${esc(e.when)}${e.location ? ` · ${esc(e.location)}` : ""}</p>`
       + `${e.host ? `<p>Hosted by @${esc(e.host)}</p>` : ""}${e.description ? `<p>${esc(e.description)}</p>` : ""}</article></noscript>`;
-    out = out.replace(/<\/body>/i, `${text}</body>`);
+    out = out.replace(/<\/body>/i, () => `${text}</body>`);
   }
   if (meta.article) {
     const text = `<noscript><article><h1>${esc(meta.article.headline)}</h1><p>${esc(meta.description)}</p>`
       + `<p>By ${esc(meta.byline)}</p>${meta.article.body.map((p) => `<p>${esc(p)}</p>`).join("")}</article></noscript>`;
-    out = out.replace(/<\/body>/i, `${text}</body>`);
+    out = out.replace(/<\/body>/i, () => `${text}</body>`);
   }
   return out;
 }

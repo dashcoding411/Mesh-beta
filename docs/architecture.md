@@ -117,12 +117,12 @@ when the sign-in page opens (`finishRedirect`); a tap then opens Google's
 popup at once, which Safari needs. A blocked popup falls back to a redirect,
 which the sign-in page finishes when it loads again.
 
-Sign-in still runs through mesh-a293c.firebaseapp.com, which Safari treats as
-another site (blocked storage, lost redirect results, no sign-in from the
-iPhone home-screen app). `SITE_AUTH` in firebase.js moves it to
-joinmesh.social once Google's OAuth web client lists
-https://joinmesh.social/__/auth/handler (and the www one) as redirect URIs;
-then the iPhone home-screen app signs in with a redirect.
+On joinmesh.social, sign-in runs through the site itself (`SITE_AUTH` in
+firebase.js; Firebase Hosting serves /__/auth/handler), not
+mesh-a293c.firebaseapp.com, which Safari treats as another site (blocked
+storage, lost redirect results, no sign-in from the iPhone home-screen app).
+Google's OAuth web client lists https://joinmesh.social/__/auth/handler as a
+redirect URI. The iPhone home-screen app signs in with a redirect.
 
 ## Privacy
 

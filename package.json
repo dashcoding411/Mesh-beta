@@ -54,7 +54,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.4",
     "vite": "^7.3.1",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "@grpc/grpc-js": "^1.13.6"

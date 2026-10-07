@@ -30,4 +30,10 @@ group("edge worker", () => {
     expect(out).not.toMatch(/<\/script> para/);
     expect(out).toMatch(/<noscript><article><h1>Council votes<\/h1>[\s\S]*<\/article><\/noscript><\/body>/);
   });
+  it("keeps $& and $' in titles as plain text", () => {
+    const page = "<html><head><title>Mesh</title></head><body></body></html>";
+    const out = injectMeta(page, { title: "Price $& $' $1", description: "d", image: "https://joinmesh.social/og.png", url: "https://joinmesh.social/p/1" }, "https://joinmesh.social");
+    expect(out).toContain("<title>Price $&amp; $&#39; $1 · Mesh</title>");
+    expect(out.match(/<head>/g)).toHaveLength(1);
+  });
 });

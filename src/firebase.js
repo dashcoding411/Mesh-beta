@@ -11,9 +11,9 @@ import { allowed, onConsent } from "./lib/consent";
 // names this domain. Firebase Hosting serves the helper on our domain
 // (/__/auth/handler), but Google has to allow it first: the OAuth web client
 // in Google Cloud must list https://joinmesh.social/__/auth/handler (and the
-// www one) as redirect URIs. Until SITE_AUTH is true, it stays on
-// firebaseapp.com, or Google sign-in fails with redirect_uri_mismatch.
-const SITE_AUTH = false;
+// www one) as redirect URIs (done 7 October 2026). Elsewhere (local
+// development, the web.app address) it stays on firebaseapp.com.
+const SITE_AUTH = true;
 const SITE_AUTH_HOSTS = ["joinmesh.social", "www.joinmesh.social"];
 const FIREBASE_AUTH_DOMAIN = "mesh-a293c.firebaseapp.com";
 const AUTH_DOMAIN = SITE_AUTH && typeof location !== "undefined" && SITE_AUTH_HOSTS.includes(location.hostname)
