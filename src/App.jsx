@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
-import { restoreSession } from "./lib/auth";
+import { finishGoogleDirect, restoreSession } from "./lib/auth";
 import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
@@ -137,7 +137,9 @@ export default function App() {
     let unsub = () => {};
     let cancelled = false;
     let initial = true;
-    restoreSession().catch(() => {}).then(() => {
+    // Back from Google with a token (M.A.T.H): sign in before reading who's
+    // signed in, so Mesh opens signed in rather than reloading after.
+    restoreSession().catch(() => {}).then(() => finishGoogleDirect()).catch(() => {}).then(() => {
       if (cancelled) return;
       unsub = onAuthStateChanged(auth, async (u) => {
         // Signing in or out after load starts a fresh page, so no feed,

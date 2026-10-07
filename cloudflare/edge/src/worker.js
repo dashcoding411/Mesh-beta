@@ -19,6 +19,9 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     try {
+      // Google's answer to Mesh's own sign-in (src/lib/auth.js, finishGoogleDirect)
+      // comes here with no query string; Firebase's always has one.
+      if (url.pathname === "/__/auth/handler" && !url.search && req.method === "GET") return backToMesh();
       if (AUTH_PAGES.has(url.pathname) && req.method === "GET") return authPage(req, ctx);
       if (url.pathname === "/sitemap-news.xml") return cached(req, ctx, () => sitemap(env));
       if (url.pathname === "/sitemap-gatherings.xml") return cached(req, ctx, () => gatheringsSitemap(env));
@@ -41,6 +44,23 @@ export default {
     }
   },
 };
+
+// On to /login, keeping the fragment (Google's ID token), which only the
+// browser ever sees. Nothing here reads it.
+function backToMesh() {
+  const page = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Signing in…</title>'
+    + '<script>location.replace("/login" + location.hash);</script>'
+    + '<noscript>Sign-in needs JavaScript. <a href="/login">Back to Mesh</a></noscript>';
+  return new Response(page, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "DENY",
+      "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+    },
+  });
+}
 
 async function authPage(req, ctx) {
   const url = new URL(req.url);

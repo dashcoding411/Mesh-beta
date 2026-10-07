@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { auth } from "../firebase";
 import { signInWithPhoneNumber, RecaptchaVerifier, signOut } from "firebase/auth";
 import {
-  signInEmail, signUpEmail, signInGoogle, signInApple, finishRedirect, redirectPending,
+  signInEmail, signUpEmail, signInGoogle, signInApple, finishRedirect, redirectPending, takeSignInError,
   resetPassword, applyPersistence, authMessage, isCancellation, storageBlocked,
 } from "../lib/auth";
 import { validateUsername, validBirthYear, passwordProblem } from "../lib/validate";
@@ -106,6 +106,9 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
   // the popup so the first tap on Google opens it straight away.
   useEffect(() => {
     let live = true;
+    // A sign-in that came back from Google but didn't go through (see finishGoogleDirect).
+    const lost = takeSignInError();
+    if (lost) fail(lost);
     finishRedirect()
       .then((cred) => (live ? afterSignIn(cred) : null))
       .catch((err) => { if (live) fail(err); })

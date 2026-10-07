@@ -1,5 +1,5 @@
 import { describe as group, expect, it } from "vitest";
-import { injectMeta, plain } from "../../../cloudflare/edge/src/worker.js";
+import worker, { injectMeta, plain } from "../../../cloudflare/edge/src/worker.js";
 
 const page = '<!doctype html><html><head><meta charset="utf-8"><title>Mesh</title><meta name="description" content="generic">'
   + '<meta property="og:title" content="generic"><meta name="twitter:card" content="summary"><link rel="canonical" href="https://joinmesh.social/"></head>'
@@ -35,5 +35,11 @@ group("edge worker", () => {
     const out = injectMeta(page, { title: "Price $& $' $1", description: "d", image: "https://joinmesh.social/og.png", url: "https://joinmesh.social/p/1" }, "https://joinmesh.social");
     expect(out).toContain("<title>Price $&amp; $&#39; $1 · Mesh</title>");
     expect(out.match(/<head>/g)).toHaveLength(1);
+  });
+  it("sends Mesh's own Google answer on to /login, fragment and all", async () => {
+    const res = await worker.fetch(new Request("https://joinmesh.social/__/auth/handler"), {}, {});
+    const html = await res.text();
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(html).toContain('location.replace("/login" + location.hash)');
   });
 });

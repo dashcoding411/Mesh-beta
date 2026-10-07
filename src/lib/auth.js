@@ -1,10 +1,12 @@
 // Authentication helpers: providers, persistence, recovery, error mapping.
 import { auth, sameSiteAuth } from "../firebase";
 import { isIOS, isStandalone } from "./install";
+import { googleAnswer } from "./googleAnswer";
 import {
   GoogleAuthProvider,
   OAuthProvider,
   browserPopupRedirectResolver,
+  signInWithCredential,
   getRedirectResult,
   signInWithPopup as popup,
   signInWithRedirect as redirect,
@@ -122,8 +124,9 @@ function withPopup(provider, remember) {
   markPersistence(remember);
   if (sameSiteAuth && isIOS() && isStandalone()) return signInWithRedirect(auth, provider);
   return signInWithPopup(auth, provider).catch((err) => {
-    if (err?.code === "auth/popup-blocked") return signInWithRedirect(auth, provider);
-    throw err;
+    if (err?.code !== "auth/popup-blocked") throw err;
+    // Google has a sturdier way back than Firebase's redirect (see above).
+    return provider.providerId === "google.com" && sameSiteAuth ? signInGoogleDirect(remember) : signInWithRedirect(auth, provider);
   });
 }
 
@@ -146,7 +149,75 @@ export function finishRedirect() {
   return result;
 }
 
+// Google sign-in straight from Google, for M.A.T.H (Mesh added to an iPhone's
+// home screen) and when a popup is blocked. Firebase's own redirect needs a
+// hidden frame that loads Google's script and must answer within 5 seconds,
+// which a home-screen app on a phone network often misses ("network
+// issue"). Here Mesh goes to Google itself and gets back a signed ID token
+// (in the address's fragment, never sent to a server), which Firebase checks
+// in one request. Google returns to /__/auth/handler with no query string;
+// the edge Worker (cloudflare/edge) forwards that to /login, keeping the
+// fragment. `state` and `nonce` tie the answer to this tab's own request.
+const GOOGLE_CLIENT_ID = "173524995677-f6rl504oqchruqqs74jvle73qe6kf2kh.apps.googleusercontent.com";
+const DIRECT_KEY = "mesh:google-signin";
+
+const randomId = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+function signInGoogleDirect(remember) {
+  markPersistence(remember);
+  const state = randomId();
+  const nonce = randomId();
+  try { sessionStorage.setItem(DIRECT_KEY, JSON.stringify({ state, nonce, at: Date.now(), back: window.location.pathname + window.location.search })); }
+  catch { return Promise.reject(Object.assign(new Error("storage"), { code: "auth/web-storage-unsupported" })); }
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: `${window.location.origin}/__/auth/handler`,
+    response_type: "id_token",
+    scope: "openid email profile",
+    prompt: "select_account",
+    state,
+    nonce,
+  });
+  window.location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  return Promise.resolve(null); // leaving for Google
+}
+
+let directError = null;
+/** A sign-in error from coming back from Google, for the sign-in page to show (once). */
+export function takeSignInError() {
+  const err = directError;
+  directError = null;
+  return err;
+}
+
+/**
+ * Coming back from Google with a token: checks it answers this tab's request,
+ * clears it from the address bar and signs in. Runs before Mesh reads who's
+ * signed in, so it opens signed in. Resolves to the credential, or null.
+ */
+export async function finishGoogleDirect() {
+  const fragment = window.location.hash;
+  if (!/(^#|&)(id_token|error)=/.test(fragment)) return null;
+  // The token leaves the address bar (and history) straight away.
+  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(DIRECT_KEY) || "null");
+    sessionStorage.removeItem(DIRECT_KEY);
+  } catch { /* storage blocked */ }
+  try {
+    const answer = googleAnswer(fragment, saved);
+    if (!answer || answer.cancelled) return null;
+    return await signInWithCredential(auth, GoogleAuthProvider.credential(answer.idToken));
+  } catch (err) {
+    directError = err;
+    return null;
+  }
+}
+
 export function signInGoogle(remember) {
+  // Google only returns to joinmesh.social (its redirect URI), so this is the live site's.
+  if (sameSiteAuth && isIOS() && isStandalone()) return signInGoogleDirect(remember);
   const provider = new GoogleAuthProvider();
   provider.addScope("profile");
   provider.addScope("email");
