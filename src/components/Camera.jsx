@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, CameraOff, Images, SwitchCamera, X } from "lucide-react";
-import { cameraSupported, openStream } from "../lib/cameras";
+import { useCamera } from "../lib/useCamera";
 import { motionReduced } from "../lib/appearance";
 import { formatDuration } from "../lib/format";
 import Button from "./ui/Button";
@@ -32,21 +32,17 @@ const recorderType = () => ["video/mp4", "video/webm;codecs=vp9,opus", "video/we
  * editor has its own).
  */
 export default function Camera({ onClose, onDone, onLibrary, onCapture, actions, photo = true, video = false, title = "Camera" }) {
-  const [status, setStatus] = useState(() => (cameraSupported() ? "starting" : "unavailable")); // starting | live | denied | unavailable
   const [facing, setFacing] = useState(savedFacing);
-  const [cameras, setCameras] = useState(0);
   const [shot, setShot] = useState(null); // { file, url, kind }
+  const [notice, setNotice] = useState(""); // a shot that couldn't be taken
   const [recording, setRecording] = useState(null); // { at }
   const [elapsed, setElapsed] = useState(0);
   const [flash, setFlash] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   // With both on, Video mode lets a tap start and stop recording, for anyone
   // who can't press and hold.
   const [mode, setMode] = useState(photo ? "photo" : "video");
   const tapRecords = !photo || (video && mode === "video");
-  const videoRef = useRef(null);
   const boxRef = useRef(null);
-  const streamRef = useRef(null);
   const recorderRef = useRef(null);
   const holdRef = useRef(null);
   const libraryRef = useRef(null);
@@ -54,45 +50,34 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
   const mirrored = facing === "user";
   const trap = useFocusTrap();
 
-  const stop = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
-
   // The stream runs while the viewfinder shows, and stops for the preview.
+  const { videoRef, streamRef, status, problem, cameras, hasAudio, retry, stop, frameReady } = useCamera({
+    facing, audio: video && !!recorderType(), active: !shot,
+  });
+  useEffect(() => { if (status === "live") shutterRef.current?.focus(); }, [status]);
   useEffect(() => {
-    if (shot) return undefined;
-    if (!cameraSupported()) return undefined;
-    let alive = true;
-    openStream(facing, video && !!recorderType())
-      .then(async (stream) => {
-        if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
-        const el = videoRef.current;
-        if (el) { el.srcObject = stream; await el.play().catch(() => {}); }
-        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-        setCameras(devices.filter((d) => d.kind === "videoinput").length);
-        setStatus("live");
-        shutterRef.current?.focus();
-      })
-      .catch((err) => { if (alive) setStatus(err?.name === "NotAllowedError" || err?.name === "SecurityError" ? "denied" : "unavailable"); });
-    return () => { alive = false; stop(); };
-  }, [facing, shot, video, stop, attempt]);
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(""), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => () => { if (shot) URL.revokeObjectURL(shot.url); }, [shot]);
 
   const flip = () => {
     const next = facing === "user" ? "environment" : "user";
     try { localStorage.setItem(FACING_KEY, next); } catch { /* private mode */ }
-    setStatus("starting");
     setFacing(next);
   };
 
   // What's in the viewfinder is what's kept: the frame is cropped to it.
-  const takePhoto = () => {
+  const takePhoto = async () => {
+    const ready = await frameReady();
     const el = videoRef.current;
     const box = boxRef.current?.getBoundingClientRect();
-    if (!el?.videoWidth || !box) return;
+    if (!ready || !el?.videoWidth || !box) {
+      setNotice("The camera isn't showing a picture yet. Try again, or close the camera and open it again.");
+      return;
+    }
     const vw = el.videoWidth;
     const vh = el.videoHeight;
     const target = box.width / box.height;
@@ -108,7 +93,7 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
     ctx.drawImage(el, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
     if (!motionReduced()) { setFlash(true); setTimeout(() => setFlash(false), 180); }
     canvas.toBlob((blob) => {
-      if (!blob) return;
+      if (!blob) { setNotice("That photo couldn't be saved. Try again."); return; }
       const file = new File([blob], `mesh-${Date.now()}.jpg`, { type: "image/jpeg" });
       if (onCapture) { stop(); onCapture(file); return; }
       setShot({ file, url: URL.createObjectURL(file), kind: "image" });
@@ -174,7 +159,7 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
     else startRecording();
   };
 
-  const retake = () => { if (cameraSupported()) setStatus("starting"); setShot(null); };
+  const retake = useCallback(() => { setShot(null); retry(); }, [retry]);
   const pickLibrary = (e) => {
     const files = [...(e.target.files || [])];
     e.target.value = "";
@@ -194,11 +179,12 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [shot, onClose]);
+  }, [shot, onClose, retake]);
 
   const accept = [photo && "image/*", video && "video/*"].filter(Boolean).join(",");
-  const hint = recording ? `Recording · ${formatDuration(Math.floor(elapsed))}`
-    : tapRecords ? "Tap to start recording" : video ? "Tap for a photo, hold for a video" : "Tap to take a photo";
+  const silent = video && status === "live" && !hasAudio ? " (no sound: the microphone is off)" : "";
+  const hint = notice || (recording ? `Recording · ${formatDuration(Math.floor(elapsed))}`
+    : tapRecords ? `Tap to start recording${silent}` : video ? "Tap for a photo, hold for a video" : "Tap to take a photo");
   const ring = recording ? Math.min(1, elapsed / MAX_VIDEO_S) : 0;
 
   return createPortal(
@@ -210,8 +196,9 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
             ? <PhotoEditor file={shot.file} actions={actions} onBack={retake} onDone={(id, file) => { stop(); onDone(id, file); }} />
             : <video src={shot.url} autoPlay loop playsInline className="h-full w-full object-contain" aria-label="Your video" />
         ) : (
-          <video ref={videoRef} muted playsInline aria-hidden="true"
-            className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""} ${status === "live" ? "" : "invisible"}`} />
+          // Never hidden: iPhones may not play a hidden video, which then stays black.
+          <video ref={videoRef} autoPlay muted playsInline aria-hidden="true"
+            className={`h-full w-full object-cover ${mirrored ? "-scale-x-100" : ""}`} />
         )}
         {flash && <span className="pointer-events-none absolute inset-0 bg-white anim-fade" aria-hidden="true" />}
 
@@ -227,9 +214,10 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
                 ? "Allow camera access for Mesh in your browser's site settings, then try again. You can still choose from your library."
                 : "This device or browser can't open a camera here. You can still choose from your library."}
             </p>
+            {problem && <p className="text-caption text-white/50">Code: {problem}</p>}
             <div className="mt-2 flex gap-2">
               <Button variant="primary" icon={Images} onClick={() => libraryRef.current?.click()}>Choose from library</Button>
-              {status === "denied" && <Button onClick={() => { setStatus("starting"); setAttempt((n) => n + 1); }}>Try again</Button>}
+              <Button onClick={retry}>Try again</Button>
             </div>
           </div>
         )}
@@ -276,7 +264,7 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
                 ))}
               </div>
             )}
-            <p className="h-[30px] pt-3 text-center text-caption text-white/80" aria-live="polite">{status === "live" ? hint : " "}</p>
+            <p className={`min-h-[30px] pt-3 text-center text-caption ${notice ? "font-semibold text-white" : "text-white/80"}`} aria-live="polite">{status === "live" ? hint : " "}</p>
             <div className="grid h-[112px] grid-cols-3 items-center">
               <button type="button" onClick={() => libraryRef.current?.click()} disabled={!!recording}
                 aria-label="Choose from library"
@@ -285,6 +273,9 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
               </button>
               <button ref={shutterRef} type="button" disabled={status !== "live"}
                 aria-label={recording ? "Stop recording" : tapRecords ? "Start recording" : video ? "Take a photo, or hold to record" : "Take a photo"}
+                // The photo is taken as the finger lifts; the click phones send after
+                // that would land on whatever opens next (the story editor's buttons).
+                onTouchEnd={(e) => e.preventDefault()}
                 onPointerDown={press} onPointerUp={release} onPointerLeave={() => { if (recorderRef.current && !tapRecords) stopRecording(); else if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onClick={(e) => { if (e.detail === 0) keyShutter(); }} onContextMenu={(e) => e.preventDefault()}
                 style={{ WebkitTouchCallout: "none", touchAction: "none" }}

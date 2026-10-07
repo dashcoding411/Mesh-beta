@@ -1,7 +1,8 @@
 // Authentication helpers: providers, persistence, recovery, error mapping.
-import { auth, releaseAppCheck, sameSiteAuth } from "../firebase";
+import { auth, homeScreenIOS, sameSiteAuth, storedSignInAtStart } from "../firebase";
 import { isIOS, isStandalone } from "./install";
 import { googleAnswer } from "./googleAnswer";
+import { clearSnapshots } from "./snapshot";
 import {
   GoogleAuthProvider,
   OAuthProvider,
@@ -52,7 +53,11 @@ function anotherTabOpen(timeoutMs = 300) {
   });
 }
 
-/** Signs out a non-persistent session left over from a closed browser. Run before reading auth state. */
+/**
+ * Signs out a non-persistent session left over from a closed browser. Run
+ * before reading auth state. Never in an installed app (M.A.T.H): the phone
+ * closes those whenever it likes, which would look like a closed browser.
+ */
 export async function restoreSession() {
   openChannel();
   let ephemeral = false;
@@ -61,11 +66,47 @@ export async function restoreSession() {
     ephemeral = localStorage.getItem(EPHEMERAL_KEY) === "1";
     knownTab = sessionStorage.getItem(TAB_KEY) === "1";
   } catch { /* storage blocked */ }
-  if (ephemeral && !knownTab && !(await anotherTabOpen())) {
+  if (ephemeral && !knownTab && !isStandalone() && !(await anotherTabOpen())) {
     await auth.authStateReady();
-    if (auth.currentUser) await signOut(auth);
+    if (auth.currentUser) {
+      endedBy = "keep-signed-in-off";
+      await signOut(auth);
+    }
   }
   markTab();
+}
+
+// Which account was last signed in here, so signing out without choosing to
+// can be noticed and explained (with a code saying why, where it's known).
+const LAST_KEY = "mesh:last-account";
+let endedBy = "";
+
+export function noteSignedIn(uid) {
+  try { localStorage.setItem(LAST_KEY, uid); } catch { /* storage blocked */ }
+}
+
+/** Before signing out or deleting an account on purpose: nothing of it stays, and no "you were signed out" follows. */
+export function forgetAccount() {
+  try { localStorage.removeItem(LAST_KEY); } catch { /* storage blocked */ }
+  clearSnapshots();
+}
+
+export function signOutHere() {
+  forgetAccount();
+  return signOut(auth);
+}
+
+/**
+ * Why the account last signed in here isn't any more, as a code, or "" when
+ * it signed out on purpose (or nobody has signed in). Asked once per load.
+ */
+export function lostSession() {
+  let last = null;
+  try { last = localStorage.getItem(LAST_KEY); localStorage.removeItem(LAST_KEY); } catch { /* storage blocked */ }
+  if (!last) return "";
+  if (endedBy) return endedBy;
+  // In M.A.T.H the sign-in is kept in local storage, so it's known whether it was still there.
+  return homeScreenIOS && !storedSignInAtStart ? "not-kept" : "ended";
 }
 
 function markPersistence(remember) {
@@ -226,8 +267,6 @@ export async function finishGoogleDirect() {
   } catch (err) {
     directError = err;
     return null;
-  } finally {
-    releaseAppCheck();
   }
 }
 
@@ -270,7 +309,13 @@ export async function reauthenticateAndDelete(currentPassword) {
     const cred = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, cred);
   }
-  await deleteUser(user);
+  forgetAccount();
+  try {
+    await deleteUser(user);
+  } catch (err) {
+    noteSignedIn(user.uid);
+    throw err;
+  }
 }
 
 // Error copy stays vague where specifics would reveal whether an account exists.

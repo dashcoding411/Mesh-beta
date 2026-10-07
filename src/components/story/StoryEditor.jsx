@@ -58,6 +58,14 @@ export default function StoryEditor({ file, onBack, backLabel = "Back", onPost, 
   const [error, setError] = useState("");
   const [flash, setFlash] = useState(null); // filter name, shown briefly
   const [dragging, setDragging] = useState(null); // { over } while a layer is dragged
+  // The tap that took the photo can still arrive as a click once this is
+  // open (phones send it after the finger lifts), on "Post" or "Your story".
+  // Clicks are ignored for a moment.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(true), 450);
+    return () => clearTimeout(t);
+  }, []);
   const [discarding, setDiscarding] = useState(false);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const [fontsTick, setFontsTick] = useState(0);
@@ -403,6 +411,7 @@ export default function StoryEditor({ file, onBack, backLabel = "Back", onPost, 
 
   return createPortal(
     <div ref={trap} role="dialog" aria-modal="true" aria-label="Edit your story" data-theme="dark"
+      onClickCapture={settled ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); }}
       className="fixed inset-0 z-sheet flex flex-col bg-black text-white anim-fade">
       <div className="relative min-h-0 flex-1" style={{ containerType: "size" }}>
         <div className="flex h-full w-full items-center justify-center md:py-4">

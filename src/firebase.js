@@ -46,19 +46,22 @@ const APP_CHECK_PROVIDER = import.meta.env.VITE_APPCHECK_PROVIDER || "enterprise
 // websites, so the iPhone app skips it; that will use App Attest once App
 // Check is enforced. Its code loads only then, so most visitors never download it.
 //
-// Back from Google with a sign-in (M.A.T.H's own route, lib/auth.js), it
-// waits until that sign-in has finished: every sign-in request waits for a
-// reCAPTCHA token first, and if reCAPTCHA is slow to start (as it can be in
-// M.A.T.H) the sign-in fails as a network error after a minute.
-let appCheckHeld = typeof location !== "undefined" && /(^#|&)id_token=/.test(location.hash);
+// It starts a few seconds after Mesh is on screen (App.jsx), not as it
+// opens: while App Check runs, every sign-in and database request waits for
+// a reCAPTCHA token first, and loading reCAPTCHA takes a second or more
+// (several on a phone, and a Google sign-in in M.A.T.H could fail as a
+// network error waiting for it). App Check isn't enforced, so requests
+// before then are only counted as unverified. Before enforcing it, start it
+// earlier for the requests that need it.
+let appCheckHeld = true;
 let appCheckStarted = false;
-/** Lets the security check start once a Google sign-in has finished. */
+/** Lets the security check start (once Mesh is on screen). */
 export function releaseAppCheck() {
   if (!appCheckHeld) return;
   appCheckHeld = false;
   if (allowed("recaptcha")) startAppCheck();
 }
-if (appCheckHeld) setTimeout(releaseAppCheck, 30_000);
+setTimeout(releaseAppCheck, 30_000);
 async function startAppCheck() {
   if (appCheckHeld || appCheckStarted || !APP_CHECK_SITE_KEY || typeof window === "undefined" || isNativeApp) return;
   appCheckStarted = true;
@@ -90,11 +93,16 @@ onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
 // sign-in is off. A Firebase redirect note left by an older version would
 // send it through Firebase's hidden frame, which times out there ("Can't
 // reach the network"), so it's cleared.
-const homeScreenIOS = (() => {
+export const homeScreenIOS = (() => {
   try {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     return ios && (window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true);
   } catch { return false; }
+})();
+// Whether a signed-in account was stored when Mesh opened (M.A.T.H keeps it
+// in local storage), for explaining an unexpected sign-out (lib/auth.js).
+export const storedSignInAtStart = (() => {
+  try { return Object.keys(localStorage).some((k) => k.startsWith("firebase:authUser:")); } catch { return false; }
 })();
 const returningFromSignIn = (() => {
   try {

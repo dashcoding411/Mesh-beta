@@ -3,7 +3,7 @@ import { auth } from "../firebase";
 import { signInWithPhoneNumber, RecaptchaVerifier, signOut } from "firebase/auth";
 import {
   signInEmail, signUpEmail, signInGoogle, signInApple, finishRedirect, redirectPending, takeSignInError,
-  resetPassword, applyPersistence, authMessageWithCode, isCancellation, storageBlocked,
+  resetPassword, applyPersistence, authMessageWithCode, isCancellation, storageBlocked, forgetAccount, signOutHere,
 } from "../lib/auth";
 import { validateUsername, validBirthYear, passwordProblem } from "../lib/validate";
 import { checkName } from "../lib/moderation";
@@ -16,6 +16,7 @@ import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Segmented from "./ui/Segmented";
 import { isNativeApp } from "../lib/native";
+import { isStandalone } from "../lib/install";
 import { ageLockedUntil, lockAge, underSixteen, LOCK_DAYS } from "../lib/ageLock";
 import { BUSINESS } from "../legal/business";
 
@@ -180,7 +181,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
       <Shell>
         <UnderSixteen onLogIn={() => {
           // A half-made account (no profile yet) is signed out first.
-          if (auth.currentUser) signOut(auth).catch(() => {});
+          if (auth.currentUser) signOutHere().catch(() => {});
           setPendingUser(null);
           switchMode("login");
         }} />
@@ -336,11 +337,14 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
 function RememberMe({ id, remember, setRemember, noStorage }) {
   return (
     <>
-      <label htmlFor={id} className="flex min-h-11 cursor-pointer select-none items-center gap-3">
-        <input id={id} type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
-          className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
-        <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
-      </label>
+      {/* An installed app (M.A.T.H) always keeps you signed in (lib/auth.js). */}
+      {!isStandalone() && (
+        <label htmlFor={id} className="flex min-h-11 cursor-pointer select-none items-center gap-3">
+          <input id={id} type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
+            className="h-5 w-5 rounded-md border-field bg-surface-2 accent-violet-600" />
+          <span className="text-callout text-fg-muted">Keep me signed in on this device</span>
+        </label>
+      )}
       {noStorage && (
         <p role="note" className="rounded-control bg-warning-text/10 px-3 py-2 text-caption text-warning-text">
           This browser is blocking storage for Mesh, so you&apos;ll be signed out when you reload or open another tab.
@@ -447,6 +451,7 @@ function FinishProfile({ user, onCreated, onUnderSixteen }) {
     if ((underSixteen(birthYear) && !borderline) || (borderline && turned16 === false)) {
       lockAge();
       setBusy(true);
+      forgetAccount();
       await user.delete().catch(() => signOut(auth).catch(() => {}));
       onUnderSixteen();
       return undefined;
@@ -562,7 +567,7 @@ function FinishProfile({ user, onCreated, onUnderSixteen }) {
       </div>
       <Alert error={error} />
       <button disabled={busy} className={`${SOCIAL} ${PRIMARY}`}>{busy ? "Setting up…" : "Join Mesh"}</button>
-      <button type="button" onClick={() => signOut(auth)}
+      <button type="button" onClick={() => signOutHere()}
         className="min-h-11 w-full text-callout font-medium text-fg-muted hover:text-fg">
         Use a different account
       </button>

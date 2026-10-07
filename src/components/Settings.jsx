@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { signOut } from "firebase/auth";
 import {
   BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
@@ -12,7 +11,7 @@ import { clearTime } from "../lib/timeMeter";
 import NotificationSettings from "./NotificationSettings";
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
-import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail } from "../lib/auth";
+import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail, signOutHere } from "../lib/auth";
 import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
 import { replayTour } from "../lib/tour";
 import { openCookieChoices, optionalItems, useConsent } from "../lib/consent";
@@ -324,7 +323,7 @@ export default function Settings() {
           <p className="text-callout text-fg-muted">You'll need to sign in again on this device.</p>
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="primary" icon={LogOut} onClick={() => { clearAllDrafts(); signOut(auth); navigate("/", { replace: true }); }}>Sign out</Button>
+            <Button variant="primary" icon={LogOut} onClick={() => { clearAllDrafts(); signOutHere(); navigate("/", { replace: true }); }}>Sign out</Button>
           </div>
         </Dialog>
       )}

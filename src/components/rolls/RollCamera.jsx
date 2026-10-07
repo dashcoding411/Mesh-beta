@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, CameraOff, SwitchCamera, Volume2, VolumeX, X, Zap, ZapOff } from "lucide-react";
-import { cameraSupported, openStream } from "../../lib/cameras";
+import { useCamera } from "../../lib/useCamera";
 import { centreCrop, developFrame, stampText, STAMP_COLOR } from "../../lib/digicam";
 import SevenSeg from "./SevenSeg";
 import { SHOTS_PER_PERSON, developLabel, queueShot } from "../../lib/data/rolls";
@@ -13,6 +13,7 @@ import { Spinner } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
 const ASPECT = 3 / 4; // portrait 4:3, like a compact held upright
+const SIZE = { width: { ideal: 2560 }, height: { ideal: 1920 } };
 const FACING_KEY = "mesh:camera-facing";
 const FLASH_KEY = "mesh:roll-flash";
 const SOUND_KEY = "mesh:roll-sound";
@@ -26,45 +27,20 @@ const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage
  */
 export default function RollCamera({ roll, used, onClose, onShot }) {
   const toast = useToast();
-  const [status, setStatus] = useState(() => (cameraSupported() ? "starting" : "unavailable"));
   const [facing, setFacing] = useState(() => read(FACING_KEY, "environment"));
   const [flash, setFlash] = useState(() => read(FLASH_KEY, "on") === "on");
   const [sound, setSound] = useState(() => read(SOUND_KEY, "on") === "on");
-  const [cameras, setCameras] = useState(0);
   const [taken, setTaken] = useState(used);
   const [blink, setBlink] = useState(false); // the screen lighting a selfie
   const [shot, setShot] = useState(0); // shots this visit; each one replays the shutter
   const [busy, setBusy] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
   const shutterRef = useRef(null);
   const trap = useFocusTrap();
   const left = Math.max(0, SHOTS_PER_PERSON - taken);
   const mirrored = facing === "user";
 
-  const stop = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    if (!cameraSupported()) return undefined;
-    let alive = true;
-    openStream(facing, false, { width: { ideal: 2560 }, height: { ideal: 1920 } })
-      .then(async (stream) => {
-        if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
-        const el = videoRef.current;
-        if (el) { el.srcObject = stream; await el.play().catch(() => {}); }
-        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-        setCameras(devices.filter((d) => d.kind === "videoinput").length);
-        setStatus("live");
-        shutterRef.current?.focus();
-      })
-      .catch((err) => { if (alive) setStatus(err?.name === "NotAllowedError" || err?.name === "SecurityError" ? "denied" : "unavailable"); });
-    return () => { alive = false; stop(); };
-  }, [facing, stop, attempt]);
+  const { videoRef, streamRef, status, problem, cameras, retry, frameReady } = useCamera({ facing, size: SIZE });
+  useEffect(() => { if (status === "live") shutterRef.current?.focus(); }, [status]);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
@@ -75,7 +51,6 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   const flip = () => {
     const next = facing === "user" ? "environment" : "user";
     write(FACING_KEY, next);
-    setStatus("starting");
     setFacing(next);
   };
   const toggleFlash = () => { write(FLASH_KEY, flash ? "off" : "on"); setFlash(!flash); };
@@ -89,12 +64,18 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   };
 
   const shoot = async () => {
-    const el = videoRef.current;
-    if (status !== "live" || busy || left <= 0 || !el?.videoWidth) return;
+    if (status !== "live" || busy || left <= 0) return;
+    // First, inside the tap: a stalled preview can only be restarted from one.
+    const ready = frameReady();
     setBusy(true);
     shutterBuzz();
     if (sound) wakeShutter();
     try {
+      const el = videoRef.current;
+      if (!(await ready) || !el?.videoWidth) {
+        toast({ tone: "error", title: "The camera isn't showing a picture yet", body: "Try again, or close the camera and open it again. No shot was used." });
+        return;
+      }
       if (flash) {
         if (mirrored) { setBlink(true); await new Promise((r) => setTimeout(r, 140)); }
         else if (await torch(true)) await new Promise((r) => setTimeout(r, 260));
@@ -150,8 +131,9 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
 
       {/* The digicam screen. */}
       <div className="relative mt-2 aspect-[3/4] w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] overflow-hidden bg-black sm:rounded-[14px]">
-        <video ref={videoRef} muted playsInline aria-hidden="true"
-          className={`h-full w-full object-cover [filter:contrast(1.12)_saturate(1.22)] ${mirrored ? "-scale-x-100" : ""} ${status === "live" ? "" : "invisible"}`} />
+        {/* Never hidden: iPhones may not play a hidden video, which then stays black. */}
+        <video ref={videoRef} autoPlay muted playsInline aria-hidden="true"
+          className={`h-full w-full object-cover [filter:contrast(1.12)_saturate(1.22)] ${mirrored ? "-scale-x-100" : ""}`} />
         {status === "starting" && <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Opening the camera"><Spinner /></span>}
         {(status === "denied" || status === "unavailable") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
@@ -162,7 +144,8 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
                 ? "Rolls only use the camera, so allow camera access for Mesh in your browser's settings, then try again."
                 : "Rolls only take photos with the camera, and this device or browser can't open one."}
             </p>
-            {status === "denied" && <Button onClick={() => { setStatus("starting"); setAttempt((n) => n + 1); }}>Try again</Button>}
+            {problem && <p className="text-caption text-white/50">Code: {problem}</p>}
+            <Button onClick={retry}>Try again</Button>
           </div>
         )}
 

@@ -25,12 +25,17 @@ import GoogleAdCard from "./GoogleAdCard";
 import { useConsent } from "../lib/consent";
 import { adsenseEnabled } from "../lib/adsense";
 import { PhotoNudge } from "./ProfilePhoto";
+import { readSnapshot, saveSnapshot } from "../lib/snapshot";
 
 const PAGE = 12;
 
 // Feed state kept across remounts (session only; expires, and resets on post).
 const kept = new Map(); // `${uid}:${mode}:${topic}` -> { posts, shown, top, at, feedKey }
 const KEEP_MS = 15 * 60 * 1000;
+// Opening Mesh, the top of Home from last time (on this device, up to a
+// day old) shows straight away while the feed refreshes (lib/snapshot.js).
+const COPY_MS = 24 * 3600e3;
+const copyName = (key) => `home:${key}`;
 let lastTopic = "all";
 
 // For you: everyone's public posts (public circles' included) plus
@@ -61,12 +66,15 @@ export default function HomeFeed({ mode }) {
   const keepKey = `${me()}:${mode}:${topic}`;
   const [restored] = useState(() => {
     const k = kept.get(keepKey);
-    return k && k.feedKey === feedKey && Date.now() - k.at < KEEP_MS ? k : null;
+    if (k && k.feedKey === feedKey && Date.now() - k.at < KEEP_MS) return k;
+    const copy = topic === "all" && me() ? readSnapshot(copyName(keepKey), COPY_MS) : null;
+    return copy?.length ? { posts: copy, shown: PAGE, top: 0, at: 0, copy: true } : null;
   });
   const feedScroll = useRef(null);
   const scrollTop = useRef(restored?.top || 0);
   const loadedAt = useRef(restored?.at || 0);
-  const loadedFor = useRef(restored ? keepKey : null);
+  // A copy from last time still loads; it's only there until the feed arrives.
+  const loadedFor = useRef(restored && !restored.copy ? keepKey : null);
   const [posts, setPosts] = useState(restored?.posts ?? null);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -89,9 +97,11 @@ export default function HomeFeed({ mode }) {
     setPosts((prev) => prev?.map((p) => p.id === id ? { ...p, [count]: Math.max(0, (p[count] || 0) + (on ? 1 : -1)) } : p));
   }, [setViewerState]);
 
-  const load = useCallback(async ({ quiet = false } = {}) => {
+  // `quiet`: there's a feed on screen, so say it's refreshing and only toast
+  // a failure. `behind`: the same, without the "Refreshing" line.
+  const load = useCallback(async ({ quiet = false, behind = false } = {}) => {
     setError(false);
-    if (quiet) setRefreshing(true);
+    if (quiet && !behind) setRefreshing(true);
     try {
       const circlesP = publicCircles();
       const [list, followersOnly, hidden, reposts, news, circles, circlePosts] = await Promise.all([
@@ -128,6 +138,7 @@ export default function HomeFeed({ mode }) {
       const feed = mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered;
       setPosts([...feed, ...stories].sort((a, b) => postTime(b) - postTime(a)));
       loadedAt.current = Date.now();
+      if (topic === "all") saveSnapshot(copyName(keepKey), feed.slice(0, PAGE * 2));
     } catch (err) {
       console.error(err);
       if (quiet) toast({ tone: "error", title: "Couldn't refresh", body: "Check your connection and try again." });
@@ -135,13 +146,13 @@ export default function HomeFeed({ mode }) {
     } finally {
       setRefreshing(false);
     }
-  }, [mode, following, hiddenAuthors, topic, hiddenWords, hideAi, toast]);
+  }, [mode, following, hiddenAuthors, topic, hiddenWords, hideAi, toast, keepKey]);
 
   // Deliberately not reloaded on follow changes, to avoid reshuffling mid-scroll.
   useEffect(() => {
     if (loadedFor.current === keepKey) return;
     loadedFor.current = keepKey;
-    load();
+    load(restored?.copy ? { quiet: true, behind: true } : {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keepKey]);
 

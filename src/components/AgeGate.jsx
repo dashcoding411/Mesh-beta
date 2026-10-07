@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Download, LogOut, Trash2 } from "lucide-react";
-import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
+import { signOutHere } from "../lib/auth";
 import { exportMyData } from "../lib/db";
 import { clearAllDrafts } from "../lib/drafts";
 import { LogoMark } from "./shell/Sidebar";
@@ -70,7 +70,7 @@ function UnderAge() {
       <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
         <Button icon={Download} loading={busy} onClick={download}>Download my data</Button>
         <Button variant="danger" icon={Trash2} onClick={() => setDeleting(true)}>Delete my account</Button>
-        <Button variant="ghost" icon={LogOut} onClick={() => { clearAllDrafts(); signOut(auth); }}>Sign out</Button>
+        <Button variant="ghost" icon={LogOut} onClick={() => { clearAllDrafts(); signOutHere(); }}>Sign out</Button>
       </div>
       {deleting && <DeleteDialog hasPassword={hasPassword} onClose={() => setDeleting(false)} />}
     </Screen>

@@ -58,6 +58,23 @@ Composite indexes are declared in `firestore.indexes.json`.
   `/u/<uid>` link resolves and swaps its address for the handle.
 - **Own profile.** `myProfile()` (`lib/data/users.js`) keeps the signed-in
   profile current with one snapshot listener instead of a read per write.
+- **Opening quickly** (`lib/snapshot.js`). The signed-in account (profile,
+  settings, who you follow, block and mute) and the top of Home (topic
+  "all", up to a day old) are copied to local storage under `mesh:snap:`.
+  On opening, Mesh shows them as soon as Firebase knows who's signed in,
+  without waiting for the four account reads or the feed queries, then
+  replaces them with fresh data; a read that fails keeps the copy. The
+  copies are deleted whenever nobody is signed in. App Check starts 3
+  seconds after Mesh is on screen (see Cookies and storage).
+- **Unexpected sign-outs.** `mesh:last-account` notes who last signed in
+  here. Deliberate sign-outs and account deletions clear it first
+  (`signOutHere`, `forgetAccount` in `lib/auth.js`), so if Mesh opens signed
+  out while it's set, the person is told, with a code: `keep-signed-in-off`
+  (the session ended with the browser, as chosen), `not-kept` (M.A.T.H only:
+  the stored sign-in was gone from the device), or `ended` (Firebase dropped
+  it, such as a revoked or expired session). An installed app (M.A.T.H)
+  never ends a session on closing and hides "Keep me signed in": the phone
+  closes those apps whenever it likes.
 - **Visitors.** Signed out, the shell shows public sections and routes
   account-only pages to a join prompt. Actions call `needsAccount(reason)`
   from the shell context, which explains what needs an account. Signing in
@@ -94,7 +111,17 @@ full-screen viewfinder with the shutter, library and camera flip at the bottom
 where a thumb reaches. Tap for a photo; hold to record when video uploads are
 on. The photo is cropped to what the viewfinder showed. On phones, adding to
 your story opens the camera first, and the preview offers "Your story" (one
-tap) or "Post" (into the composer with the capture attached). In the composer,
+tap) or "Post" (into the composer with the capture attached). The story
+camera and the roll camera share `lib/useCamera.js`: if asking with the
+microphone fails it asks for the camera alone (photos and silent video
+still work), it restarts a camera the phone ended while Mesh was in the
+background, the viewfinder is never hidden (iPhones may not play a hidden
+video), and a shutter tap first makes sure frames are arriving, saying so
+if not, instead of doing nothing. A failure shows the browser's error name
+as a code. The photo is taken as the finger lifts, so the shutter cancels
+the click phones send afterwards, which used to land on the story editor's
+"Post" button where the shutter had been; the editor also ignores clicks
+for its first half second. In the composer,
 location and photo descriptions stay folded until asked for; the share button
 sits bottom-right. Location searches real places as you type
 (`LocationField.jsx`, Photon on OpenStreetMap data, no key or cookies) and
@@ -135,9 +162,10 @@ string, the edge Worker forwards that to /login, and the app checks the
 state and nonce (`lib/googleAnswer.js`), clears the address and calls
 signInWithCredential before reading auth state, so it opens signed in.
 While it does, the loading screen says "Finishing sign-in with Google…",
-the security check (App Check's reCAPTCHA) waits until it's done (every
-sign-in request waits for a reCAPTCHA token first, and a slow start there
-fails the sign-in as a network error after a minute on phones), and after
+the security check (App Check's reCAPTCHA) hasn't started yet (it waits
+until Mesh is on screen; every sign-in request waits for a reCAPTCHA token
+once it runs, and a slow start fails the sign-in as a network error after a
+minute on phones), and after
 20 seconds it gives up with `auth/timeout` rather than hang. M.A.T.H keeps
 the signed-in account in local storage rather than IndexedDB, which can stop
 answering in a home-screen app after a trip out to Google. Sign-in errors
@@ -231,7 +259,12 @@ What each kind of record shows, and to whom:
   or switches them on in "Choose"; "Essential only" has the same weight. The
   choice is kept under `mesh:consent` and can be changed in Settings or from
   the Cookies policy. App Check only starts once reCAPTCHA is allowed (never in
-  the iPhone app). The first-run tour waits until the banner is answered.
+  the iPhone app), and then 3 seconds after Mesh is on screen rather than as
+  it opens: while it runs, every sign-in and database request waits for a
+  reCAPTCHA token, and loading reCAPTCHA takes a second or more (several on
+  a phone). Requests before then count as unverified, which is fine while
+  App Check isn't enforced; start it earlier before enforcing it. The
+  first-run tour waits until the banner is answered.
 - **Accepted exposure.** The Firebase web config and the TURN relay
   credentials are in the site's code by design (there's no server to hand out
   short-lived ones). App Check isn't enforced yet, so the rules are the only

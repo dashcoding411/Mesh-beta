@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase";
-import { finishGoogleDirect, googleReturning, restoreSession } from "./lib/auth";
+import { auth, releaseAppCheck } from "./firebase";
+import { finishGoogleDirect, googleReturning, lostSession, noteSignedIn, restoreSession } from "./lib/auth";
+import { clearSnapshots, readSnapshot, saveSnapshot } from "./lib/snapshot";
 import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
@@ -111,8 +112,12 @@ function sectionTitle(page, query) {
   return SECTION_TITLES[page.section] ?? null;
 }
 
+// How old this device's copy of your account can be and still open Mesh.
+const ACCOUNT_COPY_MS = 30 * 24 * 3600e3;
+
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
+  const [signedOutWhy, setSignedOutWhy] = useState(""); // a code, when signed out without choosing to
   // Read before finishGoogleDirect clears the address bar.
   const [finishingSignIn] = useState(googleReturning);
   const [user, setUser] = useState(null);
@@ -139,6 +144,16 @@ export default function App() {
     let unsub = () => {};
     let cancelled = false;
     let initial = true;
+    const applyAccount = (a) => {
+      setProfile(a.profile);
+      setFollowing(new Set(a.following));
+      setBlocked(new Set(a.blocked));
+      setInterests(a.prefs.interests || []);
+      setHiddenWords(a.prefs.hiddenWords || []);
+      setHideAi(!!a.prefs.hideAi);
+      setTourDone(!!a.prefs.tourDone);
+      setMutedSet(new Set(a.prefs.muted || []));
+    };
     // Back from Google with a token (M.A.T.H): sign in before reading who's
     // signed in, so Mesh opens signed in rather than reloading after.
     restoreSession().catch(() => {}).then(() => finishGoogleDirect()).catch(() => {}).then(() => {
@@ -148,7 +163,8 @@ export default function App() {
         // cache or listener carries over between visitor and account.
         if (!initial) {
           // An under-16 sign-up that just ended goes back to say why; everyone else goes Home.
-          if (!u) return window.location.replace(justAgeLocked() ? "/signup" : "/");
+          if (!u) { clearSnapshots(); return window.location.replace(justAgeLocked() ? "/signup" : "/"); }
+          noteSignedIn(u.uid);
           if (await fetchOwnProfile(u.uid).catch(() => null)) return window.location.replace(afterAuthPath());
           // Signed in without a profile: sign-up continues.
           setProfile(null);
@@ -157,33 +173,71 @@ export default function App() {
         }
         initial = false;
         setUser(u);
-        if (u) {
-          const [p, f, b, prefs] = await Promise.all([
-            fetchOwnProfile(u.uid).catch(() => null),
-            fetchMyFollowingSet().catch(() => new Set()),
-            fetchBlocked().then((l) => new Set(l.map((x) => x.id))).catch(() => new Set()),
-            fetchMyPrefs().catch(() => ({ interests: [] })),
-          ]);
-          setProfile(p);
-          // Private accounts can't have public reposts (older ones are removed).
-          if (p?.isPrivate) removeMyReposts().catch(() => {});
-          setFollowing(f);
-          setBlocked(b);
-          setInterests(prefs.interests || []);
-          setHiddenWords(prefs.hiddenWords || []);
-          setHideAi(!!prefs.hideAi);
-          setTourDone(!!prefs.tourDone);
-          setMutedSet(new Set(prefs.muted || []));
-          // Prompt once per account per device.
-          let asked = true;
-          try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
-          if (p && !(prefs.interests || []).length && !asked) setInterestsDialog("first");
+        if (!u) {
+          // Nobody's signed in: no copy of an account stays on this device,
+          // and someone signed out without choosing to is told why.
+          clearSnapshots();
+          setSignedOutWhy(lostSession());
+          setAuthReady(true);
+          return;
         }
+        noteSignedIn(u.uid);
+        // Open straight away from this device's copy of the account, then
+        // bring it up to date. Anything that can't be read keeps the copy.
+        const copy = readSnapshot(`me:${u.uid}`, ACCOUNT_COPY_MS);
+        if (copy?.profile) { applyAccount(copy); setAuthReady(true); }
+        const [p, f, b, prefs] = await Promise.all([
+          fetchOwnProfile(u.uid).catch(() => undefined),
+          fetchMyFollowingSet().then((s) => [...s]).catch(() => null),
+          fetchBlocked().then((l) => l.map((x) => x.id)).catch(() => null),
+          fetchMyPrefs().catch(() => null),
+        ]);
+        if (cancelled) return;
+        applyAccount({
+          profile: p === undefined ? copy?.profile ?? null : p,
+          following: f ?? copy?.following ?? [],
+          blocked: b ?? copy?.blocked ?? [],
+          prefs: prefs ?? copy?.prefs ?? { interests: [] },
+        });
+        // Private accounts can't have public reposts (older ones are removed).
+        if (p?.isPrivate) removeMyReposts().catch(() => {});
+        // Prompt once per account per device.
+        let asked = true;
+        try { asked = localStorage.getItem(`mesh:asked-interests:${u.uid}`) === "1"; } catch { /* storage blocked */ }
+        if (p && prefs && !(prefs.interests || []).length && !asked) setInterestsDialog("first");
         setAuthReady(true);
       });
     });
     return () => { cancelled = true; unsub(); };
   }, []);
+
+  // Keep this device's copy of the account current (see above).
+  useEffect(() => {
+    if (!authReady || !user || !profile) return;
+    saveSnapshot(`me:${user.uid}`, {
+      profile, following: [...following], blocked: [...blocked],
+      prefs: { interests, hiddenWords, hideAi, tourDone, muted: [...muted] },
+    });
+  }, [authReady, user, profile, following, blocked, interests, hiddenWords, hideAi, tourDone, muted]);
+
+  // The security check starts once Mesh is on screen (firebase.js).
+  useEffect(() => {
+    if (!authReady) return undefined;
+    const t = setTimeout(releaseAppCheck, 3000);
+    return () => clearTimeout(t);
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!signedOutWhy) return;
+    toast({
+      tone: "info",
+      title: "You were signed out",
+      body: signedOutWhy === "keep-signed-in-off"
+        ? "\"Keep me signed in\" was off, so Mesh signed you out when it closed. Log in again to carry on."
+        : `Log in again to carry on. (code: ${signedOutWhy})`,
+      action: { label: "Log in", onClick: () => navigate("/login") },
+    });
+  }, [signedOutWhy, toast]);
 
   const signedIn = !!(user && profile);
   const guest = authReady && !user;
