@@ -1,7 +1,7 @@
 // Conversations, messages, reactions, typing, read state, polls and thoughts.
 import {
-  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit,
-  onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
+  arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit,
+  onSnapshot, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { storeChatPhoto, storeVoiceNote } from "../media";
@@ -27,6 +27,14 @@ function chatDoc(chatId) {
 }
 
 /** Rejects with a user-facing message if the other person doesn't accept messages from the caller. */
+// Rate limits (the rules): a new conversation at most every 10 seconds and
+// a message every 0.4 seconds, stamped on rateLimits/{uid} in the same write.
+// Normal use never meets them; a script mass-messaging people does.
+const CHAT_GAP_MS = 10_000;
+let lastChatAt = 0;
+const stampRate = (batch, kind) => batch.set(doc(db, "rateLimits", me()), { [kind]: serverTimestamp() }, { merge: true });
+const tooQuick = () => Object.assign(new Error("You're starting conversations very quickly. Wait a few seconds and try again."), { code: "rate-limited" });
+
 export async function openDirectChat(target) {
   const uid = me();
   const chatId = [uid, target.id].sort().join("_");
@@ -38,8 +46,10 @@ export async function openDirectChat(target) {
     return chatId;
   }
   const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(target.id)]);
+  if (Date.now() - lastChatAt < CHAT_GAP_MS) throw tooQuick();
   try {
-    await setDoc(ref, {
+    const batch = writeBatch(db);
+    batch.set(ref, {
       members: [uid, target.id].sort(),
       memberNames: { [uid]: mine?.username || "?", [target.id]: theirs?.username || target.username || "?" },
       isGroup: false,
@@ -53,6 +63,9 @@ export async function openDirectChat(target) {
       createdBy: uid,
       updatedAt: serverTimestamp(),
     });
+    stampRate(batch, "chat");
+    await batch.commit();
+    lastChatAt = Date.now();
   } catch (err) {
     if (err?.code === "permission-denied") {
       throw new Error(`You can't message @${target.username || "this person"}. They only take messages from people they follow.`);
@@ -67,7 +80,10 @@ export async function openDirectChat(target) {
 export async function createGroupChat(name, targets, extra = {}) {
   const uid = me();
   const mine = await myProfile();
-  const refDoc = await addDoc(collection(db, "chats"), {
+  if (Date.now() - lastChatAt < CHAT_GAP_MS) throw tooQuick();
+  const refDoc = doc(collection(db, "chats"));
+  const batch = writeBatch(db);
+  batch.set(refDoc, {
     members: [uid],
     admins: [uid],
     memberNames: { [uid]: mine?.username || "?" },
@@ -83,6 +99,9 @@ export async function createGroupChat(name, targets, extra = {}) {
     updatedAt: serverTimestamp(),
     ...extra,
   });
+  stampRate(batch, "chat");
+  await batch.commit();
+  lastChatAt = Date.now();
   const skipped = await addToGroup(refDoc.id, targets);
   return { id: refDoc.id, skipped };
 }
@@ -177,7 +196,11 @@ export async function sendMessage(chatId, text, extras = {}) {
     createdAt: serverTimestamp(),
     ...extras,
   };
-  const sent = await addDoc(collection(db, "chats", chatId, "messages"), msg);
+  const sent = doc(collection(db, "chats", chatId, "messages"));
+  const batch = writeBatch(db);
+  batch.set(sent, msg);
+  stampRate(batch, "message");
+  await batch.commit();
   // Call logs aren't pushed; the call itself rang.
   if (!extras.call) pushMessage(chatId, sent.id);
   await updateDoc(chatDoc(chatId), {

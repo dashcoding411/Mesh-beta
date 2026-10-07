@@ -124,24 +124,21 @@ export const SUSPENSION_LENGTHS = [
   { id: "forever", days: null, label: "Permanently" },
 ];
 
+// Suspensions are kept in suspensions/{uid}, which only the person and staff
+// can read, so a suspension (or a lifted one) never shows on a public profile.
 export async function suspendUser(uid, days, reason) {
   const until = days ? Timestamp.fromMillis(Date.now() + days * 86_400_000) : Timestamp.fromDate(new Date("9999-12-31"));
   const profile = await myProfile();
-  const batch = writeBatch(db);
-  batch.update(doc(db, "users", uid), { suspendedUntil: until });
-  batch.set(doc(db, "suspensions", uid), { until, reason, by: profile?.username || "", createdAt: serverTimestamp() });
-  await batch.commit();
+  await setDoc(doc(db, "suspensions", uid), { until, reason, by: profile?.username || "", createdAt: serverTimestamp() });
 }
 
 export async function liftSuspension(uid) {
-  const batch = writeBatch(db);
-  batch.update(doc(db, "users", uid), { suspendedUntil: Timestamp.fromMillis(0) });
-  batch.delete(doc(db, "suspensions", uid));
-  await batch.commit();
+  await deleteDoc(doc(db, "suspensions", uid));
 }
 
-export function isSuspended(profile) {
-  return tsMillis(profile?.suspendedUntil) > Date.now();
+/** Whether a suspension record (from fetchMySuspension) is still in force. */
+export function isSuspended(suspension) {
+  return tsMillis(suspension?.until) > Date.now();
 }
 
 export async function fetchSuspensions() {

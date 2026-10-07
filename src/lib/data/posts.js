@@ -421,6 +421,8 @@ export async function fetchSavedPosts() {
 export async function sendPostTo(post, chatId, note = "") {
   const uid = me();
   const batch = writeBatch(db);
+  // A message, so it carries the message rate stamp (lib/data/chats.js).
+  batch.set(doc(db, "rateLimits", uid), { message: serverTimestamp() }, { merge: true });
   batch.set(doc(collection(db, "chats", chatId, "messages")), {
     senderId: uid,
     text: note,

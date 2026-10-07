@@ -37,9 +37,12 @@ service cloud.firestore {
       return !s.lower().matches('(?s).*(n+[ ._*-]?[i1!|*]+[ ._*-]?[g9]+[ ._*-]?[g9]+[ ._*-]?[e3*]+[ ._*-]?r+|n+[ ._*-]?[i1!|*]+[ ._*-]?[g9]+[ ._*-]?[g9]+[ ._*-]?[a4@*]+|f+[ ._*-]?[a4@*]+[ ._*-]?[g9]+[ ._*-]?[g9]+[ ._*-]?[o0*]+[ ._*-]?[t7]+|p+[ ._*-]?[a4@*]+[ ._*-]?j+[ ._*-]?[e3*]+[ ._*-]?[e3*]+[ ._*-]?[t7]+|c+u+r+r+y+m+u+n+c+h+[e3*]+r+|c+u+r+r+y+[ ._-]*m+u+n+c+h+[e3*]+r+|[s5$]+[t7]+r+[e3*]+[e3*]+[t7]+[s5$]+h+[i1!|*]+[t7]+[t7]+[e3*]+r+|[s5$]+[t7]+r+[e3*]+[e3*]+[t7]+[ ._-]*[s5$]+h+[i1!|*]+[t7]+[t7]+[e3*]+r+|p+[o0*]+[o0*]+[i1!|*]+n+l+[o0*]+[o0*]+|p+[o0*]+[o0*]+[ ._-]*[i1!|*]+n+[ ._-]*l+[o0*]+[o0*]+|p+[o0*]+[o0*]+[ ._-]*[i1!|*]+n+[ ._-]*[t7]+h+[e3*]+[ ._-]*l+[o0*]+[o0*]+|p+[o0*]+r+c+h+m+[o0*]+n+k+[e3*]+y+|p+[o0*]+r+c+h+[ ._-]*m+[o0*]+n+k+[e3*]+y+|j+u+n+[g9]+l+[e3*]+[b8]+u+n+n+y+|j+u+n+[g9]+l+[e3*]+[ ._-]*[b8]+u+n+n+y+|j+[ ._*-]?[i1!|*]+[ ._*-]?[g9]+[ ._*-]?[a4@*]+[ ._*-]?[b8]+[ ._*-]?[o0*]+[ ._*-]?[o0*]+|z+[i1!|*]+p+p+[e3*]+r+h+[e3*]+[a4@*]+d+|c+h+[i1!|*]+n+[g9]+c+h+[o0*]+n+[g9]+|c+h+[i1!|*]+n+[g9]+[ ._-]*c+h+[o0*]+n+[g9]+|w+[e3*]+[t7]+[b8]+[a4@*]+c+k+|r+[a4@*]+[g9]+h+[e3*]+[a4@*]+d+|[t7]+[o0*]+w+[e3*]+l+h+[e3*]+[a4@*]+d+|m+u+z+r+[a4@*]+[t7]+|d+[i1!|*]+[a4@*]+p+[e3*]+r+h+[e3*]+[a4@*]+d+|[g9]+[o0*]+[a4@*]+[t7]+f+u+c+k+[e3*]+r+|[g9]+[o0*]+[a4@*]+[t7]+[ ._-]*f+u+c+k+[e3*]+r+|[o0*]+v+[e3*]+n+d+[o0*]+d+[g9]+[e3*]+r+|[o0*]+v+[e3*]+n+[ ._-]*d+[o0*]+d+[g9]+[e3*]+r+|[s5$]+h+[e3*]+m+[a4@*]+l+[e3*]+|[b8]+[o0*]+[b8]+[s5$]+[ ._-]*[a4@*]+n+d+[ ._-]*v+[a4@*]+[g9]+[e3*]+n+[e3*]+).*')
         && !s.lower().matches('(?s)(.*[^a-z])?(p+[a4@*]+k+[i1!|*]+|k+[i1!|*]+k+[e3*]+|[g9]+[o0*]+[o0*]+k+|[b8]+[o0*]+[o0*]+n+[g9]+|[g9]+y+p+p+[o0*]+|h+[o0*]+n+k+y+|d+[o0*]+[t7]+h+[e3*]+[a4@*]+d+|[t7]+r+[o0*]+[o0*]+n+|m+u+z+z+[i1!|*]+[e3*]+|[b8]+[e3*]+[a4@*]+n+[e3*]+r+|p+[o0*]+l+[a4@*]+c+k+)(e?s)?([^a-z].*)?');
     }
-    // Suspended accounts can read but not create or modify content.
+    // Suspended accounts can read but not create or modify content. The
+    // suspension is in suspensions/{uid}, seen only by its owner and staff,
+    // never on the public profile.
     function notSuspended() {
-      return myProfile().get('suspendedUntil', timestamp.date(2000, 1, 1)) < request.time;
+      let path = /databases/$(database)/documents/suspensions/$(request.auth.uid);
+      return !exists(path) || get(path).data.until < request.time;
     }
     // Counters may move by exactly one per write.
     function onlyKey(field) {
@@ -99,9 +102,12 @@ service cloud.firestore {
     // Rate limiting: each write kind stamps rateLimits/{uid} with request.time in
     // the same batch and is refused if the previous stamp is too recent.
     function rateOk(kind, seconds) {
+      return rateOkMs(kind, seconds * 1000);
+    }
+    function rateOkMs(kind, ms) {
       let path = /databases/$(database)/documents/rateLimits/$(request.auth.uid);
       return getAfter(path).data.get(kind, null) == request.time
-        && (!exists(path) || get(path).data.get(kind, timestamp.value(0)) < request.time - duration.value(seconds, 's'));
+        && (!exists(path) || get(path).data.get(kind, timestamp.value(0)) < request.time - duration.value(ms, 'ms'));
     }
     function validBirthYear(y) {
       // 16 and over (Social Media Minimum Age Act); 0 = not yet given (legacy accounts).
@@ -774,7 +780,7 @@ service cloud.firestore {
       allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'open');
     }
 
-    // Suspension reasons: owner and moderators only (suspendedUntil is on the profile).
+    // Suspensions (until when, and why): the owner and staff only.
     match /suspensions/{uid} {
       allow get: if isUser(uid) || isStaff();
       allow list: if isStaff();
@@ -788,18 +794,25 @@ service cloud.firestore {
 
     match /rateLimits/{uid} {
       allow read: if isUser(uid);
+      // Each kind is a timestamp set to the time of the write it goes with.
       allow create: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow'])
         && incomingData().get('post', request.time) == request.time
         && incomingData().get('comment', request.time) == request.time
         && incomingData().get('media', request.time) == request.time
-        && incomingData().get('edit', request.time) == request.time;
+        && incomingData().get('edit', request.time) == request.time
+        && incomingData().get('chat', request.time) == request.time
+        && incomingData().get('message', request.time) == request.time
+        && incomingData().get('follow', request.time) == request.time;
       allow update: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow'])
         && (incomingData().get('post', null) == resource.data.get('post', null) || incomingData().post == request.time)
         && (incomingData().get('comment', null) == resource.data.get('comment', null) || incomingData().comment == request.time)
         && (incomingData().get('media', null) == resource.data.get('media', null) || incomingData().media == request.time)
-        && (incomingData().get('edit', null) == resource.data.get('edit', null) || incomingData().edit == request.time);
+        && (incomingData().get('edit', null) == resource.data.get('edit', null) || incomingData().edit == request.time)
+        && (incomingData().get('chat', null) == resource.data.get('chat', null) || incomingData().chat == request.time)
+        && (incomingData().get('message', null) == resource.data.get('message', null) || incomingData().message == request.time)
+        && (incomingData().get('follow', null) == resource.data.get('follow', null) || incomingData().follow == request.time);
       // Deletable only with the account.
       allow delete: if isUser(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid));
     }
@@ -914,9 +927,10 @@ service cloud.firestore {
           && incomingData().town is string
           && incomingData().town.size() <= 80
           && hateFree(incomingData().name + ' ' + incomingData().get('nameLower', '') + ' ' + incomingData().bio + ' ' + incomingData().pronouns + ' ' + incomingData().town))
-        // Moderators may set only suspendedUntil.
+        // Suspensions live in suspensions/{uid}, not here. A suspendedUntil left
+        // by an older version may only be removed.
         || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['suspendedUntil'])
-          && incomingData().suspendedUntil is timestamp)
+          && !('suspendedUntil' in incomingData()))
         // Staff award badges, but not the pink check.
         || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['badges'])
           && incomingData().badges is list && incomingData().badges.hasOnly(['beta', 'verified', 'pink'])
@@ -978,6 +992,7 @@ service cloud.firestore {
           && incomingData().username == profileOf(targetUid).username
           && uid != targetUid
           && ((isUser(uid)
+              && rateOkMs('follow', 500)
               && !blockedBy(targetUid)
               && profileOf(targetUid).get('isPrivate', false) != true)
             || (isUser(targetUid)
@@ -1001,6 +1016,7 @@ service cloud.firestore {
       match /followRequests/{requesterUid} {
         allow read: if isUser(uid) || isUser(requesterUid);
         allow create: if isUser(requesterUid)
+          && rateOkMs('follow', 500)
           && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(requesterUid))
           && incomingData().keys().hasOnly(['username', 'createdAt'])
           && isMyName(incomingData().username)
@@ -2289,6 +2305,8 @@ service cloud.firestore {
       // 1:1 chats use the sorted uid pair as id and require reachability. Groups
       // start with the creator as admin; members are added one write at a time.
       allow create: if signedIn()
+        // A new conversation at most every 10 seconds (lib/data/chats.js).
+        && rateOk('chat', 10)
         && request.auth.uid in incomingData().members
         && incomingData().name is string
         && incomingData().name.size() <= 60
@@ -2394,6 +2412,8 @@ service cloud.firestore {
         allow create: if inChat()
           && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'photo', 'poll', 'call', 'storyReply', 'thoughtReply'])
           && incomingData().senderId == request.auth.uid
+          // A message at most every 0.4 seconds (lib/data/chats.js).
+          && rateOkMs('message', 400)
           && incomingData().createdAt == request.time
           && incomingData().reactions == {}
           && incomingData().text is string

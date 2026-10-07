@@ -138,6 +138,20 @@ The edge Worker keeps Firebase's helper pages (/__/auth/handler and iframe)
 at Cloudflare's edge for 30 minutes, keyed by path: about 35 ms instead of
 half a second each, and sign-in passes through them up to three times.
 
+## Rate limits and suspensions
+
+Writes that can be abused carry a timestamp on rateLimits/{uid} in the same
+batch, and the rules refuse them if the last one was too recent (`rateOk`,
+`rateOkMs`): a post every 10 s, a comment every 3 s, an inline photo every
+5 s, an edit every 3 s, a new conversation (1:1 or group) every 10 s, a
+message every 0.4 s and a follow or follow request every 0.5 s. Normal use
+doesn't meet them; scripts do. Likes aren't limited: each limit costs a write,
+likes are the most common action, and fresh accounts' likes barely count.
+
+Suspensions live in suspensions/{uid} (until, reason, by), readable by the
+person and staff only; the rules' `notSuspended()` reads it, so a
+suspension, or a lifted one, never shows on a public profile.
+
 ## Privacy
 
 Mesh is 16 and over (Online Safety Amendment (Social Media Minimum Age) Act

@@ -333,6 +333,8 @@ export async function toggleFollow(target, currentlyFollowing) {
   }
   const mine = await myProfile();
   const batch = writeBatch(db);
+  // A follow at most every half second (the rules), against follow spam.
+  batch.set(doc(db, "rateLimits", uid), { follow: serverTimestamp() }, { merge: true });
   batch.set(followingRef, { username: full?.username || target.username || "", createdAt: serverTimestamp() });
   batch.set(followerRef, { username: mine?.username || "", createdAt: serverTimestamp() });
   batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
@@ -346,10 +348,13 @@ export async function toggleFollow(target, currentlyFollowing) {
 
 export async function requestFollow(target) {
   const profile = await myProfile();
-  await setDoc(doc(db, "users", target.id, "followRequests", me()), {
+  const batch = writeBatch(db);
+  batch.set(doc(db, "rateLimits", me()), { follow: serverTimestamp() }, { merge: true });
+  batch.set(doc(db, "users", target.id, "followRequests", me()), {
     username: profile?.username || "",
     createdAt: serverTimestamp(),
   });
+  await batch.commit();
   notify(target.id, "request");
 }
 
