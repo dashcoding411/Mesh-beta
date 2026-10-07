@@ -253,7 +253,17 @@ rather than two tabs, Strands sit on their own panel (short ones in larger
 text), and the scroll is broken up by "Circles to join" (public circles
 sharing the viewer's interests, after the 4th post) and "People you may know"
 (the Search suggestions, after the 9th). Both rows are worked out once per
-visit.
+visit. Suggestions walk follow lists (a read per entry), so the walk is capped
+at about 1,100 reads and its result kept on the device for 6 hours
+(`mesh:suggest:`); a visit in between reads only the profiles it shows.
+
+People search never downloads the user base: profiles can only be listed
+50 at a time (the rules; staff excepted), so search looks people up by
+handle (the usernames collection) and by the start of their display name
+(`nameLower`, lower case without accents, written with the name and filled in
+for older accounts when they next load their profile), plus the 50 most
+followed accounts for matching on bio and town. Chats show the newest 60
+messages and load earlier ones on request.
 
 Published stories by journalists the viewer follows are mixed into both Home
 feeds by publication time (not in interest topics, and not while News is

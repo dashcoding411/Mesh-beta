@@ -9,11 +9,9 @@
 // real index (Typesense, Meilisearch, Algolia).
 
 import {
-  fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers,
+  fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers, searchNames, fetchPopularProfiles,
   fetchAffinity, tsMillis, isHeld, me,
 } from "./db";
-import { db } from "../firebase";
-import { collection, getDocs, limit, query } from "firebase/firestore";
 import { interestById, newsTopicById } from "./interests";
 import { assessText, hitsHiddenWords } from "./moderation";
 import { settled } from "./fresh";
@@ -103,10 +101,12 @@ let poolAt = 0;
 const POOL_TTL = 2 * 60_000;
 
 // People search needs an account, so profiles can't be listed anonymously.
+// The pool is the most followed accounts; anyone else is found by their
+// handle or the start of their name (searchUsers, searchNames), so search
+// works however many people join.
 async function fetchPeoplePool() {
   if (!me()) return [];
-  const snap = await getDocs(query(collection(db, "users"), limit(300)));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return fetchPopularProfiles(50);
 }
 
 export async function loadPool({ force = false } = {}) {
@@ -147,10 +147,11 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   if (!qTokens.length) return { top: null, sections: [], total: 0 };
     if (assessText(rawQuery).level === "block") return { top: null, sections: [], total: 0 };
 
-  const [data, handleHits] = await Promise.all([
+  const [data, handleHits, nameHits] = await Promise.all([
     loadPool(),
-    // Exact handle lookup reaches accounts outside the pool.
+    // Handles and names are looked up directly, reaching accounts outside the pool.
     me ? searchUsers(q.replace(/\s/g, "")).catch(() => []) : [],
+    me ? searchNames(q).catch(() => []) : [],
   ]);
   const { posts, people, circles, gatherings, news, affinity } = data;
   const results = [];
@@ -165,7 +166,7 @@ export async function search(rawQuery, { following = new Set(), me = "", blocked
   };
 
   const seenPeople = new Set();
-  for (const u of [...handleHits, ...people]) {
+  for (const u of [...handleHits, ...nameHits, ...people]) {
     if (!u?.id || seenPeople.has(u.id) || u.id === me) continue;
     seenPeople.add(u.id);
     const rel = relevance([[u.username, 3.2], [u.name, 3], [u.bio, 0.7], [u.town, 0.6]], q, qTokens);

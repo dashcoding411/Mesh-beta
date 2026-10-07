@@ -47,6 +47,10 @@ export async function fetchOwnProfile(uid) {
     await batch.commit().catch(() => {});
   }
   if (profile.lastFollower || profile.lastFollowing) clearFollowMarkers(uid);
+  // Accounts from before name search get their search key now.
+  if (profile.name && profile.nameLower !== nameKey(profile.name)) {
+    updateDoc(doc(db, "users", uid), { nameLower: nameKey(profile.name) }).catch(() => {});
+  }
   const { email: _email, phone: _phone, ...clean } = profile;
   // `ageUnknown`: the private record couldn't be read (offline), so don't treat it as missing.
   return { ...clean, birthYear: stored || profile.birthYear || 0, ageUnknown: age === "failed" };
@@ -90,6 +94,11 @@ export function myProfile() {
 // Bump on material policy changes. Profiles keep the version they accepted.
 export const POLICY_VERSION = "2026-10-07";
 
+/** A display name as people search for it: lower case, without accents ("Zoë" finds "zoe"). */
+export function nameKey(name) {
+  return String(name || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+}
+
 export async function claimUsernameAndCreateProfile(user, username, birthYear, displayName) {
   const batch = writeBatch(db);
   batch.set(doc(db, "usernames", username), { uid: user.uid });
@@ -97,6 +106,7 @@ export async function claimUsernameAndCreateProfile(user, username, birthYear, d
   batch.set(doc(db, "users", user.uid), {
     username,
     name: displayName || username,
+    nameLower: nameKey(displayName || username),
     usernameChangedAt: null,
     // No email, phone or birth year: profiles are public.
     bio: "",
@@ -167,7 +177,7 @@ export async function usernameTaken(username) {
 }
 
 export async function updateProfileFields(uid, fields) {
-  await updateDoc(doc(db, "users", uid), fields);
+  await updateDoc(doc(db, "users", uid), "name" in fields ? { ...fields, nameLower: nameKey(fields.name) } : fields);
 }
 
 export const USERNAME_COOLDOWN_DAYS = 30;
@@ -434,10 +444,24 @@ export async function fetchFollowList(uid, kind /* 'followers' | 'following' */,
 export async function fetchProfiles(ids) {
   const out = new Map();
   for (let i = 0; i < ids.length; i += 30) {
-    const snap = await getDocs(query(collection(db, "users"), where(documentId(), "in", ids.slice(i, i + 30)))).catch(() => null);
+    const snap = await getDocs(query(collection(db, "users"), where(documentId(), "in", ids.slice(i, i + 30)), limit(30))).catch(() => null);
     snap?.docs.forEach((d) => out.set(d.id, { id: d.id, ...d.data() }));
   }
   return out;
+}
+
+/** People whose display name starts with `term` (see nameKey). */
+export async function searchNames(term, max = 20) {
+  const t = nameKey(term);
+  if (t.length < 2) return [];
+  const q = query(collection(db, "users"), where("nameLower", ">=", t), where("nameLower", "<=", `${t}\uf8ff`), orderBy("nameLower"), limit(max));
+  return snapToList(await getDocs(q));
+}
+
+/** The most followed accounts, for search and suggestions. Profiles are listed 50 at most at a time (the rules). */
+export async function fetchPopularProfiles(n = 50) {
+  const q = query(collection(db, "users"), orderBy("followerCount", "desc"), limit(Math.min(Math.max(n, 1), 50)));
+  return snapToList(await getDocs(q));
 }
 
 export async function searchUsers(term) {

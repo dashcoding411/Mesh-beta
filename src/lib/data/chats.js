@@ -146,11 +146,14 @@ export function listenChats(callback) {
   });
 }
 
-// `pending` marks messages not yet on the server.
-export function listenMessages(chatId, callback) {
-  const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), limit(300));
+export const MESSAGE_PAGE = 60;
+
+// The newest `count` messages, oldest first. `pending` marks messages not
+// yet on the server.
+export function listenMessages(chatId, callback, count = MESSAGE_PAGE) {
+  const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"), limit(count));
   return onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: d.metadata.hasPendingWrites })));
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: d.metadata.hasPendingWrites })).reverse());
   });
 }
 

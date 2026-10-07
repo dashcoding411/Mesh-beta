@@ -7,7 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { callsSupported } from "../lib/calls";
 import { chatAvatar, chatPeer, chatTitle } from "../lib/chat";
 import {
-  CHAT_THEMES, answerRequest, blockUser, clearTyping, editMessage, isRequest, listenMessages, listenPresence, listenReads,
+  CHAT_THEMES, MESSAGE_PAGE, answerRequest, blockUser, clearTyping, editMessage, isRequest, listenMessages, listenPresence, listenReads,
   listenTyping, me, openUserProfile, presenceLabel, sendMessage, sendPhotoMessage, sendVoiceMessage, setTyping,
   tsMillis,
 } from "../lib/db";
@@ -110,7 +110,14 @@ export default function ChatView({ chat }) {
   usePageTitle(title, 1);
   const blockedOther = !chat.isGroup && others[0] && blocked.has(others[0]);
 
-  useEffect(() => listenMessages(chat.id, setMessages), [chat.id]);
+  // The newest messages; "Earlier messages" asks for more.
+  const [count, setCount] = useState(MESSAGE_PAGE);
+  const olderFrom = useRef(null); // scroll height before earlier messages load
+  useEffect(() => listenMessages(chat.id, setMessages, count), [chat.id, count]);
+  const showEarlier = () => {
+    olderFrom.current = scroller.current?.scrollHeight ?? null;
+    setCount((n) => n + MESSAGE_PAGE);
+  };
   useEffect(() => listenTyping(chat.id, setTypingUsers), [chat.id]);
   useEffect(() => listenReads(chat.id, setReads), [chat.id]);
   // Online status is only shown, and only readable, for 1:1 chats.
@@ -159,6 +166,13 @@ export default function ChatView({ chat }) {
     const added = messages.length - lastCount.current;
     lastCount.current = messages.length;
     if (firstLoad.current) { firstLoad.current = false; scrollToBottom(false); return; }
+    // Earlier messages arrived above: keep the same ones in view.
+    if (olderFrom.current !== null && added > 0) {
+      const el = scroller.current;
+      if (el) el.scrollTop += el.scrollHeight - olderFrom.current;
+      olderFrom.current = null;
+      return;
+    }
     if (added <= 0) return;
     const mineNewest = messages[messages.length - 1]?.senderId === me();
     if (atBottom || mineNewest) scrollToBottom(true);
@@ -370,6 +384,11 @@ export default function ChatView({ chat }) {
             </div>
           )}
 
+          {messages?.length >= count && (
+            <div className="mb-3 flex justify-center">
+              <Button size="sm" variant="ghost" onClick={showEarlier}>Earlier messages</Button>
+            </div>
+          )}
           {messages?.length > 0 && (
             <ol aria-label={`Messages with ${title}`} className="flex flex-col">
               {rows.map((row) => row.type === "msg" ? (

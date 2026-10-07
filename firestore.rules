@@ -845,15 +845,20 @@ service cloud.firestore {
     match /users/{uid} {
       // Guests can read profiles once birth year has moved to private/age.
       allow get: if signedIn() || resource.data.get('birthYear', 0) == 0;
-      allow list: if signedIn();
+      // 50 at a time, so nobody can pull every profile in one go (staff
+      // stats excepted). Search finds people by handle or name instead.
+      allow list: if signedIn() && (request.query.limit <= 50 || isStaff());
       allow create: if isUser(uid)
         && incomingData().keys().hasOnly([
           // No email or phone: user docs are readable by every signed-in user.
-          'username', 'name', 'usernameChangedAt', 'bio',
+          'username', 'name', 'nameLower', 'usernameChangedAt', 'bio',
           'pronouns', 'town', 'spouseUsername', 'photoURL',
           'followerCount', 'followingCount', 'createdAt',
           'termsAcceptedAt', 'termsVersion', 'isPrivate', 'messagePolicy'
         ])
+        // The name as search matches it (lower case, no accents).
+        && incomingData().get('nameLower', '') is string && incomingData().get('nameLower', '').size() <= 60
+        && hateFree(incomingData().get('nameLower', ''))
         // Under-18s start private, with messages from people they follow only.
         && incomingData().get('isPrivate', false) is bool
         && incomingData().get('messagePolicy', 'everyone') in ['everyone', 'following']
@@ -888,8 +893,9 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isUser(uid)
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
-            'name', 'bio', 'photoURL', 'pronouns', 'town', 'spouseUsername', 'birthYear'
+            'name', 'nameLower', 'bio', 'photoURL', 'pronouns', 'town', 'spouseUsername', 'birthYear'
           ])
+          && incomingData().get('nameLower', '') is string && incomingData().get('nameLower', '').size() <= 60
           // birthYear may only be removed, when it moves to private/age unchanged.
           && (!incomingData().diff(resource.data).affectedKeys().hasAny(['birthYear'])
               || (!('birthYear' in incomingData())
@@ -907,7 +913,7 @@ service cloud.firestore {
           && incomingData().pronouns.size() <= 40
           && incomingData().town is string
           && incomingData().town.size() <= 80
-          && hateFree(incomingData().name + ' ' + incomingData().bio + ' ' + incomingData().pronouns + ' ' + incomingData().town))
+          && hateFree(incomingData().name + ' ' + incomingData().get('nameLower', '') + ' ' + incomingData().bio + ' ' + incomingData().pronouns + ' ' + incomingData().town))
         // Moderators may set only suspendedUntil.
         || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['suspendedUntil'])
           && incomingData().suspendedUntil is timestamp)
