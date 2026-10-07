@@ -321,6 +321,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
         )}
 
         <PolicyLinks />
+        <p className="mt-3 text-center text-label text-fg-subtle">Mesh version: {import.meta.env.VITE_BUILT || "development"}</p>
       </div>
 
       {showReset && (
