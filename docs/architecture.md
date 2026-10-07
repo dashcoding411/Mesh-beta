@@ -122,7 +122,12 @@ firebase.js; Firebase Hosting serves /__/auth/handler), not
 mesh-a293c.firebaseapp.com, which Safari treats as another site (blocked
 storage, lost redirect results, no sign-in from the iPhone home-screen app).
 Google's OAuth web client lists https://joinmesh.social/__/auth/handler as a
-redirect URI. The iPhone home-screen app signs in with a redirect.
+redirect URI. The iPhone home-screen app signs in with a redirect; arriving
+back, firebase.js gives auth the resolver at start (only then), so Firebase
+finishes the sign-in as Mesh starts and it opens signed in, with no reload.
+The edge Worker keeps Firebase's helper pages (/__/auth/handler and iframe)
+at Cloudflare's edge for 30 minutes, keyed by path: about 35 ms instead of
+half a second each, and sign-in passes through them up to three times.
 
 ## Privacy
 

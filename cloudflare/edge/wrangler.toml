@@ -20,6 +20,8 @@ routes = [
   { pattern = "joinmesh.social/og/*", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/sitemap-news.xml", zone_name = "joinmesh.social" },
   { pattern = "joinmesh.social/sitemap-gatherings.xml", zone_name = "joinmesh.social" },
+  # Firebase's sign-in helper pages, cached (see AUTH_PAGES).
+  { pattern = "joinmesh.social/__/auth/*", zone_name = "joinmesh.social" },
 ]
 
 [vars]

@@ -1,5 +1,7 @@
 import { initializeApp } from "firebase/app";
-import { browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
+import {
+  browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, indexedDBLocalPersistence, initializeAuth,
+} from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { isNativeApp } from "./lib/native";
 import { allowed, onConsent } from "./lib/consent";
@@ -66,8 +68,15 @@ onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
 // sign-in frame and script on every page in Safari and on every phone, and
 // holds back the signed-in user until they arrive (a second or more, longer
 // in Safari). lib/auth.js passes the resolver only when someone signs in.
+// The exception is arriving back from Google's page (the iPhone home-screen
+// app signs in that way): then Firebase finishes the sign-in as it starts,
+// so Mesh opens signed in, instead of opening signed out and reloading.
+const returningFromSignIn = (() => {
+  try { return Object.keys(sessionStorage).some((k) => k.startsWith("firebase:pendingRedirect")); } catch { return false; }
+})();
 export const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  ...(returningFromSignIn ? { popupRedirectResolver: browserPopupRedirectResolver } : {}),
 });
 // Auto-detected long polling for proxies that break streaming.
 export const db = initializeFirestore(app, {

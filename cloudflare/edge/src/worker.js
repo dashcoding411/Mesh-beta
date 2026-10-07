@@ -8,11 +8,18 @@
 
 const PAGE = /^\/(news|p|u|gatherings|circles|rolls)\/([^/?#]+)\/?$|^\/@([a-z0-9_]{3,30})\/?$/i;
 const FALLBACK_IMAGE = "/og-image.png";
+// Firebase's sign-in helper pages. Each is the same static page for everyone
+// (only their own script reads the query string), but Firebase takes about
+// half a second to send one and sign-in passes through them up to three
+// times, so they're kept at the edge, keyed by path alone.
+const AUTH_PAGES = new Set(["/__/auth/handler", "/__/auth/iframe"]);
+const AUTH_PAGE_TTL = 1800;
 
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     try {
+      if (AUTH_PAGES.has(url.pathname) && req.method === "GET") return authPage(req, ctx);
       if (url.pathname === "/sitemap-news.xml") return cached(req, ctx, () => sitemap(env));
       if (url.pathname === "/sitemap-gatherings.xml") return cached(req, ctx, () => gatheringsSitemap(env));
       const media = url.pathname.match(/^\/og\/media\/([A-Za-z0-9_-]{1,64})$/);
@@ -34,6 +41,19 @@ export default {
     }
   },
 };
+
+async function authPage(req, ctx) {
+  const url = new URL(req.url);
+  const key = new Request(`${url.origin}${url.pathname}`);
+  const hit = await caches.default.match(key);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (!res.ok || !(res.headers.get("content-type") || "").includes("text/html")) return res;
+  const page = new Response(res.body, res);
+  page.headers.set("Cache-Control", `public, max-age=${AUTH_PAGE_TTL}`);
+  ctx.waitUntil(caches.default.put(key, page.clone()));
+  return page;
+}
 
 // Edge-cache generated responses for a few minutes.
 async function cached(req, ctx, make) {
