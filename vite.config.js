@@ -2,9 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import licenses from "./scripts/licenses-plugin.mjs";
 
+// When this copy of Mesh was built, shown at the bottom of Settings, so anyone
+// can tell whether they have the newest one (Brisbane time).
+const BUILT = new Date().toLocaleString("en-AU", {
+  timeZone: "Australia/Brisbane", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
+});
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), licenses()],
+  define: { "import.meta.env.VITE_BUILT": JSON.stringify(BUILT) },
   build: {
     // The Firebase chunk (~590 kB) can't be split safely; see manualChunks.
     chunkSizeWarningLimit: 650,

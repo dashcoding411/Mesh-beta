@@ -71,8 +71,24 @@ onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
 // The exception is arriving back from Google's page (the iPhone home-screen
 // app signs in that way): then Firebase finishes the sign-in as it starts,
 // so Mesh opens signed in, instead of opening signed out and reloading.
+//
+// M.A.T.H (Mesh added to an iPhone's home screen) never uses Firebase's
+// redirect: Google comes back by Mesh's own route (lib/auth.js), and Apple
+// sign-in is off. A Firebase redirect note left by an older version would
+// send it through Firebase's hidden frame, which times out there ("Can't
+// reach the network"), so it's cleared.
+const homeScreenIOS = (() => {
+  try {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    return ios && (window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true);
+  } catch { return false; }
+})();
 const returningFromSignIn = (() => {
-  try { return Object.keys(sessionStorage).some((k) => k.startsWith("firebase:pendingRedirect")); } catch { return false; }
+  try {
+    const notes = Object.keys(sessionStorage).filter((k) => k.startsWith("firebase:pendingRedirect"));
+    if (homeScreenIOS) { notes.forEach((k) => sessionStorage.removeItem(k)); return false; }
+    return notes.length > 0;
+  } catch { return false; }
 })();
 export const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],

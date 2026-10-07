@@ -271,6 +271,7 @@ export default function Settings() {
             <Row icon={LogOut} label="Sign out" value="Of Mesh on this device" onClick={() => setDialog("signout")} />
             <Row icon={Trash2} label="Delete account" value="Permanently delete your account and everything you've posted" danger onClick={() => setDialog("delete")} />
           </Group>
+          <p className="pb-2 text-center text-caption text-fg-subtle">Mesh version: {import.meta.env.VITE_BUILT || "development"}</p>
           </>)}
         </div>
       </div>

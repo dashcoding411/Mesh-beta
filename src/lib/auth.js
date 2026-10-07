@@ -140,6 +140,8 @@ export function redirectPending() {
  * popup machinery so the next tap opens it straight away.
  */
 export function finishRedirect() {
+  // M.A.T.H has no popups and no Firebase redirects (see firebase.js).
+  if (isIOS() && isStandalone()) return Promise.resolve(null);
   const result = getRedirectResult(auth, Resolver);
   // Firebase makes the resolver once auth has started, so this waits for
   // that. `_initialize` is Firebase's own (tested in auth.test.js); if it
