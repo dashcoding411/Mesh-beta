@@ -1,15 +1,23 @@
-// The Rolls look: a 35mm disposable, not a modern phone. Film cushions
-// what a phone's processing makes harsh, so the develop step:
-// - softens rather than sharpens (phones over-sharpen edges);
-// - fades the tones: matte, lifted blacks with a charcoal blue-green cast,
-//   lower contrast, and highlights that roll off creamy instead of clipping;
-// - warms the colour a little (golden highlights, a touch of magenta) and
-//   tames it: greens lean teal and lose saturation, blues lose some, warm
-//   tones lean orange for skin, and the loudest colours calm down most;
-// - adds fine film grain, the same in every channel (no colour static),
-//   in soft clumps rather than pixel noise, strongest in the mid-tones;
-// - adds the faint red-orange halation film gets round bright spots, a
-//   point-and-shoot flash's fall-off to the corners, and the date stamp.
+// The Rolls look: a nostalgic camera, not a modern phone, and which one
+// depends on the light. With the flash on it's an early-2000s compact with
+// a xenon pop-up flash: more contrast, a lower black floor, punchy primaries
+// and little warming. With it off it's warm 35mm film: a lifted black floor,
+// soft highlight roll-off and gentle amber. Both undo what a phone's
+// processing adds, and stay restrained so the photo survives:
+// - a tiny blur (about 0.7 px) takes off the phone's edge sharpening;
+// - a tone curve lifts the black floor while keeping deep shadows dense, adds
+//   a little punch in the upper mid-tones, and rolls the top off to a soft
+//   white instead of clipping;
+// - split toning: gold highlights, slightly magenta shadows, a touch of
+//   magenta overall;
+// - colour like film and early CCDs: reds and oranges warmer (skin a little
+//   brighter), yellows toward orange, greens toward olive and quieter, blues
+//   toward cyan and quieter, muted colours lifted and loud ones calmed;
+// - fine grain, the same on every channel, in soft clumps, strongest in the
+//   mid-tones and fading in deep shadows and highlights;
+// - the lens: a flash's fall-off (or a gentle vignette), a faint red-cyan
+//   fringe toward the corners, and a faint warm halation round bright spots;
+// - and the date stamp.
 // Baked into the JPEG at capture, so it looks the same wherever it's shared.
 
 export const OUTPUT_LONG_SIDE = 2048;
@@ -35,8 +43,8 @@ export function rng(seed = 1) {
 // Fritsch-Carlson), like dragging points on a photo editor's tone curve.
 function monotoneCurve(points) {
   const n = points.length;
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
+  const xs = points.map((pt) => pt[0]);
+  const ys = points.map((pt) => pt[1]);
   const d = [];
   for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
   const m = [d[0]];
@@ -59,28 +67,38 @@ function monotoneCurve(points) {
   };
 }
 
-// The fade: black lifted to a matte charcoal (about 18 of 255), mid-tones
-// a little flatter than a phone's, and the top easing off to a creamy white
-// (about 238) instead of clipping.
-const FILM_CURVE = monotoneCurve([[0, 0.07], [0.2, 0.235], [0.5, 0.52], [0.8, 0.8], [0.92, 0.885], [1, 0.935]]);
+// The two looks. Curves are (in, out) from 0 to 1.
+const LOOKS = {
+  // Flash: an early-2000s compact. Black at about 8, white at about 242.
+  flash: {
+    curve: monotoneCurve([[0, 0.03], [0.1, 0.075], [0.25, 0.22], [0.5, 0.5], [0.75, 0.795], [0.9, 0.905], [1, 0.95]]),
+    warm: 0.01, sat: 1, vibrance: 0.18, greens: 0.88, blues: 0.88, falloff: [0.82, 0.2],
+  },
+  // No flash: warm 35mm film. Black at about 12, white at about 240.
+  ambient: {
+    curve: monotoneCurve([[0, 0.047], [0.1, 0.085], [0.25, 0.235], [0.5, 0.5], [0.75, 0.775], [0.9, 0.89], [1, 0.94]]),
+    warm: 0.03, sat: 0.93, vibrance: 0.22, greens: 0.8, blues: 0.75, falloff: null,
+  },
+};
+const lookFor = (flash) => (flash ? LOOKS.flash : LOOKS.ambient);
 
 /**
- * Per-channel tone curves (0 to 255 in, 0 to 255 out): the film fade, with
- * blue-green shadows, golden highlights and a touch of magenta. Under flash
- * the light runs cooler, so the highlights are less golden.
+ * Per-channel tone curves (0 to 255 in, 0 to 255 out): the look's curve
+ * with gold highlights (less under flash), slightly magenta shadows and a
+ * touch of magenta overall.
  */
 export function digicamCurves({ flash = true } = {}) {
+  const { curve, warm } = lookFor(flash);
   const r = new Uint8ClampedArray(256);
   const g = new Uint8ClampedArray(256);
   const b = new Uint8ClampedArray(256);
-  const warm = flash ? 0.012 : 0.03;
   for (let i = 0; i < 256; i++) {
-    const y = FILM_CURVE(i / 255);
+    const y = curve(i / 255);
     const shadow = Math.max(0, 1 - y * 2.2);
     const high = Math.max(0, y * 1.8 - 0.8);
-    r[i] = Math.round(255 * clamp01(y + warm * high - 0.02 * shadow));
-    g[i] = Math.round(255 * clamp01(y - 0.006 + 0.012 * shadow));
-    b[i] = Math.round(255 * clamp01(y - warm * 1.2 * high + 0.035 * shadow));
+    r[i] = Math.round(255 * clamp01(y + warm * high + 0.012 * shadow));
+    g[i] = Math.round(255 * clamp01(y - 0.006 - 0.004 * shadow));
+    b[i] = Math.round(255 * clamp01(y - warm * 1.3 * high + 0.02 * shadow));
   }
   return { r, g, b };
 }
@@ -91,26 +109,29 @@ const near = (h, centre, width) => {
   return x >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * x);
 };
 
-// Film's colour, on one pixel (0 to 255 in `c`, changed in place): greens
-// toward teal and quieter, blues quieter, warm tones toward orange, and the
-// most saturated colours calmed the most.
-function filmColour(c) {
+// The look's colour, on one pixel (0 to 255 in `c`, changed in place), in
+// hue, saturation and lightness.
+function filmColour(c, look) {
   const r = c[0] / 255;
   const g = c[1] / 255;
   const b = c[2] / 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
+  let l = (max + min) / 2;
   const d = max - min;
   if (d < 0.004) return;
   let s = d / (1 - Math.abs(2 * l - 1));
   let h = max === r ? 60 * (((g - b) / d) % 6) : max === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
   if (h < 0) h += 360;
-  const green = near(h, 115, 55);
+  const red = near(h, 0, 30);
+  const orange = near(h, 30, 25);
+  const yellow = near(h, 58, 25);
+  const green = near(h, 115, 50);
   const blue = near(h, 220, 40);
-  const warm = near(h, 35, 30);
-  h += 14 * green - 5 * warm;
-  s *= (1 - 0.22 * green) * (1 - 0.16 * blue) * (1 - 0.14 * s);
+  h += 5 * red - 10 * yellow - 12 * green - 15 * blue; // reds warmer, yellows toward orange, greens toward olive, blues toward cyan
+  s *= look.sat * (1 + look.vibrance * (1 - s)) * (1 - (1 - look.greens) * green) * (1 - (1 - look.blues) * blue);
+  if (s > 1) s = 1;
+  l += 0.03 * orange * (1 - l); // skin a little brighter
   // Back to RGB.
   const q = (1 - Math.abs(2 * l - 1)) * s;
   const hp = (((h % 360) + 360) % 360) / 60;
@@ -123,24 +144,26 @@ function filmColour(c) {
 }
 
 /**
- * Develops RGBA pixels in place. `soft` is a blurred copy of the same image
- * (for softening). `flash` lights the middle a touch and falls off to the
- * corners. The grain is seeded, so the same photo develops the same way.
+ * Develops RGBA pixels in place. `soft` is the same image very slightly
+ * blurred, to take off the phone's sharpening. `flash` picks the look (and
+ * lights the middle with fall-off to the corners). The grain is seeded, so
+ * the same photo develops the same way.
  */
 export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } = {}) {
+  const look = lookFor(flash);
   const { r: R, g: G, b: B } = digicamCurves({ flash });
   const rand = rng(seed);
   const cx = width / 2;
   const cy = height / 2;
   const maxD = Math.hypot(cx, cy);
-  const SOFTEN = 0.16;
-  // Grain in soft clumps: a coarser random field, sampled smoothly, plus a
-  // little fine texture on top.
-  const CLUMP = 1.7;
+  const SOFTEN = 0.7;
+  // Grain in soft clumps: a coarser random field (near-Gaussian), sampled
+  // smoothly, plus a little fine texture on top.
+  const CLUMP = 1.6;
   const gw = Math.ceil(width / CLUMP) + 2;
   const gh = Math.ceil(height / CLUMP) + 2;
   const field = new Float32Array(gw * gh);
-  for (let i = 0; i < field.length; i++) field[i] = rand() + rand() - 1;
+  for (let i = 0; i < field.length; i++) field[i] = rand() + rand() + rand() - 1.5;
   const c = new Float32Array(3);
   for (let y = 0; y < height; y++) {
     const fy = y / CLUMP;
@@ -148,22 +171,22 @@ export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } 
     const ty = fy - y0;
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      // Softer, as film is: a little of the blurred copy blended in.
-      let r = px[i] + SOFTEN * (soft[i] - px[i]);
-      let g = px[i + 1] + SOFTEN * (soft[i + 1] - px[i + 1]);
-      let b = px[i + 2] + SOFTEN * (soft[i + 2] - px[i + 2]);
+      const r0 = px[i] + SOFTEN * (soft[i] - px[i]);
+      const g0 = px[i + 1] + SOFTEN * (soft[i + 1] - px[i + 1]);
+      const b0 = px[i + 2] + SOFTEN * (soft[i + 2] - px[i + 2]);
 
-      // Flash in the middle and fall-off to the corners (a gentle lens
-      // vignette without flash). The phone already exposed the frame, so
-      // the middle only gets a nudge.
+      // Flash: a hard pop in the middle falling off to the corners. Without
+      // it, a gentle lens vignette.
       const d = Math.hypot(x - cx, y - cy) / maxD;
-      const light = flash ? 0.88 + 0.14 * Math.exp(-(d * d) / 0.3) : 1.02 - 0.2 * d * d;
-      c[0] = r * light; c[1] = g * light; c[2] = b * light;
+      const light = look.falloff
+        ? look.falloff[0] + look.falloff[1] * Math.exp(-(d * d) / 0.28)
+        : 1 - 0.18 * d * d;
+      c[0] = r0 * light; c[1] = g0 * light; c[2] = b0 * light;
 
-      filmColour(c);
-      r = R[c[0] < 0 ? 0 : c[0] > 255 ? 255 : c[0] | 0];
-      g = G[c[1] < 0 ? 0 : c[1] > 255 ? 255 : c[1] | 0];
-      b = B[c[2] < 0 ? 0 : c[2] > 255 ? 255 : c[2] | 0];
+      filmColour(c, look);
+      const r = R[c[0] < 0 ? 0 : c[0] > 255 ? 255 : c[0] | 0];
+      const g = G[c[1] < 0 ? 0 : c[1] > 255 ? 255 : c[1] | 0];
+      const b = B[c[2] < 0 ? 0 : c[2] > 255 ? 255 : c[2] | 0];
 
       // Grain: the same on all three channels, strongest in the mid-tones.
       const fx = x / CLUMP;
@@ -172,10 +195,68 @@ export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } 
       const k = y0 * gw + x0;
       const clump = (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + gw] * (1 - tx) + field[k + gw + 1] * tx) * ty;
       const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const n = (clump * 0.8 + (rand() - 0.5) * 0.5) * 9 * (0.35 + 2.6 * lum * (1 - lum));
+      const n = (clump * 0.85 + (rand() - 0.5) * 0.45) * 10 * (0.15 + 3.4 * lum * (1 - lum));
       px[i] = r + n;
       px[i + 1] = g + n;
       px[i + 2] = b + n;
+    }
+  }
+  return px;
+}
+
+/**
+ * The same RGBA pixels very slightly blurred (a 3x3 binomial kernel, about
+ * 0.7 px), for taking off a phone's edge sharpening.
+ */
+export function softCopy(px, width, height) {
+  const tmp = new Float32Array(px.length);
+  const out = new Uint8ClampedArray(px.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const l = Math.max(0, x - 1);
+      const r = Math.min(width - 1, x + 1);
+      for (let ch = 0; ch < 3; ch++) {
+        tmp[(y * width + x) * 4 + ch] = (px[(y * width + l) * 4 + ch] + 2 * px[(y * width + x) * 4 + ch] + px[(y * width + r) * 4 + ch]) / 4;
+      }
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    const u = Math.max(0, y - 1);
+    const dn = Math.min(height - 1, y + 1);
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      for (let ch = 0; ch < 3; ch++) out[i + ch] = (tmp[(u * width + x) * 4 + ch] + 2 * tmp[i + ch] + tmp[(dn * width + x) * 4 + ch]) / 4;
+      out[i + 3] = px[i + 3];
+    }
+  }
+  return out;
+}
+
+/**
+ * An old lens's colour fringe, in place: red pushed outward and blue pulled
+ * inward, by nothing in the middle and up to `most` pixels in the corners.
+ */
+export function lensFringe(px, width, height, most = 1) {
+  const src = px.slice();
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const maxD = Math.hypot(cx, cy);
+  const sample = (fx, fy, ch) => {
+    const x0 = Math.max(0, Math.min(width - 2, fx | 0));
+    const y0 = Math.max(0, Math.min(height - 2, fy | 0));
+    const tx = Math.max(0, Math.min(1, fx - x0));
+    const ty = Math.max(0, Math.min(1, fy - y0));
+    const a = (y0 * width + x0) * 4 + ch;
+    return (src[a] * (1 - tx) + src[a + 4] * tx) * (1 - ty) + (src[a + width * 4] * (1 - tx) + src[a + width * 4 + 4] * tx) * ty;
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const k = (most * (dx * dx + dy * dy)) / (maxD * maxD * maxD);
+      const i = (y * width + x) * 4;
+      px[i] = sample(cx + dx * (1 - k), cy + dy * (1 - k), 0);
+      px[i + 2] = sample(cx + dx * (1 + k), cy + dy * (1 + k), 2);
     }
   }
   return px;
@@ -279,7 +360,8 @@ function halation(ctx, canvas, strength) {
 
 /**
  * Develops a frame (a <video> or <canvas>, cropped to `crop`) into a
- * film-look JPEG Blob at up to 2048 px on the long side.
+ * Rolls JPEG Blob at up to 2048 px on the long side: the compact's look with
+ * the flash on, film's without.
  */
 export async function developFrame(source, crop, { flash = true, mirrored = false, date = new Date() } = {}) {
   const scale = Math.min(1, OUTPUT_LONG_SIDE / Math.max(crop.w, crop.h));
@@ -294,25 +376,11 @@ export async function developFrame(source, crop, { flash = true, mirrored = fals
   ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, width, height);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-  // A gently blurred copy, for softening.
-  const blur = document.createElement("canvas");
-  blur.width = Math.max(1, Math.round(width / 2.5));
-  blur.height = Math.max(1, Math.round(height / 2.5));
-  const bctx = blur.getContext("2d");
-  bctx.imageSmoothingQuality = "high";
-  bctx.drawImage(canvas, 0, 0, blur.width, blur.height);
-  const softCanvas = document.createElement("canvas");
-  softCanvas.width = width;
-  softCanvas.height = height;
-  const sctx = softCanvas.getContext("2d", { willReadFrequently: true });
-  sctx.imageSmoothingQuality = "high";
-  sctx.drawImage(blur, 0, 0, width, height);
-
   const img = ctx.getImageData(0, 0, width, height);
-  const soft = sctx.getImageData(0, 0, width, height).data;
-  gradePixels(img.data, soft, width, height, { flash, seed: date.getTime() % 100000 });
+  lensFringe(img.data, width, height, 1);
+  gradePixels(img.data, softCopy(img.data, width, height), width, height, { flash, seed: date.getTime() % 100000 });
   ctx.putImageData(img, 0, 0);
-  halation(ctx, canvas, flash ? 0.16 : 0.14);
+  halation(ctx, canvas, flash ? 0.14 : 0.16);
 
   const stamp = Math.round(height * 0.042);
   drawStamp(ctx, stampText(date), width - Math.round(width * 0.05), height - Math.round(height * 0.045), stamp);

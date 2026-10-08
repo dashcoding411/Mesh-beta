@@ -396,17 +396,21 @@ frame, so volume, pitch and ticking rise and fall with the movement; zooming
 out runs a little lower. A W–T bar shows while zooming. It paints the viewfinder and the
 bar directly (a CSS scale) rather than re-rendering, and the shot crops the
 frame by the zoom, as a compact's digital zoom did. The develop step
-(`developFrame`) gives the JPEG a 35mm film look rather than a phone's:
-softened (a little of a blurred copy blended in) instead of sharpened; a
-fade curve (`FILM_CURVE`, a monotone cubic) with matte blacks at about 18
-and a creamy roll-off to about 238; blue-green shadows, golden highlights
-(cooler under flash) and a touch of magenta; film colour per pixel
-(`filmColour`: greens toward teal and 22% quieter, blues 16% quieter, warm
-tones toward orange, the loudest colours calmed most); a gentle flash pop
-and fall-off; grain the same on every channel, in soft clumps (a coarser
-random field sampled smoothly) and strongest in the mid-tones; faint
-red-orange halation round the brightest spots (screened, so it can't pass
-white); and the date stamp.
+(`developFrame`) picks its look from the flash switch (`LOOKS`): with the
+flash, an early-2000s compact (more contrast, black at about 8, punchier
+primaries, little warming, a hard centre pop falling off to the corners);
+without it, warm 35mm film (black lifted to about 12 with dense deep
+shadows, softer, amber, a gentle vignette). Both: a 3x3 binomial blur
+(`softCopy`, about 0.7 px) blended in to take off the phone's sharpening; a
+monotone-cubic tone curve with a little upper-mid punch and a soft
+shoulder (white about 240); gold highlights and slightly magenta shadows;
+per-pixel colour (`filmColour`: reds and oranges warmer, skin a touch
+brighter, yellows toward orange, greens toward olive and quieter, blues
+toward cyan and quieter, muted colours lifted and loud ones calmed); a
+faint red-cyan fringe toward the corners (`lensFringe`, up to 1 px); grain
+the same on every channel, in soft clumps, peaking in the mid-tones and
+fading in deep shadows and highlights; faint warm halation round the
+brightest spots (screened, so it can't pass white); and the date stamp.
 
 Links never open in M.A.T.H: tapped in Messages or another app, a roll link
 opens in Safari or that app's own browser, each signed in separately. So the
