@@ -15,10 +15,14 @@ import { useToast } from "../ui/toast-context";
 const ASPECT = 3 / 4; // portrait 4:3, like a compact held upright
 const SIZE = { width: { ideal: 2560 }, height: { ideal: 1920 } };
 // Zoom like a compact's: up to 3x, driven by a slow motor (the whole range
-// in about 2.5 seconds), cropping the frame the way digicam zoom did.
+// in about 3.6 seconds) that spins up, and on letting go coasts a little and
+// eases to a stop, cropping the frame the way digicam zoom did. Its sound
+// follows the same speed, frame by frame.
 const MAX_ZOOM = 3;
-const ZOOM_SPEED = 0.8; // x per second
-const SPIN_UP_MS = 180;
+const ZOOM_SPEED = 0.55; // x per second, at full speed
+const SPIN_UP_MS = 300;
+const EASE = 0.06; // within this much of where it's going, it slows
+const COAST = 0.04; // how far it runs on after letting go
 const FACING_KEY = "mesh:camera-facing";
 const FLASH_KEY = "mesh:roll-flash";
 const SOUND_KEY = "mesh:roll-sound";
@@ -52,7 +56,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   // (the rocker's end while held, or wherever a pinch points) at one speed.
   const zoomRef = useRef(1);
   const targetRef = useRef(1);
-  const motorRef = useRef(null); // { raf, stopSound } while it runs
+  const motorRef = useRef(null); // { raf, sound, dir, released } while it runs
   const fillRef = useRef(null);
   const readoutRef = useRef(null);
   const hideRef = useRef(0);
@@ -67,29 +71,40 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
     const m = motorRef.current;
     if (!m) return;
     cancelAnimationFrame(m.raf);
-    m.stopSound();
+    m.sound.stop();
     motorRef.current = null;
     clearTimeout(hideRef.current);
     hideRef.current = setTimeout(() => setZooming(false), 1500);
   }, []);
   const runMotor = () => {
-    if (motorRef.current || Math.abs(targetRef.current - zoomRef.current) < 0.005) return;
+    const gap0 = targetRef.current - zoomRef.current;
+    if (motorRef.current || Math.abs(gap0) < 0.005) return;
     clearTimeout(hideRef.current);
     setZooming(true);
     const began = performance.now();
     let last = began;
     const step = (now) => {
+      const m = motorRef.current;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const spin = Math.min(1, (now - began) / SPIN_UP_MS); // the motor spinning up
       const gap = targetRef.current - zoomRef.current;
-      const z = zoomRef.current + Math.sign(gap) * Math.min(Math.abs(gap), ZOOM_SPEED * spin * dt);
+      // How fast it's going (0 to 1): spinning up at the start, easing off
+      // as it nears where it's going. The sound follows the same number.
+      const pace = Math.min(1, (now - began) / SPIN_UP_MS) * Math.min(1, Math.abs(gap) / EASE);
+      const z = zoomRef.current + Math.sign(gap) * Math.min(Math.abs(gap), ZOOM_SPEED * pace * dt);
       zoomRef.current = z;
       paintZoom(z);
-      if (Math.abs(targetRef.current - z) < 0.002) { stopMotor(); return; }
-      motorRef.current.raf = requestAnimationFrame(step);
+      m.sound.speed(pace);
+      if (gap) m.dir = Math.sign(gap);
+      if (Math.abs(targetRef.current - z) < 0.004) { stopMotor(); return; }
+      m.raf = requestAnimationFrame(step);
     };
-    motorRef.current = { raf: requestAnimationFrame(step), stopSound: sound ? startWhirr() : () => {} };
+    motorRef.current = {
+      raf: requestAnimationFrame(step),
+      sound: sound ? startWhirr({ out: gap0 < 0 }) : { speed() {}, stop() {} },
+      dir: Math.sign(gap0),
+      released: false,
+    };
   };
   // A new camera starts wide, like switching a compact on.
   useEffect(() => {
@@ -105,9 +120,17 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
     if (status !== "live") return;
     if (sound) wakeShutter(); // sound can only start inside a tap
     targetRef.current = dir > 0 ? MAX_ZOOM : 1;
+    if (motorRef.current) motorRef.current.released = false;
     runMotor();
   };
-  const zoomStop = () => { targetRef.current = zoomRef.current; stopMotor(); };
+  // Letting go: the lens runs on a touch and eases to a stop, once per press.
+  const zoomStop = () => {
+    const m = motorRef.current;
+    if (!m) { targetRef.current = zoomRef.current; return; }
+    if (m.released) return;
+    m.released = true;
+    targetRef.current = Math.min(MAX_ZOOM, Math.max(1, zoomRef.current + m.dir * COAST));
+  };
   const rocker = (dir) => ({
     onPointerDown: (e) => {
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* without it, sliding off the button stops it */ }

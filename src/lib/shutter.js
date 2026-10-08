@@ -59,65 +59,102 @@ export function shutterClick() {
 }
 
 /**
- * A small zoom motor into `dest`, from now until the returned stop(): a
- * buzzy tone that spins up, with the ripple of gear teeth and a little
- * grit, which winds down when it stops.
+ * A compact's zoom motor into `dest`: the thin whine of a small motor
+ * through its gears, with the teeth ticking softly, and nothing low or
+ * buzzy. `speed(f)` (0 to 1, every frame) sets how fast the lens is moving,
+ * and the volume, pitch and ticking follow it, so the sound spins up, holds
+ * and winds down with the zoom. `stop()` lets it fall silent. Zooming out
+ * runs a little lower, as a motor does the other way under load.
  */
-export function whirr(ac, dest) {
+export function whirr(ac, dest, { out: outward = false } = {}) {
   const t = ac.currentTime;
-  const out = ac.createGain();
-  out.gain.setValueAtTime(0.0001, t);
-  out.gain.exponentialRampToValueAtTime(0.5, t + 0.07);
-  const motor = ac.createOscillator();
-  motor.type = "sawtooth";
-  motor.frequency.setValueAtTime(190, t);
-  motor.frequency.exponentialRampToValueAtTime(300, t + 0.22);
-  const gears = ac.createOscillator();
-  gears.frequency.value = 26;
-  const ripple = ac.createGain();
-  ripple.gain.value = 14;
-  gears.connect(ripple).connect(motor.frequency);
+  const base = outward ? 1220 : 1300;
+  const level = ac.createGain();
+  level.gain.setValueAtTime(0, t);
+  const low = ac.createBiquadFilter(); // nothing low enough to buzz
+  low.type = "highpass";
+  low.frequency.value = 700;
+  const soft = ac.createBiquadFilter(); // and no piercing top
+  soft.type = "lowpass";
+  soft.frequency.value = 5200;
+  low.connect(soft).connect(level).connect(dest);
+
+  // The whine: a soft tone and a quieter one a fifth above, a hair out of
+  // tune so they shimmer, wavering slightly as the load changes.
+  const tone = ac.createOscillator();
+  tone.type = "triangle";
+  tone.frequency.setValueAtTime(base * 0.7, t);
+  const fifth = ac.createOscillator();
+  fifth.frequency.setValueAtTime(base * 0.7 * 1.5 + 2, t);
+  const waver = ac.createOscillator();
+  waver.frequency.value = 4.5;
+  const waverDepth = ac.createGain();
+  waverDepth.gain.value = 9;
+  waver.connect(waverDepth);
+  waverDepth.connect(tone.frequency);
+  waverDepth.connect(fifth.frequency);
+  const toneLevel = ac.createGain();
+  toneLevel.gain.value = 0.5;
+  const fifthLevel = ac.createGain();
+  fifthLevel.gain.value = 0.16;
+  tone.connect(toneLevel).connect(low);
+  fifth.connect(fifthLevel).connect(low);
+
+  // The gears: a fine hiss, ticking as the teeth mesh.
   const grit = ac.createBufferSource();
   grit.buffer = noiseFor(ac);
   grit.loop = true;
-  const gritLevel = ac.createGain();
-  gritLevel.gain.value = 0.18;
-  const tone = ac.createBiquadFilter();
-  tone.type = "bandpass";
-  tone.frequency.value = 1300;
-  tone.Q.value = 0.9;
-  motor.connect(tone);
-  grit.connect(gritLevel).connect(tone);
-  tone.connect(out).connect(dest);
-  motor.start(t);
-  gears.start(t);
-  grit.start(t);
-  return () => {
-    const e = ac.currentTime;
-    out.gain.cancelScheduledValues(e);
-    out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), e);
-    out.gain.exponentialRampToValueAtTime(0.0001, e + 0.09);
-    motor.frequency.cancelScheduledValues(e);
-    motor.frequency.setValueAtTime(motor.frequency.value, e);
-    motor.frequency.exponentialRampToValueAtTime(140, e + 0.09);
-    for (const node of [motor, gears, grit]) node.stop(e + 0.1);
+  const gritBand = ac.createBiquadFilter();
+  gritBand.type = "bandpass";
+  gritBand.frequency.value = 3600;
+  gritBand.Q.value = 1.2;
+  const gears = ac.createGain();
+  gears.gain.value = 0.1;
+  const teeth = ac.createOscillator();
+  teeth.frequency.setValueAtTime(7, t);
+  const teethDepth = ac.createGain();
+  teethDepth.gain.value = 0.08;
+  teeth.connect(teethDepth).connect(gears.gain);
+  grit.connect(gritBand).connect(gears).connect(low);
+
+  const nodes = [tone, fifth, waver, grit, teeth];
+  for (const node of nodes) node.start(t);
+  return {
+    speed(f) {
+      const now = ac.currentTime;
+      const v = Math.max(0, Math.min(1, f));
+      level.gain.setTargetAtTime(v, now, 0.04);
+      tone.frequency.setTargetAtTime(base * (0.7 + 0.3 * v), now, 0.05);
+      fifth.frequency.setTargetAtTime(base * (0.7 + 0.3 * v) * 1.5 + 2, now, 0.05);
+      teeth.frequency.setTargetAtTime(7 + 9 * v, now, 0.05);
+    },
+    stop() {
+      const now = ac.currentTime;
+      level.gain.cancelScheduledValues(now);
+      level.gain.setTargetAtTime(0, now, 0.03);
+      for (const node of nodes) node.stop(now + 0.25);
+    },
   };
 }
 
-const WHIRR_VOLUME = 0.2;
+const WHIRR_VOLUME = 0.22;
+const SILENT = { speed() {}, stop() {} };
 
-/** The zoom motor's whirr while the zoom moves. Returns a function that stops it. */
-export function startWhirr() {
+/** The zoom motor's sound while the zoom moves: { speed(f), stop() } (see whirr). */
+export function startWhirr({ out = false } = {}) {
   const ac = audio();
-  if (!ac) return () => {};
+  if (!ac) return SILENT;
   try {
-    const level = ac.createGain();
-    level.gain.value = WHIRR_VOLUME;
-    level.connect(ac.destination);
-    const stop = whirr(ac, level);
-    return () => { try { stop(); } catch { /* closed */ } setTimeout(() => level.disconnect(), 300); };
+    const volume = ac.createGain();
+    volume.gain.value = WHIRR_VOLUME;
+    volume.connect(ac.destination);
+    const motor = whirr(ac, volume, { out });
+    return {
+      speed: (f) => { try { motor.speed(f); } catch { /* closed */ } },
+      stop: () => { try { motor.stop(); } catch { /* closed */ } setTimeout(() => volume.disconnect(), 400); },
+    };
   } catch {
-    return () => {};
+    return SILENT;
   }
 }
 

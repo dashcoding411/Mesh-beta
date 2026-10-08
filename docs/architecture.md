@@ -388,8 +388,12 @@ readers, and the rules run the hate filter over them; the editor runs
 The roll camera is a mid-2000s compact. Shots get a buzz, a synthesised
 shutter click, blades and "TAKEN". Zoom is a W/T rocker (held), a pinch, or
 holding + / -, all driving one slow motor toward a target (the whole 1x to
-3x range in about 2.5 s, with a short spin-up and a synthesised whirr while
-it moves); a W–T bar shows while zooming. It paints the viewfinder and the
+3x range in about 3.6 s): it spins up over 0.3 s, eases off as it nears
+where it's going, and on letting go coasts a little and eases to a stop. The
+motor's sound (`whirr` in `lib/shutter.js`: a thin, high whine with soft
+gear ticks, nothing below about 700 Hz) is driven by the same speed every
+frame, so volume, pitch and ticking rise and fall with the movement; zooming
+out runs a little lower. A W–T bar shows while zooming. It paints the viewfinder and the
 bar directly (a CSS scale) rather than re-rendering, and the shot crops the
 frame by the zoom, as a compact's digital zoom did. The develop step
 (`developFrame`) grades the JPEG: a gentle flash pop (the phone already
