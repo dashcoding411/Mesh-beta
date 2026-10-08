@@ -66,6 +66,20 @@ export const isDeveloped = (roll, now = Date.now()) => !!roll && tsMillis(roll.d
 export const isMember = (roll, uid = me()) => !!roll && !!uid && (roll.members || []).includes(uid);
 export const rollUrl = (id) => `${window.location.origin}/rolls/${encodeURIComponent(id)}`;
 
+const MESH_HOSTS = ["joinmesh.social", "www.joinmesh.social", "mesh-a293c.web.app", "mesh-a293c.firebaseapp.com"];
+/**
+ * The roll in a pasted invite: a Mesh /rolls/… link, on its own or inside a
+ * message ("join my roll https://…"). Null for anything else.
+ */
+export function rollIdFromLink(text, origin = window.location.origin) {
+  const s = String(text || "").trim();
+  const link = s.match(/https?:\/\/\S+/)?.[0] || s;
+  let url;
+  try { url = new URL(link, origin); } catch { return null; }
+  if (!MESH_HOSTS.includes(url.hostname) && url.host !== new URL(origin).host) return null;
+  return url.pathname.match(/^\/rolls\/([A-Za-z0-9_-]{6,64})\/?$/)?.[1] || null;
+}
+
 export async function createRoll({ title, developAt, gatheringId = "" }) {
   const profile = await myProfile();
   const ref_ = doc(collection(db, "rolls"));

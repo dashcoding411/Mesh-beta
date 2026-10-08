@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { centreCrop, digicamCurves, gradePixels, rng, segmentsFor, stampText } from "../digicam.js";
-import { countdownLabel, developChoices, developLabel, isDeveloped, isMember, nextDevelopAt } from "../data/rolls.js";
+import { countdownLabel, developChoices, developLabel, isDeveloped, isMember, nextDevelopAt, rollIdFromLink } from "../data/rolls.js";
 
 const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).getTime();
 
@@ -60,9 +60,34 @@ describe("the digicam look", () => {
     const lit = gradePixels(grey(), grey(), w, h, { flash: true, seed: 7 });
     const lum = (px, x, y) => { const i = (y * w + x) * 4; return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; };
     const avg = (px, x0, y0) => { let s = 0; for (let y = y0; y < y0 + 4; y++) for (let x = x0; x < x0 + 4; x++) s += lum(px, x, y); return s / 16; };
-    expect(avg(lit, 18, 18)).toBeGreaterThan(avg(lit, 0, 0) + 30);
+    // A nudge, not a blast: the phone has already exposed the frame.
+    expect(avg(lit, 18, 18)).toBeGreaterThan(avg(lit, 0, 0) + 12);
+    expect(avg(lit, 18, 18)).toBeLessThan(avg(lit, 0, 0) + 35);
     expect(gradePixels(grey(), grey(), w, h, { flash: true, seed: 7 })).toEqual(lit);
     expect(gradePixels(grey(), grey(), w, h, { flash: true, seed: 8 })).not.toEqual(lit);
+  });
+
+  it("eases highlights toward white instead of clipping them", () => {
+    for (const flash of [true, false]) {
+      for (const ch of Object.values(digicamCurves({ flash }))) {
+        // Still rising right to the top, so bright detail survives...
+        for (let i = 215; i < 245; i += 5) expect(ch[i + 5]).toBeGreaterThan(ch[i]);
+        // ...and nothing short of pure white is pushed all the way there.
+        expect(ch[245]).toBeLessThan(255);
+      }
+    }
+  });
+
+  it("keeps a bright, colourful pixel's colour instead of clipping it to neon", () => {
+    const w = 8;
+    const h = 8;
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < px.length; i += 4) { px[i] = 245; px[i + 1] = 120; px[i + 2] = 30; px[i + 3] = 255; }
+    const out = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 3 });
+    const i = (4 * w + 4) * 4;
+    expect(out[i]).toBeGreaterThan(out[i + 1]);
+    expect(out[i + 1]).toBeGreaterThan(out[i + 2]);
+    expect(out[i + 1]).toBeGreaterThan(60); // the orange stays orange, not a clipped red
   });
 
   it("random numbers are seedable and in range", () => {
@@ -90,6 +115,18 @@ describe("the digicam look", () => {
 });
 
 describe("roll links", () => {
+  it("reads a pasted invite, alone or inside a message, and nothing else", () => {
+    const here = "https://joinmesh.social";
+    expect(rollIdFromLink("https://joinmesh.social/rolls/Ab12Cd34Ef56Gh78Ij90", here)).toBe("Ab12Cd34Ef56Gh78Ij90");
+    expect(rollIdFromLink("join my roll! https://www.joinmesh.social/rolls/Ab12Cd34Ef56Gh78Ij90?invite=1 see you", here)).toBe("Ab12Cd34Ef56Gh78Ij90");
+    expect(rollIdFromLink("/rolls/Ab12Cd34Ef56Gh78Ij90", here)).toBe("Ab12Cd34Ef56Gh78Ij90");
+    expect(rollIdFromLink("http://localhost:5173/rolls/Ab12Cd34Ef56Gh78Ij90", "http://localhost:5173")).toBe("Ab12Cd34Ef56Gh78Ij90");
+    expect(rollIdFromLink("https://evil.example/rolls/Ab12Cd34Ef56Gh78Ij90", here)).toBeNull();
+    expect(rollIdFromLink("https://joinmesh.social/p/Ab12Cd34Ef56Gh78Ij90", here)).toBeNull();
+    expect(rollIdFromLink("just some words", here)).toBeNull();
+    expect(rollIdFromLink("", here)).toBeNull();
+  });
+
   it("preview the same for every roll and stay out of search", async () => {
     const { describe: describePage, injectMeta } = await import("../../../cloudflare/edge/src/worker.js");
     const env = { SITE: "https://joinmesh.social", FIREBASE_PROJECT: "x" };

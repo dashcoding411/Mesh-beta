@@ -61,6 +61,8 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Opening quickly** (`lib/snapshot.js`). The signed-in account (profile,
   settings, who you follow, block and mute) and the top of Home (topic
   "all", up to a day old) are copied to local storage under `mesh:snap:`.
+  Offline, Firestore answers a query with nothing rather than an error, so
+  an empty refresh never replaces the copy on screen or on the device.
   On opening, Mesh shows them as soon as Firebase knows who's signed in,
   without waiting for the four account reads or the feed queries, then
   replaces them with fresh data; a read that fails keeps the copy. The
@@ -380,6 +382,31 @@ animated as `gifs` metadata on both. The words go in `text`, for screen
 readers, and the rules run the hate filter over them; the editor runs
 `checkContent` first. Stories with `fit` render in a 9:16 frame
 (`StoryFrame` in StoryViewer); older ones as before.
+
+## Rolls camera (`components/rolls`, `lib/digicam.js`, `lib/shutter.js`)
+
+The roll camera is a mid-2000s compact. Shots get a buzz, a synthesised
+shutter click, blades and "TAKEN". Zoom is a W/T rocker (held), a pinch, or
+holding + / -, all driving one slow motor toward a target (the whole 1x to
+3x range in about 2.5 s, with a short spin-up and a synthesised whirr while
+it moves); a W–T bar shows while zooming. It paints the viewfinder and the
+bar directly (a CSS scale) rather than re-rendering, and the shot crops the
+frame by the zoom, as a compact's digital zoom did. The develop step
+(`developFrame`) grades the JPEG: a gentle flash pop (the phone already
+exposed the frame and the torch lit it), an S-curve with a soft highlight
+shoulder instead of clipping, sharpening whose overshoot is capped, extra
+colour that fades toward white and is pulled toward grey rather than
+clipped, a small bloom on only the brightest spots (screened, so it can't
+pass white), grain and the date stamp.
+
+Links never open in M.A.T.H: tapped in Messages or another app, a roll link
+opens in Safari or that app's own browser, each signed in separately. So the
+signed-out invite page explains that and offers Copy invite link, and Rolls
+has Scan QR code (the host's Invite screen shows one) and Paste link, which
+open the roll inside Mesh. The scanner uses the browser's BarcodeDetector
+where there is one (Android) and otherwise jsQR, loaded only when the
+scanner opens (kept out of the preloaded chunks in `vite.config.js`).
+`rollIdFromLink` accepts only Mesh hosts and `/rolls/<id>`.
 
 ## Help (`/help`, `lib/helpGuides.js`)
 

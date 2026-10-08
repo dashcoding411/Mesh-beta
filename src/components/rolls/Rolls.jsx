@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Aperture, ChevronRight, Plus } from "lucide-react";
+import { Aperture, ChevronRight, ClipboardPaste, Plus, ScanQrCode } from "lucide-react";
 import {
-  createRoll, developChoices, developLabel, countdownLabel, fetchMyRolls, isDeveloped, rollSeen, SHOTS_PER_PERSON, tsMillis,
+  createRoll, developChoices, developLabel, countdownLabel, fetchMyRolls, isDeveloped, rollIdFromLink, rollSeen, SHOTS_PER_PERSON, tsMillis,
 } from "../../lib/db";
 import { authPath, navigate } from "../../lib/router";
 import { checkName } from "../../lib/moderation";
@@ -15,6 +15,7 @@ import { EmptyState, ErrorState, Skeleton } from "../ui/States";
 import SevenSeg from "./SevenSeg";
 import HelpLink from "../ui/HelpLink";
 import RollPage from "./RollPage";
+import RollScanner from "./RollScanner";
 
 /** Rolls: your shared disposable cameras, or one roll at /rolls/:id. Phones only. */
 export default function Rolls({ rollId }) {
@@ -87,6 +88,7 @@ function RollsHome() {
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 pb-16 pt-4 md:px-6">
           <Intro onStart={start} compact={!!rolls?.length} guest={guest} />
+          {!guest && <JoinRoll />}
           {error && <ErrorState title="Couldn't load your rolls" onRetry={() => { setError(false); setRolls(null); load(); }} />}
           {!error && rolls === null && <div className="mt-6 space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-28 !rounded-card" />)}</div>}
           {live.length > 0 && (
@@ -104,9 +106,57 @@ function RollsHome() {
           {rolls?.length === 0 && !guest && (
             <EmptyState compact icon={Aperture} title="No rolls yet" body="Start one for tonight, then send the link to whoever's coming." />
           )}
+
         </div>
       </div>
       {creating && <NewRollDialog onClose={() => setCreating(false)} onCreated={(r) => { setCreating(false); navigate(`/rolls/${r.id}?invite=1`); }} />}
+    </>
+  );
+}
+
+// Joining a friend's roll from inside Mesh, where you're signed in: scan the
+// QR code on their phone, or paste a link. (A link tapped elsewhere opens in
+// Safari or that app, which may not be signed in.)
+function JoinRoll() {
+  const [scanning, setScanning] = useState(false);
+  const closeScanner = useCallback(() => setScanning(false), []);
+  const [asking, setAsking] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const open = (value) => {
+    const id = rollIdFromLink(value);
+    if (id) { navigate(`/rolls/${encodeURIComponent(id)}`); return true; }
+    return false;
+  };
+  const paste = async () => {
+    let clip = "";
+    try { clip = await navigator.clipboard.readText(); } catch { /* not allowed: type or paste it instead */ }
+    if (open(clip)) return;
+    setText(clip);
+    setError("");
+    setAsking(true);
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    if (!open(text)) setError("That isn't a roll link. It looks like joinmesh.social/rolls/ and then some letters and numbers.");
+  };
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button icon={ScanQrCode} onClick={() => setScanning(true)}>Scan QR code</Button>
+        <Button icon={ClipboardPaste} onClick={paste}>Paste link</Button>
+      </div>
+      {scanning && <RollScanner onClose={closeScanner} />}
+      {asking && (
+        <Dialog title="Open a roll from its link" onClose={() => setAsking(false)}>
+          <form onSubmit={submit} className="space-y-4">
+            <Field label="Invite link" error={error}>
+              <Input value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="joinmesh.social/rolls/…" autoFocus inputMode="url" />
+            </Field>
+            <Button type="submit" variant="primary" full>Open the roll</Button>
+          </form>
+        </Dialog>
+      )}
     </>
   );
 }

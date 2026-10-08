@@ -27,6 +27,8 @@ export default defineConfig({
           // The image checker (TensorFlow.js and its ~6 MB model) loads only when
           // someone picks an image, so it stays out of the preloaded chunks.
           if (/@tensorflow|nsfwjs|\/seedrandom\/|\/long\/|\/buffer\/|\/base64-js\/|\/ieee754\/|\/core-js\//.test(id)) return undefined;
+          // The QR reader loads only when someone opens the roll scanner.
+          if (/\/jsqr\//.test(id)) return undefined;
           if (/firebase|\/idb\/|\/re2js\//.test(id)) return "firebase";
           if (id.includes("react-dom") || id.includes("/react/") || id.includes("scheduler")) return "react";
           if (id.includes("lucide-react")) return "icons";

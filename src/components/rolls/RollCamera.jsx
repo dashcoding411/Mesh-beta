@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, CameraOff, SwitchCamera, Volume2, VolumeX, X, Zap, ZapOff } from "lucide-react";
 import { useCamera } from "../../lib/useCamera";
@@ -6,7 +6,7 @@ import { centreCrop, developFrame, stampText, STAMP_COLOR } from "../../lib/digi
 import SevenSeg from "./SevenSeg";
 import { SHOTS_PER_PERSON, developLabel, queueShot } from "../../lib/data/rolls";
 import { tsMillis } from "../../lib/db";
-import { shutterBuzz, shutterClick, wakeShutter } from "../../lib/shutter";
+import { shutterBuzz, shutterClick, startWhirr, wakeShutter } from "../../lib/shutter";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 import Button from "../ui/Button";
 import { Spinner } from "../ui/States";
@@ -14,6 +14,11 @@ import { useToast } from "../ui/toast-context";
 
 const ASPECT = 3 / 4; // portrait 4:3, like a compact held upright
 const SIZE = { width: { ideal: 2560 }, height: { ideal: 1920 } };
+// Zoom like a compact's: up to 3x, driven by a slow motor (the whole range
+// in about 2.5 seconds), cropping the frame the way digicam zoom did.
+const MAX_ZOOM = 3;
+const ZOOM_SPEED = 0.8; // x per second
+const SPIN_UP_MS = 180;
 const FACING_KEY = "mesh:camera-facing";
 const FLASH_KEY = "mesh:roll-flash";
 const SOUND_KEY = "mesh:roll-sound";
@@ -41,6 +46,115 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
 
   const { videoRef, streamRef, status, problem, cameras, retry, frameReady } = useCamera({ facing, size: SIZE });
   useEffect(() => { if (status === "live") shutterRef.current?.focus(); }, [status]);
+
+  // The zoom. It moves every frame, so it paints the viewfinder and the zoom
+  // bar directly rather than through React; the motor runs toward a target
+  // (the rocker's end while held, or wherever a pinch points) at one speed.
+  const zoomRef = useRef(1);
+  const targetRef = useRef(1);
+  const motorRef = useRef(null); // { raf, stopSound } while it runs
+  const fillRef = useRef(null);
+  const readoutRef = useRef(null);
+  const hideRef = useRef(0);
+  const pinchRef = useRef({ points: new Map(), from: 0, at: 1 });
+  const [zooming, setZooming] = useState(false); // the zoom bar shows
+  const paintZoom = useCallback((z) => {
+    if (videoRef.current) videoRef.current.style.transform = `scale(${mirrored ? -z : z}, ${z})`;
+    if (fillRef.current) fillRef.current.style.width = `${((z - 1) / (MAX_ZOOM - 1)) * 100}%`;
+    if (readoutRef.current) readoutRef.current.textContent = `x${z.toFixed(1)}`;
+  }, [videoRef, mirrored]);
+  const stopMotor = useCallback(() => {
+    const m = motorRef.current;
+    if (!m) return;
+    cancelAnimationFrame(m.raf);
+    m.stopSound();
+    motorRef.current = null;
+    clearTimeout(hideRef.current);
+    hideRef.current = setTimeout(() => setZooming(false), 1500);
+  }, []);
+  const runMotor = () => {
+    if (motorRef.current || Math.abs(targetRef.current - zoomRef.current) < 0.005) return;
+    clearTimeout(hideRef.current);
+    setZooming(true);
+    const began = performance.now();
+    let last = began;
+    const step = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const spin = Math.min(1, (now - began) / SPIN_UP_MS); // the motor spinning up
+      const gap = targetRef.current - zoomRef.current;
+      const z = zoomRef.current + Math.sign(gap) * Math.min(Math.abs(gap), ZOOM_SPEED * spin * dt);
+      zoomRef.current = z;
+      paintZoom(z);
+      if (Math.abs(targetRef.current - z) < 0.002) { stopMotor(); return; }
+      motorRef.current.raf = requestAnimationFrame(step);
+    };
+    motorRef.current = { raf: requestAnimationFrame(step), stopSound: sound ? startWhirr() : () => {} };
+  };
+  // A new camera starts wide, like switching a compact on.
+  useEffect(() => {
+    zoomRef.current = 1;
+    targetRef.current = 1;
+  }, [facing]);
+  // Painted once the screen (and its zoom bar) is up, and after a flip.
+  useEffect(() => { paintZoom(zoomRef.current); }, [status, facing, paintZoom]);
+  useEffect(() => () => { stopMotor(); clearTimeout(hideRef.current); }, [stopMotor]);
+
+  // The rocker: hold T to zoom in, W to zoom out; let go and it stops.
+  const zoomTo = (dir) => {
+    if (status !== "live") return;
+    if (sound) wakeShutter(); // sound can only start inside a tap
+    targetRef.current = dir > 0 ? MAX_ZOOM : 1;
+    runMotor();
+  };
+  const zoomStop = () => { targetRef.current = zoomRef.current; stopMotor(); };
+  const rocker = (dir) => ({
+    onPointerDown: (e) => {
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* without it, sliding off the button stops it */ }
+      zoomTo(dir);
+    },
+    onPointerUp: zoomStop,
+    onPointerLeave: zoomStop,
+    onPointerCancel: zoomStop,
+    onLostPointerCapture: zoomStop,
+    onKeyDown: (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); zoomTo(dir); } },
+    onKeyUp: (e) => { if (e.key === "Enter" || e.key === " ") zoomStop(); },
+    onContextMenu: (e) => e.preventDefault(),
+    style: { touchAction: "none", WebkitTouchCallout: "none" },
+  });
+  // Pinching points the motor; it follows at its own pace.
+  const pinch = {
+    onPointerDown: (e) => {
+      const p = pinchRef.current;
+      p.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (p.points.size === 2) {
+        const [a, b] = [...p.points.values()];
+        p.from = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        p.at = targetRef.current;
+        if (sound) wakeShutter();
+      }
+    },
+    onPointerMove: (e) => {
+      const p = pinchRef.current;
+      if (!p.points.has(e.pointerId)) return;
+      p.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (p.points.size !== 2 || status !== "live") return;
+      const [a, b] = [...p.points.values()];
+      targetRef.current = Math.min(MAX_ZOOM, Math.max(1, p.at * (Math.hypot(a.x - b.x, a.y - b.y) / p.from)));
+      runMotor();
+    },
+    onPointerUp: (e) => pinchRef.current.points.delete(e.pointerId),
+    onPointerCancel: (e) => pinchRef.current.points.delete(e.pointerId),
+  };
+  // Keyboard: hold + or - (the same as T and W).
+  const onKey = {
+    onKeyDown: (e) => {
+      if (e.repeat || e.target.closest?.("input, textarea")) return;
+      if (e.key === "+" || e.key === "=") zoomTo(1);
+      else if (e.key === "-") zoomTo(-1);
+    },
+    onKeyUp: (e) => { if (["+", "=", "-"].includes(e.key)) zoomStop(); },
+  };
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
@@ -80,7 +194,12 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
         if (mirrored) { setBlink(true); await new Promise((r) => setTimeout(r, 140)); }
         else if (await torch(true)) await new Promise((r) => setTimeout(r, 260));
       }
-      const crop = centreCrop(el.videoWidth, el.videoHeight, ASPECT);
+      // What the viewfinder shows: the 4:3 middle, narrowed by the zoom.
+      const whole = centreCrop(el.videoWidth, el.videoHeight, ASPECT);
+      const z = zoomRef.current;
+      const w = Math.round(whole.w / z);
+      const h = Math.round(whole.h / z);
+      const crop = { x: Math.round(whole.x + (whole.w - w) / 2), y: Math.round(whole.y + (whole.h - h) / 2), w, h };
       // Grab the frame now; developing it can take a moment.
       const frame = document.createElement("canvas");
       frame.width = crop.w;
@@ -110,13 +229,16 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   const today = stampText(new Date());
 
   return createPortal(
-    <div ref={trap} role="dialog" aria-modal="true" aria-label={`Roll camera: ${roll.title}`}
+    <div ref={trap} role="dialog" aria-modal="true" aria-label={`Roll camera: ${roll.title}`} {...onKey}
       className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-[#0b0b0d] text-white anim-fade">
       <div className="flex w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] items-center justify-between px-3 pt-safe">
         <button type="button" onClick={onClose} aria-label="Close the camera" className="press flex h-11 w-11 items-center justify-center rounded-full">
           <X size={24} aria-hidden="true" />
         </button>
-        <p className="min-w-0 flex-1 truncate px-2 text-center text-callout font-semibold">{roll.title}</p>
+        <div className="min-w-0 flex-1 px-2 text-center">
+          <p className="truncate text-callout font-semibold">{roll.title}</p>
+          <p className="truncate text-caption text-white/60">Develops {developLabel(tsMillis(roll.developAt))}</p>
+        </div>
         <div className="flex">
           <button type="button" onClick={toggleSound} aria-pressed={sound} aria-label={sound ? "Shutter sound on" : "Shutter sound off"}
             className={`press flex h-11 w-11 items-center justify-center rounded-full ${sound ? "text-white" : "text-white/70"}`}>
@@ -130,10 +252,12 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
       </div>
 
       {/* The digicam screen. */}
-      <div className="relative mt-2 aspect-[3/4] w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] overflow-hidden bg-black sm:rounded-[14px]">
-        {/* Never hidden: iPhones may not play a hidden video, which then stays black. */}
+      <div {...pinch} style={{ touchAction: "none" }}
+        className="relative mt-2 aspect-[3/4] w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] overflow-hidden bg-black sm:rounded-[14px]">
+        {/* Never hidden: iPhones may not play a hidden video, which then stays black.
+            Its scale (zoom, and the mirror for a selfie) is set by paintZoom. */}
         <video ref={videoRef} autoPlay muted playsInline aria-hidden="true"
-          className={`h-full w-full object-cover [filter:contrast(1.12)_saturate(1.22)] ${mirrored ? "-scale-x-100" : ""}`} />
+          className="h-full w-full object-cover [filter:contrast(1.06)_saturate(1.12)]" />
         {status === "starting" && <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Opening the camera"><Spinner /></span>}
         {(status === "denied" || status === "unavailable") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
@@ -154,6 +278,15 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
             <span className="absolute left-3 top-3 flex items-center gap-2">
               <span className="rounded-[3px] border border-white/80 px-1 text-[11px] leading-4">AUTO</span>
               {flash ? <Zap size={14} fill="currentColor" /> : <ZapOff size={14} />}
+            </span>
+            {/* The zoom bar, while zooming and for a moment after. */}
+            <span className={`absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1.5 text-[11px] transition-opacity duration-300 ${zooming ? "opacity-100" : "opacity-0"}`}>
+              W
+              <span className="flex h-2.5 w-24 rounded-[2px] border border-white/90 p-px">
+                <span ref={fillRef} className="block h-full bg-white/90" style={{ width: "0%" }} />
+              </span>
+              T
+              <span ref={readoutRef} className="ml-1 w-9 text-[12px]" />
             </span>
             <span className="absolute right-3 top-3 flex items-center gap-1.5">
               <span className="text-[11px]">4:3</span>
@@ -196,7 +329,13 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
       </div>
 
       <div className="grid w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] grid-cols-3 items-center px-6 pb-safe pt-5">
-        <p className="text-caption leading-tight text-white/60">Develops<br />{developLabel(tsMillis(roll.developAt))}</p>
+        <div role="group" aria-label="Zoom (hold)" className="flex h-11 w-[104px] select-none overflow-hidden rounded-full bg-white/15 font-mono text-[15px] font-bold">
+          <button type="button" {...rocker(-1)} disabled={status !== "live"} aria-label="Zoom out (hold)"
+            className="flex-1 active:bg-white/20 disabled:opacity-40">W</button>
+          <span className="my-2.5 w-px bg-white/30" aria-hidden="true" />
+          <button type="button" {...rocker(1)} disabled={status !== "live"} aria-label="Zoom in (hold)"
+            className="flex-1 active:bg-white/20 disabled:opacity-40">T</button>
+        </div>
         <button ref={shutterRef} type="button" onClick={shoot} disabled={status !== "live" || left <= 0}
           aria-label={left > 0 ? `Take a photo, ${left} left` : "No shots left"}
           className="press relative h-[76px] w-[76px] justify-self-center rounded-full border-[5px] border-white disabled:opacity-40">

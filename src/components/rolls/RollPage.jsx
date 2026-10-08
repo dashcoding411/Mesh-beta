@@ -25,6 +25,7 @@ import { useToast } from "../ui/toast-context";
 import { usePageTitle } from "../../lib/usePageTitle";
 import { enablePush, pushState, remind } from "../../lib/push";
 import InstallDialog from "../InstallDialog";
+import { isIOS, isStandalone } from "../../lib/install";
 import RollCamera from "./RollCamera";
 import SevenSeg from "./SevenSeg";
 
@@ -72,19 +73,40 @@ function Frame({ children, title, right }) {
   );
 }
 
+// Apps that open links in their own browser, which keeps its own sign-in.
+const IN_APP_BROWSER = /Instagram|FBAN|FBAV|FB_IAB|Messenger|Snapchat|TikTok|musical_ly|BytedanceWebview|LinkedInApp|Twitter|Line\//i;
+
 function GuestInvite() {
+  const toast = useToast();
+  // Links never open in Mesh on an iPhone's home screen (M.A.T.H): they open
+  // in Safari, or inside the app they were tapped in, each signed in (or not)
+  // on its own. So someone already on Mesh can land here signed out.
+  const why = IN_APP_BROWSER.test(navigator.userAgent)
+    ? "This link opened inside another app's browser, which doesn't know you're signed in to Mesh. Copy the link and open it in Mesh, or in Safari or Chrome where you're signed in."
+    : isIOS() && !isStandalone()
+      ? "Links open in Safari, which signs in separately from Mesh on your home screen. Open Mesh from your home screen and tap Scan QR code in Rolls, or copy this link and tap Paste link there. Or log in here."
+      : "You're not signed in on this browser. Log in, or copy the link and open it where you use Mesh.";
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(window.location.href); toast({ title: "Link copied" }); }
+    catch { toast({ tone: "error", title: "Couldn't copy", body: "Copy it from the address bar instead." }); }
+  };
   return (
     <Frame title="You're invited to a roll">
       <div className="text-center">
         <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#111114] text-[#ff9b2f]"><Aperture size={30} aria-hidden="true" /></span>
         <h1 className="mt-4 font-display text-title-1">You're invited to a roll</h1>
         <p className="mx-auto mt-2 max-w-md text-body text-fg-muted">
-          A roll is a shared disposable camera. Everyone gets {SHOTS_PER_PERSON} shots, nobody sees a thing, and it all develops at 9am. Join Mesh to add your shots and see everyone's.
+          A roll is a shared disposable camera. Everyone gets {SHOTS_PER_PERSON} shots, nobody sees a thing until it develops, then everyone gets every photo at once. Join Mesh to add your shots and see everyone's.
         </p>
         <div className="mt-6 flex justify-center gap-2">
           <Button variant="primary" onClick={() => navigate(authPath("signup"))}>Sign up to join</Button>
           <Button onClick={() => navigate(authPath("login"))}>Log in</Button>
         </div>
+        <section aria-labelledby="have-mesh" className="mx-auto mt-8 max-w-md rounded-card border border-line bg-surface p-4 text-left">
+          <h2 id="have-mesh" className="text-callout font-semibold">Already on Mesh?</h2>
+          <p className="mt-1 text-callout text-fg-muted">{why}</p>
+          <Button className="mt-3" icon={Copy} onClick={copy}>Copy invite link</Button>
+        </section>
       </div>
     </Frame>
   );

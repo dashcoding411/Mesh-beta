@@ -174,6 +174,7 @@ export const GUIDES = [
       "Rolls only work on phones, because the camera is the point.",
       "Planning a gathering? You can add a roll to it.",
       "Whoever started the roll can develop it early.",
+      "A roll link asking you to log in even though you're on Mesh? Links open in Safari or the app you tapped them in, not Mesh on your home screen. In Mesh, tap **Scan QR code** in Rolls and point it at the code on your friend's phone, or copy the link and tap **Paste link**.",
     ],
     go: { label: "Open Rolls", path: "/rolls" },
     keywords: ["roll", "rolls", "camera", "disposable", "film", "party", "photos", "develop", "9am", "digicam"],

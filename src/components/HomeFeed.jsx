@@ -136,9 +136,12 @@ export default function HomeFeed({ mode }) {
         .filter((s) => !hiddenAuthors.has(s.authorId) && !hitsHiddenWords(`${s.title} ${s.standfirst || ""}`, hiddenWords))
         .map((s) => ({ id: `news:${s.id}`, kind: "news", story: s, authorId: s.authorId, at: tsMillis(s.publishedAt) || tsMillis(s.createdAt) }));
       const feed = mode === "following" ? ordered.filter((p) => following.has(p.authorId) || p.repostedBy?.length) : ordered;
+      // Offline, Firestore answers with nothing rather than an error, so an
+      // empty answer never replaces last time's feed on screen or on the device.
+      if (!feed.length && !stories.length && behind) throw new Error("Nothing came back");
       setPosts([...feed, ...stories].sort((a, b) => postTime(b) - postTime(a)));
       loadedAt.current = Date.now();
-      if (topic === "all") saveSnapshot(copyName(keepKey), feed.slice(0, PAGE * 2));
+      if (topic === "all" && feed.length) saveSnapshot(copyName(keepKey), feed.slice(0, PAGE * 2));
     } catch (err) {
       console.error(err);
       if (quiet) toast({ tone: "error", title: "Couldn't refresh", body: "Check your connection and try again." });

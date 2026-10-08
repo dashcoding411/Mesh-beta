@@ -111,15 +111,19 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
 
 // A label and count in the stats list. When it opens a list, the whole stat
 // is the button's hit area, while the list keeps valid dt/dd pairs.
+// A tappable stat is the whole box (label and number), via the button's
+// stretched ::after. The press effect sits on the box: a transform on the
+// button would make it the ::after's frame mid-tap, shrinking the target to
+// the number and dropping taps on the label.
 function Stat({ label, value, onClick }) {
   const shown = value === null || value === undefined ? "–" : compact(value);
   return (
-    <div className={`relative flex flex-col ${onClick ? "-m-1 rounded-control p-1 hover:bg-surface-2" : ""}`}>
+    <div className={`relative flex flex-col ${onClick ? "press -mx-2.5 -my-2 min-w-16 rounded-control px-2.5 py-2 hover:bg-surface-2" : ""}`}>
       <dt className="text-caption text-fg-subtle">{label}</dt>
       <dd className="text-title-3 tabular">
         {onClick ? (
           <button type="button" onClick={onClick} aria-label={`${shown} ${label}. Show the list`}
-            className="press rounded-control after:absolute after:inset-0 after:content-['']">
+            className="rounded-control after:absolute after:inset-0 after:rounded-control after:content-['']">
             {shown}
           </button>
         ) : shown}
