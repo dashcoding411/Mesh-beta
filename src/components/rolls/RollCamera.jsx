@@ -280,7 +280,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
         {/* Never hidden: iPhones may not play a hidden video, which then stays black.
             Its scale (zoom, and the mirror for a selfie) is set by paintZoom. */}
         <video ref={videoRef} autoPlay muted playsInline aria-hidden="true"
-          className="h-full w-full object-cover [filter:contrast(1.06)_saturate(1.12)]" />
+          className="h-full w-full object-cover [filter:contrast(0.94)_saturate(0.88)_sepia(0.06)]" />
         {status === "starting" && <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Opening the camera"><Spinner /></span>}
         {(status === "denied" || status === "unavailable") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">

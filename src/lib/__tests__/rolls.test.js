@@ -36,8 +36,8 @@ describe("when a roll develops", () => {
   });
 });
 
-describe("the digicam look", () => {
-  it("has rising tone curves with cool shadows and a deep black", () => {
+describe("the film look", () => {
+  it("has rising tone curves with blue-green shadows and a matte, lifted black", () => {
     for (const flash of [true, false]) {
       const { r, g, b } = digicamCurves({ flash });
       for (let i = 1; i < 256; i++) {
@@ -46,7 +46,11 @@ describe("the digicam look", () => {
         expect(b[i]).toBeGreaterThanOrEqual(b[i - 1]);
       }
       expect(b[30]).toBeGreaterThan(r[30]);
-      expect(r[0]).toBeLessThan(12);
+      // Black is a matte charcoal, not pure black...
+      for (const ch of [r, g, b]) expect(ch[0]).toBeGreaterThan(8);
+      expect(Math.max(r[0], g[0], b[0])).toBeLessThan(32);
+      // ...and white a creamy one, not pure white.
+      for (const ch of [r, g, b]) expect(ch[255]).toBeLessThan(250);
     }
     // Without flash, highlights run warmer.
     expect(digicamCurves({ flash: false }).r[220] - digicamCurves({ flash: false }).b[220])
@@ -76,6 +80,44 @@ describe("the digicam look", () => {
         expect(ch[245]).toBeLessThan(255);
       }
     }
+  });
+
+  it("softens instead of sharpening, so edges never ring past where they were", () => {
+    const w = 20;
+    const h = 4;
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < px.length; i += 4) { const x = (i / 4) % w; const v = x < 10 ? 60 : 200; px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255; }
+    const soft = px.slice();
+    for (let i = 0; i < soft.length; i += 4) { const x = (i / 4) % w; if (x === 9 || x === 10) soft[i] = soft[i + 1] = soft[i + 2] = 130; }
+    const plain = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 5 });
+    const softened = gradePixels(px.slice(), soft, w, h, { flash: false, seed: 5 });
+    const at = (a, x) => a[(2 * w + x) * 4 + 1];
+    // At the edge, the softened develop sits between the two sides, closer together.
+    expect(at(softened, 10) - at(softened, 9)).toBeLessThan(at(plain, 10) - at(plain, 9));
+  });
+
+  it("grains like film: the same on every channel, not coloured static", () => {
+    const w = 32;
+    const h = 32;
+    const px = new Uint8ClampedArray(w * h * 4).fill(128);
+    const out = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 9 });
+    const diffs = [];
+    const reds = [];
+    for (let y = 14; y < 18; y++) for (let x = 14; x < 18; x++) { const i = (y * w + x) * 4; diffs.push(out[i] - out[i + 1]); reds.push(out[i]); }
+    const spread = (a) => Math.max(...a) - Math.min(...a);
+    expect(spread(reds)).toBeGreaterThan(2); // there is grain
+    expect(spread(diffs)).toBeLessThanOrEqual(2); // and it isn't coloured
+  });
+
+  it("turns greens toward teal and quietens them", () => {
+    const w = 4;
+    const h = 4;
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < px.length; i += 4) { px[i] = 60; px[i + 1] = 170; px[i + 2] = 60; px[i + 3] = 255; }
+    const out = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 2 });
+    const i = (1 * w + 1) * 4;
+    expect(out[i + 2] - out[i]).toBeGreaterThan(8); // blue rises above red: teal
+    expect(out[i + 1] - out[i]).toBeLessThan(110); // less green than it came in
   });
 
   it("keeps a bright, colourful pixel's colour instead of clipping it to neon", () => {

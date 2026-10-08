@@ -396,12 +396,17 @@ frame, so volume, pitch and ticking rise and fall with the movement; zooming
 out runs a little lower. A W–T bar shows while zooming. It paints the viewfinder and the
 bar directly (a CSS scale) rather than re-rendering, and the shot crops the
 frame by the zoom, as a compact's digital zoom did. The develop step
-(`developFrame`) grades the JPEG: a gentle flash pop (the phone already
-exposed the frame and the torch lit it), an S-curve with a soft highlight
-shoulder instead of clipping, sharpening whose overshoot is capped, extra
-colour that fades toward white and is pulled toward grey rather than
-clipped, a small bloom on only the brightest spots (screened, so it can't
-pass white), grain and the date stamp.
+(`developFrame`) gives the JPEG a 35mm film look rather than a phone's:
+softened (a little of a blurred copy blended in) instead of sharpened; a
+fade curve (`FILM_CURVE`, a monotone cubic) with matte blacks at about 18
+and a creamy roll-off to about 238; blue-green shadows, golden highlights
+(cooler under flash) and a touch of magenta; film colour per pixel
+(`filmColour`: greens toward teal and 22% quieter, blues 16% quieter, warm
+tones toward orange, the loudest colours calmed most); a gentle flash pop
+and fall-off; grain the same on every channel, in soft clumps (a coarser
+random field sampled smoothly) and strongest in the mid-tones; faint
+red-orange halation round the brightest spots (screened, so it can't pass
+white); and the date stamp.
 
 Links never open in M.A.T.H: tapped in Messages or another app, a roll link
 opens in Safari or that app's own browser, each signed in separately. So the

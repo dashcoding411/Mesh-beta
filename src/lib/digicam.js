@@ -1,15 +1,16 @@
-// The Rolls look: a mid-2000s digital compact. Punchy colour with cool
-// shadows and warm highlights, a direct-flash pop that falls off to the
-// corners, crisp (slightly over-sharpened) edges, a soft glow round the
-// brightest spots, sensor grain and the orange date stamp. Baked into the
-// JPEG at capture, so it looks the same everywhere it's shared.
-//
-// Kept in check so a photo survives it: the phone has already exposed the
-// frame (and the torch lit it), so the flash pop only nudges the middle;
-// highlights ease toward white on a shoulder instead of clipping; sharpening
-// can't push bright edges to white; extra colour fades out near white and
-// is pulled toward grey rather than clipped into neon; and only the
-// brightest spots glow, screened on so they can't wash the frame out.
+// The Rolls look: a 35mm disposable, not a modern phone. Film cushions
+// what a phone's processing makes harsh, so the develop step:
+// - softens rather than sharpens (phones over-sharpen edges);
+// - fades the tones: matte, lifted blacks with a charcoal blue-green cast,
+//   lower contrast, and highlights that roll off creamy instead of clipping;
+// - warms the colour a little (golden highlights, a touch of magenta) and
+//   tames it: greens lean teal and lose saturation, blues lose some, warm
+//   tones lean orange for skin, and the loudest colours calm down most;
+// - adds fine film grain, the same in every channel (no colour static),
+//   in soft clumps rather than pixel noise, strongest in the mid-tones;
+// - adds the faint red-orange halation film gets round bright spots, a
+//   point-and-shoot flash's fall-off to the corners, and the date stamp.
+// Baked into the JPEG at capture, so it looks the same wherever it's shared.
 
 export const OUTPUT_LONG_SIDE = 2048;
 export const JPEG_QUALITY = 0.92;
@@ -30,42 +31,101 @@ export function rng(seed = 1) {
   };
 }
 
-// Above the knee, highlights ease toward white instead of clipping: the
-// slope is 1 at the knee and flattens, so bright detail stays.
-const KNEE = 0.8;
-const shoulder = (s) => {
-  if (s <= KNEE) return s;
-  const t = (s - KNEE) / (1 - KNEE);
-  return KNEE + (1 - KNEE) * (t - 0.25 * t * t);
-};
+// A smooth curve through points that never dips (monotone cubic,
+// Fritsch-Carlson), like dragging points on a photo editor's tone curve.
+function monotoneCurve(points) {
+  const n = points.length;
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const d = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  const m = [d[0]];
+  for (let i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2);
+  m.push(d[n - 2]);
+  for (let i = 0; i < n - 1; i++) {
+    const a = m[i] / d[i];
+    const b = m[i + 1] / d[i];
+    const k = a * a + b * b;
+    if (k > 9) { const t = 3 / Math.sqrt(k); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  return (x) => {
+    let i = 0;
+    while (i < n - 2 && x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i];
+    const t = (x - xs[i]) / h;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1];
+  };
+}
+
+// The fade: black lifted to a matte charcoal (about 18 of 255), mid-tones
+// a little flatter than a phone's, and the top easing off to a creamy white
+// (about 238) instead of clipping.
+const FILM_CURVE = monotoneCurve([[0, 0.07], [0.2, 0.235], [0.5, 0.52], [0.8, 0.8], [0.92, 0.885], [1, 0.935]]);
 
 /**
- * Per-channel tone curves (0 to 255 in, 0 to 255 out): an S-curve with a
- * soft highlight shoulder, cool-green shadows and warm highlights. With flash
- * the white balance runs cooler and cleaner.
+ * Per-channel tone curves (0 to 255 in, 0 to 255 out): the film fade, with
+ * blue-green shadows, golden highlights and a touch of magenta. Under flash
+ * the light runs cooler, so the highlights are less golden.
  */
 export function digicamCurves({ flash = true } = {}) {
   const r = new Uint8ClampedArray(256);
   const g = new Uint8ClampedArray(256);
   const b = new Uint8ClampedArray(256);
-  // Flash runs cool and clean, like a compact's xenon flash; without it, warm.
-  const warm = flash ? -0.015 : 0.035;
+  const warm = flash ? 0.012 : 0.03;
   for (let i = 0; i < 256; i++) {
-    const x = i / 255;
-    const s = x < 0.5 ? 0.5 * Math.pow(2 * x, 1.4) : 1 - 0.5 * Math.pow(2 * (1 - x), 1.4);
-    const y = 0.018 + shoulder(s) * 0.982;
+    const y = FILM_CURVE(i / 255);
     const shadow = Math.max(0, 1 - y * 2.2);
     const high = Math.max(0, y * 1.8 - 0.8);
-    r[i] = Math.round(255 * clamp01(y + warm * high - 0.025 * shadow));
-    g[i] = Math.round(255 * clamp01(y + 0.008 * high + 0.015 * shadow));
-    b[i] = Math.round(255 * clamp01(y - (warm + 0.004) * high + 0.04 * shadow));
+    r[i] = Math.round(255 * clamp01(y + warm * high - 0.02 * shadow));
+    g[i] = Math.round(255 * clamp01(y - 0.006 + 0.012 * shadow));
+    b[i] = Math.round(255 * clamp01(y - warm * 1.2 * high + 0.035 * shadow));
   }
   return { r, g, b };
 }
 
+// How near a hue (degrees) is to `centre`: 1 there, easing to 0 at `width` away.
+const near = (h, centre, width) => {
+  const x = Math.abs(((h - centre + 540) % 360) - 180) / width;
+  return x >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * x);
+};
+
+// Film's colour, on one pixel (0 to 255 in `c`, changed in place): greens
+// toward teal and quieter, blues quieter, warm tones toward orange, and the
+// most saturated colours calmed the most.
+function filmColour(c) {
+  const r = c[0] / 255;
+  const g = c[1] / 255;
+  const b = c[2] / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d < 0.004) return;
+  let s = d / (1 - Math.abs(2 * l - 1));
+  let h = max === r ? 60 * (((g - b) / d) % 6) : max === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+  if (h < 0) h += 360;
+  const green = near(h, 115, 55);
+  const blue = near(h, 220, 40);
+  const warm = near(h, 35, 30);
+  h += 14 * green - 5 * warm;
+  s *= (1 - 0.22 * green) * (1 - 0.16 * blue) * (1 - 0.14 * s);
+  // Back to RGB.
+  const q = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = q * (1 - Math.abs((hp % 2) - 1));
+  const m = l - q / 2;
+  const [r1, g1, b1] = hp < 1 ? [q, x, 0] : hp < 2 ? [x, q, 0] : hp < 3 ? [0, q, x] : hp < 4 ? [0, x, q] : hp < 5 ? [x, 0, q] : [q, 0, x];
+  c[0] = (r1 + m) * 255;
+  c[1] = (g1 + m) * 255;
+  c[2] = (b1 + m) * 255;
+}
+
 /**
- * Grades RGBA pixels in place. `soft` is a blurred copy of the same image
- * (for sharpening). `flash` brightens the middle and falls off to the edges.
+ * Develops RGBA pixels in place. `soft` is a blurred copy of the same image
+ * (for softening). `flash` lights the middle a touch and falls off to the
+ * corners. The grain is seeded, so the same photo develops the same way.
  */
 export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } = {}) {
   const { r: R, g: G, b: B } = digicamCurves({ flash });
@@ -73,51 +133,49 @@ export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } 
   const cx = width / 2;
   const cy = height / 2;
   const maxD = Math.hypot(cx, cy);
-  const sharpen = 0.45;
-  const edge = (v) => (v > 20 ? 20 : v < -20 ? -20 : v); // no ringing into white or black
-  const sat = 1.14;
+  const SOFTEN = 0.16;
+  // Grain in soft clumps: a coarser random field, sampled smoothly, plus a
+  // little fine texture on top.
+  const CLUMP = 1.7;
+  const gw = Math.ceil(width / CLUMP) + 2;
+  const gh = Math.ceil(height / CLUMP) + 2;
+  const field = new Float32Array(gw * gh);
+  for (let i = 0; i < field.length; i++) field[i] = rand() + rand() - 1;
+  const c = new Float32Array(3);
   for (let y = 0; y < height; y++) {
+    const fy = y / CLUMP;
+    const y0 = fy | 0;
+    const ty = fy - y0;
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      // Crunchy edges: original plus some of its difference from the blur.
-      let r = px[i] + edge(sharpen * (px[i] - soft[i]));
-      let g = px[i + 1] + edge(sharpen * (px[i + 1] - soft[i + 1]));
-      let b = px[i + 2] + edge(sharpen * (px[i + 2] - soft[i + 2]));
+      // Softer, as film is: a little of the blurred copy blended in.
+      let r = px[i] + SOFTEN * (soft[i] - px[i]);
+      let g = px[i + 1] + SOFTEN * (soft[i + 1] - px[i + 1]);
+      let b = px[i + 2] + SOFTEN * (soft[i + 2] - px[i + 2]);
 
-      // Flash pop in the middle and corner fall-off (a gentle vignette
-      // without flash). The phone already exposed the frame, so the middle
-      // only gets a nudge.
+      // Flash in the middle and fall-off to the corners (a gentle lens
+      // vignette without flash). The phone already exposed the frame, so
+      // the middle only gets a nudge.
       const d = Math.hypot(x - cx, y - cy) / maxD;
       const light = flash ? 0.88 + 0.14 * Math.exp(-(d * d) / 0.3) : 1.02 - 0.2 * d * d;
-      r *= light; g *= light; b *= light;
+      c[0] = r * light; c[1] = g * light; c[2] = b * light;
 
-      r = R[r < 0 ? 0 : r > 255 ? 255 : r | 0];
-      g = G[g < 0 ? 0 : g > 255 ? 255 : g | 0];
-      b = B[b < 0 ? 0 : b > 255 ? 255 : b | 0];
+      filmColour(c);
+      r = R[c[0] < 0 ? 0 : c[0] > 255 ? 255 : c[0] | 0];
+      g = G[c[1] < 0 ? 0 : c[1] > 255 ? 255 : c[1] | 0];
+      b = B[c[2] < 0 ? 0 : c[2] > 255 ? 255 : c[2] | 0];
 
-      // A little extra colour, fading out toward white as a camera's does.
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const k = 1 + (sat - 1) * (lum > 190 ? Math.max(0, 1 - (lum - 190) / 60) : 1);
-      r = lum + (r - lum) * k;
-      g = lum + (g - lum) * k;
-      b = lum + (b - lum) * k;
-      // A colour that would clip is pulled toward grey instead, keeping its hue.
-      const hi = Math.max(r, g, b);
-      const lo = Math.min(r, g, b);
-      if (hi > 255 || lo < 0) {
-        const f = Math.min(hi > 255 ? (255 - lum) / (hi - lum) : 1, lo < 0 ? lum / (lum - lo) : 1);
-        r = lum + (r - lum) * f;
-        g = lum + (g - lum) * f;
-        b = lum + (b - lum) * f;
-      }
-
-      // Sensor grain, heavier in the shadows, with a hint of colour noise.
-      const dark = 1 - lum / 255;
-      const n = (rand() - 0.5) * (8 + 16 * dark);
-      const c = (rand() - 0.5) * 7 * dark;
-      px[i] = r + n + c;
+      // Grain: the same on all three channels, strongest in the mid-tones.
+      const fx = x / CLUMP;
+      const x0 = fx | 0;
+      const tx = fx - x0;
+      const k = y0 * gw + x0;
+      const clump = (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + gw] * (1 - tx) + field[k + gw + 1] * tx) * ty;
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const n = (clump * 0.8 + (rand() - 0.5) * 0.5) * 9 * (0.35 + 2.6 * lum * (1 - lum));
+      px[i] = r + n;
       px[i + 1] = g + n;
-      px[i + 2] = b + n - c;
+      px[i + 2] = b + n;
     }
   }
   return px;
@@ -185,10 +243,10 @@ export function drawStamp(ctx, text, right, bottom, height) {
   ctx.restore();
 }
 
-// Soft glow round the brightest spots: those parts (never more than they
-// are bright), blurred by scaling down and back up, then screened on, which
-// can't push anything past white.
-function bloom(ctx, canvas, strength) {
+// Halation: the faint red-orange glow film gets round bright spots, as light
+// bounces back through it. Only the brightest parts, blurred by scaling down
+// and back up, screened on (which can't push anything past white).
+function halation(ctx, canvas, strength) {
   const w = Math.max(8, Math.round(canvas.width / 8));
   const h = Math.max(8, Math.round(canvas.height / 8));
   const small = document.createElement("canvas");
@@ -202,7 +260,7 @@ function bloom(ctx, canvas, strength) {
   for (let i = 0; i < p.length; i += 4) {
     const lum = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
     const k = Math.min(1, Math.max(0, lum - 205) / 50);
-    p[i] *= k; p[i + 1] *= k * 0.95; p[i + 2] *= k * 0.9;
+    p[i] *= k; p[i + 1] *= k * 0.55; p[i + 2] *= k * 0.35;
   }
   s.putImageData(img, 0, 0);
   const mid = document.createElement("canvas");
@@ -221,7 +279,7 @@ function bloom(ctx, canvas, strength) {
 
 /**
  * Develops a frame (a <video> or <canvas>, cropped to `crop`) into a
- * digicam JPEG Blob at up to 2048 px on the long side.
+ * film-look JPEG Blob at up to 2048 px on the long side.
  */
 export async function developFrame(source, crop, { flash = true, mirrored = false, date = new Date() } = {}) {
   const scale = Math.min(1, OUTPUT_LONG_SIDE / Math.max(crop.w, crop.h));
@@ -236,7 +294,7 @@ export async function developFrame(source, crop, { flash = true, mirrored = fals
   ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, width, height);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-  // A gently blurred copy, for sharpening.
+  // A gently blurred copy, for softening.
   const blur = document.createElement("canvas");
   blur.width = Math.max(1, Math.round(width / 2.5));
   blur.height = Math.max(1, Math.round(height / 2.5));
@@ -254,7 +312,7 @@ export async function developFrame(source, crop, { flash = true, mirrored = fals
   const soft = sctx.getImageData(0, 0, width, height).data;
   gradePixels(img.data, soft, width, height, { flash, seed: date.getTime() % 100000 });
   ctx.putImageData(img, 0, 0);
-  bloom(ctx, canvas, flash ? 0.22 : 0.18);
+  halation(ctx, canvas, flash ? 0.16 : 0.14);
 
   const stamp = Math.round(height * 0.042);
   drawStamp(ctx, stampText(date), width - Math.round(width * 0.05), height - Math.round(height * 0.045), stamp);
