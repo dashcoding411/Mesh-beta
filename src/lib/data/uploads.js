@@ -2,7 +2,7 @@
 // Firestore. Until Storage is on, videos and their posters can go to the
 // Cloudflare media Worker instead (cloudflare/media, set VITE_MEDIA_API).
 import { auth, loadStorage } from "../../firebase";
-import { imageSize, storeInlineImage, storeInlineImages } from "../media";
+import { imageSize, preparePhoto, storeInlineImage, storeInlineImages } from "../media";
 import { assertSafe } from "../imageCheck";
 import { me } from "./core.js";
 
@@ -24,7 +24,8 @@ const MEDIA_API = (import.meta.env.VITE_MEDIA_API || "").replace(/\/$/, "");
 export const MAX_CLOUD_BYTES = 100 * 1024 * 1024;
 
 /** True for a file on the Cloudflare media Worker. */
-export const isCloudMedia = (url) => !!MEDIA_API && typeof url === "string" && (url.startsWith(`${MEDIA_API}/v/`) || url.startsWith(`${MEDIA_API}/r/`));
+export const isCloudMedia = (url) => !!MEDIA_API && typeof url === "string"
+  && ["v", "r", "p"].some((folder) => url.startsWith(`${MEDIA_API}/${folder}/`));
 
 /** Whether videos can be posted at all (Cloud Storage, or the Cloudflare Worker). */
 export async function videoUploadsAvailable() {
@@ -69,6 +70,10 @@ export async function uploadMedia(file, onProgress, folder = "uploads") {
   if (!storage && MEDIA_API && (file.type.startsWith("video/") || folder === "posters")) {
     return uploadToCloud(file, onProgress);
   }
+  // A story photo comes from the story editor's canvas, already sized and clean.
+  if (!storage && MEDIA_API && folder === "stories" && file.type.startsWith("image/")) {
+    return uploadPhoto(file, onProgress, { asIs: /^image\/(jpeg|webp)$/.test(file.type) });
+  }
   if (!storage) {
     if (!file.type.startsWith("image/")) throw new StorageUnavailableError();
     onProgress?.(40);
@@ -80,9 +85,21 @@ export async function uploadMedia(file, onProgress, folder = "uploads") {
   return uploadToStorage(file, onProgress, folder);
 }
 
-export async function uploadPhotos(files, onProgress) {
+/**
+ * Photos for a post (`cloud`) go to the Cloudflare media Worker at up to
+ * 2048 px where it's set up. Others (comments, gatherings), and posts
+ * without the Worker, are stored inline: smaller, to fit a Firestore document.
+ */
+export async function uploadPhotos(files, onProgress, { cloud = false } = {}) {
   for (const file of files) await assertSafe(file);
-  if (!(await storageAvailable())) return storeInlineImages(files, onProgress);
+  if (!(await storageAvailable())) {
+    if (!cloud || !MEDIA_API) return storeInlineImages(files, onProgress);
+    const out = [];
+    for (const [i, file] of files.entries()) {
+      out.push(await uploadPhoto(file, (p) => onProgress?.(Math.round(((i + p / 100) / files.length) * 100))));
+    }
+    return out;
+  }
   const out = [];
   for (const [i, file] of files.entries()) {
     const size = await imageSize(file).catch(() => ({ width: 0, height: 0 }));
@@ -104,6 +121,21 @@ export class UploadError extends Error {
 export async function uploadRollShot(file) {
   if (!MEDIA_API) return storeInlineImage(file, { maxSide: 1600 });
   return uploadToCloud(file, undefined, "roll");
+}
+
+/** A post or story photo to the Worker's p/ folder: prepared first unless `asIs`. Resolves to { url, path, width, height }. */
+async function uploadPhoto(file, onProgress, { asIs = false } = {}) {
+  let upload = file;
+  let size;
+  if (asIs) {
+    size = await imageSize(file);
+  } else {
+    const { blob, width, height } = await preparePhoto(file);
+    upload = new File([blob], blob.type === "image/webp" ? "photo.webp" : "photo.jpg", { type: blob.type });
+    size = { width, height };
+  }
+  const stored = await uploadToCloud(upload, onProgress, "photo");
+  return { ...stored, ...size };
 }
 
 function uploadToCloud(file, onProgress, kind = "") {

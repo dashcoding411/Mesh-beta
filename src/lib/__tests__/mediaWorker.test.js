@@ -169,3 +169,41 @@ describe("roll photos", () => {
     expect(e.MEDIA.files.size).toBe(0);
   });
 });
+
+describe("post and story photos", () => {
+  const putPhoto = async (e, { auth, type = "image/webp", kind = "photo", body = new Uint8Array([82, 73, 70, 70]) } = {}) =>
+    worker.fetch(new Request(`${BASE}/upload?kind=${kind}`, {
+      method: "PUT", body,
+      headers: { Origin: ORIGIN, "Content-Type": type, "Content-Length": String(body.length), ...(auth ? { Authorization: `Bearer ${auth}` } : {}) },
+    }), e);
+
+  it("keeps photos under p/, JPEG or WebP only, servable, and deletes them with the account", async () => {
+    const e = env();
+    const t = await token();
+    const webp = await putPhoto(e, { auth: t });
+    expect(webp.status).toBe(200);
+    const { url } = await webp.json();
+    expect(url).toMatch(new RegExp(`^${BASE}/p/${UID}/[a-f0-9]{32}\\.webp$`));
+    expect((await putPhoto(e, { auth: t, type: "image/jpeg" })).status).toBe(200);
+    expect((await putPhoto(e, { auth: t, type: "image/png" })).status).toBe(415);
+    expect((await putPhoto(e, { auth: t, type: "video/mp4" })).status).toBe(415);
+    const got = await worker.fetch(new Request(url), e);
+    expect(got.status).toBe(200);
+    expect(got.headers.get("Content-Type")).toBe("image/webp");
+
+    const wipe = await worker.fetch(new Request(`${BASE}/v/${UID}`, { method: "DELETE", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}` } }), e);
+    expect((await wipe.json()).removed).toBe(2);
+    expect(e.MEDIA.files.size).toBe(0);
+  });
+
+  it("refuses a photo that's too big, and an unknown kind", async () => {
+    const e = env();
+    const t = await token();
+    const big = await worker.fetch(new Request(`${BASE}/upload?kind=photo`, {
+      method: "PUT", body: new Uint8Array([1]),
+      headers: { Origin: ORIGIN, "Content-Type": "image/jpeg", "Content-Length": String(7 * 1024 * 1024), Authorization: `Bearer ${t}` },
+    }), e);
+    expect(big.status).toBe(413);
+    expect((await putPhoto(e, { auth: t, kind: "anything" })).status).toBe(400);
+  });
+});

@@ -73,7 +73,7 @@ export default function StoryRail() {
     setUploading(true);
     let uploaded = [];
     try {
-      const { url, path } = await uploadMedia(story.file);
+      const { url, path } = await uploadMedia(story.file, undefined, "stories");
       uploaded = [url];
       const overlay = story.overlay ? await storeOverlay(story.overlay) : null;
       if (overlay) uploaded.push(overlay.url);

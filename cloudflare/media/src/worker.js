@@ -1,6 +1,7 @@
 // Mesh media on Cloudflare: signed-in people upload videos (and their poster
 // frames) to R2; anyone with the link can watch, with seeking. Roll photos
-// (?kind=roll) are JPEGs kept under r/ with their own allowance. Uploads are
+// (?kind=roll) are JPEGs kept under r/, and post and story photos
+// (?kind=photo) JPEGs or WebPs under p/, each with their own allowance. Uploads are
 // checked against the uploader's Firebase ID token, so files always live under
 // the uploader's own uid and only they can delete them.
 
@@ -10,6 +11,11 @@ const MAX_FILES_PER_PERSON = 60;
 // Roll photos: 27 a roll, so about 22 full rolls each, at up to 12 MB a photo.
 const MAX_ROLL_PHOTOS = 600;
 const MAX_ROLL_BYTES = 12 * 1024 * 1024;
+// Post and story photos: prepared on the device at up to 2048 px (about 1 MB).
+// The allowance is checked with one R2 listing, which returns 1,000 at most.
+const MAX_PHOTOS = 1000;
+const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
+const PHOTO_TYPES = { "image/jpeg": "jpg", "image/webp": "webp" };
 const TYPES = {
   "video/mp4": "mp4",
   "video/webm": "webm",
@@ -17,8 +23,20 @@ const TYPES = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
 };
-const FILE = /^\/(v|r)\/([A-Za-z0-9]{20,40})\/([a-f0-9]{32}\.(?:mp4|webm|mov|jpg|webp))$/;
-const PREFIXES = ["v", "r"];
+const FILE = /^\/(v|r|p)\/([A-Za-z0-9]{20,40})\/([a-f0-9]{32}\.(?:mp4|webm|mov|jpg|webp))$/;
+const PREFIXES = ["v", "r", "p"];
+// What each ?kind= may be: its folder, file types, size and allowance.
+const KINDS = {
+  "": { prefix: "v", types: TYPES, maxBytes: MAX_BYTES, allowance: MAX_FILES_PER_PERSON,
+    wrongType: "Use an MP4, WebM or MOV video.", tooBig: "Videos can be up to 100 MB for now.",
+    full: "You've reached the test upload limit. Delete an old video to add another." },
+  roll: { prefix: "r", types: { "image/jpeg": "jpg" }, maxBytes: MAX_ROLL_BYTES, allowance: MAX_ROLL_PHOTOS,
+    wrongType: "Roll photos are JPEGs.", tooBig: "That photo is too big.",
+    full: "You've used all your roll photos for now. Delete an old roll to shoot more." },
+  photo: { prefix: "p", types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES, allowance: MAX_PHOTOS,
+    wrongType: "Photos are JPEGs or WebPs.", tooBig: "That photo is too big.",
+    full: "You've reached the photo limit for now. Delete some old posts to add more." },
+};
 
 export default {
   async fetch(req, env) {
@@ -76,22 +94,18 @@ export default {
 
 async function upload(req, env) {
   const uid = await verifyToken(req, env);
-  const roll = new URL(req.url).searchParams.get("kind") === "roll";
+  const kind = KINDS[new URL(req.url).searchParams.get("kind") || ""];
+  if (!kind) throw httpError(400, "Unknown upload kind.");
   const type = (req.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
-  const ext = roll ? (type === "image/jpeg" ? "jpg" : null) : TYPES[type];
-  if (!ext) throw httpError(415, roll ? "Roll photos are JPEGs." : "Use an MP4, WebM or MOV video.");
+  const ext = kind.types[type];
+  if (!ext) throw httpError(415, kind.wrongType);
   const size = Number(req.headers.get("Content-Length") || 0);
   if (!size) throw httpError(411, "The upload was empty.");
-  if (size > (roll ? MAX_ROLL_BYTES : MAX_BYTES)) throw httpError(413, roll ? "That photo is too big." : "Videos can be up to 100 MB for now.");
+  if (size > kind.maxBytes) throw httpError(413, kind.tooBig);
 
-  const prefix = roll ? "r" : "v";
-  const allowance = roll ? MAX_ROLL_PHOTOS : MAX_FILES_PER_PERSON;
+  const { prefix, allowance } = kind;
   const mine = await env.MEDIA.list({ prefix: `${prefix}/${uid}/`, limit: allowance });
-  if (mine.objects.length >= allowance) {
-    throw httpError(429, roll
-      ? "You've used all your roll photos for now. Delete an old roll to shoot more."
-      : "You've reached the test upload limit. Delete an old video to add another.");
-  }
+  if (mine.objects.length >= allowance) throw httpError(429, kind.full);
 
   const key = `${prefix}/${uid}/${crypto.randomUUID().replaceAll("-", "")}.${ext}`;
   await env.MEDIA.put(key, req.body, {

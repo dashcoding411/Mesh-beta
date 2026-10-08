@@ -235,7 +235,10 @@ export async function deleteInline(url) {
 export async function deletePost(post) {
   await deleteDoc(doc(db, "posts", post.id));
   await deleteInline(post.mediaUrl);
-  for (const m of (post.media || []).slice(1)) await deleteInline(m.url).catch(() => {});
+  for (const m of (post.media || []).slice(1)) {
+    await deleteInline(m.url).catch(() => {});
+    await deleteCloudMedia(m.url).catch(() => {});
+  }
   if (isCloudMedia(post.mediaUrl) || isCloudMedia(post.posterUrl)) {
     await Promise.all([deleteCloudMedia(post.mediaUrl), deleteCloudMedia(post.posterUrl)]);
   } else if (post.mediaPath || post.posterUrl) {

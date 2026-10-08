@@ -25,29 +25,80 @@ function loadImage(file) {
   });
 }
 
+/**
+ * `img` scaled to fit `maxSide`, on a canvas (see-through parts on black).
+ * It halves in steps with high-quality smoothing first: one big step (a
+ * 4032 px phone photo straight to 1440) skips pixels, leaving jagged edges
+ * and shimmering patterns.
+ */
+function scaledCanvas(img, maxSide) {
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  let src = img;
+  let sw = img.naturalWidth;
+  let sh = img.naturalHeight;
+  while (sw / 2 >= w && sh / 2 >= h) {
+    const half = document.createElement("canvas");
+    half.width = Math.round(sw / 2);
+    half.height = Math.round(sh / 2);
+    const hctx = half.getContext("2d");
+    hctx.imageSmoothingQuality = "high";
+    hctx.drawImage(src, 0, 0, half.width, half.height);
+    if (src !== img) { src.width = 0; src.height = 0; } // iPhones hold canvas memory until it's shrunk
+    src = half;
+    sw = half.width;
+    sh = half.height;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  if (src !== img) { src.width = 0; src.height = 0; }
+  return canvas;
+}
+
 /** Downscales and steps down quality until the data URL fits `budget`. WebP where supported. */
 export async function compressImage(file, { maxSide = 1440, budget = MAX_DATA_CHARS * 0.85 } = {}) {
   const img = await loadImage(file);
   let side = maxSide;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
-    const w = Math.max(1, Math.round(img.naturalWidth * scale));
-    const h = Math.max(1, Math.round(img.naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    for (const q of [0.82, 0.7, 0.58, 0.46]) {
+    const canvas = scaledCanvas(img, side);
+    for (const q of [0.86, 0.78, 0.68, 0.58, 0.46]) {
       let data = canvas.toDataURL("image/webp", q);
       if (!data.startsWith("data:image/webp")) data = canvas.toDataURL("image/jpeg", q);
-      if (data.length <= budget) return { data, width: w, height: h };
+      if (data.length <= budget) return { data, width: canvas.width, height: canvas.height };
     }
     side = Math.round(side * 0.75);
   }
   throw new Error("That image is too detailed to post without Cloud Storage. Try a smaller one.");
+}
+
+const toBlob = (canvas, type, q) => new Promise((resolve) => canvas.toBlob(resolve, type, q));
+
+/**
+ * A photo ready for the Cloudflare media Worker: up to `maxSide` px, WebP
+ * (or JPEG where the browser can't make WebP) at high quality, under
+ * `maxBytes`. Drawing it again also drops the camera's hidden details, such
+ * as where it was taken. Resolves to { blob, width, height }.
+ */
+export async function preparePhoto(file, { maxSide = 2048, maxBytes = 5 * 1024 * 1024 } = {}) {
+  const img = await loadImage(file);
+  let side = maxSide;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const canvas = scaledCanvas(img, side);
+    for (const q of [0.9, 0.82]) {
+      let blob = await toBlob(canvas, "image/webp", q);
+      if (blob?.type !== "image/webp") blob = await toBlob(canvas, "image/jpeg", q);
+      if (blob && blob.size <= maxBytes) return { blob, width: canvas.width, height: canvas.height };
+    }
+    side = Math.round(side * 0.8);
+  }
+  throw new Error("That photo couldn't be prepared. Try a different one.");
 }
 
 /** Resolves to { url: "mesh-media:<id>", path, width, height }. */

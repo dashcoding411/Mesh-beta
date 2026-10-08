@@ -192,6 +192,13 @@ service cloud.firestore {
       return url is string
         && url.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/v/' + request.auth.uid + '/[a-f0-9]{32}[.](' + exts + ')$');
     }
+    // A post or story photo on the Cloudflare media Worker, under the writer's own uid.
+    function ownCloudPhotoRe() {
+      return 'https://mesh-media[.]meshadmin9[.]workers[.]dev/p/' + request.auth.uid + '/[a-f0-9]{32}[.](jpg|webp)';
+    }
+    function ownCloudPhoto(url) {
+      return url is string && url.matches('^' + ownCloudPhotoRe() + '$');
+    }
 
     function highlightOk(d) {
       return d.keys().hasOnly(['title', 'storyIds', 'coverUrl', 'coverType', 'createdAt', 'updatedAt'])
@@ -313,8 +320,8 @@ service cloud.firestore {
     }
 
     // Carousel slides. The first gets the full check (it's the post's mediaUrl,
-    // whose ownership is checked too); the rest only need an inline or Storage
-    // URL, never an external one. Every check counts against the per-write
+    // whose ownership is checked too); the rest only need an inline, Storage
+    // or own Cloudflare photo URL, never an external one. Every check counts against the per-write
     // expression budget, which a full check per slide exceeded.
     function slideOk(m) {
       return m.keys().hasOnly(['url', 'alt', 'w', 'h'])
@@ -322,7 +329,7 @@ service cloud.firestore {
         && m.get('w', 0) is int && m.get('h', 0) is int;
     }
     function slidesOk(list) {
-      let re = '^(mesh-media:[A-Za-z0-9]{20}|https://firebasestorage[.]googleapis[.]com/.*)$';
+      let re = '^(mesh-media:[A-Za-z0-9]{20}|https://firebasestorage[.]googleapis[.]com/.*|' + ownCloudPhotoRe() + ')$';
       let n = list.size();
       return n >= 2 && n <= 10 && slideOk(list[0])
         && list[1].url.matches(re)
@@ -407,7 +414,7 @@ service cloud.firestore {
           && d.get('trailerStart', 0) >= 0
           && d.get('aiGenerated', false) is bool
           // Strands: up to 500 chars, no uploaded media. Other kinds need a Storage
-          // URL, or an owned inline photo for Stills.
+          // URL, or an owned inline or Cloudflare photo for Stills.
           && ((d.kind == 'text'
                 && d.mediaUrl == ''
                 && d.mediaPath == ''
@@ -416,7 +423,7 @@ service cloud.firestore {
               || (d.kind != 'text'
                 && d.mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*'))
               || (d.kind in ['short', 'video'] && ownCloudMedia(d.mediaUrl, 'mp4|webm|mov'))
-              || (d.kind == 'post' && ownInlineImage(d.mediaUrl)));
+              || (d.kind == 'post' && (ownCloudPhoto(d.mediaUrl) || ownInlineImage(d.mediaUrl))));
     }
 
     // Brick mode. locks/{uid} holds the user's own layer and, for linked
@@ -1898,6 +1905,7 @@ service cloud.firestore {
         && notSuspended()
         && (incomingData().audience == 'followers' || myProfile().get('isPrivate', false) != true)
         && (incomingData().mediaUrl.matches('^https://firebasestorage[.]googleapis[.]com/.*')
+            || ownCloudPhoto(incomingData().mediaUrl)
             || ownInlineImage(incomingData().mediaUrl)
             || ownCloudMedia(incomingData().mediaUrl, 'mp4|webm|mov'));
       allow update: if false;

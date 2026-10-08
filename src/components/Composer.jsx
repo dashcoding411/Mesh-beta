@@ -4,7 +4,7 @@ import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
   uploadMedia, uploadPhotos, createPost, StorageUnavailableError, videoUploadsAvailable, isCloudMedia, screenPost, MAX_SLIDES,
-  circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS,
+  circlePostVisibility, STRAND_MAX, LONG_VIDEO_SECONDS, TRAILER_SECONDS, deleteCloudMedia, deleteInline,
 } from "../lib/db";
 import { formatDuration, spokenDuration, relativeTime } from "../lib/format";
 import { suggestTopics, MAX_POST_TOPICS, interestById } from "../lib/interests";
@@ -315,14 +315,17 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     }
     const fingerprint = `${title}|${text}|${alt}|${poll?.options.join("|") || ""}`;
     if (modNote && warned !== fingerprint) { setWarned(fingerprint); setNote(modNote); return; }
+    // Photos uploaded for a post that then isn't saved are removed again.
+    let uploaded = [];
     try {
       let media = { url: "", path: "" };
       let slides = null;
       let posterUrl = "";
       if (spec.media === "image") {
         setProgress(0);
-        slides = (await uploadPhotos(photos.map((p) => p.file), setProgress))
+        slides = (await uploadPhotos(photos.map((p) => p.file), setProgress, { cloud: true }))
           .map((u, i) => ({ ...u, alt: photos[i].alt.trim().slice(0, LIMITS.alt) }));
+        uploaded = slides.map((s) => s.url);
         media = slides[0];
       } else if (file) {
         setProgress(0);
@@ -352,6 +355,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         visibility: groupId ? circlePostVisibility(group, membership, { text: `${title}\n${clean}`, profile }) : minor ? "followers" : visibility,
         circleTopic: groupId ? circleTopic : "",
       });
+      uploaded = [];
       markPosted("post", clean);
       finishDraft();
       toast(post.visibility === "pending"
@@ -360,6 +364,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       onPosted(post);
     } catch (err) {
       console.error(err);
+      for (const url of uploaded) { deleteInline(url).catch(() => {}); deleteCloudMedia(url).catch(() => {}); }
       setProgress(null);
       setErrors({
         submit: err instanceof StorageUnavailableError || err?.name === "UnsafeImageError" || err?.name === "UploadError" || /very quickly/.test(err?.message || "")

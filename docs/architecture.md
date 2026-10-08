@@ -686,14 +686,24 @@ launch config, which the dev app uses automatically.
 
 ## Media storage
 
-On the Spark plan images are compressed client-side (WebP or JPEG, under
-900k base64 characters) and stored in `media/{id}`; carousels upload in a
-single batch. Video requires Cloud Storage (Blaze), or the Cloudflare media
-Worker (`cloudflare/media`, R2) when `VITE_MEDIA_API` is set: videos and poster
-frames are PUT to it with the uploader's ID token and land at
-`v/{uid}/{random}.{ext}`; `ownCloudMedia` in the rules only accepts links under
-the writer's own uid. Deleting a post or story deletes its files there. The
-Storage SDK is loaded lazily.
+Post and story photos go to the Cloudflare media Worker (`cloudflare/media`,
+R2) when `VITE_MEDIA_API` is set: prepared on the device at up to 2048 px,
+WebP (JPEG where the browser can't make WebP) at quality 0.9
+(`preparePhoto` in `lib/media.js`; drawing again drops EXIF such as
+location), PUT with `?kind=photo`, and kept at `p/{uid}/{random}.{jpg|webp}`
+(up to 6 MB each, 1,000 a person for now). Story photos come from the story
+editor's canvas and upload as they are. Everything else (chats, comments,
+gatherings, avatars, and posts without the Worker) is compressed into
+`media/{id}` (WebP or JPEG, under 900k base64 characters, 1440 px; avatars
+480 px); carousels upload in a single batch. Both paths shrink in halving
+steps with high-quality smoothing, since one big step leaves jagged edges
+and moiré. Chat photos stay in Firestore so only the chat's members can read
+them. Video requires Cloud Storage (Blaze) or the Worker: videos and poster
+frames land at `v/{uid}/{random}.{ext}`, roll photos at `r/{uid}/`. The
+rules only accept Worker links under the writer's own uid (`ownCloudMedia`,
+`ownCloudPhoto`, `ownRollMedia`). Deleting a post (every slide) or story
+deletes its files there, and a post that fails to save removes the photos it
+uploaded. The Storage SDK is loaded lazily.
 
 ## Limitations
 
