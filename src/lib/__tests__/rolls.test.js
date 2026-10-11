@@ -37,7 +37,7 @@ describe("when a roll develops", () => {
 });
 
 describe("the Rolls look (compact with flash, film without)", () => {
-  it("has rising tone curves with magenta-cool shadows and a lifted black", () => {
+  it("has rising tone curves with cool shadows and a lifted black", () => {
     for (const flash of [true, false]) {
       const { r, g, b } = digicamCurves({ flash });
       for (let i = 1; i < 256; i++) {
@@ -96,17 +96,21 @@ describe("the Rolls look (compact with flash, film without)", () => {
     expect(at(softened, 10) - at(softened, 9)).toBeLessThan(at(plain, 10) - at(plain, 9));
   });
 
-  it("grains like film: the same on every channel, not coloured static", () => {
-    const w = 32;
-    const h = 32;
-    const px = new Uint8ClampedArray(w * h * 4).fill(128);
-    const out = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 9 });
-    const diffs = [];
-    const reds = [];
-    for (let y = 14; y < 18; y++) for (let x = 14; x < 18; x++) { const i = (y * w + x) * 4; diffs.push(out[i] - out[i + 1]); reds.push(out[i]); }
-    const spread = (a) => Math.max(...a) - Math.min(...a);
-    expect(spread(reds)).toBeGreaterThan(2); // there is grain
-    expect(spread(diffs)).toBeLessThanOrEqual(2); // and it isn't coloured
+  it("grains like scanned film: mostly brightness, with only a faint colour speckle", () => {
+    const w = 48;
+    const h = 48;
+    const sd = (a) => { const m = a.reduce((s, x) => s + x, 0) / a.length; return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length); };
+    for (const v of [40, 128, 215]) {
+      const px = new Uint8ClampedArray(w * h * 4).fill(v);
+      const out = gradePixels(px.slice(), px.slice(), w, h, { flash: false, seed: 9 });
+      const lum = [];
+      const colour = [];
+      for (let y = 8; y < 40; y++) for (let x = 8; x < 40; x++) { const i = (y * w + x) * 4; lum.push(0.299 * out[i] + 0.587 * out[i + 1] + 0.114 * out[i + 2]); colour.push(out[i] - out[i + 2]); }
+      // Grain you can see, in shadows and highlights as well as mid-tones...
+      expect(sd(lum)).toBeGreaterThan(v === 128 ? 4.5 : 2.5);
+      // ...but not coloured static.
+      expect(sd(colour)).toBeLessThan(sd(lum) * 0.6);
+    }
   });
 
   it("turns greens toward olive and quietens them", () => {

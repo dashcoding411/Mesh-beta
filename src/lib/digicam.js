@@ -8,15 +8,19 @@
 // - a tone curve lifts the black floor while keeping deep shadows dense, adds
 //   a little punch in the upper mid-tones, and rolls the top off to a soft
 //   white instead of clipping;
-// - split toning: gold highlights, slightly magenta shadows, a touch of
-//   magenta overall;
+// - split toning: gold highlights; shadows slightly magenta with the flash,
+//   cool teal without, the way scanned film's murky shadows go;
 // - colour like film and early CCDs: reds and oranges warmer (skin a little
 //   brighter), yellows toward orange, greens toward olive and quieter, blues
 //   toward cyan and quieter, muted colours lifted and loud ones calmed;
-// - fine grain, the same on every channel, in soft clumps, strongest in the
-//   mid-tones and fading in deep shadows and highlights;
-// - the lens: a flash's fall-off (or a gentle vignette), a faint red-cyan
-//   fringe toward the corners, and a faint warm halation round bright spots;
+// - grain you can see, like a scanned roll: soft clumps of mixed sizes like
+//   real crystals, mostly brightness with a faint colour speckle, strongest
+//   in the mid-tones but running through shadows and sky too, heavier
+//   without the flash;
+// - the lens: a cheap lens's softness toward the edges and corners, so the
+//   middle stands out, a flash's fall-off (or a gentle vignette), a faint
+//   red-cyan fringe toward the corners, and a faint warm halation round
+//   bright spots;
 // - and the date stamp.
 // Baked into the JPEG at capture, so it looks the same wherever it's shared.
 
@@ -71,23 +75,26 @@ const LOOKS = {
   // Flash: an early-2000s compact. Black at about 8, white at about 242.
   flash: {
     curve: monotoneCurve([[0, 0.03], [0.1, 0.075], [0.25, 0.22], [0.5, 0.5], [0.75, 0.795], [0.9, 0.905], [1, 0.95]]),
-    warm: 0.01, sat: 1, vibrance: 0.18, greens: 0.88, blues: 0.88, falloff: [0.82, 0.2],
+    warm: 0.01, sat: 1, vibrance: 0.18, greens: 0.88, blues: 0.88, falloff: [0.82, 0.2], grain: 1.3,
+    shade: [0.012, -0.004, 0.02], tint: -0.006,
   },
-  // No flash: warm 35mm film. Black at about 12, white at about 240.
+  // No flash: warm 35mm film. Black lifted to a murky 19 or so, white at
+  // about 240.
   ambient: {
-    curve: monotoneCurve([[0, 0.047], [0.1, 0.085], [0.25, 0.235], [0.5, 0.5], [0.75, 0.775], [0.9, 0.89], [1, 0.94]]),
-    warm: 0.03, sat: 0.93, vibrance: 0.22, greens: 0.8, blues: 0.75, falloff: null,
+    curve: monotoneCurve([[0, 0.075], [0.1, 0.12], [0.25, 0.25], [0.5, 0.5], [0.75, 0.772], [0.9, 0.885], [1, 0.94]]),
+    warm: 0.03, sat: 0.93, vibrance: 0.22, greens: 0.8, blues: 0.88, falloff: null, grain: 1.75,
+    shade: [-0.006, 0.006, 0.02], tint: 0,
   },
 };
 const lookFor = (flash) => (flash ? LOOKS.flash : LOOKS.ambient);
 
 /**
  * Per-channel tone curves (0 to 255 in, 0 to 255 out): the look's curve
- * with gold highlights (less under flash), slightly magenta shadows and a
- * touch of magenta overall.
+ * with gold highlights (less under flash) and tinted shadows: slightly
+ * magenta with a touch of magenta overall under flash, cool teal without.
  */
 export function digicamCurves({ flash = true } = {}) {
-  const { curve, warm } = lookFor(flash);
+  const { curve, warm, shade, tint } = lookFor(flash);
   const r = new Uint8ClampedArray(256);
   const g = new Uint8ClampedArray(256);
   const b = new Uint8ClampedArray(256);
@@ -95,9 +102,9 @@ export function digicamCurves({ flash = true } = {}) {
     const y = curve(i / 255);
     const shadow = Math.max(0, 1 - y * 2.2);
     const high = Math.max(0, y * 1.8 - 0.8);
-    r[i] = Math.round(255 * clamp01(y + warm * high + 0.012 * shadow));
-    g[i] = Math.round(255 * clamp01(y - 0.006 - 0.004 * shadow));
-    b[i] = Math.round(255 * clamp01(y - warm * 1.3 * high + 0.02 * shadow));
+    r[i] = Math.round(255 * clamp01(y + warm * high + shade[0] * shadow));
+    g[i] = Math.round(255 * clamp01(y + tint + shade[1] * shadow));
+    b[i] = Math.round(255 * clamp01(y - warm * 1.3 * high + shade[2] * shadow));
   }
   return { r, g, b };
 }
@@ -144,11 +151,12 @@ function filmColour(c, look) {
 
 /**
  * Develops RGBA pixels in place. `soft` is the same image very slightly
- * blurred, to take off the phone's sharpening. `flash` picks the look (and
+ * blurred, to take off the phone's sharpening; `blur`, if given, more so,
+ * for the lens going soft toward the edges. `flash` picks the look (and
  * lights the middle with fall-off to the corners). The grain is seeded, so
  * the same photo develops the same way.
  */
-export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } = {}) {
+export function gradePixels(px, soft, width, height, { flash = true, seed = 1, blur = null } = {}) {
   const look = lookFor(flash);
   const { r: R, g: G, b: B } = digicamCurves({ flash });
   const rand = rng(seed);
@@ -156,27 +164,49 @@ export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } 
   const cy = height / 2;
   const maxD = Math.hypot(cx, cy);
   const SOFTEN = 0.7;
-  // Grain in soft clumps: a coarser random field (near-Gaussian), sampled
-  // smoothly, plus a little fine texture on top.
-  const CLUMP = 1.6;
-  const gw = Math.ceil(width / CLUMP) + 2;
-  const gh = Math.ceil(height / CLUMP) + 2;
-  const field = new Float32Array(gw * gh);
-  for (let i = 0; i < field.length; i++) field[i] = rand() + rand() + rand() - 1.5;
+  // Grain in soft clumps of two sizes: random fields (near-Gaussian),
+  // sampled smoothly, plus a little fine texture on top.
+  const clumps = (size) => {
+    const w = Math.ceil(width / size) + 2;
+    const field = new Float32Array(w * (Math.ceil(height / size) + 2));
+    for (let i = 0; i < field.length; i++) field[i] = rand() + rand() + rand() - 1.5;
+    return { size, w, field };
+  };
+  const sample = ({ size, w, field }, x, y) => {
+    const fx = x / size;
+    const fy = y / size;
+    const x0 = fx | 0;
+    const y0 = fy | 0;
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const k = y0 * w + x0;
+    return (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + w] * (1 - tx) + field[k + w + 1] * tx) * ty;
+  };
+  const fine = clumps(1.6);
+  const coarse = clumps(3.4);
+  // The colour speckle: two fields, red against green and blue against green.
+  const speckA = clumps(2.2);
+  const speckB = clumps(2.2);
   const c = new Float32Array(3);
   for (let y = 0; y < height; y++) {
-    const fy = y / CLUMP;
-    const y0 = fy | 0;
-    const ty = fy - y0;
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      const r0 = px[i] + SOFTEN * (soft[i] - px[i]);
-      const g0 = px[i + 1] + SOFTEN * (soft[i + 1] - px[i + 1]);
-      const b0 = px[i + 2] + SOFTEN * (soft[i + 2] - px[i + 2]);
+      let r0 = px[i] + SOFTEN * (soft[i] - px[i]);
+      let g0 = px[i + 1] + SOFTEN * (soft[i + 1] - px[i + 1]);
+      let b0 = px[i + 2] + SOFTEN * (soft[i + 2] - px[i + 2]);
+      const d = Math.hypot(x - cx, y - cy) / maxD;
+
+      // The lens: sharp in the middle, going soft toward the edges and most
+      // in the corners.
+      if (blur && d > 0.4) {
+        const e = ((d - 0.4) / 0.6) ** 2 * 0.85;
+        r0 += e * (blur[i] - r0);
+        g0 += e * (blur[i + 1] - g0);
+        b0 += e * (blur[i + 2] - b0);
+      }
 
       // Flash: a hard pop in the middle falling off to the corners. Without
       // it, a gentle lens vignette.
-      const d = Math.hypot(x - cx, y - cy) / maxD;
       const light = look.falloff
         ? look.falloff[0] + look.falloff[1] * Math.exp(-(d * d) / 0.28)
         : 1 - 0.18 * d * d;
@@ -187,17 +217,17 @@ export function gradePixels(px, soft, width, height, { flash = true, seed = 1 } 
       const g = G[c[1] < 0 ? 0 : c[1] > 255 ? 255 : c[1] | 0];
       const b = B[c[2] < 0 ? 0 : c[2] > 255 ? 255 : c[2] | 0];
 
-      // Grain: the same on all three channels, strongest in the mid-tones.
-      const fx = x / CLUMP;
-      const x0 = fx | 0;
-      const tx = fx - x0;
-      const k = y0 * gw + x0;
-      const clump = (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + gw] * (1 - tx) + field[k + gw + 1] * tx) * ty;
+      // Grain: mostly brightness, strongest in the mid-tones, with a faint
+      // colour speckle.
+      const clump = sample(fine, x, y) * 0.7 + sample(coarse, x, y) * 0.5;
       const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const n = (clump * 0.85 + (rand() - 0.5) * 0.45) * 10 * (0.15 + 3.4 * lum * (1 - lum));
-      px[i] = r + n;
-      px[i + 1] = g + n;
-      px[i + 2] = b + n;
+      const amount = 10 * look.grain * (0.4 + 2.4 * lum * (1 - lum));
+      const n = (clump + (rand() - 0.5) * 0.45) * amount;
+      const sa = sample(speckA, x, y) * amount * 0.3;
+      const sb = sample(speckB, x, y) * amount * 0.3;
+      px[i] = r + n + sa;
+      px[i + 1] = g + n - (sa + sb) * 0.5;
+      px[i + 2] = b + n + sb;
     }
   }
   return px;
@@ -467,6 +497,27 @@ function halation(ctx, canvas, strength) {
   ctx.restore();
 }
 
+// The picture a cheap lens makes away from the middle: soft, a few pixels
+// of blur at full size, by scaling down and back up (Safari's canvas has no
+// blur filter).
+function lensBlur(canvas) {
+  const small = document.createElement("canvas");
+  small.width = Math.max(1, Math.round(canvas.width / 5));
+  small.height = Math.max(1, Math.round(canvas.height / 5));
+  const s = small.getContext("2d");
+  s.imageSmoothingQuality = "high";
+  s.drawImage(canvas, 0, 0, small.width, small.height);
+  const big = document.createElement("canvas");
+  big.width = canvas.width;
+  big.height = canvas.height;
+  const b = big.getContext("2d", { willReadFrequently: true });
+  b.imageSmoothingQuality = "high";
+  b.drawImage(small, 0, 0, big.width, big.height);
+  const { data } = b.getImageData(0, 0, big.width, big.height);
+  small.width = small.height = big.width = big.height = 0;
+  return data;
+}
+
 /**
  * Develops a frame (a <video> or <canvas>, cropped to `crop`) into a
  * Rolls JPEG Blob at up to 2048 px on the long side: the compact's look with
@@ -487,7 +538,9 @@ export async function developFrame(source, crop, { flash = true, mirrored = fals
 
   const img = ctx.getImageData(0, 0, width, height);
   lensFringe(img.data, width, height, 1);
-  gradePixels(img.data, softCopy(img.data, width, height), width, height, { flash, seed: date.getTime() % 100000 });
+  ctx.putImageData(img, 0, 0);
+  const blur = lensBlur(canvas);
+  gradePixels(img.data, softCopy(img.data, width, height), width, height, { flash, seed: date.getTime() % 100000, blur });
   ctx.putImageData(img, 0, 0);
   halation(ctx, canvas, flash ? 0.14 : 0.16);
 
