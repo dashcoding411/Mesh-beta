@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centreCrop, digicamCurves, gradePixels, lensFringe, rng, segmentsFor, softCopy, stampText } from "../digicam.js";
+import { centreCrop, digicamCurves, gradePixels, lensFringe, rng, segmentsFor, softCopy, stampLayout, stampText, stampWidth } from "../digicam.js";
 import { countdownLabel, developChoices, developLabel, isDeveloped, isMember, nextDevelopAt, rollIdFromLink } from "../data/rolls.js";
 
 const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).getTime();
@@ -185,6 +185,25 @@ describe("the Rolls look (compact with flash, film without)", () => {
     expect(segmentsFor("8")).toBe("abcdefg");
     expect(segmentsFor("1")).toBe("bc");
     expect(segmentsFor("x")).toBe("");
+  });
+
+  it("lays the stamp out as leaning LED segments inside its box", () => {
+    const { polys, width } = stampLayout("17 02 '27", 40);
+    // 1 + 3, 6 + 5, the apostrophe, 5 + 3 segments.
+    expect(polys).toHaveLength(2 + 3 + 6 + 5 + 1 + 5 + 3);
+    for (const p of polys) {
+      expect(p).toHaveLength(12);
+      for (let i = 0; i < p.length; i += 2) {
+        expect(p[i]).toBeGreaterThanOrEqual(0);
+        expect(p[i]).toBeLessThanOrEqual(width + 1e-9);
+        expect(p[i + 1]).toBeGreaterThanOrEqual(0);
+        expect(p[i + 1]).toBeLessThanOrEqual(40);
+      }
+    }
+    expect(stampWidth("17 02 '27", 80)).toBeCloseTo(width * 2);
+    // Tiny readouts keep segments thick enough to see.
+    const ys = stampLayout("8", 8, { stroke: 1.3 }).polys[0].filter((_, i) => i % 2);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(1.3);
   });
 
   it("crops the middle of the frame to the shape asked for", () => {

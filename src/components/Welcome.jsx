@@ -183,7 +183,7 @@ function RollsDemo() {
             <div key={p.g} className={`rounded-[6px] bg-white p-1.5 pb-5 shadow-lg ${p.r}`}>
               <div className={`relative aspect-[3/4] overflow-hidden rounded-[2px] bg-gradient-to-br ${p.g}`}>
                 <span className="absolute inset-0 bg-[radial-gradient(circle_at_45%_38%,rgba(255,255,255,.45),transparent_55%)]" />
-                <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={p.d} height={8} color="#ff9b2f" glow /></span>
+                <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={p.d} height={9} color="#ff9b2f" glow /></span>
               </div>
             </div>
           ))}

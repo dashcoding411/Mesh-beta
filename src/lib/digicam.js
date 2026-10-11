@@ -23,7 +23,6 @@
 export const OUTPUT_LONG_SIDE = 2048;
 export const JPEG_QUALITY = 0.92;
 export const STAMP_COLOR = "#ff9b2f";
-export const STAMP_CORE = "#ffd7a1";
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -274,53 +273,163 @@ export function stampText(date = new Date()) {
   return `${two(date.getDate())} ${two(date.getMonth() + 1)} '${two(date.getFullYear() % 100)}`;
 }
 
-/** Draws a seven-segment stamp, right-aligned with its baseline at (right, bottom). */
-export function drawStamp(ctx, text, right, bottom, height) {
-  const w = height * 0.54;
-  const t = Math.max(2.5, height * 0.15);
-  const gap = height * 0.2;
-  const slant = height * 0.08;
-  const widthOf = (ch) => (ch === " " ? gap * 1.6 : ch === "'" ? t * 2.2 : w + gap);
-  let x = right - [...text].reduce((s, ch) => s + widthOf(ch), 0);
-  const top = bottom - height;
-  const half = height / 2;
-  // Segment rectangles relative to a digit's top-left, before the slant.
-  const rects = {
-    a: [t * 0.6, 0, w - t * 1.2, t], g: [t * 0.6, half - t / 2, w - t * 1.2, t], d: [t * 0.6, height - t, w - t * 1.2, t],
-    f: [0, t * 0.6, t, half - t * 0.9], b: [w - t, t * 0.6, t, half - t * 0.9],
-    e: [0, half + t * 0.3, t, half - t * 0.9], c: [w - t, half + t * 0.3, t, half - t * 0.9],
+const STAMP_LEAN = 0.12; // forward lean, as a fraction of the height (about 7 degrees)
+
+/**
+ * The stamp's digits as polygons ([x, y, x, y, ...]), in a box `height` tall
+ * from (0, 0) and `width` wide. Each segment is an LED's long hexagon, with
+ * pointed ends and a hairline gap where segments meet, leaning forward.
+ * `stroke` is the thinnest a segment may be, for tiny sizes on screen.
+ * Shared by the stamp baked into photos and the camera's readouts
+ * (components/rolls/SevenSeg.jsx).
+ */
+export function stampLayout(text, height, { stroke = 0 } = {}) {
+  const h = height;
+  const w = h * 0.5;
+  const t = Math.max(stroke, h * 0.14);
+  // The hairline gaps where segments meet; too small to see, they only break
+  // the digits into dots, so tiny readouts go without.
+  const g = h < 14 ? 0 : t * 0.22;
+  const left = t / 2, right = w - t / 2, top = t / 2, mid = h / 2, bottom = h - t / 2;
+  const across = (y, x1, x2) => [x1, y, x1 + t / 2, y - t / 2, x2 - t / 2, y - t / 2, x2, y, x2 - t / 2, y + t / 2, x1 + t / 2, y + t / 2];
+  const down = (x, y1, y2) => [x, y1, x + t / 2, y1 + t / 2, x + t / 2, y2 - t / 2, x, y2, x - t / 2, y2 - t / 2, x - t / 2, y1 + t / 2];
+  const segments = {
+    a: across(top, left + g, right - g), g: across(mid, left + g, right - g), d: across(bottom, left + g, right - g),
+    f: down(left, top + g, mid - g), b: down(right, top + g, mid - g),
+    e: down(left, mid + g, bottom - g), c: down(right, mid + g, bottom - g),
   };
-  const shape = (rx, ry, rw, rh) => {
-    // Lean the segment forward like an LCD.
-    const k = slant / height;
-    ctx.moveTo(rx + (height - ry) * k, top + ry);
-    ctx.lineTo(rx + rw + (height - ry) * k, top + ry);
-    ctx.lineTo(rx + rw + (height - ry - rh) * k, top + ry + rh);
-    ctx.lineTo(rx + (height - ry - rh) * k, top + ry + rh);
-    ctx.closePath();
+  const polys = [];
+  let x = 0;
+  let width = 0;
+  const put = (pts) => {
+    const p = pts.map((v, i) => (i % 2 ? v : x + v + (h - pts[i + 1]) * STAMP_LEAN));
+    for (let i = 0; i < p.length; i += 2) width = Math.max(width, p[i]);
+    polys.push(p);
   };
-  const path = () => {
-    ctx.beginPath();
-    for (const ch of text) {
-      if (/\d/.test(ch)) for (const s of segmentsFor(ch)) { const [rx, ry, rw, rh] = rects[s]; shape(x + rx, ry, rw, rh); }
-      else if (ch === "'") shape(x + t * 0.6, 0, t * 0.9, height * 0.32);
-      x += widthOf(ch);
+  for (const ch of text) {
+    if (/\d/.test(ch)) {
+      for (const s of segmentsFor(ch)) put(segments[s]);
+      x += w + h * 0.22;
+    } else if (ch === "'") {
+      put(down(t / 2, t / 2, h * 0.3));
+      x += t + h * 0.18;
+    } else x += h * 0.3;
+  }
+  return { polys, width };
+}
+
+/** How wide a stamp `height` tall is. */
+export const stampWidth = (text, height) => stampLayout(text, height).width;
+
+/** A blur close to a Gaussian (three box passes), in place of canvas filters Safari lacks. */
+function boxBlur(src, w, h, r) {
+  const a = Float32Array.from(src);
+  if (r < 1) return a;
+  const b = new Float32Array(a.length);
+  const k = 1 / (2 * r + 1);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      let sum = 0;
+      for (let i = -r; i <= r; i++) sum += a[row + Math.min(w - 1, Math.max(0, i))];
+      for (let x = 0; x < w; x++) {
+        b[row + x] = sum * k;
+        sum += a[row + Math.min(w - 1, x + r + 1)] - a[row + Math.max(0, x - r)];
+      }
     }
-  };
-  const start = x;
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let i = -r; i <= r; i++) sum += b[Math.min(h - 1, Math.max(0, i)) * w + x];
+      for (let y = 0; y < h; y++) {
+        a[y * w + x] = sum * k;
+        sum += b[Math.min(h - 1, y + r + 1) * w + x] - b[Math.max(0, y - r) * w + x];
+      }
+    }
+  }
+  return a;
+}
+
+// Stamps already made, by text and size: the story editor redraws stickers
+// as they're dragged.
+const stampLights = new Map();
+
+/**
+ * The stamp as light, the way a film camera's date back printed it: LEDs
+ * behind the film exposed the digits into it, so they're soft at the edge,
+ * hottest in the middle, with a red-orange bleed round them and the film's
+ * grain running through. Built a little larger or smaller than asked (sizes
+ * step by about 12%) so sizes can share one.
+ */
+function stampLight(text, height) {
+  const h = Math.max(8, Math.round(2 ** (Math.round(Math.log2(height) * 6) / 6)));
+  const key = `${text}|${h}`;
+  const known = stampLights.get(key);
+  if (known) return known;
+
+  const { polys, width } = stampLayout(text, h);
+  const pad = Math.ceil(h * 0.6);
+  const W = Math.ceil(width) + pad * 2;
+  const H = h + pad * 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let seed = h;
+  for (const ch of text) seed = (seed * 31 + ch.charCodeAt(0)) % 100000;
+  const rand = rng(seed);
+  ctx.fillStyle = "#fff";
+  for (const p of polys) {
+    // No two LEDs quite as bright as each other.
+    ctx.globalAlpha = 0.84 + 0.16 * rand();
+    ctx.beginPath();
+    ctx.moveTo(pad + p[0], pad + p[1]);
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(pad + p[i], pad + p[i + 1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const img = ctx.getImageData(0, 0, W, H);
+  const px = img.data;
+  const lit = new Float32Array(W * H);
+  for (let i = 0; i < lit.length; i++) lit[i] = px[i * 4 + 3] / 255;
+  const body = boxBlur(lit, W, H, Math.round(h * 0.028));
+  const bleed = boxBlur(lit, W, H, Math.round(h * 0.2));
+  for (let i = 0; i < lit.length; i++) {
+    const s = body[i];
+    const b = Math.min(1, bleed[i] * 1.6);
+    const hot = s > 0.5 ? ((s - 0.5) / 0.5) ** 1.4 * 0.7 : 0;
+    // Each colour as light, combined the way exposures add on film.
+    const grain = 1 + (rand() + rand() + rand() - 1.5) * 0.3;
+    const r = (1 - (1 - s) * (1 - hot) * (1 - b * 0.55)) * grain;
+    const g = (1 - (1 - s * 0.6) * (1 - hot * 0.85) * (1 - b * 0.18)) * grain;
+    const bl = (1 - (1 - s * 0.14) * (1 - hot * 0.55) * (1 - b * 0.04)) * grain;
+    const a = Math.min(1, Math.max(r, g, bl));
+    const j = i * 4;
+    if (a <= 0.002) { px[j + 3] = 0; continue; }
+    px[j] = (r / a) * 255;
+    px[j + 1] = (g / a) * 255;
+    px[j + 2] = (bl / a) * 255;
+    px[j + 3] = a * 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const light = { canvas, pad, width, h };
+  stampLights.set(key, light);
+  if (stampLights.size > 8) stampLights.delete(stampLights.keys().next().value);
+  return light;
+}
+
+/**
+ * Draws a date stamp `height` tall, right-aligned with its bottom at
+ * (right, bottom). It's screened on, as light added to what's there: bright
+ * over shadows, faint over a bright sky, like the real thing.
+ */
+export function drawStamp(ctx, text, right, bottom, height) {
+  const { canvas, pad, width, h } = stampLight(text, height);
+  const f = height / h;
   ctx.save();
-  // Glow, then a brighter core.
-  ctx.shadowColor = STAMP_COLOR;
-  ctx.shadowBlur = height * 0.55;
-  ctx.fillStyle = STAMP_COLOR;
-  path();
-  ctx.fill();
-  x = start;
-  ctx.shadowBlur = height * 0.12;
-  ctx.globalAlpha = 0.85;
-  ctx.fillStyle = STAMP_CORE;
-  path();
-  ctx.fill();
+  ctx.globalCompositeOperation = "screen";
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, right - (pad + width) * f, bottom - (pad + h) * f, canvas.width * f, canvas.height * f);
   ctx.restore();
 }
 
@@ -382,7 +491,7 @@ export async function developFrame(source, crop, { flash = true, mirrored = fals
   ctx.putImageData(img, 0, 0);
   halation(ctx, canvas, flash ? 0.14 : 0.16);
 
-  const stamp = Math.round(height * 0.042);
+  const stamp = Math.round(height * 0.045);
   drawStamp(ctx, stampText(date), width - Math.round(width * 0.05), height - Math.round(height * 0.045), stamp);
 
   const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't develop the photo"))), "image/jpeg", JPEG_QUALITY));

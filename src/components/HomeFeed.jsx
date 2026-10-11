@@ -72,11 +72,13 @@ export default function HomeFeed({ mode }) {
     return copy?.length ? { posts: copy, shown: PAGE, top: 0, at: 0, copy: true } : null;
   });
   const feedScroll = useRef(null);
-  // Swiping left on Home opens the story camera, which also scans Mesh QR
-  // codes. A camera slides in from the edge as the finger moves.
-  const peekRef = useRef(null);
+  // Swiping left on Home opens the story camera (which also scans Mesh QR
+  // codes) as a page coming in from the right: a dark camera panel follows
+  // the finger, says when letting go will open it, then the camera fades up.
+  const panelRef = useRef(null);
+  const [cameraReady, setCameraReady] = useState(false);
   const openStoryCamera = useCallback(() => window.dispatchEvent(new Event(STORY_CAMERA_EVENT)), []);
-  useSwipeLeft(feedScroll, openStoryCamera, { enabled: !guest, peekRef });
+  useSwipeLeft(feedScroll, openStoryCamera, { enabled: !guest, panelRef, onReady: setCameraReady });
   const scrollTop = useRef(restored?.top || 0);
   const loadedAt = useRef(restored?.at || 0);
   // A copy from last time still loads; it's only there until the feed arrives.
@@ -215,10 +217,16 @@ export default function HomeFeed({ mode }) {
       </HomeHeader>
 
       {!guest && (
-        <span ref={peekRef} aria-hidden="true" style={{ opacity: 0, transform: "translate(100%, -50%)" }}
-          className="pointer-events-none fixed right-0 top-1/2 z-nav flex h-14 w-16 items-center justify-center rounded-l-full bg-fg pl-1 text-canvas shadow-raised md:hidden">
-          <CameraIcon size={24} />
-        </span>
+        <div ref={panelRef} aria-hidden="true" style={{ transform: "translateX(100%)" }}
+          className="pointer-events-none fixed inset-0 z-[54] flex items-center justify-center overflow-hidden bg-[#0b0b0d] text-white shadow-[-12px_0_32px_rgba(0,0,0,0.45)] md:hidden">
+          <div className="flex w-44 flex-col items-center gap-3 text-center">
+            <span className={`flex h-16 w-16 items-center justify-center rounded-full transition-all duration-200 ${cameraReady ? "scale-110 bg-white text-black" : "bg-white/15"}`}>
+              <CameraIcon size={30} />
+            </span>
+            <span className="text-callout font-semibold">{cameraReady ? "Let go to open the camera" : "Keep swiping for the camera"}</span>
+            <span className="text-caption text-white/60">For your story, or a Mesh QR code</span>
+          </div>
+        </div>
       )}
       <div ref={feedScroll} data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[520px] pb-4">

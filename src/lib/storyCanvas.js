@@ -3,7 +3,7 @@
 // what posts. Everything is laid out on a 9:16 frame in fractions of its
 // width (sizes) and of its width and height (positions).
 
-import { drawStamp, stampText, STAMP_COLOR } from "./digicam";
+import { drawStamp, stampText, stampWidth, STAMP_COLOR } from "./digicam";
 
 export const FRAME_W = 1080;
 export const FRAME_H = 1920;
@@ -244,13 +244,6 @@ export function drawStrokes(ctx, W, H, strokes) {
   }
   ctx.restore();
 }
-
-const stampWidth = (text, h) => {
-  const w = h * 0.54;
-  const t = Math.max(2.5, h * 0.15);
-  const gap = h * 0.2;
-  return [...text].reduce((s, ch) => s + (ch === " " ? gap * 1.6 : ch === "'" ? t * 2.2 : w + gap), 0);
-};
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();

@@ -177,7 +177,7 @@ function Intro({ onStart, compact, guest }) {
         {["from-amber-500 via-rose-500 to-fuchsia-700", "from-sky-500 via-indigo-600 to-violet-800", "from-emerald-400 via-teal-600 to-slate-800"].map((g, i) => (
           <div key={g} className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${g}`}>
             <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,.35),transparent_60%)]" />
-            <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={["02 11 '26", "14 02 '27", "17 02 '27"][i]} height={7} color="#ff9b2f" glow /></span>
+            <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={["02 11 '26", "14 02 '27", "17 02 '27"][i]} height={9} color="#ff9b2f" glow /></span>
           </div>
         ))}
       </div>
