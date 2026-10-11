@@ -12,8 +12,41 @@ import Button from "../ui/Button";
 import { Spinner } from "../ui/States";
 import { useToast } from "../ui/toast-context";
 
-const ASPECT = 3 / 4; // portrait 4:3, like a compact held upright
-const SIZE = { width: { ideal: 2560 }, height: { ideal: 1920 } };
+// 4:3, like a compact: upright, or sideways when the phone is turned.
+const PORTRAIT = 3 / 4;
+const LANDSCAPE = 4 / 3;
+
+/**
+ * How far the screen has turned sideways (90 or 270 degrees, else 0), with
+ * the window's size. The camera turns itself back by that much, so its
+ * buttons stay where they were however the phone is held (a selfie grip
+ * often tips it sideways), as a phone's own camera does.
+ */
+function useTurn() {
+  const read = () => {
+    if (typeof window === "undefined") return { turn: 0, w: 0, h: 0 };
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const angle = (((window.screen?.orientation?.angle ?? window.orientation ?? 0) % 360) + 360) % 360;
+    return { turn: w > h && (angle === 90 || angle === 270) ? angle : 0, w, h };
+  };
+  const [state, setState] = useState(read);
+  useEffect(() => {
+    const on = () => setState(read());
+    window.addEventListener("resize", on);
+    window.addEventListener("orientationchange", on);
+    window.screen?.orientation?.addEventListener?.("change", on);
+    return () => {
+      window.removeEventListener("resize", on);
+      window.removeEventListener("orientationchange", on);
+      window.screen?.orientation?.removeEventListener?.("change", on);
+    };
+  }, []);
+  return state;
+}
+// The most the camera offers, up to 4K: the 3:4 frame is cropped from it,
+// so more pixels in means a sharper photo out.
+const SIZE = { width: { ideal: 3840 }, height: { ideal: 2160 } };
 // Zoom like a compact's: up to 3x, driven by a slow motor (the whole range
 // in about 3.6 seconds) that spins up, and on letting go coasts a little and
 // eases to a stop, cropping the frame the way digicam zoom did. Its sound
@@ -47,6 +80,7 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   const trap = useFocusTrap();
   const left = Math.max(0, SHOTS_PER_PERSON - taken);
   const mirrored = facing === "user";
+  const { turn, w: screenW, h: screenH } = useTurn();
 
   const { videoRef, streamRef, status, problem, cameras, retry, frameReady } = useCamera({ facing, size: SIZE });
   useEffect(() => { if (status === "live") shutterRef.current?.focus(); }, [status]);
@@ -63,10 +97,13 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
   const pinchRef = useRef({ points: new Map(), from: 0, at: 1 });
   const [zooming, setZooming] = useState(false); // the zoom bar shows
   const paintZoom = useCallback((z) => {
-    if (videoRef.current) videoRef.current.style.transform = `scale(${mirrored ? -z : z}, ${z})`;
+    const scale = `scale(${mirrored ? -z : z}, ${z})`;
+    // Turned, the picture turns the other way inside the turned-back screen,
+    // so it stays upright to the world.
+    if (videoRef.current) videoRef.current.style.transform = turn ? `translate(-50%, -50%) rotate(${turn}deg) ${scale}` : scale;
     if (fillRef.current) fillRef.current.style.width = `${((z - 1) / (MAX_ZOOM - 1)) * 100}%`;
     if (readoutRef.current) readoutRef.current.textContent = `x${z.toFixed(1)}`;
-  }, [videoRef, mirrored]);
+  }, [videoRef, mirrored, turn]);
   const stopMotor = useCallback(() => {
     const m = motorRef.current;
     if (!m) return;
@@ -218,7 +255,9 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
         else if (await torch(true)) await new Promise((r) => setTimeout(r, 260));
       }
       // What the viewfinder shows: the 4:3 middle, narrowed by the zoom.
-      const whole = centreCrop(el.videoWidth, el.videoHeight, ASPECT);
+      // Turned sideways, the frames arrive the right way up for the world, so
+      // what the viewfinder shows (and the shot) is a sideways 4:3.
+      const whole = centreCrop(el.videoWidth, el.videoHeight, turn ? LANDSCAPE : PORTRAIT);
       const z = zoomRef.current;
       const w = Math.round(whole.w / z);
       const h = Math.round(whole.h / z);
@@ -251,125 +290,146 @@ export default function RollCamera({ roll, used, onClose, onShot }) {
 
   const today = stampText(new Date());
 
+  // The pieces of the camera screen.
+  const closeButton = (
+    <button type="button" onClick={onClose} aria-label="Close the camera" className="press flex h-11 w-11 items-center justify-center rounded-full">
+      <X size={24} aria-hidden="true" />
+    </button>
+  );
+  const soundAndFlash = (
+    <>
+      <button type="button" onClick={toggleSound} aria-pressed={sound} aria-label={sound ? "Shutter sound on" : "Shutter sound off"}
+        className={`press flex h-11 w-11 items-center justify-center rounded-full ${sound ? "text-white" : "text-white/70"}`}>
+        {sound ? <Volume2 size={22} aria-hidden="true" /> : <VolumeX size={22} aria-hidden="true" />}
+      </button>
+      <button type="button" onClick={toggleFlash} aria-pressed={flash} aria-label={flash ? "Flash on" : "Flash off"}
+        className={`press flex h-11 w-11 items-center justify-center rounded-full ${flash ? "text-[#ffd34d]" : "text-white/70"}`}>
+        {flash ? <Zap size={22} fill="currentColor" aria-hidden="true" /> : <ZapOff size={22} aria-hidden="true" />}
+      </button>
+    </>
+  );
+  const rockerControl = (
+    <div role="group" aria-label="Zoom (hold)" className="flex h-11 w-[104px] select-none overflow-hidden rounded-full bg-white/15 font-mono text-[15px] font-bold">
+      <button type="button" {...rocker(-1)} disabled={status !== "live"} aria-label="Zoom out (hold)"
+        className="flex-1 active:bg-white/20 disabled:opacity-40">W</button>
+      <span className="my-2.5 w-px bg-white/30" aria-hidden="true" />
+      <button type="button" {...rocker(1)} disabled={status !== "live"} aria-label="Zoom in (hold)"
+        className="flex-1 active:bg-white/20 disabled:opacity-40">T</button>
+    </div>
+  );
+  const shutterButton = (
+    <button ref={shutterRef} type="button" onClick={shoot} disabled={status !== "live" || left <= 0}
+      aria-label={left > 0 ? `Take a photo, ${left} left` : "No shots left"}
+      className="press relative h-[76px] w-[76px] justify-self-center rounded-full border-[5px] border-white disabled:opacity-40">
+      <span className={`absolute inset-[5px] rounded-full bg-white transition-transform ${busy ? "scale-90" : ""}`} aria-hidden="true" />
+    </button>
+  );
+  const flipButton = cameras > 1 ? (
+    <button type="button" onClick={flip} aria-label={`Switch to the ${facing === "user" ? "back" : "front"} camera`}
+      className="press flex h-12 w-12 items-center justify-center justify-self-end rounded-full bg-white/15">
+      <SwitchCamera size={22} aria-hidden="true" />
+    </button>
+  ) : null;
+  const viewfinder = (
+    <div {...pinch} style={{ touchAction: "none", containerType: "size" }}
+      className="relative mt-2 aspect-[3/4] w-full max-w-[min(100cqw,calc((100cqh-190px)*0.75))] overflow-hidden bg-black sm:rounded-[14px]">
+    {/* Never hidden: iPhones may not play a hidden video, which then stays black.
+        Its scale (zoom, and the mirror for a selfie) is set by paintZoom. */}
+    <video ref={videoRef} autoPlay muted playsInline aria-hidden="true" style={turn ? { width: "100cqh", height: "100cqw" } : undefined}
+      className={`object-cover ${turn ? "absolute left-1/2 top-1/2 max-w-none" : "h-full w-full"} ${flash ? "[filter:contrast(1.05)_saturate(1.05)]" : "[filter:contrast(0.94)_saturate(0.9)_sepia(0.06)]"}`} />
+    {status === "starting" && <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Opening the camera"><Spinner /></span>}
+    {(status === "denied" || status === "unavailable") && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
+        <CameraOff size={32} aria-hidden="true" className="text-white/70" />
+        <p className="text-title-3">{status === "denied" ? "Camera access is off" : "No camera here"}</p>
+        <p className="max-w-xs text-callout text-white/70">
+          {status === "denied"
+            ? "Rolls only use the camera, so allow camera access for Mesh in your browser's settings, then try again."
+            : "Rolls only take photos with the camera, and this device or browser can't open one."}
+        </p>
+        {problem && <p className="text-caption text-white/50">Code: {problem}</p>}
+        <Button onClick={retry}>Try again</Button>
+      </div>
+    )}
+
+    {status === "live" && (
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 font-mono text-[13px] font-semibold tracking-wide text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)]">
+        <span className="absolute left-3 top-3 flex items-center gap-2">
+          <span className="rounded-[3px] border border-white/80 px-1 text-[11px] leading-4">AUTO</span>
+          {flash ? <Zap size={14} fill="currentColor" /> : <ZapOff size={14} />}
+        </span>
+        {/* The zoom bar, while zooming and for a moment after. */}
+        <span className={`absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1.5 text-[11px] transition-opacity duration-300 ${zooming ? "opacity-100" : "opacity-0"}`}>
+          W
+          <span className="flex h-2.5 w-24 rounded-[2px] border border-white/90 p-px">
+            <span ref={fillRef} className="block h-full bg-white/90" style={{ width: "0%" }} />
+          </span>
+          T
+          <span ref={readoutRef} className="ml-1 w-9 text-[12px]" />
+        </span>
+        <span className="absolute right-3 top-3 flex items-center gap-1.5">
+          <span className="text-[11px]">4:3</span>
+          <span className="relative flex h-3 w-6 items-center rounded-[2px] border border-white/90 p-[1.5px] after:absolute after:-right-[3px] after:h-1.5 after:w-[2px] after:bg-white/90">
+            <span className="h-full w-3/4 bg-white/90" />
+          </span>
+        </span>
+        {/* Focus brackets: green for a moment as each shot is taken. */}
+        <span key={shot} className={`absolute left-1/2 top-1/2 h-16 w-20 -translate-x-1/2 -translate-y-1/2 ${shot ? "af-lock" : ""}`}>
+          {["left-0 top-0 border-l-2 border-t-2", "right-0 top-0 border-r-2 border-t-2", "left-0 bottom-0 border-l-2 border-b-2", "right-0 bottom-0 border-r-2 border-b-2"]
+            .map((c) => <span key={c} className={`absolute h-3 w-3 border-white/90 ${c}`} />)}
+        </span>
+        {shot > 0 && (
+          <span key={`taken-${shot}`} className="osd-taken absolute left-1/2 top-[calc(50%+3rem)] flex -translate-x-1/2 items-center gap-1 rounded-[3px] bg-black/45 px-2 py-0.5 text-[12px]">
+            <Check size={14} strokeWidth={3} className="text-[#4ade80]" />TAKEN
+          </span>
+        )}
+        <span className="absolute bottom-3 left-3 flex items-baseline gap-1">
+          <span key={shot} className={`inline-block origin-bottom-left ${shot ? "anim-heart" : ""}`}>
+            <SevenSeg text={String(left).padStart(2, "0")} height={22} color="#ffffff" />
+          </span>
+          <span className="text-[11px] text-white/80">left</span>
+        </span>
+        <span className="absolute bottom-3 right-3"><SevenSeg text={today} height={14} color={STAMP_COLOR} glow /></span>
+      </div>
+    )}
+    {blink && <span className="pointer-events-none absolute inset-0 bg-white" aria-hidden="true" />}
+    {shot > 0 && (
+      <span key={shot} aria-hidden="true">
+        <span className="shutter-top pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-black" />
+        <span className="shutter-bottom pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-black" />
+      </span>
+    )}
+    {left === 0 && status === "live" && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 px-8 text-center">
+        <p className="font-display text-title-1">That's your 27</p>
+        <p className="mt-2 text-callout text-white/75">Everyone sees them when it develops {developLabel(tsMillis(roll.developAt))}.</p>
+      </div>
+    )}
+      </div>
+  );
+
   return createPortal(
     <div ref={trap} role="dialog" aria-modal="true" aria-label={`Roll camera: ${roll.title}`} {...onKey}
-      className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-[#0b0b0d] text-white anim-fade">
-      <div className="flex w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] items-center justify-between px-3 pt-safe">
-        <button type="button" onClick={onClose} aria-label="Close the camera" className="press flex h-11 w-11 items-center justify-center rounded-full">
-          <X size={24} aria-hidden="true" />
-        </button>
+      style={turn ? {
+        containerType: "size", left: "50%", top: "50%", width: `${screenH}px`, height: `${screenW}px`,
+        transform: `translate(-50%, -50%) rotate(${-turn}deg)`,
+        paddingTop: "max(env(safe-area-inset-left), env(safe-area-inset-right))",
+        paddingBottom: "max(env(safe-area-inset-left), env(safe-area-inset-right))",
+      } : { containerType: "size" }}
+      className={`fixed z-[55] flex flex-col items-center justify-center bg-[#0b0b0d] text-white anim-fade ${turn ? "" : "inset-0"}`}>
+      <div className="flex w-full max-w-[min(100cqw,calc((100cqh-190px)*0.75))] items-center justify-between px-3 pt-safe">
+        {closeButton}
         <div className="min-w-0 flex-1 px-2 text-center">
           <p className="truncate text-callout font-semibold">{roll.title}</p>
           <p className="truncate text-caption text-white/60">Develops {developLabel(tsMillis(roll.developAt))}</p>
         </div>
-        <div className="flex">
-          <button type="button" onClick={toggleSound} aria-pressed={sound} aria-label={sound ? "Shutter sound on" : "Shutter sound off"}
-            className={`press flex h-11 w-11 items-center justify-center rounded-full ${sound ? "text-white" : "text-white/70"}`}>
-            {sound ? <Volume2 size={22} aria-hidden="true" /> : <VolumeX size={22} aria-hidden="true" />}
-          </button>
-          <button type="button" onClick={toggleFlash} aria-pressed={flash} aria-label={flash ? "Flash on" : "Flash off"}
-            className={`press flex h-11 w-11 items-center justify-center rounded-full ${flash ? "text-[#ffd34d]" : "text-white/70"}`}>
-            {flash ? <Zap size={22} fill="currentColor" aria-hidden="true" /> : <ZapOff size={22} aria-hidden="true" />}
-          </button>
-        </div>
+        <div className="flex">{soundAndFlash}</div>
       </div>
-
-      {/* The digicam screen. */}
-      <div {...pinch} style={{ touchAction: "none" }}
-        className="relative mt-2 aspect-[3/4] w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] overflow-hidden bg-black sm:rounded-[14px]">
-        {/* Never hidden: iPhones may not play a hidden video, which then stays black.
-            Its scale (zoom, and the mirror for a selfie) is set by paintZoom. */}
-        <video ref={videoRef} autoPlay muted playsInline aria-hidden="true"
-          className={`h-full w-full object-cover ${flash ? "[filter:contrast(1.05)_saturate(1.05)]" : "[filter:contrast(0.94)_saturate(0.9)_sepia(0.06)]"}`} />
-        {status === "starting" && <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Opening the camera"><Spinner /></span>}
-        {(status === "denied" || status === "unavailable") && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
-            <CameraOff size={32} aria-hidden="true" className="text-white/70" />
-            <p className="text-title-3">{status === "denied" ? "Camera access is off" : "No camera here"}</p>
-            <p className="max-w-xs text-callout text-white/70">
-              {status === "denied"
-                ? "Rolls only use the camera, so allow camera access for Mesh in your browser's settings, then try again."
-                : "Rolls only take photos with the camera, and this device or browser can't open one."}
-            </p>
-            {problem && <p className="text-caption text-white/50">Code: {problem}</p>}
-            <Button onClick={retry}>Try again</Button>
-          </div>
-        )}
-
-        {status === "live" && (
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 font-mono text-[13px] font-semibold tracking-wide text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)]">
-            <span className="absolute left-3 top-3 flex items-center gap-2">
-              <span className="rounded-[3px] border border-white/80 px-1 text-[11px] leading-4">AUTO</span>
-              {flash ? <Zap size={14} fill="currentColor" /> : <ZapOff size={14} />}
-            </span>
-            {/* The zoom bar, while zooming and for a moment after. */}
-            <span className={`absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1.5 text-[11px] transition-opacity duration-300 ${zooming ? "opacity-100" : "opacity-0"}`}>
-              W
-              <span className="flex h-2.5 w-24 rounded-[2px] border border-white/90 p-px">
-                <span ref={fillRef} className="block h-full bg-white/90" style={{ width: "0%" }} />
-              </span>
-              T
-              <span ref={readoutRef} className="ml-1 w-9 text-[12px]" />
-            </span>
-            <span className="absolute right-3 top-3 flex items-center gap-1.5">
-              <span className="text-[11px]">4:3</span>
-              <span className="relative flex h-3 w-6 items-center rounded-[2px] border border-white/90 p-[1.5px] after:absolute after:-right-[3px] after:h-1.5 after:w-[2px] after:bg-white/90">
-                <span className="h-full w-3/4 bg-white/90" />
-              </span>
-            </span>
-            {/* Focus brackets: green for a moment as each shot is taken. */}
-            <span key={shot} className={`absolute left-1/2 top-1/2 h-16 w-20 -translate-x-1/2 -translate-y-1/2 ${shot ? "af-lock" : ""}`}>
-              {["left-0 top-0 border-l-2 border-t-2", "right-0 top-0 border-r-2 border-t-2", "left-0 bottom-0 border-l-2 border-b-2", "right-0 bottom-0 border-r-2 border-b-2"]
-                .map((c) => <span key={c} className={`absolute h-3 w-3 border-white/90 ${c}`} />)}
-            </span>
-            {shot > 0 && (
-              <span key={`taken-${shot}`} className="osd-taken absolute left-1/2 top-[calc(50%+3rem)] flex -translate-x-1/2 items-center gap-1 rounded-[3px] bg-black/45 px-2 py-0.5 text-[12px]">
-                <Check size={14} strokeWidth={3} className="text-[#4ade80]" />TAKEN
-              </span>
-            )}
-            <span className="absolute bottom-3 left-3 flex items-baseline gap-1">
-              <span key={shot} className={`inline-block origin-bottom-left ${shot ? "anim-heart" : ""}`}>
-                <SevenSeg text={String(left).padStart(2, "0")} height={22} color="#ffffff" />
-              </span>
-              <span className="text-[11px] text-white/80">left</span>
-            </span>
-            <span className="absolute bottom-3 right-3"><SevenSeg text={today} height={14} color={STAMP_COLOR} glow /></span>
-          </div>
-        )}
-        {blink && <span className="pointer-events-none absolute inset-0 bg-white" aria-hidden="true" />}
-        {shot > 0 && (
-          <span key={shot} aria-hidden="true">
-            <span className="shutter-top pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-black" />
-            <span className="shutter-bottom pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-black" />
-          </span>
-        )}
-        {left === 0 && status === "live" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 px-8 text-center">
-            <p className="font-display text-title-1">That's your 27</p>
-            <p className="mt-2 text-callout text-white/75">Everyone sees them when it develops {developLabel(tsMillis(roll.developAt))}.</p>
-          </div>
-        )}
-      </div>
-
-      <div className="grid w-full max-w-[min(100vw,calc((100dvh-190px)*0.75))] grid-cols-3 items-center px-6 pb-safe pt-5">
-        <div role="group" aria-label="Zoom (hold)" className="flex h-11 w-[104px] select-none overflow-hidden rounded-full bg-white/15 font-mono text-[15px] font-bold">
-          <button type="button" {...rocker(-1)} disabled={status !== "live"} aria-label="Zoom out (hold)"
-            className="flex-1 active:bg-white/20 disabled:opacity-40">W</button>
-          <span className="my-2.5 w-px bg-white/30" aria-hidden="true" />
-          <button type="button" {...rocker(1)} disabled={status !== "live"} aria-label="Zoom in (hold)"
-            className="flex-1 active:bg-white/20 disabled:opacity-40">T</button>
-        </div>
-        <button ref={shutterRef} type="button" onClick={shoot} disabled={status !== "live" || left <= 0}
-          aria-label={left > 0 ? `Take a photo, ${left} left` : "No shots left"}
-          className="press relative h-[76px] w-[76px] justify-self-center rounded-full border-[5px] border-white disabled:opacity-40">
-          <span className={`absolute inset-[5px] rounded-full bg-white transition-transform ${busy ? "scale-90" : ""}`} aria-hidden="true" />
-        </button>
-        {cameras > 1 ? (
-          <button type="button" onClick={flip} aria-label={`Switch to the ${facing === "user" ? "back" : "front"} camera`}
-            className="press flex h-12 w-12 items-center justify-center justify-self-end rounded-full bg-white/15">
-            <SwitchCamera size={22} aria-hidden="true" />
-          </button>
-        ) : <span />}
+      {viewfinder}
+      <div className="grid w-full max-w-[min(100cqw,calc((100cqh-190px)*0.75))] grid-cols-3 items-center px-6 pb-safe pt-5">
+        {rockerControl}
+        {shutterButton}
+        {flipButton || <span />}
       </div>
       <p className="sr-only" aria-live="polite">{shot > 0 ? "Photo taken. " : ""}{left} shots left</p>
     </div>,

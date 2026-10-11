@@ -14,6 +14,7 @@ const StoryEditor = lazy(() => import("./story/StoryEditor"));
 
 // Phones open the camera first, like Instagram and Snapchat; computers pick a file.
 const cameraFirst = () => cameraSupported() && window.matchMedia("(pointer: coarse)").matches;
+export const STORY_CAMERA_EVENT = "mesh:story-camera";
 
 const seenAll = (t) => t.items.every(storySeen);
 // Others' stories, unseen first, like Instagram. Seen ones stay, with a grey ring.
@@ -22,7 +23,11 @@ const lineUp = (threads) => {
   return [...others.filter((t) => !seenAll(t)), ...others.filter(seenAll)];
 };
 
-export default function StoryRail() {
+/**
+ * The story row. `bare` renders only its camera and editor (no row): Home's
+ * other feeds use it so a swipe left still opens the story camera there.
+ */
+export default function StoryRail({ bare = false }) {
   const { profile, following, hiddenAuthors, openComposer } = useShell();
   const toast = useToast();
   const [threads, setThreads] = useState([]);
@@ -41,15 +46,21 @@ export default function StoryRail() {
     return list;
   };
   useEffect(() => {
-    load().catch(() => {});
+    if (!bare) load().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [following, hiddenAuthors]);
+  }, [following, hiddenAuthors, bare]);
 
   const startStory = async () => {
     if (!cameraFirst()) return fileRef.current?.click();
     // Hold-to-record only when videos can be uploaded.
     setCamera({ video: await videoUploadsAvailable().catch(() => false) });
   };
+  // Swiping left on Home opens the story camera (HomeFeed).
+  useEffect(() => {
+    const open = () => { if (!camera && !editing && cameraFirst()) startStory(); };
+    window.addEventListener(STORY_CAMERA_EVENT, open);
+    return () => window.removeEventListener(STORY_CAMERA_EVENT, open);
+  });
 
   const addStory = (e) => {
     const file = e.target.files[0];
@@ -104,9 +115,36 @@ export default function StoryRail() {
   const close = () => { setViewing(null); setQueue(lineUp(threads)); };
   const current = viewing && viewing.list[viewing.at];
 
+  // The camera, the file picker and the editor: what a new story goes through.
+  const tools = (
+    <>
+      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory}
+        aria-hidden="true" tabIndex={-1} />
+
+      {camera && (
+        <Suspense fallback={null}>
+          <Camera title="Add to your story" photo video={camera.video} scanCodes
+            onClose={() => setCamera(null)}
+            onCapture={(file) => { setCamera(null); openEditor(file, true); }} />
+        </Suspense>
+      )}
+
+      {editing && (
+        <Suspense fallback={null}>
+          <StoryEditor file={editing.file} privateAccount={!!profile?.isPrivate}
+            backLabel={editing.fromCamera ? "Retake" : "Cancel"}
+            onBack={() => { const again = editing.fromCamera; setEditing(null); if (again) startStory(); }}
+            onSendToPost={editing.fromCamera ? (file) => { setEditing(null); openComposer({ kind: file.type.startsWith("video/") ? "video" : "post", files: [file] }); } : undefined}
+            onPost={(story) => { setEditing(null); publishStory(story); }} />
+        </Suspense>
+      )}
+    </>
+  );
+  if (bare) return tools;
+
   return (
     <section aria-label="Stories" data-tour="stories" className="border-b border-line">
-      <ul className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
+      <ul data-no-swipe className="flex gap-4 overflow-x-auto no-scrollbar px-4 py-3">
         <li className="relative flex w-[68px] shrink-0 flex-col items-center gap-1.5">
           <button type="button"
             onClick={() => (mine ? setViewing({ list: [mine], at: 0 }) : startStory())}
@@ -135,26 +173,7 @@ export default function StoryRail() {
           );
         })}
       </ul>
-      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={addStory}
-        aria-hidden="true" tabIndex={-1} />
-
-      {camera && (
-        <Suspense fallback={null}>
-          <Camera title="Add to your story" photo video={camera.video}
-            onClose={() => setCamera(null)}
-            onCapture={(file) => { setCamera(null); openEditor(file, true); }} />
-        </Suspense>
-      )}
-
-      {editing && (
-        <Suspense fallback={null}>
-          <StoryEditor file={editing.file} privateAccount={!!profile?.isPrivate}
-            backLabel={editing.fromCamera ? "Retake" : "Cancel"}
-            onBack={() => { const again = editing.fromCamera; setEditing(null); if (again) startStory(); }}
-            onSendToPost={editing.fromCamera ? (file) => { setEditing(null); openComposer({ kind: file.type.startsWith("video/") ? "video" : "post", files: [file] }); } : undefined}
-            onPost={(story) => { setEditing(null); publishStory(story); }} />
-        </Suspense>
-      )}
+      {tools}
 
       {current && (
         <Suspense fallback={null}>

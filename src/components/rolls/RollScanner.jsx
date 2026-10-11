@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { CameraOff, X } from "lucide-react";
 import { useCamera } from "../../lib/useCamera";
-import { rollIdFromLink } from "../../lib/data/rolls";
+import { meshLink, qrReader } from "../../lib/qr";
 import { navigate } from "../../lib/router";
 import { shutterBuzz } from "../../lib/shutter";
 import { useFocusTrap } from "../../lib/useFocusTrap";
@@ -10,35 +10,6 @@ import Button from "../ui/Button";
 import { Spinner } from "../ui/States";
 
 const SCAN_MS = 180;
-const READ_SIDE = 720; // frames are read at this size: plenty for a code on a phone screen
-
-/**
- * Something that reads a QR code from the video, resolving to its text or
- * "": the browser's own BarcodeDetector where there is one (Android), else
- * jsQR (iPhones), loaded only now.
- */
-async function qrReader() {
-  if ("BarcodeDetector" in window) {
-    try {
-      const formats = await window.BarcodeDetector.getSupportedFormats?.();
-      if (!formats || formats.includes("qr_code")) {
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        return async (video) => (await detector.detect(video))[0]?.rawValue || "";
-      }
-    } catch { /* fall back to jsQR */ }
-  }
-  const { default: jsQR } = await import("jsqr");
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  return async (video) => {
-    const scale = Math.min(1, READ_SIDE / Math.max(video.videoWidth, video.videoHeight));
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    return jsQR(data, width, height, { inversionAttempts: "dontInvert" })?.data || "";
-  };
-}
 
 /**
  * Join a roll by pointing the camera at its QR code (on the host's phone),
@@ -68,14 +39,14 @@ export default function RollScanner({ onClose }) {
         const el = videoRef.current;
         const text = el?.videoWidth ? await read(el).catch(() => "") : "";
         if (!alive) return;
-        const id = rollIdFromLink(text);
-        if (id) {
+        const link = meshLink(text);
+        if (link) {
           shutterBuzz();
           onClose();
-          navigate(`/rolls/${encodeURIComponent(id)}`);
+          navigate(link.path);
           return;
         }
-        if (text && text !== last) { last = text; setNotice("That QR code isn't a Mesh roll. Try the one on the roll's Invite screen."); }
+        if (text && text !== last) { last = text; setNotice("That QR code isn't a Mesh link. Try the one on the roll's Invite screen."); }
         timer = setTimeout(tick, SCAN_MS);
       };
       tick();

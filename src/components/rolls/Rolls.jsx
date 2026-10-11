@@ -25,17 +25,20 @@ export default function Rolls({ rollId }) {
   return <RollsHome />;
 }
 
-const WIDE = "(min-width: 768px)";
+// A computer is a mouse or trackpad that can hover, whatever the window's
+// size. Screen width would be wrong: a phone turned sideways is wider than
+// many laptops' breakpoint, and must stay in the camera.
+const COMPUTER = "(hover: hover) and (pointer: fine)";
 function useDesktop() {
-  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia?.(WIDE).matches);
+  const [computer, setComputer] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(COMPUTER).matches);
   useEffect(() => {
-    const mq = window.matchMedia?.(WIDE);
+    const mq = window.matchMedia?.(COMPUTER);
     if (!mq) return undefined;
-    const on = () => setWide(mq.matches);
+    const on = () => setComputer(mq.matches);
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  return wide;
+  return computer;
 }
 
 // Rolls are a camera you carry, so on a computer they point you to your phone.

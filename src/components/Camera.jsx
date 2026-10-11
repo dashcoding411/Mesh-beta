@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, CameraOff, Images, SwitchCamera, X } from "lucide-react";
+import { ArrowLeft, CameraOff, Images, QrCode, SwitchCamera, X } from "lucide-react";
 import { useCamera } from "../lib/useCamera";
 import { motionReduced } from "../lib/appearance";
 import { formatDuration } from "../lib/format";
@@ -8,10 +8,16 @@ import Button from "./ui/Button";
 import { Spinner } from "./ui/States";
 import PhotoEditor from "./PhotoEditor";
 import { useFocusTrap } from "../lib/useFocusTrap";
+import { meshLink, qrReader } from "../lib/qr";
+import { navigate } from "../lib/router";
 
 const HOLD_MS = 280; // a press longer than this records
 const MAX_VIDEO_S = 60;
 const MAX_SIDE = 2160;
+// The most the camera offers, up to 4K: the frame is cropped to the
+// viewfinder, so more pixels in means a sharper photo out.
+const SIZE = { width: { ideal: 3840 }, height: { ideal: 2160 } };
+const SCAN_MS = 450;
 const FACING_KEY = "mesh:camera-facing";
 
 const savedFacing = () => {
@@ -31,7 +37,7 @@ const recorderType = () => ["video/mp4", "video/webm;codecs=vp9,opus", "video/we
  * skips the preview: each capture or pick goes straight to it (the story
  * editor has its own).
  */
-export default function Camera({ onClose, onDone, onLibrary, onCapture, actions, photo = true, video = false, title = "Camera" }) {
+export default function Camera({ onClose, onDone, onLibrary, onCapture, actions, photo = true, video = false, title = "Camera", scanCodes = false }) {
   const [facing, setFacing] = useState(savedFacing);
   const [shot, setShot] = useState(null); // { file, url, kind }
   const [notice, setNotice] = useState(""); // a shot that couldn't be taken
@@ -52,8 +58,33 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
 
   // The stream runs while the viewfinder shows, and stops for the preview.
   const { videoRef, streamRef, status, problem, cameras, hasAudio, retry, stop, frameReady } = useCamera({
-    facing, audio: video && !!recorderType(), active: !shot,
+    facing, audio: video && !!recorderType(), active: !shot, size: SIZE,
   });
+  // With `scanCodes`, a Mesh QR code in view (a roll's invite, a profile, a
+  // post) offers to open it, as the iPhone camera does with links.
+  const [found, setFound] = useState(null); // { path, label }
+  useEffect(() => {
+    if (!scanCodes || status !== "live" || shot) return undefined;
+    let alive = true;
+    let timer = 0;
+    let seen = 0;
+    (async () => {
+      const read = await qrReader().catch(() => null);
+      if (!read || !alive) return;
+      const tick = async () => {
+        const el = videoRef.current;
+        const text = el?.videoWidth && !recorderRef.current ? await read(el).catch(() => "") : "";
+        if (!alive) return;
+        const link = meshLink(text);
+        if (link) { seen = Date.now(); setFound((f) => (f?.path === link.path ? f : link)); }
+        else if (Date.now() - seen > 2500) setFound(null);
+        timer = setTimeout(tick, SCAN_MS);
+      };
+      tick();
+    })();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [scanCodes, status, shot, videoRef]);
+  const openFound = () => { const { path } = found; stop(); onClose(); navigate(path); };
   useEffect(() => { if (status === "live") shutterRef.current?.focus(); }, [status]);
   useEffect(() => {
     if (!notice) return undefined;
@@ -239,6 +270,14 @@ export default function Camera({ onClose, onDone, onLibrary, onCapture, actions,
             </span>
           )}
         </div>}
+        {found && status === "live" && !shot && !recording && (
+          <div className="absolute inset-x-0 z-10 flex justify-center" style={{ top: "calc(env(safe-area-inset-top) + 64px)" }}>
+            <button type="button" onClick={openFound}
+              className="press anim-pop flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-callout font-semibold text-black shadow-lg">
+              <QrCode size={18} aria-hidden="true" /> {found.label}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Thumb zone: everything you press lives down here, over the viewfinder. */}

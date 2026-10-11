@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags, ChevronLeft, ChevronRight, MapPin, Plus, Camera as CameraIcon, Accessibility } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Clapperboard, Image, Type, Globe, Lock, ImagePlus, FileVideo, X, WandSparkles, Info, ChartBar, Tags, ChevronLeft, ChevronRight, MapPin, Camera as CameraIcon, Accessibility, Aperture } from "lucide-react";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
 import { checkContent, markPosted } from "../lib/moderation";
 import {
@@ -24,6 +25,11 @@ import { Field, Input, Textarea, Checkbox } from "./ui/Field";
 import MentionTextarea from "./ui/MentionTextarea";
 import LocationField from "./LocationField";
 import { aiMarker } from "../lib/aiMarkers";
+import { imageSize } from "../lib/media";
+import { bakePhoto, frameRatio } from "../lib/framing";
+import { filterById } from "../lib/storyCanvas";
+import { useFocusTrap } from "../lib/useFocusTrap";
+import PhotoStudio from "./composer/PhotoStudio";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 
@@ -34,8 +40,19 @@ const KINDS = [
 ];
 
 const Camera = lazy(() => import("./Camera"));
+const PhotoEditor = lazy(() => import("./PhotoEditor"));
+const RollPhotoPicker = lazy(() => import("./rolls/RollPicker").then((m) => ({ default: m.RollPhotoPicker })));
 
-const photoEntry = (f) => ({ id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, url: URL.createObjectURL(f), alt: "" });
+// On a phone, "Camera" opens the phone's own camera app: a full-quality
+// photo or video (Night mode, the works), not a frame from a live feed.
+const phone = () => typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
+// A photo in the post: its file, a preview URL, its description, its filter,
+// where it sits in the frame (0 to 100, like object-position) and its size.
+const photoEntry = (f) => ({
+  id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, url: URL.createObjectURL(f), alt: "",
+  filter: "none", x: 50, y: 50, w: 0, h: 0,
+});
 
 // Last-used format, per session.
 let lastKind = "text";
@@ -122,6 +139,13 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [restored, setRestored] = useState(!!draft);
   const [file, setFile] = useState(() => (initialKind === "video" ? initialFiles?.[0] || null : null));
   const [camera, setCamera] = useState(false);
+  const [rollPicker, setRollPicker] = useState(false);
+  // Photos and videos are posted in two steps: the media (picked, ordered,
+  // framed and filtered), then the details (caption, location, who sees it).
+  // Strands are one step.
+  const [step, setStep] = useState("media");
+  const [shape, setShape] = useState("original");
+  const [editing, setEditing] = useState(null); // the photo open in the editor
   const [checking, setChecking] = useState(0); // photos being checked for nudity or sexual content
   // Secondary details stay folded until wanted.
   const [showLocation, setShowLocation] = useState(!!d.location);
@@ -143,6 +167,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [gif, setGif] = useState(d.gif || null);
   const [gifPicker, setGifPicker] = useState(attach === "gif" && gifsEnabled);
   const fileInput = useRef(null);
+  const nativeCamera = useRef(null);
   const fileId = useId();
 
   const spec = KINDS.find((k) => k.id === kind);
@@ -194,6 +219,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const switchKind = (k) => {
     if (busy) return;
     setKind(k);
+    setStep("media");
     setErrors({});
     // Switching media type keeps text but drops files.
     if (KINDS.find((x) => x.id === k).media !== spec.media) { setFile(null); setDuration(0); clearPhotos(); }
@@ -216,6 +242,18 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     if (!photos.length) setActivePhoto(0);
     setPhotos((list) => [...list, ...fresh]);
     screen(fresh);
+    for (const entry of fresh) sizeOf(entry);
+  };
+  const updatePhoto = (id, patch) => setPhotos((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const sizeOf = (entry) => imageSize(entry.file).then(({ width, height }) => updatePhoto(entry.id, { w: width, h: height })).catch(() => {});
+  // A photo back from the editor replaces the one that went in, placed afresh.
+  const replacePhoto = (i, f) => {
+    const old = photos[i];
+    if (!old) return;
+    const entry = { ...old, file: f, url: URL.createObjectURL(f), x: 50, y: 50, w: 0, h: 0 };
+    URL.revokeObjectURL(old.url);
+    setPhotos((list) => list.map((p) => (p.id === old.id ? entry : p)));
+    sizeOf(entry);
   };
   // Each photo is checked on the device as it's added (nudity, and files
   // that say an AI made them); one that fails comes straight back out.
@@ -241,18 +279,29 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
     setPhotos((list) => list.filter((_, j) => j !== i));
     setActivePhoto((a) => Math.max(0, Math.min(a > i ? a - 1 : a, photos.length - 2)));
   };
-  const movePhoto = (i, by) => {
-    const j = i + by;
-    if (j < 0 || j >= photos.length) return;
-    setPhotos((list) => { const next = [...list]; [next[i], next[j]] = [next[j], next[i]]; return next; });
-    setActivePhoto(j);
+  const movePhoto = (i, by) => photos[i] && reorderPhoto(photos[i].id, i + by);
+  // Moves the photo with `id` to position `to` (from wherever it is by then),
+  // keeping it the one being looked at.
+  const reorderPhoto = (id, to) => {
+    if (to < 0 || to >= photos.length) return;
+    setPhotos((list) => {
+      const from = list.findIndex((p) => p.id === id);
+      if (from < 0 || from === to) return list;
+      const next = [...list];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setActivePhoto(to);
   };
+  const openCamera = cameraSupported() || phone()
+    ? () => (phone() ? nativeCamera.current?.click() : setCamera(true))
+    : null;
   // Revoke preview object URLs on unmount.
   const photosRef = useRef(photos);
   useEffect(() => { photosRef.current = photos; });
   useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
   const clearPhotos = () => { photos.forEach((p) => URL.revokeObjectURL(p.url)); setPhotos([]); setActivePhoto(0); };
-  const setPhotoAlt = (value) => setPhotos((list) => list.map((p, i) => (i === activePhoto ? { ...p, alt: value } : p)));
 
   const choose = async (f) => {
     if (!f) return;
@@ -321,9 +370,14 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
       let media = { url: "", path: "" };
       let slides = null;
       let posterUrl = "";
+      let mediaType = file ? file.type : "";
       if (spec.media === "image") {
         setProgress(0);
-        slides = (await uploadPhotos(photos.map((p) => p.file), setProgress, { cloud: true }))
+        // Each photo as framed and filtered here (lib/framing.js).
+        const ratio = frameRatio(shape, photos[0].w, photos[0].h);
+        const files = await Promise.all(photos.map((p) => bakePhoto(p, ratio)));
+        mediaType = files[0].type;
+        slides = (await uploadPhotos(files, setProgress, { cloud: true }))
           .map((u, i) => ({ ...u, alt: photos[i].alt.trim().slice(0, LIMITS.alt) }));
         uploaded = slides.map((s) => s.url);
         media = slides[0];
@@ -340,7 +394,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         mediaUrl: media.url,
         mediaPath: media.path,
         posterUrl,
-        mediaType: spec.media === "image" ? photos[0].file.type : file ? file.type : "",
+        mediaType,
         media: slides,
         location: spec.media ? location : "",
         duration,
@@ -380,13 +434,17 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const mediaBlocked = spec.media === "video" && mediaReady === false;
   const heading = group ? `Post to ${group.name}` : "Create";
   const remaining = STRAND_MAX - text.length;
+  const staged = !!spec.media && !mediaBlocked;
+  const onMedia = staged && step === "media";
+  const postAnyway = warned === `${title}|${text}|${alt}|${poll?.options.join("|") || ""}`;
+  const cover = photos[0];
 
   return (
     <Dialog title={heading} onClose={busy ? undefined : close} dismissible={!busy} variant="full" size="lg"
       footer={
         <div className="space-y-3">
           <div aria-live="polite"><InlineMessage>{errors.submit}</InlineMessage></div>
-          {warned === `${title}|${text}|${alt}|${poll?.options.join("|") || ""}` && (
+          {postAnyway && (
             <p role="status" className="rounded-control bg-warning-text/10 p-3 text-caption text-warning-text">{note}</p>
           )}
           {busy && (
@@ -398,16 +456,28 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
               <p className="mt-1.5 text-caption text-fg-subtle tabular">Uploading… {progress}%. Keep this open until it finishes.</p>
             </div>
           )}
-          <div className="flex items-center gap-3">
-            {!groupId && (
-              <Visibility value={minor ? "followers" : visibility} onChange={setVisibility} locked={minor} />
-            )}
-            <span className="flex-1" />
-            <Button type="submit" form="composer-form" variant="primary" loading={busy} disabled={mediaBlocked}>
-              {warned === `${title}|${text}|${alt}|${poll?.options.join("|") || ""}` ? "Post anyway" : `Post ${long ? "long Flick" : spec.label}`}
-            </Button>
-          </div>
-          {minor && !groupId && (
+          {onMedia ? (
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 text-caption text-fg-subtle">
+                {!picked ? "Step 1 of 2" : spec.media === "image" ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"}. Next: caption and who sees it.` : "Next: caption and who sees it."}
+              </span>
+              <Button variant="primary" iconRight={ChevronRight} disabled={!picked || checking > 0} onClick={() => { setErrors({}); setStep("details"); }}>
+                Next
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {staged && <IconButton icon={ChevronLeft} label={`Back to your ${spec.media === "image" ? "photos" : "video"}`} disabled={busy} onClick={() => setStep("media")} />}
+              {!groupId && (
+                <Visibility value={minor ? "followers" : visibility} onChange={setVisibility} locked={minor} />
+              )}
+              <span className="flex-1" />
+              <Button type="submit" form="composer-form" variant="primary" loading={busy} disabled={mediaBlocked}>
+                {postAnyway ? "Post anyway" : `Post ${long ? "long Flick" : spec.label}`}
+              </Button>
+            </div>
+          )}
+          {minor && !groupId && !onMedia && (
             <p className="text-caption text-fg-subtle">
               Your account is private, so posts go to your followers only.
             </p>
@@ -422,8 +492,21 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           <Button size="sm" variant="ghost" onClick={discardDraft}>Discard</Button>
         </div>
       )}
-      <Tabs label="What are you posting?" value={kind} onChange={switchKind} className="mb-5 flex w-full"
-        tabs={KINDS.map((k) => ({ id: k.id, label: k.label }))} />
+      {(onMedia || !staged) && (
+        <Tabs label="What are you posting?" value={kind} onChange={switchKind} className="mb-5 flex w-full"
+          tabs={KINDS.map((k) => ({ id: k.id, label: k.label }))} />
+      )}
+      {staged && (
+        <ol aria-label="Steps" className="mb-4 flex items-center gap-2 text-caption font-semibold">
+          {[["media", spec.media === "image" ? "Photos" : "Video"], ["details", "Details"]].map(([id, label], i) => (
+            <li key={id} aria-current={step === id ? "step" : undefined} className={`flex items-center gap-2 ${step === id ? "text-fg" : "text-fg-subtle"}`}>
+              {i > 0 && <span aria-hidden="true" className="h-px w-6 bg-line" />}
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${step === id ? "bg-accent text-white" : "bg-surface-2"}`}>{i + 1}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
+      )}
 
       <form id="composer-form" onSubmit={submit} className="space-y-5" noValidate>
         {mediaBlocked && (
@@ -439,46 +522,42 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </div>
         )}
 
-        {spec.media && !mediaBlocked && (
+        {onMedia && (
           <div>
             {!picked ? (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={(e) => { e.preventDefault(); setDragging(false); if (spec.media === "image") addPhotos(e.dataTransfer.files); else choose(e.dataTransfer.files[0]); }}
-                className={`flex flex-col items-center justify-center rounded-card border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                className={`rounded-card border-2 border-dashed p-3 transition-colors ${
                   dragging ? "border-accent-text bg-accent-soft" : errors.file ? "border-danger-text" : "border-field"
                 }`}>
-                <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
-                  {spec.media === "image" ? <ImagePlus size={24} aria-hidden="true" /> : <FileVideo size={24} aria-hidden="true" />}
-                </span>
-                <p className="text-callout font-semibold">
-                  {spec.media === "image" ? "Add photos" : "Add a video"}
-                </p>
-                <p className="mt-1 text-caption text-fg-subtle">
-                  {spec.media === "image"
-                    ? `Up to ${MAX_SLIDES}, swiped through in order · JPG, PNG, WebP or GIF · up to 10 MB each`
-                    : `Up to 200 MB. Over ${LONG_VIDEO_SECONDS / 60} minutes becomes a long Flick with a trailer.`}
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  {cameraSupported() && (
-                    <Button variant="primary" icon={CameraIcon} onClick={() => setCamera(true)}>
-                      {spec.media === "image" ? "Take a photo" : "Record"}
-                    </Button>
+                <div className={`grid gap-2 ${spec.media === "image" && !groupId ? "grid-cols-3" : "grid-cols-2"}`}>
+                  {openCamera && (
+                    <SourceTile icon={CameraIcon} label={spec.media === "image" ? "Camera" : "Record"} primary onClick={openCamera} />
                   )}
-                  <Button id="composer-file" icon={spec.media === "image" ? ImagePlus : FileVideo} onClick={() => fileInput.current?.click()}
-                    aria-describedby={errors.file ? `${fileId}-err` : undefined}>
-                    Choose {spec.media === "image" ? "photos" : "a video"}
-                  </Button>
+                  <SourceTile id="composer-file" icon={spec.media === "image" ? ImagePlus : FileVideo} label="Library"
+                    onClick={() => fileInput.current?.click()} describedBy={errors.file ? `${fileId}-err` : undefined} />
+                  {spec.media === "image" && !groupId && (
+                    <SourceTile icon={Aperture} label="From a roll" onClick={() => setRollPicker(true)} />
+                  )}
                 </div>
-                <p className="mt-2 hidden text-label text-fg-subtle md:block">or drag it here</p>
+                <p className="mt-3 text-center text-caption text-fg-subtle">
+                  {spec.media === "image"
+                    ? `Up to ${MAX_SLIDES} photos, swiped through in order · JPG, PNG, WebP or GIF`
+                    : `Up to 200 MB. Over ${LONG_VIDEO_SECONDS / 60} minutes becomes a long Flick with a trailer.`}
+                  <span className="hidden md:inline"> · or drag them here</span>
+                </p>
                 <input ref={fileInput} type="file" accept={spec.media === "image" ? "image/*" : "video/*"} className="hidden"
                   multiple={spec.media === "image"} tabIndex={-1} aria-hidden="true"
                   onChange={(e) => { if (spec.media === "image") addPhotos(e.target.files); else choose(e.target.files[0]); e.target.value = ""; }} />
               </div>
             ) : spec.media === "image" ? (
-              <PhotoSet photos={photos} active={activePhoto} onActive={setActivePhoto} busy={busy}
-                onRemove={removePhoto} onMove={movePhoto} onAdd={addPhotos} onCamera={cameraSupported() ? () => setCamera(true) : null} />
+              <PhotoStudio photos={photos} active={Math.min(activePhoto, photos.length - 1)} onActive={setActivePhoto} busy={busy}
+                shape={shape} onShape={setShape} onChange={updatePhoto}
+                onApplyAll={(filter) => setPhotos((list) => list.map((p) => ({ ...p, filter })))}
+                onRemove={removePhoto} onMove={movePhoto} onReorder={reorderPhoto} onAdd={addPhotos} onCamera={openCamera}
+                onRoll={groupId ? null : () => setRollPicker(true)} onEdit={setEditing} />
             ) : (
               <div className="relative overflow-hidden rounded-card border border-line bg-black">
                 <video src={preview} controls playsInline className="max-h-80 w-full" aria-label="The video you picked" />
@@ -486,7 +565,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                   <IconButton icon={X} label="Remove video" tone="overlay"
                     className="absolute right-2 top-2" onClick={() => { setFile(null); setDuration(0); }} />
                 )}
-                {spec.media === "video" && duration > 0 && (
+                {duration > 0 && (
                   <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2.5 py-1 text-label font-semibold text-white">
                     {long ? `Long Flick · ${formatDuration(duration)}` : `Flick · ${formatDuration(duration)}`}
                   </span>
@@ -497,21 +576,45 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
               {checking > 0 && <p className="text-caption text-fg-subtle">Checking {spec.media === "video" ? "the video" : checking > 1 ? "photos" : "the photo"}…</p>}
               <InlineMessage id={`${fileId}-err`}>{errors.file}</InlineMessage>
             </div>
+            {long && file && (
+              <div className="mt-5">
+                <TrailerPicker src={preview} duration={duration} value={trailerStart} onChange={setTrailerStart} />
+              </div>
+            )}
           </div>
         )}
 
-        {long && file && (
-          <>
-            <Field label="Title" error={errors.title} count={title.length} max={LIMITS.title}
-              hint="The first thing people read on the trailer.">
-              <Input id="composer-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={LIMITS.title}
-                placeholder="What's it about?" />
-            </Field>
-            <TrailerPicker src={preview} duration={duration} value={trailerStart} onChange={setTrailerStart} />
-          </>
+        {staged && !onMedia && (
+          <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-2.5">
+            {spec.media === "image" && cover ? (
+              <span className="relative h-16 w-[52px] shrink-0 overflow-hidden rounded-control bg-black">
+                <img src={cover.url} alt="" style={{ objectPosition: `${cover.x}% ${cover.y}%`, filter: filterById(cover.filter).css || undefined }}
+                  className="h-full w-full object-cover" />
+              </span>
+            ) : (
+              <span className="flex h-16 w-[52px] shrink-0 items-center justify-center rounded-control bg-black text-white"><Clapperboard size={22} aria-hidden="true" /></span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block text-callout font-semibold">
+                {spec.media === "image" ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"}` : long ? "Long Flick" : "Flick"}
+              </span>
+              <span className="block text-caption text-fg-subtle">
+                {spec.media === "image" ? `${shape === "original" ? "Original shape" : shape === "square" ? "Square" : "Portrait"}${photos.length > 1 ? ", swiped in order" : ""}` : formatDuration(duration)}
+              </span>
+            </span>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setStep("media")}>Change</Button>
+          </div>
         )}
 
-        {(kind === "text" || !mediaBlocked) && (
+        {long && file && !onMedia && (
+          <Field label="Title" error={errors.title} count={title.length} max={LIMITS.title}
+            hint="The first thing people read on the trailer.">
+            <Input id="composer-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={LIMITS.title}
+              placeholder="What's it about?" />
+          </Field>
+        )}
+
+        {!onMedia && (kind === "text" || !mediaBlocked) && (
           kind === "text" ? (
             <div>
               <label htmlFor="composer-text" className="sr-only">Your Strand</label>
@@ -554,42 +657,51 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           )
         )}
 
-        {picked && spec.media && (!(showLocation || location) || (spec.media === "image" && !altShown)) && (
+        {!onMedia && picked && spec.media && (!(showLocation || location) || (spec.media === "image" && !altShown)) && (
           <div className="flex flex-wrap gap-2">
             {!(showLocation || location) && (
               <Button size="sm" icon={MapPin} onClick={() => reveal(setShowLocation, "composer-location")}>Add location</Button>
             )}
             {spec.media === "image" && !altShown && (
-              <Button size="sm" icon={Accessibility} onClick={() => reveal(setShowAlt, "composer-alt")}>
+              <Button size="sm" icon={Accessibility} onClick={() => reveal(setShowAlt, "composer-alt-0")}>
                 Describe {photos.length > 1 ? "photos" : "photo"}
               </Button>
             )}
           </div>
         )}
 
-        {picked && spec.media && (showLocation || location) && (
+        {!onMedia && picked && spec.media && (showLocation || location) && (
           <Field label="Location" optional count={location.length} max={60}>
             <LocationField id="composer-location" value={location} onChange={setLocation} />
           </Field>
         )}
 
-        {picked && spec.media === "image" && altShown && (
-          <Field label={photos.length > 1 ? `Describe photo ${activePhoto + 1}` : "Describe this photo"} optional
-            count={(photos[activePhoto]?.alt || "").length} max={LIMITS.alt}
-            hint="Read aloud to people using screen readers. Leave it blank and your caption is used instead.">
-            <Textarea id="composer-alt" autoGrow rows={2} maxRows={5} value={photos[activePhoto]?.alt || ""} onChange={(e) => setPhotoAlt(e.target.value)} maxLength={LIMITS.alt}
-              placeholder="e.g. Two friends laughing on a beach at sunset" />
-          </Field>
+        {!onMedia && picked && spec.media === "image" && altShown && (
+          <fieldset>
+            <legend className="text-callout font-medium">{photos.length > 1 ? "Describe the photos" : "Describe this photo"} <span className="font-normal text-fg-subtle">Optional</span></legend>
+            <p className="mt-0.5 text-caption text-fg-subtle">Read aloud to people using screen readers. Leave one blank and your caption is used instead.</p>
+            <ul className="mt-2 space-y-2">
+              {photos.map((ph, i) => (
+                <li key={ph.id} className="flex items-start gap-2">
+                  <img src={ph.url} alt="" className="mt-1 h-11 w-11 shrink-0 rounded-control object-cover" />
+                  <label htmlFor={`composer-alt-${i}`} className="sr-only">Describe photo {i + 1}</label>
+                  <Textarea id={`composer-alt-${i}`} autoGrow rows={1} maxRows={4} value={ph.alt} maxLength={LIMITS.alt}
+                    onChange={(e) => updatePhoto(ph.id, { alt: e.target.value })}
+                    placeholder={i === 0 ? "e.g. Two friends laughing on a beach at sunset" : `Photo ${i + 1}`} />
+                </li>
+              ))}
+            </ul>
+          </fieldset>
         )}
 
-        {group?.topics?.length > 0 && (
+        {!onMedia && group?.topics?.length > 0 && (
           <div>
             <p className="mb-2 text-callout font-medium">Topic in {group.name} <span className="font-normal text-fg-subtle">Optional</span></p>
             <TopicChips topics={group.topics} value={circleTopic} onChange={setCircleTopic} label={`Topic in ${group.name}`} />
           </div>
         )}
 
-        {!mediaBlocked && !pickingTopics && (
+        {!onMedia && !mediaBlocked && !pickingTopics && (
           <div className="flex flex-wrap items-center gap-2 text-caption text-fg-subtle">
             <Tags size={15} aria-hidden="true" />
             {shownTopics.length ? (
@@ -606,7 +718,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             <button type="button" onClick={() => setPickingTopics(true)} className="font-semibold text-accent-text hover:underline">Change</button>
           </div>
         )}
-        {!mediaBlocked && pickingTopics && (
+        {!onMedia && !mediaBlocked && pickingTopics && (
           <fieldset>
             <legend className="mb-2 flex items-center gap-2 text-callout font-medium">
               <Tags size={16} aria-hidden="true" /> Topics
@@ -618,7 +730,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
           </fieldset>
         )}
 
-        {picked && spec.media && (
+        {!onMedia && picked && spec.media && (
           <div className="rounded-card border border-line bg-surface p-3">
             <Checkbox checked={ai} onChange={setAi}
               description={aiFound
@@ -630,6 +742,19 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         )}
       </form>
       {gifPicker && <GifPicker onClose={() => setGifPicker(false)} onPick={(g) => { setGif(g); setGifPicker(false); }} />}
+      <input ref={nativeCamera} type="file" accept={spec.media === "video" ? "video/*" : "image/*"} capture="environment"
+        className="hidden" tabIndex={-1} aria-hidden="true"
+        onChange={(e) => { if (spec.media === "video") choose(e.target.files[0]); else addPhotos(e.target.files); e.target.value = ""; }} />
+      {rollPicker && (
+        <Suspense fallback={null}>
+          <RollPhotoPicker room={MAX_SLIDES - photos.length} onClose={() => setRollPicker(false)}
+            onPick={(files) => { setRollPicker(false); addPhotos(files); }} />
+        </Suspense>
+      )}
+      {editing !== null && photos[editing] && (
+        <EditorLayer file={photos[editing].file} onClose={() => setEditing(null)}
+          onDone={(f) => { replacePhoto(editing, f); setEditing(null); }} />
+      )}
       {camera && (
         <Suspense fallback={null}>
           <Camera title={spec.media === "image" ? "Take a photo" : "Record a Flick"} photo={spec.media === "image"} video={spec.media === "video"}
@@ -640,6 +765,26 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         </Suspense>
       )}
     </Dialog>
+  );
+}
+
+// The photo editor (text, turning, brightness, contrast, saturation) over
+// everything, for one photo in the post.
+function EditorLayer({ file, onClose, onDone }) {
+  const trap = useFocusTrap();
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return createPortal(
+    <div ref={trap} role="dialog" aria-modal="true" aria-label="Edit photo" className="fixed inset-0 z-[60] bg-black">
+      <Suspense fallback={null}>
+        <PhotoEditor file={file} backLabel="Cancel" actions={[{ id: "done", label: "Done", primary: true }]}
+          onBack={onClose} onDone={(_, f) => onDone(f)} />
+      </Suspense>
+    </div>,
+    document.body,
   );
 }
 
@@ -710,63 +855,15 @@ function TrailerPicker({ src, duration, value, onChange }) {
   );
 }
 
-// Selected photo preview plus the ordered strip. Index 0 is the cover.
-function PhotoSet({ photos, active, onActive, busy, onRemove, onMove, onAdd, onCamera }) {
-  const addRef = useRef(null);
-  const current = photos[active] || photos[0];
+// A way to add media, in the empty media area.
+function SourceTile({ id, icon: Icon, label, onClick, primary = false, describedBy }) {
   return (
-    <div>
-      <div className="relative overflow-hidden rounded-card border border-line bg-black">
-        <img src={current.url} alt={current.alt.trim() || `Photo ${active + 1} of ${photos.length}`}
-          className="max-h-96 min-h-48 w-full object-contain" />
-        {photos.length > 1 && (
-          <span className="absolute right-2 top-2 rounded-full bg-black/65 px-2.5 py-1 text-label font-semibold text-white tabular">
-            {active + 1}/{photos.length}
-          </span>
-        )}
-      </div>
-      <ul className="mt-2 flex gap-2 overflow-x-auto px-1 pb-1 pt-2 no-scrollbar" aria-label="Photos in this post, in order">
-        {photos.map((ph, i) => (
-          <li key={ph.id} className="relative shrink-0">
-            <button type="button" onClick={() => onActive(i)} aria-label={`Photo ${i + 1}${i === 0 ? ", the cover" : ""}`} aria-current={i === active || undefined}
-              className={`press block h-16 w-16 overflow-hidden rounded-control ring-2 ring-offset-2 ring-offset-canvas ${i === active ? "ring-accent" : "ring-transparent"}`}>
-              <img src={ph.url} alt="" className="h-full w-full object-cover" />
-            </button>
-            {!busy && (
-              <button type="button" onClick={() => onRemove(i)} aria-label={`Remove photo ${i + 1}`}
-                className="press absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-fg text-canvas">
-                <X size={13} aria-hidden="true" />
-              </button>
-            )}
-          </li>
-        ))}
-        {photos.length < MAX_SLIDES && !busy && (
-          <li className="shrink-0">
-            <button type="button" onClick={() => addRef.current?.click()} aria-label="Add more photos"
-              className="press flex h-16 w-16 items-center justify-center rounded-control border-2 border-dashed border-field text-fg-muted hover:text-fg">
-              <Plus size={20} aria-hidden="true" />
-            </button>
-            <input ref={addRef} type="file" accept="image/*" multiple className="hidden" tabIndex={-1} aria-hidden="true"
-              onChange={(e) => { onAdd(e.target.files); e.target.value = ""; }} />
-          </li>
-        )}
-        {photos.length < MAX_SLIDES && !busy && onCamera && (
-          <li className="shrink-0">
-            <button type="button" onClick={onCamera} aria-label="Take another photo"
-              className="press flex h-16 w-16 items-center justify-center rounded-control border-2 border-dashed border-field text-fg-muted hover:text-fg">
-              <CameraIcon size={20} aria-hidden="true" />
-            </button>
-          </li>
-        )}
-      </ul>
-      {photos.length > 1 && !busy && (
-        <div className="mt-1 flex items-center gap-1 text-caption text-fg-subtle">
-          <span className="mr-1">{active === 0 ? "Photo 1 is the cover." : `Photo ${active + 1} of ${photos.length}.`} Move it:</span>
-          <IconButton icon={ChevronLeft} label="Move this photo earlier" size={16} disabled={active === 0} onClick={() => onMove(active, -1)} />
-          <IconButton icon={ChevronRight} label="Move this photo later" size={16} disabled={active === photos.length - 1} onClick={() => onMove(active, 1)} />
-        </div>
-      )}
-    </div>
+    <button id={id} type="button" onClick={onClick} aria-describedby={describedBy}
+      className={`press flex min-h-24 flex-col items-center justify-center gap-2 rounded-control px-2 py-4 text-callout font-semibold ${
+        primary ? "bg-accent text-white" : "bg-surface-2 text-fg hover:bg-surface-3"
+      }`}>
+      <Icon size={24} aria-hidden="true" />
+      {label}
+    </button>
   );
 }
-

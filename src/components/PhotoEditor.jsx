@@ -79,7 +79,7 @@ function drawText(ctx, W, layer) {
  * Edit a photo before it posts: text, GIF stickers, zoom and rotate, and
  * tone. Calls onDone(actionId, file) with the flattened image.
  */
-export default function PhotoEditor({ file, actions, onBack, onDone }) {
+export default function PhotoEditor({ file, actions, onBack, onDone, backLabel = "Retake" }) {
   const [img, setImg] = useState(null);
   const [tool, setTool] = useState(null); // null | "text" | "adjust" | "gif"
   const [base, setBase] = useState({ rot: 0, zoom: 1, px: 0, py: 0, brightness: 1, contrast: 1, saturation: 1 });
@@ -225,7 +225,7 @@ export default function PhotoEditor({ file, actions, onBack, onDone }) {
       {/* Top: back and tools */}
       <div className="z-10 flex shrink-0 items-center gap-1 px-2 pb-2 pt-safe">
         <button type="button" onClick={onBack} className="press flex min-h-11 items-center gap-1.5 rounded-full px-3 text-callout font-semibold">
-          <ArrowLeft size={20} aria-hidden="true" /> Retake
+          <ArrowLeft size={20} aria-hidden="true" /> {backLabel}
         </button>
         <span className="flex-1" />
         <div role="toolbar" aria-label="Edit the photo" className="flex gap-1">

@@ -7,8 +7,9 @@ import {
   fetchRoll, fetchMyShotCount, fetchRollPhotos, fetchProfiles, joinRoll, leaveRoll, removeFromRoll, updateRoll, deleteRoll,
   deleteRollPhoto, isDeveloped, isMember, developLabel, countdownLabel, rollUrl, rollIcs, rollGoogleCalendarUrl, markRollSeen,
   rollSeen, onShotQueue, SHOTS_PER_PERSON, MAX_MEMBERS, tsMillis, me, openUserProfile, developRollNow, staffRole,
+  rollPhotoFile, pickedRollFiles, MAX_SLIDES,
 } from "../../lib/db";
-import { fetchInline, isInline } from "../../lib/media";
+import { OthersNote, PickablePhotos } from "./RollPicker";
 import { authPath, goBack, navigate } from "../../lib/router";
 import { motionReduced } from "../../lib/appearance";
 import { checkName } from "../../lib/moderation";
@@ -457,11 +458,7 @@ function RemindDialog({ roll, onClose }) {
 
 // After 9am: the contact sheet.
 
-async function photoFile(photo, name) {
-  const src = isInline(photo.url) ? await fetchInline(photo.url) : photo.url;
-  const blob = await fetch(src).then((r) => r.blob());
-  return new File([blob], name, { type: "image/jpeg" });
-}
+const photoFile = (photo, name) => rollPhotoFile(photo, name);
 
 function Developed({ roll, onChange }) {
   const toast = useToast();
@@ -471,6 +468,9 @@ function Developed({ roll, onChange }) {
   const [who, setWho] = useState("all");
   const [open, setOpen] = useState(null); // index into shown
   const [dialog, setDialog] = useState(null);
+  // Picking photos for a post: their ids, in the order picked (null when not picking).
+  const [picking, setPicking] = useState(null);
+  const [posting, setPosting] = useState(false);
   // The first time this device opens it, the prints develop in front of you.
   const [reveal] = useState(() => !rollSeen(roll.id) && !motionReduced());
   const owner = roll.ownerId === me();
@@ -491,6 +491,16 @@ function Developed({ roll, onChange }) {
   const shown = useMemo(() => (photos || []).filter((p) => who === "all" || p.authorId === who), [photos, who]);
   const name = (uid) => (uid === me() ? "You" : `@${people.get(uid)?.username || "someone"}`);
   const date = new Date(tsMillis(roll.developAt)).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+
+  const postPicked = async () => {
+    setPosting(true);
+    try {
+      const files = await pickedRollFiles(photos, picking);
+      setPicking(null);
+      openComposer({ kind: "post", files });
+    } catch { toast({ tone: "error", title: "Couldn't get those photos", body: "Check your connection and try again." }); }
+    finally { setPosting(false); }
+  };
 
   const remove = async (p) => {
     try {
@@ -522,9 +532,35 @@ function Developed({ roll, onChange }) {
         </div>
       )}
 
+      {shown.length > 0 && !picking && (
+        <div className="mt-4 flex justify-center">
+          <Button icon={Share2} onClick={() => setPicking([])}>Pick photos to post</Button>
+        </div>
+      )}
+
       {photos === null && <div className="mt-5 grid grid-cols-3 gap-1">{Array.from({ length: 9 }, (_, i) => <Skeleton key={i} className="aspect-[3/4] !rounded-[4px]" />)}</div>}
       {photos?.length === 0 && <EmptyState compact icon={Aperture} title="Nobody shot anything" body="This roll developed empty." />}
-      {shown.length > 0 && (
+      {shown.length > 0 && picking && (
+        <div className="mt-5 pb-28">
+          <p className="mb-3 text-center text-caption text-fg-subtle">Tap photos in the order you want them, up to {MAX_SLIDES}. You can still change the order before posting.</p>
+          <PickablePhotos photos={shown} picked={picking} onChange={setPicking} />
+        </div>
+      )}
+      {picking && (
+        <div className="fixed inset-x-0 bottom-0 z-nav border-t border-line bg-canvas/95 px-4 pb-safe pt-3 backdrop-blur glass-solid">
+          <div className="mx-auto max-w-2xl space-y-2 pb-3">
+            <OthersNote photos={photos} picked={picking} />
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" onClick={() => setPicking(null)}>Cancel</Button>
+              <span className="flex-1 text-caption text-fg-subtle tabular">{picking.length ? `${picking.length} picked` : "None picked yet"}</span>
+              <Button variant="primary" disabled={!picking.length} loading={posting} onClick={postPicked}>
+                Post {picking.length > 1 ? `${picking.length} photos` : "photo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {shown.length > 0 && !picking && (
         <ul className="mt-5 grid grid-cols-3 gap-1" aria-label="Photos">
           {shown.map((p, i) => (
             <li key={p.id} className={reveal ? "roll-print" : ""} style={reveal ? { animationDelay: `${Math.min(i, 40) * 90}ms` } : undefined}>

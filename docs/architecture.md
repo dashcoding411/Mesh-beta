@@ -108,6 +108,48 @@ Composite indexes are declared in `firestore.indexes.json`.
 
 ## Creating
 
+The composer works in steps for photos and videos (Strands are one step):
+first the media, then the details (caption, location, descriptions,
+topics, the AI label, who sees it), with the primary button bottom-right
+throughout. For a Still, the media step (`composer/PhotoStudio.jsx`) offers
+Camera, Library and From a roll; then a shape for the whole post
+(Original, 4:5 or 1:1, previewed exactly as the feed shows it: a carousel
+takes the first photo's shape, between 4:5 and 1.91:1), each photo placed
+in the frame by dragging (or arrow keys), a filter per photo (the story
+filters, or one for all), the photo editor for text and tone, and the
+ordered strip: numbered, the first marked Cover, reordered by holding and
+dragging a thumbnail (a mouse just drags; arrow buttons for keyboards).
+`bakePhoto` (`lib/framing.js`) cuts each photo to the frame where it was
+placed and applies its filter before upload. On a phone, Camera opens the
+phone's own camera (`capture`): a full-quality photo or video with the
+phone's processing, rather than a frame from a live feed. There are no
+face or skin-smoothing filters, by design.
+
+Developed roll photos can be posted without saving them first: Pick photos
+to post on the roll (numbered in the order tapped, up to 10), or From a
+roll in the composer (`rolls/RollPicker.jsx`). Picking someone else's shot
+shows a reminder to check they're happy for it to be shared.
+
+On a phone, swiping left across Home opens the story camera
+(`lib/useSwipeLeft.js`; a camera slides in from the edge as the finger
+moves). Swipes starting in anything that scrolls sideways, a control, or
+something marked `data-no-swipe` (the stories row) are left alone, and so
+is vertical scrolling. On feeds without the stories row, `StoryRail bare`
+provides just the camera and editor. The story camera (`scanCodes`) watches
+for QR codes and, for a Mesh link (`meshLink` in `lib/qr.js`: rolls,
+profiles, posts, gatherings, circles, news, Brick groups, Mesh's own hosts
+only), shows a button to open it. The story and roll cameras ask for the
+camera's best resolution, up to 4K, since the photo is cropped from it.
+
+The roll camera never changes layout when the phone turns (a selfie grip
+often tips it sideways): `useTurn` reads the screen's angle, the whole
+camera is turned back by it (sized in container units, `cqw`/`cqh`), and
+the picture is turned the other way inside, so the buttons stay where they
+were and the view stays upright to the world. A shot taken sideways is a
+4:3 landscape. Rolls only shows "Rolls live on your phone" on a computer,
+judged by a mouse that can hover, not by width: a phone turned sideways is
+wider than a tablet.
+
 Stills, Flicks and stories can be captured in the app (`Camera.jsx`): a
 full-screen viewfinder with the shutter, library and camera flip at the bottom
 where a thumb reaches. Tap for a photo; hold to record when video uploads are

@@ -1,5 +1,5 @@
 import { Fragment, useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { Sparkles, Users, Search as SearchIcon, CheckCheck } from "lucide-react";
+import { Sparkles, Users, Search as SearchIcon, CheckCheck, Camera as CameraIcon } from "lucide-react";
 import {
   fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchLiveAds, adRunning, adFits, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
@@ -17,7 +17,8 @@ import { EmptyState, ErrorState, Skeleton, Loading, Spinner } from "./ui/States"
 import { useToast } from "./ui/toast-context";
 import PostCard, { POST_LIST } from "./PostCard";
 import NewsFeedCard from "./news/NewsFeedCard";
-import StoryRail from "./StoryRail";
+import StoryRail, { STORY_CAMERA_EVENT } from "./StoryRail";
+import { useSwipeLeft } from "../lib/useSwipeLeft";
 import CirclesToJoin from "./CirclesToJoin";
 import SuggestedPeople from "./SuggestedPeople";
 import AdCard from "./AdCard";
@@ -71,6 +72,11 @@ export default function HomeFeed({ mode }) {
     return copy?.length ? { posts: copy, shown: PAGE, top: 0, at: 0, copy: true } : null;
   });
   const feedScroll = useRef(null);
+  // Swiping left on Home opens the story camera, which also scans Mesh QR
+  // codes. A camera slides in from the edge as the finger moves.
+  const peekRef = useRef(null);
+  const openStoryCamera = useCallback(() => window.dispatchEvent(new Event(STORY_CAMERA_EVENT)), []);
+  useSwipeLeft(feedScroll, openStoryCamera, { enabled: !guest, peekRef });
   const scrollTop = useRef(restored?.top || 0);
   const loadedAt = useRef(restored?.at || 0);
   // A copy from last time still loads; it's only there until the feed arrives.
@@ -208,6 +214,12 @@ export default function HomeFeed({ mode }) {
         </div>
       </HomeHeader>
 
+      {!guest && (
+        <span ref={peekRef} aria-hidden="true" style={{ opacity: 0, transform: "translate(100%, -50%)" }}
+          className="pointer-events-none fixed right-0 top-1/2 z-nav flex h-14 w-16 items-center justify-center rounded-l-full bg-fg pl-1 text-canvas shadow-raised md:hidden">
+          <CameraIcon size={24} />
+        </span>
+      )}
       <div ref={feedScroll} data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[520px] pb-4">
           {refreshing && (
@@ -221,6 +233,7 @@ export default function HomeFeed({ mode }) {
               <PhotoNudge dismissible className="mx-4 mt-3" />
             </>
           )}
+          {!(mode === "foryou" && topic === "all") && !guest && <StoryRail bare />}
 
           {error && <ErrorState title="Couldn't load your feed" onRetry={load} />}
 

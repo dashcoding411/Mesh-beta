@@ -12,6 +12,7 @@ import { myProfile } from "./users.js";
 import { deleteCloudMedia, uploadRollShot } from "./uploads.js";
 import { deleteInline } from "./posts.js";
 import { assertSafe } from "../imageCheck";
+import { fetchInline, isInline } from "../media";
 import { forget, pushRollDeveloped, remind } from "../push.js";
 
 export const SHOTS_PER_PERSON = 27;
@@ -169,6 +170,17 @@ export async function fetchMyRollPhotos(rollId) {
 }
 
 /** Every photo, in the order they were taken. Only after it develops (the rules). */
+/** A roll photo as a File, to post or save. */
+export async function rollPhotoFile(photo, name = `roll-${photo.id}.jpg`) {
+  const src = isInline(photo.url) ? await fetchInline(photo.url) : photo.url;
+  const blob = await fetch(src).then((r) => r.blob());
+  return new File([blob], name, { type: "image/jpeg" });
+}
+
+/** Files for the picked photos (ids, in the order picked). */
+export const pickedRollFiles = (photos, picked) =>
+  Promise.all(picked.map((id) => rollPhotoFile(photos.find((p) => p.id === id))));
+
 export async function fetchRollPhotos(rollId) {
   const q = query(collection(db, "rolls", rollId, "photos"), orderBy("createdAt", "asc"), limit(MAX_MEMBERS * SHOTS_PER_PERSON));
   return snapToList(await getDocs(q));
