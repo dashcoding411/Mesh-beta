@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { centreCrop, digicamCurves, gradePixels, lensFringe, rng, segmentsFor, softCopy, stampLayout, stampText, stampWidth } from "../digicam.js";
+import { centreCrop, digicamCurves, gradePixels, lensFringe, rng, softCopy } from "../digicam.js";
+import { segmentsFor, stampLayout, stampText, stampWidth } from "../stamp.js";
 import { countdownLabel, developChoices, developLabel, isDeveloped, isMember, nextDevelopAt, rollIdFromLink } from "../data/rolls.js";
 
 const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).getTime();

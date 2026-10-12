@@ -32,10 +32,15 @@ export function useBrickEngine(signedIn) {
     return listenUsage(me(), offset, setUsage);
   }, [signedIn, offset, today]);
 
+  // The tick re-renders the app, so it only runs while someone signed in is
+  // looking, and catches up the moment Mesh is back on screen.
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(t);
-  }, []);
+    if (!signedIn) return undefined;
+    const tick = () => { if (document.visibilityState === "visible") setNow(Date.now()); };
+    const t = setInterval(tick, 15000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
+  }, [signedIn]);
 
   // Apply due pending changes. 60s grace for fast clocks; one attempt per
   // change per session so a rejection can't loop.

@@ -3,7 +3,8 @@
 // what posts. Everything is laid out on a 9:16 frame in fractions of its
 // width (sizes) and of its width and height (positions).
 
-import { drawStamp, stampText, stampWidth, STAMP_COLOR } from "./digicam";
+import { drawStamp } from "./digicam";
+import { stampText, stampWidth, STAMP_COLOR } from "./stamp";
 
 export const FRAME_W = 1080;
 export const FRAME_H = 1920;

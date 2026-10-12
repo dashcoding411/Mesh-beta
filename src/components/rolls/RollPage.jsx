@@ -179,9 +179,9 @@ function Shooting({ roll, now, onChange, reload }) {
   // With notifications on, make sure this roll will tell you when it develops.
   useEffect(() => { remind("roll", roll.id).catch(() => {}); }, [roll.id]);
   useEffect(() => { fetchProfiles(roll.members || []).then(setPeople).catch(() => {}); }, [roll.members]);
-  // Refresh the shot total now and then while it's open.
+  // Refresh the shot total now and then while it's open and on screen.
   useEffect(() => {
-    const t = setInterval(reload, 60000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") reload(); }, 60000);
     return () => clearInterval(t);
   }, [reload]);
 

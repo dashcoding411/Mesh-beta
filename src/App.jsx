@@ -21,7 +21,6 @@ import { ShellContext } from "./components/shell/ShellContext";
 import Sidebar, { LogoMark } from "./components/shell/Sidebar";
 import BottomNav from "./components/shell/BottomNav";
 import HomeDrawer from "./components/shell/HomeDrawer";
-import AuthPage from "./components/AuthPage";
 import { JoinDialog, JoinPage } from "./components/JoinPrompt";
 import HomeFeed from "./components/HomeFeed";
 import StorageNotice from "./components/StorageNotice";
@@ -29,7 +28,6 @@ import SuspensionBanner from "./components/SuspensionBanner";
 import OfflineBanner from "./components/OfflineBanner";
 import UpdateBanner from "./components/UpdateBanner";
 import NotificationBanner from "./components/NotificationBanner";
-import Tour from "./components/Tour";
 import Shortcuts from "./components/Shortcuts";
 import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
@@ -71,9 +69,23 @@ const UserProfile = lazy(() => import("./components/UserProfile"));
 const PostViewer = lazy(() => import("./components/PostViewer"));
 const Watch = lazy(() => import("./components/Watch"));
 const Composer = lazy(() => import("./components/Composer"));
+// Only signed-out visitors and new accounts need these, so they stay out of
+// the first download.
+const AuthPage = lazy(() => import("./components/AuthPage"));
+const Tour = lazy(() => import("./components/Tour"));
 const CallScreen = named(() => import("./components/CallScreen"), "CallScreen");
 const IncomingCall = named(() => import("./components/CallScreen"), "IncomingCall");
 const InterestsDialog = named(() => import("./components/Interests"), "InterestsDialog");
+
+// The pulsing logo while Mesh (or a page it needs) loads.
+function Splash({ label = "Loading Mesh", children }) {
+  return (
+    <div className="flex h-dvh flex-col items-center justify-center gap-4" role="status" aria-label={label}>
+      <div className="animate-pulse"><LogoMark size={56} /></div>
+      {children}
+    </div>
+  );
+}
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
@@ -434,17 +446,16 @@ export default function App() {
 
   if (!authReady) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-4" role="status" aria-label={finishingSignIn ? "Finishing sign-in" : "Loading Mesh"}>
-        <div className="animate-pulse"><LogoMark size={56} /></div>
+      <Splash label={finishingSignIn ? "Finishing sign-in" : "Loading Mesh"}>
         {finishingSignIn && <p className="text-callout text-fg-muted">Finishing sign-in with Google…</p>}
-      </div>
+      </Splash>
     );
   }
 
   // Both are the same element, so an email sign-up keeps its state when the
   // account is created and the profile is still to come.
   const enter = () => window.location.replace(afterAuthPath());
-  if (user && !profile) return <AuthPage pendingUser={user} onCreated={enter} />;
+  if (user && !profile) return <Suspense fallback={<Splash />}><AuthPage pendingUser={user} onCreated={enter} /></Suspense>;
   // 16 and over only: accounts without a birth year are asked, and under-16s
   // can only download their data or delete the account.
   const ageYears = profile?.birthYear > 0 ? new Date().getFullYear() - profile.birthYear : null;
@@ -455,7 +466,7 @@ export default function App() {
       </Suspense>
     );
   }
-  if (guest && onAuthPage) return <AuthPage initialMode={page.mode} onCreated={enter} />;
+  if (guest && onAuthPage) return <Suspense fallback={<Splash />}><AuthPage initialMode={page.mode} onCreated={enter} /></Suspense>;
   if (onAuthPage) return null;
 
   const firstVisit = guest && !welcomed && page.tab === "home" && page.section === "foryou" && !page.notFound && !overlay;
@@ -593,8 +604,10 @@ export default function App() {
           <RollReady key={rollSignal.fresh.id} roll={rollSignal.fresh} onDone={() => setRollSignal((s) => ({ ...s, fresh: null }))} />
         )}
         {(signedIn || guest) && (
-          <Tour uid={user?.uid} guest={guest} profile={profile} prefsDone={tourDone} onSeen={() => setTourDone(true)}
-            ready={page.tab === "home" && page.section === "foryou" && !overlay && !composer && !drawerOpen && !interestsDialog && !joinReason} />
+          <Suspense fallback={null}>
+            <Tour uid={user?.uid} guest={guest} profile={profile} prefsDone={tourDone} onSeen={() => setTourDone(true)}
+              ready={page.tab === "home" && page.section === "foryou" && !overlay && !composer && !drawerOpen && !interestsDialog && !joinReason} />
+          </Suspense>
         )}
         <Shortcuts onCreate={openComposer} />
         <ExternalLinkDialog />

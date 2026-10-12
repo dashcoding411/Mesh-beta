@@ -16,11 +16,12 @@ import { useLiveCard } from "../lib/profileCache";
 import IconButton from "./ui/IconButton";
 import Badge from "./ui/Badge";
 import { useToast } from "./ui/toast-context";
-import Comments from "./Comments";
 import { ShareSheet, PostMenu } from "./PostActions";
-import EditPostDialog from "./EditPost";
 import { PostBody, Dots } from "./post/PostMedia";
 const AddToAlbum = lazy(() => import("./SavedAlbums").then((m) => ({ default: m.AddToAlbum })));
+// Opened from a tap, so they load then.
+const Comments = lazy(() => import("./Comments"));
+const EditPostDialog = lazy(() => import("./EditPost"));
 import { Action, Caption, SocialProof, QuickComment } from "./post/PostFooter";
 
 // Lists of posts space them apart rather than ruling lines between them; on
@@ -248,8 +249,10 @@ export default function PostCard({
       </div>
 
       {sheet === "comments" && (
-        <Comments post={post} onClose={() => setSheet(null)} onAdded={setPreview}
-          onCountChange={(d) => setCounts((c) => ({ ...c, comment: Math.max(0, c.comment + d) }))} />
+        <Suspense fallback={null}>
+          <Comments post={post} onClose={() => setSheet(null)} onAdded={setPreview}
+            onCountChange={(d) => setCounts((c) => ({ ...c, comment: Math.max(0, c.comment + d) }))} />
+        </Suspense>
       )}
       {sheet === "share" && <ShareSheet post={post} onClose={() => setSheet(null)} />}
       {sheet === "album" && (
@@ -260,13 +263,15 @@ export default function PostCard({
           onClose={() => setSheet(null)} onRemoved={(why) => onRemoved?.(post.id, why)} />
       )}
       {sheet === "edit" && (
-        <EditPostDialog post={post} onClose={() => setSheet(null)}
-          onSaved={(changes) => {
-            setEdits((prev) => ({ ...prev, ...changes }));
-            onChanged?.(post.id, changes);
-            setRevealed(false);
-            setSheet(null);
-          }} />
+        <Suspense fallback={null}>
+          <EditPostDialog post={post} onClose={() => setSheet(null)}
+            onSaved={(changes) => {
+              setEdits((prev) => ({ ...prev, ...changes }));
+              onChanged?.(post.id, changes);
+              setRevealed(false);
+              setSheet(null);
+            }} />
+        </Suspense>
       )}
     </article>
   );

@@ -9,6 +9,9 @@ function cardFor(uid) {
   return cards.get(uid);
 }
 
+/** Who a journalist writes for. */
+export const outletOf = (j) => j?.outlet || "Independent journalist";
+
 /** After an edit, so bylines pick up the change. */
 export function forgetJournalist(uid) {
   cards.delete(uid);

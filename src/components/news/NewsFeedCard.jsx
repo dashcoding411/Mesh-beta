@@ -1,6 +1,6 @@
 import { Newspaper, Radio } from "lucide-react";
 import { navigate } from "../../lib/router";
-import { AuthorLine } from "./Journalist";
+import { AuthorLine } from "./AuthorLine";
 import { KindBadge, Meta, TopicLabel } from "./parts";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";

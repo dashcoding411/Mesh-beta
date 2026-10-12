@@ -5,7 +5,7 @@ import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
 import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { KindBadge, Meta, TopicLabel } from "./parts";
-import { AuthorLine } from "./Journalist";
+import { AuthorLine } from "./AuthorLine";
 import { quickMinutes, readMinutes, summaryOf } from "./text";
 import QuickBrief from "./QuickBrief";
 import { BRIEF_SIZE, pickBrief, readStoryIds } from "../../lib/newsBrief";

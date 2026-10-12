@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import licenses from "./scripts/licenses-plugin.mjs";
@@ -12,8 +13,14 @@ const BUILT = new Date().toLocaleString("en-AU", {
 export default defineConfig({
   plugins: [react(), licenses()],
   define: { "import.meta.env.VITE_BUILT": JSON.stringify(BUILT) },
+  resolve: {
+    // Firestore's regex engine for pipeline queries, which Mesh doesn't use.
+    alias: [{ find: /^re2js$/, replacement: fileURLToPath(new URL("./src/lib/re2jsStub.js", import.meta.url)) }],
+  },
   build: {
-    // The Firebase chunk (~590 kB) can't be split safely; see manualChunks.
+    // The Firebase chunk (~430 kB) can't be split safely; see manualChunks. The
+    // image checker's TensorFlow chunk (~1.1 MB) is over this on purpose: it
+    // loads only when someone picks a photo, so its warning is expected.
     chunkSizeWarningLimit: 650,
     rollupOptions: {
       output: {

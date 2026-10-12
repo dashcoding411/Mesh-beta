@@ -39,7 +39,7 @@ export default function UpdateBanner() {
       if (!stop && now && now !== running) setReady(true);
     };
     const onShow = () => { if (document.visibilityState === "visible") check(); };
-    const timer = setInterval(check, CHECK_MS);
+    const timer = setInterval(onShow, CHECK_MS);
     document.addEventListener("visibilitychange", onShow);
     return () => { stop = true; clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
   }, []);

@@ -5,7 +5,7 @@ import { navigate } from "../../lib/router";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
-import { AuthorLine } from "./Journalist";
+import { AuthorLine } from "./AuthorLine";
 import { TopicLabel } from "./parts";
 import { quickPoints } from "./text";
 

@@ -1,6 +1,6 @@
 # Mesh: compliance state and risk register
 
-Last reviewed 24 September 2026, against the code at this commit.
+Last reviewed 12 October 2026, against the code at this commit.
 
 **This is an engineering document, not legal advice.** It was written by
 reading the code, not by a lawyer, and it cannot tell you whether Mesh is
@@ -12,8 +12,8 @@ exposes) are grounded in the source and can be checked line by line.
 
 ## Before you can launch
 
-1. **Fill in `src/legal/business.js`.** Eight fields are still `TODO`. They
-   render verbatim in every policy, and the Legal page shows a warning banner
+1. **Fill in `src/legal/business.js`.** Three fields are still `TODO` (legal
+   name, ABN and address). They render verbatim in every policy, and the Legal page shows a warning banner
    until they're set. A policy naming "TODO" as its operator is worse than no
    policy: under Australian Consumer Law s18, a consumer-facing trader has to
    be identifiable.
@@ -27,24 +27,19 @@ exposes) are grounded in the source and can be checked line by line.
 
 ### R1: Under-16 accounts vs. the social media minimum age law · **HIGH** · VERIFY
 
-Mesh currently **permits** under-16 accounts. `isMinor()` in `src/lib/db.js`
-restricts them to followers-only posting, enforced server-side by `isAdult()`
-in `firestore.rules`.
+Mesh is 16+. Sign-up asks for a birth year, and an account whose birth year
+says under 16 (or has none) reaches only the age gate (`AgeGate.jsx`), where
+it can download its data or delete the account. The birth year is kept in
+`users/{uid}/private/age`, readable only by its owner, and can be set once.
 
 Australia's *Online Safety Amendment (Social Media Minimum Age) Act 2024*
 requires age-restricted social media platforms to take reasonable steps to
-prevent under-16s holding accounts. Two problems:
+prevent under-16s holding accounts (penalties up to $49.5 million). Mesh is
+squarely the kind of service the law covers, and a self-declared birth year
+is unlikely to count as reasonable steps on its own.
 
-- Mesh may fall within the definition of an age-restricted platform. A service
-  offering profiles, following, feeds and DMs is squarely the kind of thing the
-  law was aimed at.
-- Self-declared birth year is **not** age assurance. A restricted account is
-  not the same as no account.
-
-**Decide:** either block under-16 account creation outright and implement age
-assurance, or obtain advice confirming Mesh is out of scope. The current
-middle position (allowing under-16s with reduced permissions) is the one
-option that is defensible under neither reading.
+**Open:** real age assurance (for example k-ID: face estimation, ConnectID or
+photo ID) is not yet in place.
 
 ### R2: Liability for user content · **HIGH** · VERIFY
 
@@ -78,32 +73,26 @@ Google and Apple marks in `AuthPage.jsx` are used only on their own sign-in
 buttons; **check they still match Google's and Apple's current branding
 guidelines**, which are conditions of using those sign-in services.
 
-### R4: Media stored outside Australia · **MEDIUM**
+### R4: Media with a US provider · **MEDIUM**
 
-Firestore is in `australia-southeast1` (Sydney). While Cloud Storage is off,
-photos and voice messages are stored in Firestore, so they stay in Sydney too.
-The default Cloud Storage bucket would **not**: video (and photos, once Storage
-is on) would go to the US. That is a cross-border disclosure under Australian
-Privacy Principle 8, and the Privacy Policy discloses it honestly.
+Firestore is in `australia-southeast1` (Sydney), and holds profile photos,
+photos in messages and voice messages. Photos in posts and stories, videos and
+roll photos are on Cloudflare R2 (bucket `mesh-media`, location `OC`, Oceania,
+checked 12 October 2026), served through Cloudflare's worldwide network.
+Cloudflare is a US company, so this is treated as a cross-border disclosure
+under Australian Privacy Principle 8, and the Privacy Policy says so.
 
-**Fix properly:** when you enable the Blaze plan (Storage is off entirely right
-now), create the bucket in `australia-southeast1` and update the policy. Do it
-before there is any user media to migrate.
+**If Cloud Storage is ever turned on** (Blaze plan), create the bucket in
+`australia-southeast1` and update the policy before any media moves.
 
-### R5: Birth year is readable by every signed-in user · **MEDIUM**
+### R5: Birth year readable by others · **FIXED**
 
-`firestore.rules` allows `read: if signedIn()` on `/users/{uid}`, and the
-document contains `birthYear`. Nothing in the UI displays another user's birth
-year (it was also removed from your own profile header), but anyone signed in
-can read it directly from Firestore. The signup form says it's used "only to
-apply age protections", which doesn't match being world-readable.
-
-Partly tightened: the rules now let birth year be set **once** (if it was never
-set) and never changed after, so an under-16 can't edit their way past the age
-gate from Settings.
-
-**Remaining fix:** move `birthYear` into `users/{uid}/private/details`, readable
-only by the owner, and change `isAdult()` in the rules to read that path.
+Birth year has moved to `users/{uid}/private/age`, readable only by its owner,
+settable once, and read there by the rules' age checks (`birthYearOf()`). An
+older profile is moved the next time its owner opens Mesh (`fetchOwnProfile`
+in `src/lib/data/users.js`), which also strips old `email` and `phone` fields.
+Until then a dormant account's old fields stay readable by signed-in users
+(never by guests); staff can move a birth year across unchanged.
 
 ### R6: Notifiable data breaches · **MEDIUM**
 
@@ -150,13 +139,18 @@ metrics show nearly all requests verified, enforce for Firestore, then Auth.
 ## What the audit found, and what changed
 
 ### Tracking and third parties
-- **Analytics: none.** No Google Analytics, no Meta pixel, no Segment, no
-  Sentry, no telemetry of any kind.
-- **Third-party scripts in `index.html`: none.**
-- **Google reCAPTCHA Enterprise loads on every visit**, through Firebase App
-  Check, to prove requests come from the real site. It's disclosed in the
-  Privacy Policy and the Cookies & Storage policy as a security measure. Phone
-  sign-in runs a second, invisible reCAPTCHA when an SMS code is requested.
+- **Analytics: Cloudflare Web Analytics only.** Page views and load times,
+  no cookies, no profile of anyone. No Google Analytics, no Meta pixel, no
+  Segment, no Sentry.
+- **Google ads (AdSense): opt-in.** Off unless someone 18 or over turns on
+  "Google ads" in their cookie choices; then non-personalised ads fill empty
+  Home slots only. Disclosed in the Privacy and Cookies policies.
+- **Google reCAPTCHA Enterprise** (Firebase App Check) sets its own cookies,
+  so it stays off until someone allows it in their cookie choices. Phone
+  sign-in runs an invisible reCAPTCHA when an SMS code is requested.
+- **Others, each disclosed in the Privacy Policy:** Metered (TURN relays for
+  calls), Photon by komoot (place search), Cloudflare (delivery, R2 media,
+  push notifications), and the browser's own push service.
 - **Embeds: none.** No YouTube, no Twitter, no iframes.
 - **GIPHY** (only if `VITE_GIPHY_API_KEY` is set). Search words and the
   viewer's IP address go to GIPHY when the picker is open, and every GIF shown
@@ -170,12 +164,13 @@ metrics show nearly all requests verified, enforce for Firestore, then Auth.
 
 ### Storage in the browser
 - Firebase Auth session token (session-only unless "Keep me signed in").
-- `mesh:` keys in `localStorage` for posting cooldown and duplicate detection
-  (`src/lib/moderation.js`), plus one key for dismissing the storage notice.
-- Nothing else. **Conclusion: a blocking consent banner is not required**,
-  because there is no non-essential storage to consent to. Disclosure is
-  required, and `StorageNotice.jsx` provides it without a fake choice. If
-  analytics are ever added, that component has to become a real opt-in.
+- `mesh:` keys in `localStorage`: preferences, posting cooldown and duplicate
+  checks, and on-device copies of what you last saw so Mesh opens instantly.
+  Each is listed in the Cookies & Storage policy; keep that list in step when
+  adding one.
+- **Cookie choices are real opt-ins** (`StorageNotice.jsx`): Google's
+  security check and Google ads each stay off until allowed. Everything else
+  stored is necessary and disclosed in the Cookies & Storage policy.
 
 ### Data minimisation: one real finding, fixed
 Email address and phone number were being copied into `/users/{uid}`, which
@@ -186,9 +181,9 @@ already reading them from there.
 Both fields are now removed from the document and **rejected by the security
 rules**, so a future change can't quietly reintroduce them.
 
-> **Migration required:** existing user documents created before this change
-> still contain `email` and `phone`. Strip them with a one-off admin script
-> before launch. The rules stop new writes, not old data.
+> **Migration:** older user documents lose `email` and `phone` the next time
+> their owner opens Mesh (see R5). Accounts that never come back keep them, so
+> a one-off admin sweep before launch would close it completely.
 
 ### Consent
 - An unticked-by-default checkbox now gates account creation on both paths:
@@ -276,8 +271,5 @@ attack-tested against the live rules (54 checks, all passing):
 
 ## Deliberately not done
 
-- **No cookie consent banner.** There is nothing non-essential to consent to.
-  Adding one would be theatre, and it trains people to dismiss the banners that
-  carry a real choice.
 - **No "we are fully compliant" claim anywhere.** Mesh isn't, until the items
   above are closed by someone qualified to close them.

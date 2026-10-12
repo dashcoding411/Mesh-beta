@@ -1,4 +1,4 @@
-import { stampLayout } from "../../lib/digicam";
+import { stampLayout } from "../../lib/stamp";
 
 /**
  * Seven-segment readout, like a digicam's LCD and date stamp: the same LED

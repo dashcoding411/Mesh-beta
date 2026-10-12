@@ -51,8 +51,13 @@ Composite indexes are declared in `firestore.indexes.json`.
 ## Client
 
 - **Code splitting.** Screens, overlays, the story viewer, the photo cropper
-  and the Storage SDK load on demand. Firebase is a single vendor chunk
-  because its packages have circular imports.
+  and the Storage SDK load on demand, as do the sign-in page and first-run
+  tour (most opens are signed in), and a post's comments and edit sheets
+  (loaded on tap). Firebase is a single vendor chunk because its packages
+  have circular imports. Firestore's RE2JS regex engine, which it bundles
+  only for pipeline queries Mesh never runs, is swapped for a stub
+  (`lib/re2jsStub.js`, aliased in `vite.config.js`); that saves about 140 kB
+  on every load. Remove the alias if Mesh ever uses pipelines.
 - **Profile addresses.** Profiles live at `/@handle`. Handles of profiles
   read this session are cached, so links go straight there; an older
   `/u/<uid>` link resolves and swaps its address for the handle.
@@ -441,18 +446,26 @@ frame by the zoom, as a compact's digital zoom did. The develop step
 (`developFrame`) picks its look from the flash switch (`LOOKS`): with the
 flash, an early-2000s compact (more contrast, black at about 8, punchier
 primaries, little warming, a hard centre pop falling off to the corners);
-without it, warm 35mm film (black lifted to about 12 with dense deep
-shadows, softer, amber, a gentle vignette). Both: a 3x3 binomial blur
+without it, warm 35mm film tuned against scanned disposable-camera rolls
+(black lifted to a murky 19 or so, cool teal shadows, blues and teals kept
+richer, softer, amber, a gentle vignette, heavier grain). Both: a 3x3 binomial blur
 (`softCopy`, about 0.7 px) blended in to take off the phone's sharpening; a
 monotone-cubic tone curve with a little upper-mid punch and a soft
-shoulder (white about 240); gold highlights and slightly magenta shadows;
+shoulder (white about 240); gold highlights, with slightly magenta shadows under flash;
 per-pixel colour (`filmColour`: reds and oranges warmer, skin a touch
 brighter, yellows toward orange, greens toward olive and quieter, blues
 toward cyan and quieter, muted colours lifted and loud ones calmed); a
-faint red-cyan fringe toward the corners (`lensFringe`, up to 1 px); grain
-the same on every channel, in soft clumps, peaking in the mid-tones and
-fading in deep shadows and highlights; faint warm halation round the
-brightest spots (screened, so it can't pass white); and the date stamp.
+faint red-cyan fringe toward the corners (`lensFringe`, up to 1 px); a
+cheap lens's softness, sharp in the middle and blending toward a
+scaled-down-and-up blur at the edges and corners (`lensBlur`); grain like a
+scanned roll, in soft clumps of two sizes, mostly brightness with a faint
+colour speckle, peaking in the mid-tones but running through shadows and
+sky; faint warm halation round the brightest spots (screened, so it can't
+pass white); and the date stamp. The stamp is LED seven-segment digits
+(`lib/stamp.js`, shared with the on-screen `SevenSeg` readouts and the story
+sticker) drawn as light, like a film camera's date back: soft-edged, a hot
+amber core, a red-orange bleed and grain, screened on so it fades over a
+bright sky (`drawStamp`, built once per size and cached).
 
 Links never open in M.A.T.H: tapped in Messages or another app, a roll link
 opens in Safari or that app's own browser, each signed in separately. So the
