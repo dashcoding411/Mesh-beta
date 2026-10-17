@@ -292,9 +292,16 @@ export function listenTyping(chatId, callback) {
 }
 
 let lastPresenceWrite = 0;
+let presenceHidden = false;
+
+/** "Show when you're active" off: nothing is written, and the last one goes. */
+export function setPresenceHidden(on) {
+  presenceHidden = !!on;
+  if (presenceHidden && me()) deleteDoc(doc(db, "presence", me())).catch(() => {});
+}
 
 export async function touchPresence() {
-  if (Date.now() - lastPresenceWrite < 60000) return;
+  if (presenceHidden || Date.now() - lastPresenceWrite < 60000) return;
   lastPresenceWrite = Date.now();
   await setDoc(doc(db, "presence", me()), { at: serverTimestamp() }, { merge: true }).catch(() => {});
 }

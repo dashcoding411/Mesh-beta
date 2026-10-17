@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Pause, Play, ChevronLeft, ChevronRight, Trash2, Heart, SendHorizontal, Waves, Eye, Star, Pencil } from "lucide-react";
 import {
-  deleteStory, me, hasLikedStory, likeStory, fetchStoryLikes, fetchStoryViews, markStoryViewed, fetchEchoes, addEcho, deleteEcho, replyToStory, storyExpired,
+  deleteStory, me, hasLikedStory, likeStory, fetchStoryLikes, fetchStoryViews, viewersKept, markStoryViewed, fetchEchoes, addEcho, deleteEcho, replyToStory, storyExpired,
   ECHO_MAX, QUICK_REACTIONS,
 } from "../lib/db";
 import { checkContent, markPosted, hitsHiddenWords } from "../lib/moderation";
@@ -61,7 +61,8 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
     fetchEchoes(id).then((echoes) => got({ echoes })).catch(() => got({ echoes: [] }));
     if (mine) {
       fetchStoryLikes(id).then((likes) => got({ likes })).catch(() => got({ likes: [] }));
-      fetchStoryViews(id).then((views) => got({ views })).catch(() => got({ views: [] }));
+      if (viewersKept(item)) fetchStoryViews(id).then((views) => got({ views })).catch(() => got({ views: [] }));
+      else got({ views: [] });
     } else {
       hasLikedStory(id).then((liked) => got({ liked }));
       markStoryViewed(item);
@@ -363,9 +364,13 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
       <div className="min-h-24 flex-1 overflow-y-auto px-4 py-3">
         {panel === "activity" && tab === "viewers" ? (
           !viewers ? <p className="text-callout text-fg-muted">Loading…</p>
-            : !viewers.length ? <p className="text-callout text-fg-muted">No one's seen it yet.</p>
-            : (
+            : !viewers.length ? (
+              <p className="text-callout text-fg-muted">
+                {viewersKept(story) ? "No one's seen it yet." : "Who viewed a story is deleted 48 hours after you post it. Likes stay."}
+              </p>
+            ) : (
               <ul className="space-y-3">
+                {!viewersKept(story) && <li className="text-caption text-fg-subtle">Who viewed it was deleted 48 hours after you posted it. These are the people who liked it.</li>}
                 {viewers.map((v) => (
                   <li key={v.uid} className="flex items-center gap-3">
                     <LiveAvatar uid={v.uid} profile={{ username: v.username }} size={32} />

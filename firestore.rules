@@ -1086,7 +1086,8 @@ service cloud.firestore {
           && incomingData().get('hiddenWords', []).size() <= 200
           && incomingData().get('muted', []) is list
           && incomingData().get('muted', []).size() <= 500
-          && incomingData().get('hideAi', false) is bool;
+          && incomingData().get('hideAi', false) is bool
+          && incomingData().get('hideActive', false) is bool;
       }
       // The newsroom's folders and where each story is filed: private to the journalist.
       match /private/desk {

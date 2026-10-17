@@ -349,11 +349,29 @@ export async function fetchLikers(postId, n = 2) {
     .slice(0, n);
 }
 
+// A private score per account you interact with, for ordering your feed.
+// One you haven't interacted with for 90 days is forgotten.
+const AFFINITY_DAYS = 90;
+let affinityTidied = false;
+
+async function forgetOldAffinity(col) {
+  const cutoff = Timestamp.fromMillis(Date.now() - AFFINITY_DAYS * 86400000);
+  const old = await getDocs(query(col, where("updatedAt", "<", cutoff), limit(400)));
+  if (!old.size) return;
+  const batch = writeBatch(db);
+  old.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
 export async function fetchAffinity() {
   if (!me()) return new Map();
-  const q = query(collection(db, "users", me(), "affinity"), limit(200));
+  const col = collection(db, "users", me(), "affinity");
+  if (!affinityTidied) {
+    affinityTidied = true;
+    forgetOldAffinity(col).catch(() => {});
+  }
   const map = new Map();
-  (await getDocs(q)).docs.forEach((d) => map.set(d.id, d.data().score || 0));
+  (await getDocs(query(col, orderBy("updatedAt", "desc"), limit(200)))).docs.forEach((d) => map.set(d.id, d.data().score || 0));
   return map;
 }
 

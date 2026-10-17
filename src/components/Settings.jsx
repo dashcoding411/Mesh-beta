@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
-  BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
+  Activity, BookUser, BookOpen, LifeBuoy, Users, Lock, Mail, Phone, KeyRound, ShieldCheck, Download, FileText, LogOut, Trash2, ChevronRight, CalendarDays, Scale,
   MessageCircle, MessageSquare, Ban, UserPlus, Check, X, Sparkles, EyeOff, Gavel, Megaphone, Plus,
   SunMoon, Type, Waves, PlayCircle, VolumeX, BrickWall, WandSparkles, Keyboard, Compass, Contrast, Cookie, ChartColumn, Search as SearchIcon,
 } from "lucide-react";
@@ -37,7 +37,7 @@ function brickSummary(brick) {
 import {
   exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, removeMyReposts, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi,
+  fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi, setHideActive as saveHideActive,
 } from "../lib/db";
 import Switch from "./ui/Switch";
 import Segmented from "./ui/Segmented";
@@ -60,7 +60,7 @@ const ContactSync = lazy(() => import("./ContactSync"));
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
 
 export default function Settings() {
-  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, muted, role } = useShell();
+  const { profile, setProfile, interests, openInterests, hiddenWords, setHiddenWords, hideAi, setHideAi, hideActive, setHideActive, muted, role } = useShell();
   const consent = useConsent();
   const brick = useBrick();
   const [requests, setRequests] = useState(null);
@@ -109,6 +109,13 @@ export default function Settings() {
       }, 60);
     }
     return undefined;
+  };
+  const toggleActive = (show) => {
+    setHideActive(!show);
+    saveHideActive(!show).catch(() => {
+      setHideActive(show);
+      toast({ tone: "error", title: "Couldn't save that", body: "Check your connection and try again." });
+    });
   };
   const toggleAi = (on) => {
     setHideAi(on);
@@ -204,6 +211,10 @@ export default function Settings() {
             <Row icon={MessageSquare} label="Who can comment on your posts"
               value={{ following: "Only people you follow", off: "No one" }[profile?.commentPolicy] || "Everyone"}
               onClick={() => setDialog("comments")} />
+            <Row id="active-status" icon={Activity} label="Show when you're active"
+              value={hideActive ? "Off: nobody sees when you're on Mesh" : "People you follow back and your one-to-one chats see \"Active now\""}
+              help="Turn it off and Mesh stops recording when you were last on, and deletes the last time it has."
+              action={<Switch label="Show when you're active" checked={!hideActive} onChange={toggleActive} />} />
             <Row icon={BookUser} label="Contacts" value="Find friends from your contacts, and choose whether they can find you"
               onClick={() => setDialog("contacts")} />
           </Group>

@@ -3,7 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, releaseAppCheck } from "./firebase";
 import { finishGoogleDirect, googleReturning, lostSession, noteSignedIn, restoreSession } from "./lib/auth";
 import { clearSnapshots, readSnapshot, saveSnapshot } from "./lib/snapshot";
-import { openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
+import { setPresenceHidden, tidyStoryViewers, openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { useTimeMeter } from "./lib/timeMeter";
@@ -139,6 +139,7 @@ export default function App() {
   const [interests, setInterests] = useState([]);
   const [hiddenWords, setHiddenWords] = useState([]);
   const [hideAi, setHideAi] = useState(false);
+  const [hideActive, setHideActive] = useState(false);
   const [tourDone, setTourDone] = useState(null); // from private prefs; null until known
   // First-time signed-out visitors see the welcome page at / until they choose to look around.
   const [welcomed, setWelcomed] = useState(() => { try { return !!localStorage.getItem("mesh:welcomed"); } catch { return true; } });
@@ -163,6 +164,7 @@ export default function App() {
       setInterests(a.prefs.interests || []);
       setHiddenWords(a.prefs.hiddenWords || []);
       setHideAi(!!a.prefs.hideAi);
+      setHideActive(!!a.prefs.hideActive);
       setTourDone(!!a.prefs.tourDone);
       setMutedSet(new Set(a.prefs.muted || []));
     };
@@ -228,9 +230,11 @@ export default function App() {
     if (!authReady || !user || !profile) return;
     saveSnapshot(`me:${user.uid}`, {
       profile, following: [...following], blocked: [...blocked],
-      prefs: { interests, hiddenWords, hideAi, tourDone, muted: [...muted] },
+      prefs: { interests, hiddenWords, hideAi, hideActive, tourDone, muted: [...muted] },
     });
-  }, [authReady, user, profile, following, blocked, interests, hiddenWords, hideAi, tourDone, muted]);
+  }, [authReady, user, profile, following, blocked, interests, hiddenWords, hideAi, hideActive, tourDone, muted]);
+  // Online status stays off this device's writes while it's hidden.
+  useEffect(() => { setPresenceHidden(hideActive); }, [hideActive]);
 
   // The security check starts once Mesh is on screen (firebase.js).
   useEffect(() => {
@@ -419,9 +423,9 @@ export default function App() {
 
   const shell = useMemo(() => ({
     profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey, role, modOnly,
-    interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi,
+    interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi, hideActive, setHideActive,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollsDot: rollSignal.dot,
-  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, modOnly, interests, openInterests, startCall, call, hiddenWords, hideAi,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, modOnly, interests, openInterests, startCall, call, hiddenWords, hideAi, hideActive,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollSignal.dot]);
 
   const { page, overlay, bgQuery } = resolve(loc);
@@ -443,6 +447,8 @@ export default function App() {
   useTimeMeter(signedIn ? user.uid : null);
   const joinedAt = profile?.createdAt;
   useEffect(() => { if (signedIn) recordActivity({ createdAt: joinedAt }).catch(() => {}); }, [signedIn, joinedAt]);
+  // Viewer lists on your own stories go once they're 48 hours old.
+  useEffect(() => { if (signedIn) tidyStoryViewers().catch(() => {}); }, [signedIn]);
 
   if (!authReady) {
     return (

@@ -36,6 +36,7 @@ export const SETTINGS_INDEX = [
   // What you see
   { id: "interests", label: "Your interests", group: "What you see", keywords: ["topics", "feed", "for you", "recommendations", "algorithm"], desc: "Shapes For you, Flicks and suggestions", go: { run: "interests" } },
   { id: "hidden", label: "Hidden words", group: "What you see", keywords: ["mute words", "filter", "block words", "spoilers", "keywords", "triggers"], desc: "Hide posts and comments with these words", go: { dialog: "hidden" } },
+  { id: "active-status", label: "Show when you're active", group: "Privacy", keywords: ["online", "active now", "last seen", "status", "presence", "hide"], desc: "Choose whether people see when you're on Mesh", go: { scroll: "active-status" } },
   { id: "hide-ai", label: "Hide posts edited with AI", group: "What you see", keywords: ["ai", "artificial intelligence", "edited", "generated", "filter"], desc: "Keep AI-edited posts out of your feeds", go: { scroll: "hide-ai" } },
 
   // Blocked and muted

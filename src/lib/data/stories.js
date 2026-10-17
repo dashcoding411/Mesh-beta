@@ -83,6 +83,28 @@ export async function markStoryViewed(story) {
   } catch { /* not counted; nothing to tell the viewer */ }
 }
 
+// Who viewed a story is kept for 48 hours from posting, then deleted: long
+// enough to see who caught it, not a lasting record of what people watched.
+const VIEWERS_KEPT_MS = 48 * 3600 * 1000;
+export const viewersKept = (story) => Date.now() - tsMillis(story?.createdAt) < VIEWERS_KEPT_MS;
+
+let tidied = false;
+/** Deletes the viewer lists of your stories from 2 to 14 days old. Once a session. */
+export async function tidyStoryViewers() {
+  if (tidied || !me()) return;
+  tidied = true;
+  const days = Array.from({ length: 13 }, (_, i) => dayKey(Date.now() - (i + 2) * 86400000));
+  const mine = await getDocs(query(collection(db, "stories"), where("authorId", "==", me()), where("day", "in", days), limit(100))).catch(() => null);
+  for (const story of mine?.docs || []) {
+    if (viewersKept(story.data())) continue;
+    const views = await getDocs(query(collection(story.ref, "views"), limit(450))).catch(() => null);
+    if (!views?.size) continue;
+    const batch = writeBatch(db);
+    views.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit().catch(() => {});
+  }
+}
+
 export async function fetchStoryViews(storyId) {
   const snap = await getDocs(query(collection(db, "stories", storyId, "views"), limit(2000)));
   return snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));

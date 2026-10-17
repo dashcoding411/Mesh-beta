@@ -88,6 +88,18 @@ Composite indexes are declared in `firestore.indexes.json`.
   or out reloads the page so no state carries between the two.
 - **Profile cards.** `profileCache` overlays authors' current name, photo and
   badges (admin-awarded, e.g. Beta tester) on denormalised content.
+- **Badges** (`components/ui/Badges.jsx`). One per person, the highest they
+  hold: Founder, then Co-founder, then Queen, then Beta tester. A profile
+  page shows it in full. Beside a name on posts and comments only the rare
+  ones show (founder, co-founder, queen, plus the verified or pink tick), so
+  a badge there stays special; Beta tester and the like are profile-only.
+- **Privacy by default.** Store only what a feature needs, and not for long:
+  online status can be turned off (Settings → Show when you're active, which
+  deletes the last time held); who viewed a story is deleted 48 hours after
+  posting (`tidyStoryViewers`, run by the author's device); a feed score per
+  author is forgotten after 90 days without interaction (`fetchAffinity`);
+  Brick usage keeps 7 days; poll votes, shares and news reads are readable
+  only by the person themselves.
 - **Verification.** Admins verify accounts (`verified` in `users/{uid}.badges`)
   from a profile's menu or the Verified tab in moderation. Verified accounts
   and journalists get a purple tick beside their name on profiles, posts,

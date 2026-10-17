@@ -1,20 +1,24 @@
 import { BadgeCheck, Crown, FlaskConical, Gem, Sparkles } from "lucide-react";
 import { tickOf } from "../../lib/badges";
 
-// Profile badges (see lib/badges.js), most distinguished first. The founders'
-// shimmer (gold and silver); the queen's shimmers, glows and twinkles; beta
-// testers' glows. Motion stops for people who reduce it.
+// Profile badges (see lib/badges.js), highest first: someone holding several
+// shows only the highest, so the founder is the Founder, not also a beta
+// tester. The founders' shimmer (gold and silver); the queen's shimmers,
+// glows and twinkles; beta testers' glows. Motion stops for people who
+// reduce it. Only the rare ones (`everywhere`) show beside a name on posts
+// and comments; the rest are on the profile only, so a badge by a name
+// still means something.
 const BADGES = [
   {
-    id: "founder", label: "Founder", description: "Founded Mesh", icon: Crown,
+    id: "founder", label: "Founder", description: "Founded Mesh", icon: Crown, everywhere: true,
     className: "badge-shine bg-[linear-gradient(110deg,#d97706,#fbbf24_25%,#fef3c7_40%,#fbbf24_55%,#d97706_80%,#f59e0b)] text-amber-950 shadow-[0_0_14px_rgb(251_191_36_/_0.5)] ring-1 ring-amber-200/70",
   },
   {
-    id: "cofounder", label: "Co-founder", description: "Co-founded Mesh", icon: Crown,
+    id: "cofounder", label: "Co-founder", description: "Co-founded Mesh", icon: Crown, everywhere: true,
     className: "badge-shine bg-[linear-gradient(110deg,#64748b,#cbd5e1_25%,#f8fafc_40%,#cbd5e1_55%,#64748b_80%,#94a3b8)] text-slate-900 shadow-[0_0_14px_rgb(203_213_225_/_0.45)] ring-1 ring-slate-100/70",
   },
   {
-    id: "queen", label: "Queen", description: "Mesh royalty", icon: Gem, sparkle: true,
+    id: "queen", label: "Queen", description: "Mesh royalty", icon: Gem, sparkle: true, everywhere: true,
     className: "badge-shine badge-glow bg-[linear-gradient(110deg,#f472b6,#fbcfe8_20%,#fde68a_38%,#f0abfc_56%,#fb7185_74%,#fbcfe8_88%,#f472b6)] text-rose-950 ring-1 ring-pink-100/80",
   },
   {
@@ -35,9 +39,9 @@ export function VerifiedTick({ size = 16, className = "", decorative = false, pi
 
 const held = (badges) => BADGES.filter((b) => badges?.includes(b.id));
 
-/** Full badges, for profile headers. */
+/** The highest badge someone holds, in full, for profile headers. */
 export function ProfileBadges({ badges }) {
-  const list = held(badges);
+  const list = held(badges).slice(0, 1);
   if (!list.length) return null;
   return (
     <span className="flex flex-wrap gap-1.5">
@@ -52,9 +56,9 @@ export function ProfileBadges({ badges }) {
   );
 }
 
-/** Beside a name, for posts and comments: the verified tick, then the most distinguished badge. */
+/** Beside a name, for posts and comments: the verified tick, then a founder's or the queen's badge. */
 export function BadgeMark({ badges }) {
-  const [top] = held(badges);
+  const top = held(badges).find((b) => b.everywhere);
   const tick = tickOf(badges);
   if (!top && !tick) return null;
   const Icon = top?.icon;

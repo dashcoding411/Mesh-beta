@@ -278,6 +278,10 @@ export async function setTourDone() {
   await setDoc(doc(db, "users", me(), "private", "prefs"), { tourDone: true, updatedAt: serverTimestamp() }, { merge: true });
 }
 
+export async function setHideActive(on) {
+  await setDoc(doc(db, "users", me(), "private", "prefs"), { hideActive: on, updatedAt: serverTimestamp() }, { merge: true });
+}
+
 export async function setHideAi(on) {
   await setDoc(doc(db, "users", me(), "private", "prefs"), { hideAi: on, updatedAt: serverTimestamp() }, { merge: true });
 }
