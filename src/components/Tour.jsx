@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Aperture, BrickWall, Hand, ShieldCheck, X } from "lucide-react";
 import { setTourDone, tsMillis } from "../lib/db";
 import { motionReduced } from "../lib/appearance";
 import { TOUR_EVENT } from "../lib/tour";
 import Button from "./ui/Button";
+import Dialog from "./ui/Dialog";
 import { navigate } from "../lib/router";
 import { useFocusTrap } from "../lib/useFocusTrap";
 
-// New accounts from this date see the tour once by themselves; anyone can
-// replay it from Settings.
+// New accounts from this date get the short welcome once. The full tour
+// runs only when someone asks for it: from Settings, Help, or "Show me
+// around" on the welcome.
 const TOUR_SINCE = Date.parse("2026-10-02T00:00:00+10:00");
 const doneKey = (uid) => `mesh:tour-done:${uid || "guest"}`;
 
-// Each step spotlights the first visible element marked data-tour="<key>"
-// (phones and computers mark different ones). Steps with nothing to point at
-// are left out, except those without targets, which sit in the middle. A
-// step with `path` opens that page first; the rest happen on Home.
+// What's different about Mesh, for the welcome. Everything else works the
+// way people expect from the apps they already use.
+const DIFFERENT = [
+  { icon: BrickWall, title: "Brick mode", body: "Daily limits that really lock, so you can put your phone down. Change them any time in Brick mode." },
+  { icon: Aperture, title: "Rolls", body: "A shared disposable camera for nights out. Nobody sees the photos until they develop at 9am the next day." },
+  { icon: ShieldCheck, title: "Made by people", body: "No AI-made pictures or videos. News comes from verified journalists, with their sources." },
+  { icon: Hand, title: "Not for sale", body: "Your data is never sold, and ads never follow what you do." },
+];
+
+// The full tour. Each step spotlights the first visible element marked
+// data-tour="<key>" (phones and computers mark different ones). Steps with
+// nothing to point at are left out, except those without targets, which sit
+// in the middle. A step with `path` opens that page first; the rest happen
+// on Home.
 const MEMBER_STEPS = [
-  { title: "Welcome to Mesh", body: "Here's a quick look at where everything is. It takes about 30 seconds." },
+  { title: "The full tour", body: "Every part of Mesh, one at a time. It takes about two minutes, and you can stop whenever you like." },
   // Brick mode comes first: Mesh is made to be put down.
   { path: "/account/brick", targets: ["brick-limits"], title: "Your daily limits",
     body: "This is Brick mode. The limit you picked at sign-up lives here. When you hit it, Home or Flicks locks until midnight. Lowering a limit is instant; raising it takes 24 hours." },
@@ -29,33 +41,35 @@ const MEMBER_STEPS = [
   { targets: ["feed-tabs"], title: "Your feed",
     body: "For you shows everyone's posts, newest first. Following shows only people you follow. Your interests sit alongside to narrow it down." },
   { targets: ["stories"], title: "Stories",
-    body: "Photos and videos that last 24 hours. Tap the + on your picture to add one with the camera." },
+    body: "Photos and videos that last 24 hours. Tap the + on your picture, or swipe left anywhere on Home, to open the camera. It scans Mesh QR codes too." },
   { targets: ["create"], title: "Create",
     body: "Post a Still (photos), a Flick (video) or a Strand (words), and choose who can see it." },
   { targets: ["sections", "nav-flicks"], title: "Flicks, News and Circles",
     body: {
-      sections: "This menu has Flicks, News, Circles and the rest. Flicks is video with limits you set, News is written by verified journalists, and Circles are communities.",
-      "nav-flicks": "Flicks is short and long video with limits you set. Below it, News is written by verified journalists, and Circles are communities.",
+      sections: "This menu has Flicks, Rolls, News, Circles and the rest. Flicks is video with limits you set, News is written by verified journalists, and Circles are communities, with Gatherings for meeting up in real life.",
+      "nav-flicks": "Flicks is short and long video with limits you set. Below it, News is written by verified journalists, and Circles are communities, with Gatherings for meeting up in real life.",
     } },
   { targets: ["search", "nav-search"], title: "Search", body: "Find people, posts, circles and news." },
   { targets: ["notifications", "nav-notifications"], title: "Notifications",
     body: "Likes, comments, follows and replies. New ones also drop in briefly at the top of the screen." },
   { targets: ["tab-messages", "nav-messages"], title: "Messages",
-    body: "Chats, groups, voice notes and calls. Messages from people you don't follow wait in Requests until you accept." },
+    body: "Chats, groups, voice notes and calls. Notes, the short lines at the top, last 24 hours. Messages from people you don't follow wait in Requests until you accept." },
   { targets: ["tab-account", "profile"], title: "Your profile",
     body: "Your posts, reposts and saved posts, and how others see you. Settings are here too." },
+  { title: "Safe by design",
+    body: "Slurs and attacks are stopped before they post, and if something of yours is blocked, a person reviews your appeal. To report anything, use the ••• menu on it." },
   { targets: ["more", "sections"], title: "Back to Brick mode",
     body: {
       more: "Brick mode, the Leaderboard and Settings are under More, so you can change your limits any time.",
       sections: "Brick mode is in this menu too, so you can change your limits any time.",
     } },
-  { title: "You're all set", body: "Stuck on anything? Help, in the menu, has short guides to everything. You can replay this tour from there too." },
+  { title: "That's everything", body: "Help, in the menu, has a short guide to every part of Mesh, and this tour is always in Settings." },
 ];
 
 const GUEST_STEPS = [
-  { title: "Welcome to Mesh", body: "Have a look around. Here's where everything is." },
-  { targets: ["sections", "nav-flicks"], title: "Flicks, News and Circles",
-    body: "Video with limits you set, news from verified journalists, and communities. Browsing is free." },
+  { title: "The full tour", body: "Have a look around. Here's where everything is." },
+  { targets: ["sections", "nav-flicks"], title: "Flicks, Rolls, News and Circles",
+    body: "Video with limits you set, a shared disposable camera for nights out, news from verified journalists, and communities. Browsing is free." },
   { targets: ["search", "nav-search", "tab-search"], title: "Search", body: "Find people, posts, circles and news." },
   { targets: ["login"], title: "Make an account", body: "Log in or sign up to post, follow people and message." },
   { targets: ["sections", "more"], title: "Help", body: "Help, in this menu, explains everything in Mesh in plain words." },
@@ -73,55 +87,70 @@ function findTarget(keys = []) {
 }
 
 /**
- * The first-run tour: spotlights the main controls one at a time. `ready`
- * says the Home feed is showing with nothing else open.
+ * A new account's short welcome, and the full tour, which spotlights the
+ * main controls one at a time when someone asks for it. `ready` says the
+ * Home feed is showing with nothing else open.
  */
 export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) {
+  const [welcome, setWelcome] = useState(false);
   const [steps, setSteps] = useState(null);
   const [at, setAt] = useState(0);
-  const [pending, setPending] = useState(false);
+  const [asked, setAsked] = useState(false);
   const [rect, setRect] = useState(null);
   const [matched, setMatched] = useState(null);
   const cardRef = useRef(null);
   useFocusTrap({ ref: cardRef, active: !!steps });
 
-  // Replays from Settings.
+  // The full tour, from Settings and Help.
   useEffect(() => {
-    const replay = () => setPending(true);
+    const replay = () => setAsked(true);
     window.addEventListener(TOUR_EVENT, replay);
     return () => window.removeEventListener(TOUR_EVENT, replay);
   }, []);
 
-  // First visit: guests, and accounts made since the tour arrived.
+  // First visit, for accounts made since the welcome arrived. Guests have
+  // the Welcome page instead.
   const eligible = (() => {
+    if (guest || !uid) return false;
     let seen = false;
     try { seen = localStorage.getItem(doneKey(uid)) === "1"; } catch { /* storage blocked */ }
-    if (seen) return false;
-    if (guest) return true;
-    return !!uid && prefsDone === false && tsMillis(profile?.createdAt) >= TOUR_SINCE;
+    return !seen && prefsDone === false && tsMillis(profile?.createdAt) >= TOUR_SINCE;
   })();
 
+  // Once Home is clear of dialogs and the cookie banner.
   useEffect(() => {
-    if (steps || !ready || !(pending || eligible)) return undefined;
-    // Wait for the feed to render and for any first-run dialog or the cookie banner to close.
+    if (welcome || steps || !ready || !(asked || eligible)) return undefined;
     const id = setInterval(() => {
       if (document.querySelector("[aria-modal=true], [data-cookie-banner]")) return;
       clearInterval(id);
-      const list = (guest ? GUEST_STEPS : MEMBER_STEPS).filter((s) => !s.targets || s.path || findTarget(s.targets));
-      setPending(false);
-      setAt(0);
-      setSteps(list);
-    }, 700);
+      if (asked) {
+        setAsked(false);
+        setAt(0);
+        setSteps((guest ? GUEST_STEPS : MEMBER_STEPS).filter((s) => !s.targets || s.path || findTarget(s.targets)));
+      } else {
+        setWelcome(true);
+      }
+    }, 500);
     return () => clearInterval(id);
-  }, [ready, pending, eligible, steps, guest]);
+  }, [ready, asked, eligible, welcome, steps, guest]);
 
-  const finish = useCallback(() => {
-    setSteps(null);
-    setRect(null);
+  const markSeen = useCallback(() => {
     try { localStorage.setItem(doneKey(uid), "1"); } catch { /* storage blocked */ }
     if (uid) setTourDone().catch(() => {});
     onSeen?.();
   }, [uid, onSeen]);
+
+  const closeWelcome = (showAround) => {
+    setWelcome(false);
+    markSeen();
+    if (showAround) setAsked(true);
+  };
+
+  const finish = useCallback(() => {
+    setSteps(null);
+    setRect(null);
+    markSeen();
+  }, [markSeen]);
 
   const step = steps?.[at];
 
@@ -172,6 +201,7 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
     return () => window.removeEventListener("keydown", onKey, true);
   }, [steps, finish]);
 
+  if (welcome) return <Welcome onClose={closeWelcome} />;
   if (!step) return null;
 
   const last = at === steps.length - 1;
@@ -238,5 +268,42 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
       </div>
     </div>,
     document.body,
+  );
+}
+
+// Touch screens get the swipe-left camera tip; it's a phone gesture.
+const touch = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
+/** The short welcome: what's familiar in one line, then what's different. */
+function Welcome({ onClose }) {
+  return (
+    <Dialog title="Welcome to Mesh" onClose={() => onClose(false)} size="sm"
+      footer={(
+        <div className="flex w-full gap-2">
+          <Button variant="secondary" full onClick={() => onClose(true)}>Show me around</Button>
+          <Button variant="primary" full onClick={() => onClose(false)}>Got it</Button>
+        </div>
+      )}>
+      <p className="text-callout text-fg-muted">
+        Mesh works like the apps you already know: a feed, stories, messages and calls, and videos in Flicks.
+        Here&apos;s what&apos;s different.
+      </p>
+      <ul className="mt-4 space-y-3.5">
+        {DIFFERENT.map(({ icon: Icon, title, body }) => (
+          <li key={title} className="flex gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text">
+              <Icon size={18} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-callout font-semibold">{title}</span>
+              <span className="block text-caption text-fg-muted">{body}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-caption text-fg-subtle">
+        {touch() && "Tip: swipe left on Home to open the camera. "}The full tour is always in Settings.
+      </p>
+    </Dialog>
   );
 }

@@ -166,7 +166,7 @@ function FirstSteps({ onGo }) {
         ))}
       </ul>
       <button type="button" onClick={replayTour} className="mt-2 px-2 text-caption font-semibold text-accent-text hover:underline">
-        Or take the 30-second tour
+        Or take the full tour
       </button>
     </section>
   );

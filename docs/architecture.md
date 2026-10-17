@@ -96,13 +96,16 @@ Composite indexes are declared in `firestore.indexes.json`.
   tick, a pink profile (`.theme-pink` re-tints the surface tokens) and a pink
   banner behind the profile photo. `badges/pink` names the holder, and the
   rules require the holder's badges (and only theirs) to carry `pink`.
-- **First-run tour.** `Tour.jsx` spotlights the main controls one at a time
-  (elements marked `data-tour`; phones and computers mark different ones, and
-  steps with nothing visible to point at are left out). It starts by itself
-  for guests on their first visit and for accounts made since it arrived,
-  once the Home feed is showing with nothing else open; `tourDone` in private
-  prefs (and a local flag) stops it repeating. Settings → Take the tour
-  replays it.
+- **Welcome and full tour** (`Tour.jsx`). A new account gets one short
+  welcome card once the Home feed is showing with nothing else open: Mesh has
+  what people expect from other apps, then the four things that are
+  different (Brick mode, Rolls, made by people, not for sale). `tourDone` in
+  private prefs (and a local flag) stops it repeating. Guests get nothing
+  extra; the Welcome page already explains Mesh. The full tour, which
+  spotlights the main controls one at a time (elements marked `data-tour`;
+  phones and computers mark different ones, and steps with nothing visible to
+  point at are left out), runs only when asked for: Settings → Full tour of
+  Mesh, Help, or "Show me around" on the welcome.
 - **Notification banners.** Notifications that arrive during a visit drop in
   as a short banner (not on the Notifications page, not from muted or blocked
   people).

@@ -57,7 +57,7 @@ export const SETTINGS_INDEX = [
 
   // Help and policies
   { id: "help", label: "Help and guides", group: "Help", keywords: ["help", "how to", "how do i", "guide", "guides", "faq", "support", "stuck", "explain"], desc: "How to do anything in Mesh, in plain words", go: { path: "/help" } },
-  { id: "tour", label: "Take the tour", group: "Help", keywords: ["tutorial", "help", "how to use", "guide", "walkthrough"], desc: "A quick look at where everything is", go: { run: "tour" } },
+  { id: "tour", label: "Full tour of Mesh", group: "Help", keywords: ["tour", "tutorial", "help", "how to use", "guide", "walkthrough", "welcome"], desc: "Every part of Mesh, step by step", go: { run: "tour" } },
   { id: "contact", label: "Contact Mesh", group: "Help", keywords: ["support", "help", "email us", "report a problem", "bug", "feedback"], desc: "Email the Mesh team", go: { run: "contact" } },
   { id: "guidelines", label: "Community Guidelines", group: "Help", keywords: ["rules", "what's allowed", "appeals", "banned"], desc: "What's allowed, and how appeals work", go: { path: "/legal/guidelines" } },
   { id: "privacy-policy", label: "Privacy Policy", group: "Help", keywords: ["privacy", "data", "policy"], desc: "What Mesh collects and why", go: { path: "/legal/privacy" } },

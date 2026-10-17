@@ -1,5 +1,5 @@
 import {
-  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy, LifeBuoy,
+  House, Clapperboard, MessageCircle, Search, Blend, Newspaper, Bell, Settings, BrickWall, Trophy, LifeBuoy, Aperture,
 } from "lucide-react";
 import { sidebarSection } from "../../lib/surfaces";
 
@@ -9,6 +9,7 @@ export const MAIN_NAV = [
   { id: "foryou", label: "Home", icon: House, path: "/" },
   { id: "search", label: "Search", icon: Search, path: "/search" },
   { id: "flicks", label: "Flicks", icon: Clapperboard, path: "/flicks" },
+  { id: "rolls", label: "Rolls", icon: Aperture, path: "/rolls" },
   { id: "messages", label: "Messages", icon: MessageCircle, path: "/messages", badge: "unread", account: true },
   { id: "news", label: "News", icon: Newspaper, path: "/news" },
   { id: "circles", label: "Circles", icon: Blend, path: "/circles" },
