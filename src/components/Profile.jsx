@@ -114,6 +114,7 @@ export default function Profile({ initialTab = null }) {
           <div className="relative">
             <ProfileHeader profile={profile} postCount={posts?.length ?? null}
               onShowFollows={(kind) => setFollows(kind)} avatar={<EditableAvatar size={88} />}
+              featured={journalist && <JournalistCard uid={profile.id} journalist={journalist} stories={stories} onEdit={() => setEditingByline(true)} className="" />}
               actions={
                 <>
                   <Button className="flex-1" onClick={() => setEditing(true)}>Edit profile</Button>
@@ -124,7 +125,6 @@ export default function Profile({ initialTab = null }) {
 
           <Highlights profile={profile} own />
           <BrickHighlight uid={profile.id} own />
-          {journalist && <JournalistCard uid={profile.id} journalist={journalist} stories={stories} onEdit={() => setEditingByline(true)} />}
 
           <Tabs variant="underline" label="Profile content" value={current} onChange={setTab} className="px-2 md:px-4"
             tabs={[

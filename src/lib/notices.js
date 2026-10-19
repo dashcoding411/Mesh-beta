@@ -9,5 +9,8 @@ export function openNotice(n) {
   if (n.type === "invite") return navigate(`/gatherings/${n.ref}`);
   if (n.type === "joined") return navigate(`/circles/${n.ref}`);
   if (n.type === "storylike" || n.type === "echo") return openStory(n.ref, { panel: "activity", tab: n.type === "echo" ? "echoes" : "viewers" });
+  // Decisions come from Mesh, so they don't lead to the staff member who made them.
+  if (n.type === "journalist") return navigate(n.text === "approved" ? "/news/desk" : "/account/settings?open=journalist");
+  if (n.type === "appeal") return undefined;
   return openUserProfile(n.actorId);
 }

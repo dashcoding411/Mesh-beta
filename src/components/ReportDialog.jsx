@@ -40,7 +40,7 @@ export default function ReportDialog({ target, onClose, onReported, report = rep
     return (
       <Dialog title={`Report ${noun}`} onClose={onClose}>
         <p className="mb-3 text-callout text-fg-muted">
-          What's wrong with it? A person reviews every report, using the same rules for everyone.
+          What's wrong with it?
           {target.type === "message" && " Reporting a message shares that one message with moderators, not the rest of the conversation."}
         </p>
         <MenuGroup>

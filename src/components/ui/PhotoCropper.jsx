@@ -130,7 +130,7 @@ export default function PhotoCropper({ file, shape = "circle", title = "Adjust y
         <p className="text-callout text-danger-text">That image couldn&apos;t be opened. Try another.</p>
       ) : (
         <>
-          <p className="mb-3 text-caption text-fg-muted">Drag to position it. Pinch, scroll or use the slider to zoom.</p>
+          <p className="mb-3 text-caption text-fg-muted">Drag to position. Pinch or scroll to zoom.</p>
           <div ref={frameRef} tabIndex={0} role="application"
             aria-label="Photo position. Arrow keys move it; plus and minus zoom."
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}

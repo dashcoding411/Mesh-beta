@@ -100,7 +100,7 @@ export default function Flicks({ startId }) {
 
       {!error && videos?.length === 0 && (
         <div className="flex flex-1 items-center justify-center">
-          <EmptyState icon={Clapperboard} title="No short Flicks yet" body="Short videos play here in full, one at a time."
+          <EmptyState icon={Clapperboard} title="No short Flicks yet"
             action={<Button onClick={() => goBack("/flicks")}>Back to Flicks</Button>} />
         </div>
       )}

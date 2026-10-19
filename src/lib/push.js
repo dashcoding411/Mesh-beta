@@ -14,13 +14,13 @@ const API = (import.meta.env.VITE_PUSH_API || (import.meta.env.DEV ? "http://loc
 const KINDS_KEY = "mesh:push-kinds";
 
 export const PUSH_KINDS = [
-  { id: "messages", label: "Messages", blurb: "New messages, and message requests without their content" },
-  { id: "calls", label: "Calls", blurb: "When someone calls you" },
-  { id: "comments", label: "Comments and mentions", blurb: "Comments, replies, mentions and story echoes" },
-  { id: "follows", label: "Followers", blurb: "New followers and follow requests" },
-  { id: "gatherings", label: "Gatherings", blurb: "Invites, and a reminder 2 hours before ones you're going to" },
-  { id: "rolls", label: "Rolls", blurb: "When a roll you're in develops" },
-  { id: "account", label: "Account and safety", blurb: "Parental controls, appeals and circles letting you in" },
+  { id: "messages", label: "Messages" },
+  { id: "calls", label: "Calls" },
+  { id: "comments", label: "Comments and mentions" },
+  { id: "follows", label: "Followers" },
+  { id: "gatherings", label: "Gatherings" },
+  { id: "rolls", label: "Rolls" },
+  { id: "account", label: "Account and safety" },
 ];
 const ALL = PUSH_KINDS.map((k) => k.id);
 

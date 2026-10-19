@@ -14,7 +14,7 @@ import { pushNotice } from "../push.js";
 // Never pushed: Mesh doesn't buzz people about likes and reposts.
 const IN_APP_ONLY = new Set(["like", "repost", "storylike"]);
 
-export const NOTICE_TYPES = ["like", "comment", "reply", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo", "appeal"];
+export const NOTICE_TYPES = ["like", "comment", "reply", "repost", "follow", "request", "accept", "mention", "family", "familyok", "familyask", "invite", "joined", "storylike", "echo", "appeal", "journalist"];
 
 export function noticeId(type, { actor, postId = "", commentId = "", ref = "" }) {
   switch (type) {
@@ -28,6 +28,7 @@ export function noticeId(type, { actor, postId = "", commentId = "", ref = "" })
     case "storylike": return `storylike_${ref}_${actor}`;
     case "echo": return `echo_${commentId}`;
     case "appeal": return `appeal_${ref}`;
+    case "journalist": return `journalist_${ref}`;
     default: return `${type}_${actor}`;
   }
 }

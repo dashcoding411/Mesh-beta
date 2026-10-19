@@ -106,7 +106,7 @@ export default function EditPostDialog({ post, onClose, onSaved }) {
           </Field>
         )}
         {post.kind === "post" && (
-          <Field label={post.media?.length > 1 ? "Alt text for the first photo" : "Alt text"} hint="Describes the photo for people using screen readers." optional
+          <Field label={post.media?.length > 1 ? "Alt text for the first photo" : "Alt text"} hint="For people using screen readers." optional
             count={alt.length} max={LIMITS.alt}>
             <Textarea autoGrow rows={2} maxRows={6} value={alt} maxLength={LIMITS.alt} onChange={(e) => setAlt(e.target.value)} />
           </Field>

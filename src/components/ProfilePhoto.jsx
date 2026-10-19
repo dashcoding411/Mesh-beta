@@ -50,7 +50,6 @@ export function PhotoNudge({ dismissible = false, className = "" }) {
       <Avatar profile={profile} size={44} />
       <div className="min-w-0 flex-1">
         <p className="text-callout font-semibold text-fg">Add a profile photo</p>
-        <p className="text-caption text-fg-muted">People recognise you faster in feeds, comments and chats.</p>
       </div>
       <Button size="sm" variant="primary" icon={Camera} loading={photo.busy} onClick={photo.choose}>Add</Button>
       {dismissible && (

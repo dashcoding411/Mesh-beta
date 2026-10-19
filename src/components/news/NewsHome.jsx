@@ -57,7 +57,6 @@ export function NewsHome() {
           {/* Journalists publish here; Mesh hosts them. Not Mesh's own publication. */}
           <div className="mb-4 border-b border-line pb-3">
             <p className="font-display text-title-2 font-extrabold tracking-tight">News on Mesh</p>
-            <p className="text-callout text-fg-muted">Independent, verified journalists publishing their own stories. Making Every Story Heard.</p>
           </div>
           {liveTopics.length > 1 && (
             <div role="radiogroup" aria-label="News topics" className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:px-0">
@@ -90,7 +89,6 @@ export function NewsHome() {
             )}
             {items?.length === 0 && (
               <EmptyState icon={Newspaper} title="No stories published yet"
-                body="Stories journalists publish on Mesh will appear here, newest first."
                 action={writer ? <Button variant="primary" icon={PenLine} onClick={() => navigate("/news/desk")}>Write the first story</Button> : null} />
             )}
             {items?.length > 0 && shown.length === 0 && (
@@ -168,11 +166,6 @@ function TodaysBrief({ items }) {
           );
         })}
       </ol>
-      {finished && (
-        <p className="border-t border-line px-4 py-3 text-caption text-fg-muted">
-          Nothing else you need to know right now. The rest is below if you want it.
-        </p>
-      )}
     </section>
   );
 }

@@ -224,7 +224,6 @@ export default function HomeFeed({ mode }) {
               <CameraIcon size={30} />
             </span>
             <span className="text-callout font-semibold">{cameraReady ? "Let go to open the camera" : "Keep swiping for the camera"}</span>
-            <span className="text-caption text-white/60">For your story, or a Mesh QR code</span>
           </div>
         </div>
       )}
@@ -249,7 +248,7 @@ export default function HomeFeed({ mode }) {
 
           {!error && page?.length === 0 && topic !== "all" && mode === "foryou" && (
             <EmptyState icon={Sparkles} title={`Nothing about ${interestById(topic)?.label || "this"} yet`}
-              body="Posts show here when people tag them with this interest. Tag yours when you post."
+              body="Posts tagged with this interest show here."
               action={<Button onClick={() => setTopic("all")}>Show everything</Button>} />
           )}
 

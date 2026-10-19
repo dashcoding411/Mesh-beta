@@ -159,7 +159,6 @@ export default function GatheringPage({ eventId }) {
                 })}
               </div>
             )}
-            {status && !isHost && <p className="mt-2 text-caption text-fg-subtle">Tap your reply again to take it back.</p>}
             {isHost && (
               <div className="flex flex-wrap gap-2">
                 {event.privacy === "private" && <Button size="sm" icon={UserPlus} onClick={() => setDialog("invite")}>Invite people</Button>}
@@ -315,7 +314,7 @@ function Discussion({ event, status }) {
       {posts === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-24 !rounded-card" />)}</div>}
       {posts?.length === 0 && (
         <EmptyState compact icon={MessageSquare} title="No posts yet"
-          body={allowed ? "Kick things off: plans, questions, who's bringing what." : "When people post, it shows here."} />
+          body={null} />
       )}
       {posts?.length > 0 && (
         <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
@@ -379,7 +378,7 @@ function GatheringRoll({ event, isHost, onStarted }) {
         <Aperture size={22} className="shrink-0 text-accent-text" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="block text-callout font-semibold">Start a roll for it</span>
-          <span className="block text-caption text-fg-muted">A shared disposable camera for everyone coming. It develops the next morning at 9.</span>
+          <span className="block text-caption text-fg-muted">Develops at 9am the next day</span>
         </span>
         <Button size="sm" variant="primary" loading={busy} onClick={start}>Start</Button>
       </div>
@@ -480,9 +479,6 @@ function Photos({ event, status }) {
       {canAdd ? (
         <div className="rounded-card border border-line bg-surface p-4">
           <p className="text-callout font-semibold">Share photos from the day</p>
-          <p className="mt-1 text-caption text-fg-muted">
-            Everyone who can see this gathering can see them. Photos are checked on your device first, and AI-generated images aren't allowed.
-          </p>
           <Button size="sm" variant="primary" icon={ImagePlus} className="mt-3" loading={progress !== null} onClick={() => fileRef.current?.click()}>
             {progress !== null ? `Adding ${progress}%` : "Add photos"}
           </Button>
@@ -498,7 +494,7 @@ function Photos({ event, status }) {
       {photos === null && <div className="grid grid-cols-3 gap-1.5">{[0, 1, 2].map((i) => <Skeleton key={i} className="aspect-square !rounded-control" />)}</div>}
       {photos?.length === 0 && (
         <EmptyState compact icon={Images} title="No photos yet"
-          body={canAdd ? "Add the first ones from the day." : "When people who went add photos, they show here."} />
+          body={null} />
       )}
       {photos?.length > 0 && (
         <ul className="grid grid-cols-3 gap-1.5" aria-label="Photos">
@@ -614,7 +610,6 @@ function InviteDialog({ event, onClose, onChange }) {
 
   return (
     <Dialog title="Invite people" onClose={onClose}>
-      <p className="mb-3 text-callout text-fg-muted">Invited people can see this gathering, reply and join the discussion.</p>
       <label htmlFor="invite-search" className="sr-only">Search by handle</label>
       <div className="relative">
         <SearchIcon size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
@@ -684,7 +679,6 @@ export function CalendarButtons({ event }) {
         Google Calendar <ExternalLink size={13} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span>
       </a>
       <Button size="sm" icon={Download} onClick={download}>Apple, Outlook and others</Button>
-      <span className="w-full text-caption text-fg-subtle">The download includes reminders a day before and two hours before; Google Calendar uses your usual reminders.</span>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import {
-  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, UserCheck, Waves, Scale,
+  Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, UserCheck, Waves, Scale, Newspaper,
 } from "lucide-react";
 import { LogoMark } from "./shell/Sidebar";
 import { plural } from "../lib/format";
@@ -27,6 +27,7 @@ const ICONS = {
   storylike: { icon: Heart, className: LIKE },
   echo: { icon: Waves, className: ACCENT },
   appeal: { icon: Scale, className: ACCENT },
+  journalist: { icon: Newspaper, className: ACCENT },
 };
 
 /** The actor's photo with a small icon for what they did. */
@@ -36,8 +37,8 @@ export function NoticeAvatar({ n, size = 44 }) {
   return (
     // inline-flex so the badge is placed against the photo, not the line of text.
     <span className="relative inline-flex shrink-0">
-      {/* Appeal decisions come from Mesh, not the staff member who made them. */}
-      {n.type === "appeal"
+      {/* Appeal and application decisions come from Mesh, not the staff member who made them. */}
+      {n.type === "appeal" || n.type === "journalist"
         ? <LogoMark size={size} />
         : <LiveAvatar uid={n.actorId} profile={{ username: n.actorName, photoURL: n.actorPhoto }} size={size} />}
       <span style={{ width: badge, height: badge }}
@@ -72,5 +73,8 @@ export function NoticeLine({ n, others = 0 }) {
     appeal: n.text === "overturned"
       ? <><strong className="font-semibold text-fg">Mesh</strong> accepted your appeal. You can post it now, just as you wrote it.</>
       : <><strong className="font-semibold text-fg">Mesh</strong> looked at your appeal and the block stays. The rule it matched still applies.</>,
+    journalist: n.text === "approved"
+      ? <><strong className="font-semibold text-fg">Mesh</strong> approved you as a journalist. Set up your byline to start writing.</>
+      : <><strong className="font-semibold text-fg">Mesh</strong> looked at your journalist application. See Settings for the outcome.</>,
   }[n.type] || <>{who} did something new. Reload Mesh to see what.</>;
 }

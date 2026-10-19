@@ -542,12 +542,6 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                     <SourceTile icon={Aperture} label="From a roll" onClick={() => setRollPicker(true)} />
                   )}
                 </div>
-                <p className="mt-3 text-center text-caption text-fg-subtle">
-                  {spec.media === "image"
-                    ? `Up to ${MAX_SLIDES} photos, swiped through in order · JPG, PNG, WebP or GIF`
-                    : `Up to 200 MB. Over ${LONG_VIDEO_SECONDS / 60} minutes becomes a long Flick with a trailer.`}
-                  <span className="hidden md:inline"> · or drag them here</span>
-                </p>
                 <input ref={fileInput} type="file" accept={spec.media === "image" ? "image/*" : "video/*"} className="hidden"
                   multiple={spec.media === "image"} tabIndex={-1} aria-hidden="true"
                   onChange={(e) => { if (spec.media === "image") addPhotos(e.target.files); else choose(e.target.files[0]); e.target.value = ""; }} />
@@ -608,7 +602,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
 
         {long && file && !onMedia && (
           <Field label="Title" error={errors.title} count={title.length} max={LIMITS.title}
-            hint="The first thing people read on the trailer.">
+           >
             <Input id="composer-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={LIMITS.title}
               placeholder="What's it about?" />
           </Field>
@@ -679,7 +673,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         {!onMedia && picked && spec.media === "image" && altShown && (
           <fieldset>
             <legend className="text-callout font-medium">{photos.length > 1 ? "Describe the photos" : "Describe this photo"} <span className="font-normal text-fg-subtle">Optional</span></legend>
-            <p className="mt-0.5 text-caption text-fg-subtle">Read aloud to people using screen readers. Leave one blank and your caption is used instead.</p>
+            <p className="mt-0.5 text-caption text-fg-subtle">For people using screen readers</p>
             <ul className="mt-2 space-y-2">
               {photos.map((ph, i) => (
                 <li key={ph.id} className="flex items-start gap-2">
@@ -726,7 +720,6 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
             </legend>
             <InterestToggles value={shownTopics} max={MAX_POST_TOPICS} label="Topics"
               onChange={(v) => { setTopicsTouched(true); setTopics(v); }} />
-            <p className="mt-2 text-caption text-fg-subtle">Topics put your post in front of people who follow that interest.</p>
           </fieldset>
         )}
 

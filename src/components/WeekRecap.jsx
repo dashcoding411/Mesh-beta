@@ -77,14 +77,13 @@ export default function WeekRecap() {
                 <Button icon={Download} className="flex-1" disabled={busy} onClick={save}>Save image</Button>
               </div>
               <p className="mt-4 text-caption text-fg-subtle">
-                Monday to now. Time on Mesh and stories read are counted on this device only and never leave it. Nothing here is shared unless you share it.
+                Monday to now. Counted on this device only.
               </p>
               <button type="button" onClick={() => navigate("/account/brick")}
                 className="press mt-5 flex min-h-14 w-full items-center gap-3 rounded-card border border-line bg-surface px-4 text-left hover:border-line-strong">
                 <BrickWall size={18} className="shrink-0 text-accent-text" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-callout font-semibold">Want less time next week?</span>
-                  <span className="block text-caption text-fg-muted">Set or lower your daily limits in Brick mode. Lowering is instant.</span>
                 </span>
               </button>
             </>

@@ -87,14 +87,14 @@ export function Byline({ uid, username }) {
 }
 
 /** The journalist section of a profile. `onEdit` on their own. */
-export function JournalistCard({ uid, journalist, stories, onEdit }) {
+export function JournalistCard({ uid, journalist, stories, onEdit, className = "mx-4 mb-4 md:mx-6" }) {
   const topics = Object.entries((stories || []).reduce((acc, s) => {
     const t = s.topic || "world";
     acc[t] = (acc[t] || 0) + 1;
     return acc;
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => newsTopicById(id)?.label).filter(Boolean);
   return (
-    <section aria-label="Journalist" className="mx-4 mb-4 rounded-card border border-line bg-surface p-4 md:mx-6">
+    <section aria-label="Journalist" className={`rounded-card border border-line bg-surface p-4 ${className}`}>
       <div className="flex items-center gap-3">
         <Mark uid={uid} journalist={journalist} username={journalist.username} size={48} />
         <div className="min-w-0">
@@ -167,9 +167,6 @@ export function JournalistSettings({ journalist, onClose, onSaved }) {
           <Button variant="primary" onClick={save} loading={busy}>Save</Button>
         </div>
       )}>
-      <p className="mb-4 text-callout text-fg-muted">
-        Shown on your profile and with every story you write, so readers know who's reporting and from where.
-      </p>
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           {logoUrl
@@ -180,10 +177,10 @@ export function JournalistSettings({ journalist, onClose, onSaved }) {
           <input ref={fileInput} type="file" accept="image/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setCropping(f); }} />
         </div>
-        <Field label="Outlet" hint="The company you report for. Leave it empty if you're independent.">
+        <Field label="Outlet" hint="Leave empty if you're independent.">
           <Input value={outlet} onChange={(e) => setOutlet(e.target.value)} maxLength={80} placeholder="Independent" />
         </Field>
-        <Field label="Region" hint="Where you're based, like Western Sydney or Brisbane.">
+        <Field label="Region" hint="Like Western Sydney or Brisbane.">
           <Input value={region} onChange={(e) => { setRegion(e.target.value); setError(""); }} maxLength={80} placeholder="Sydney" />
         </Field>
         <Field label="Political affiliation" hint="If you belong to or work for a party or political group, name it. It shows on every story you write. Leave it empty if you have none.">

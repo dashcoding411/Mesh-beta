@@ -154,7 +154,7 @@ export function ChatDetails({ chat, onClose }) {
                 </Select>
               </Field>
             )}
-            <Field label="Nickname" hint="Only shown inside this conversation. Leave blank to clear it." error={!chat.isGroup ? error : ""}>
+            <Field label="Nickname" error={!chat.isGroup ? error : ""}>
               <Input value={nick} onChange={(e) => { setNick(e.target.value); setError(""); }} maxLength={30}
                 placeholder={chat.nicknames?.[target] || "Set a nickname"} />
             </Field>

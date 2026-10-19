@@ -41,8 +41,8 @@ export default function AdsManager() {
     let live = true;
     staffRole().then((r) => {
       if (!live) return;
-      setAllowed(!!r);
-      if (r) fetchAllAds().then((l) => { if (live) setAds(l); }).catch(() => { if (live) setAds([]); });
+      setAllowed(r === "admin");
+      if (r === "admin") fetchAllAds().then((l) => { if (live) setAds(l); }).catch(() => { if (live) setAds([]); });
     }).catch(() => { if (live) setAllowed(false); });
     return () => { live = false; };
   }, []);
@@ -223,7 +223,7 @@ function AdEditor({ ad, onClose, onSaved }) {
             <Field label="Starts"><Input type="date" value={form.start} onChange={(e) => set({ start: e.target.value })} /></Field>
             <Field label="Ends"><Input type="date" value={form.end} onChange={(e) => set({ end: e.target.value })} /></Field>
           </div>
-          <Field label="Towns or suburbs" optional hint="Comma-separated. Matched against the town people put on their profile. Leave empty for everywhere.">
+          <Field label="Towns or suburbs" optional hint="Comma separated. Leave empty for everywhere.">
             <Input value={form.towns} placeholder="Brisbane, St Lucia" onChange={(e) => set({ towns: e.target.value })} />
           </Field>
           <fieldset>

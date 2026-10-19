@@ -40,7 +40,6 @@ export default function CirclesToJoin() {
     <section aria-labelledby={id} className="py-4 md:rounded-card md:border md:border-line md:bg-surface">
       <div className="mb-3 px-4">
         <h2 id={id} className="text-title-3">Circles to join</h2>
-        <p className="text-caption text-fg-subtle">Groups around things you're into. Their public posts show up here too.</p>
       </div>
       <ul className="flex gap-3 overflow-x-auto no-scrollbar px-4">
         {circles.map((g) => (

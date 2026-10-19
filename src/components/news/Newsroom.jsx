@@ -32,13 +32,12 @@ export default function Newsroom() {
         <div className="mx-auto max-w-3xl px-4 pb-16 pt-5 md:px-6">
           <header className="mb-5 hidden md:block">
             <h1 className="text-title-1">Newsroom</h1>
-            <p className="text-callout text-fg-muted">Write, co-write and publish your stories, and keep them in folders.</p>
           </header>
 
           {writer === undefined && <Skeleton className="h-32 !rounded-card" />}
           {writer === false && (
             <EmptyState icon={Newspaper} title="News on Mesh is published by verified journalists"
-              body="Publishing news on Mesh is limited to journalists whose identity Mesh has checked. Anyone can read stories and request corrections."
+              body="Only verified journalists can publish."
               action={<Button onClick={() => navigate("/news")}>Read the news</Button>} />
           )}
           {writer && (

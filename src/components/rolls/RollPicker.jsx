@@ -95,7 +95,7 @@ export function RollPhotoPicker({ room = MAX_SLIDES, onClose, onPick }) {
       ) : null}>
       {!roll && rolls === null && <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 !rounded-card" />)}</div>}
       {!roll && rolls?.length === 0 && (
-        <EmptyState compact icon={Aperture} title="No developed rolls yet" body="Once one of your rolls develops, its photos can go straight into a post from here." />
+        <EmptyState compact icon={Aperture} title="No developed rolls yet" body="Photos from your developed rolls show here." />
       )}
       {!roll && rolls?.length > 0 && (
         <ul className="space-y-2">
@@ -120,7 +120,7 @@ export function RollPhotoPicker({ room = MAX_SLIDES, onClose, onPick }) {
       {roll && photos?.length === 0 && <EmptyState compact icon={Aperture} title="No photos in this roll" />}
       {roll && photos?.length > 0 && (
         <>
-          <p className="mb-3 text-caption text-fg-subtle">Tap photos in the order you want them. You can change the order before posting.</p>
+          <p className="mb-3 text-caption text-fg-subtle">Tap photos in the order you want them.</p>
           <PickablePhotos photos={photos} picked={picked} onChange={setPicked} max={room} />
         </>
       )}

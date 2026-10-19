@@ -80,13 +80,12 @@ function CustomEditor({ group, onSaved }) {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-caption text-fg-subtle">Used for the join button, highlights and the welcome note on the circle's page.</p>
       </fieldset>
       <Field label="What members are called" optional hint={'One word, like "gardener" or "runner". The circle shows "120 gardeners".'}>
         <Input value={memberTitle} onChange={(e) => setMemberTitle(e.target.value.replace(/[^\p{L}\p{N} '-]/gu, ""))} maxLength={24} placeholder="member" />
       </Field>
       <Field label="Welcome note" optional count={welcome.length} max={300}
-        hint="Shown to new members at the top of the circle until they close it.">
+       >
         <Textarea autoGrow rows={3} maxRows={8} value={welcome} onChange={(e) => setWelcome(e.target.value)} maxLength={300}
           placeholder="Welcome! Start by introducing yourself in Discussion." />
       </Field>
@@ -150,7 +149,7 @@ function LookEditor({ group, onSaved }) {
     <div className="space-y-6">
       <section aria-labelledby="look-banner">
         <h3 id="look-banner" className="text-callout font-semibold">Banner</h3>
-        <p className="mb-2 text-caption text-fg-muted">Across the top of the circle. A wide photo works best (3:1).</p>
+        <p className="mb-2 text-caption text-fg-muted">Wide photos work best (3:1)</p>
         <CircleBanner group={group} className="h-28 rounded-card" />
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" icon={ImagePlus} loading={busy === "bannerUrl"} onClick={() => bannerInput.current?.click()}>
@@ -163,7 +162,6 @@ function LookEditor({ group, onSaved }) {
 
       <section aria-labelledby="look-photo">
         <h3 id="look-photo" className="text-callout font-semibold">Circle photo</h3>
-        <p className="mb-2 text-caption text-fg-muted">Shown beside the circle's name, in lists and search.</p>
         <div className="flex items-center gap-4">
           <CircleAvatar group={group} size={72} />
           <div className="flex flex-wrap gap-2">
@@ -182,7 +180,6 @@ function LookEditor({ group, onSaved }) {
 
       <fieldset>
         <legend className="text-callout font-semibold">Colour</legend>
-        <p className="mb-2 text-caption text-fg-muted">Behind the initials when there&apos;s no photo, and the banner when there&apos;s no banner.</p>
         <div className="flex gap-3" role="radiogroup">
           {COVER_COLORS.map((id, i) => (
             <button key={id} type="button" role="radio" aria-checked={(group.coverColor || COVER_COLORS[0]) === id} aria-label={`Colour ${i + 1}`}
@@ -349,10 +346,7 @@ function LimitsEditor({ group, onSaved, isOwner }) {
 
       <section>
         <h3 className="text-callout font-semibold">Admin Assist</h3>
-        <p className="mb-2 text-caption text-fg-subtle">
-          Checked on every post before it appears. "Review first" sends it to Manage → Posts; "decline" turns it down with the reason.
-          Admins and moderators are exempt. The server applies all of these, not just the app.
-        </p>
+        <p className="mb-2 text-caption text-fg-subtle">Admins and moderators are exempt.</p>
         <div className={`space-y-1 rounded-card border border-line bg-surface-2 px-3 py-1 ${locked ? "pointer-events-none opacity-60" : ""}`}>
           <Checkbox checked={!!a.requirePostApproval} onChange={set("requirePostApproval")}
             description="Every member's post waits for an admin or moderator.">
@@ -388,7 +382,7 @@ function LimitsEditor({ group, onSaved, isOwner }) {
         </div>
       </section>
 
-      <Field label="Blocked words" hint="Comma separated, up to 40. Posts containing any of them are turned down, for everyone." count={words.length} max={600}>
+      <Field label="Blocked words" hint="Comma separated." count={words.length} max={600}>
         <Input value={words} onChange={(e) => setWords(e.target.value)} placeholder="crypto, referral, giveaway" maxLength={600} disabled={locked} />
       </Field>
 
@@ -459,11 +453,11 @@ function RulesEditor({ group, onSaved, isOwner }) {
         <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3. People find the circle by these.</span></legend>
         <InterestToggles value={topics} onChange={setTopics} max={3} label="Circle interests" />
       </fieldset>
-      <Field label="Post topics" optional hint="Comma separated, up to 12. Members tag posts with one, and anyone can filter the discussion by them."
+      <Field label="Post topics" optional hint="Comma separated."
         count={postTopics.length} max={400}>
         <Input value={postTopics} maxLength={400} onChange={(e) => setPostTopics(e.target.value)} placeholder="Questions, Show and tell, Events, For sale" />
       </Field>
-      <Field label="Rules" hint="One per line. People agree to them when they ask to join." count={rules.length} max={2000}>
+      <Field label="Rules" hint="One per line." count={rules.length} max={2000}>
         <Textarea autoGrow rows={4} value={rules} maxLength={2000} onChange={(e) => setRules(e.target.value)}
           placeholder={"Be kind\nNo self-promotion\nStay on topic"} />
       </Field>

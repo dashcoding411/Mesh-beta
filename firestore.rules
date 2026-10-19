@@ -22,6 +22,26 @@ service cloud.firestore {
     function isStaff() {
       return isAdmin() || isModerator();
     }
+    // Staff teams, each with its own job: news (journalist applications,
+    // writers and their stories), content (posts, comments, stories, rolls,
+    // circles and gatherings, appeals, bans) and accounts (reported messages
+    // and profiles, bans, verification). Admins are on every team; a
+    // moderator appointed before teams existed is on all three.
+    function onTeam(team) {
+      return isAdmin()
+        || (isModerator() && team in get(/databases/$(database)/documents/moderators/$(request.auth.uid)).data.get('teams', ['news', 'content', 'accounts']));
+    }
+    function newsTeam() { return onTeam('news'); }
+    function contentTeam() { return onTeam('content'); }
+    function accountTeam() { return onTeam('accounts'); }
+    // Suspending an account: either team that deals with people's behaviour.
+    function canBan() { return contentTeam() || accountTeam(); }
+    // A report's team follows what was reported.
+    function canHandleReport(r) {
+      return isAdmin()
+        || (contentTeam() && r.get('targetType', 'post') in ['post', 'comment'])
+        || (accountTeam() && r.get('targetType', 'post') in ['message', 'user']);
+    }
     // @the_admin, the only account that can give the pink check.
     function isFounder() {
       return signedIn() && request.auth.uid == '8mqBWdkKGzabDf4gFeTWEK1GP3J2';
@@ -280,12 +300,19 @@ service cloud.firestore {
         || familyNotice(uid, id, n, actor)
         || inviteNotice(uid, id, n, actor)
         || storyNotice(uid, id, n, actor)
-        || appealNotice(uid, id, n);
+        || appealNotice(uid, id, n)
+        || journalistNotice(uid, id, n);
+    }
+    // The news team telling an applicant how their journalist application went.
+    function journalistNotice(uid, id, n) {
+      let app = get(/databases/$(database)/documents/journalistApplications/$(uid)).data;
+      return n.type == 'journalist' && id == 'journalist_' + uid && newsTeam()
+        && app.status in ['approved', 'declined'] && n.text == app.status;
     }
     // Staff telling someone how their appeal went (`ref` is the appeal, `text` the outcome).
     function appealNotice(uid, id, n) {
       let appeal = get(/databases/$(database)/documents/appeals/$(n.ref)).data;
-      return n.type == 'appeal' && id == 'appeal_' + n.ref && isStaff()
+      return n.type == 'appeal' && id == 'appeal_' + n.ref && contentTeam()
         && appeal.uid == uid && appeal.status in ['upheld', 'overturned'] && n.text == appeal.status;
     }
     // A reply to `uid`'s comment.
@@ -673,7 +700,7 @@ service cloud.firestore {
     // Reports: one per (reporter, target); readable only by admins and moderators. Message and
     // comment reports carry the exact text, verified against the original.
     match /reports/{reportId} {
-      allow get, list: if isStaff();
+      allow get, list: if canHandleReport(resource.data);
       allow create: if signedIn()
         && reportId == incomingData().targetType + '_' + incomingData().targetId + '_' + request.auth.uid
         && incomingData().keys().hasOnly(['reporterId', 'targetType', 'targetId', 'postId', 'chatId',
@@ -697,10 +724,10 @@ service cloud.firestore {
             || (incomingData().targetType == 'user'
               && incomingData().targetId == incomingData().authorId
               && exists(/databases/$(database)/documents/users/$(incomingData().targetId))));
-      allow update: if isStaff()
+      allow update: if canHandleReport(resource.data)
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt', 'action'])
         && incomingData().status in ['open', 'actioned', 'dismissed'];
-      allow delete: if isStaff();
+      allow delete: if canHandleReport(resource.data);
     }
 
     // Contact sync (src/lib/contacts.js): people who chose to be findable
@@ -745,7 +772,7 @@ service cloud.firestore {
     }
     match /ads/{adId} {
       allow read: if true;
-      allow create: if isStaff()
+      allow create: if isAdmin()
         && incomingData().keys().hasOnly(['advertiser', 'headline', 'body', 'imageUrl', 'linkUrl', 'cta', 'startsAt', 'endsAt',
                                           'active', 'towns', 'interests', 'adultsOnly', 'impressions', 'clicks',
                                           'createdBy', 'createdAt', 'updatedAt'])
@@ -753,7 +780,7 @@ service cloud.firestore {
         && incomingData().impressions == 0 && incomingData().clicks == 0
         && incomingData().createdBy == request.auth.uid
         && incomingData().createdAt == request.time && incomingData().updatedAt == request.time;
-      allow update: if (isStaff()
+      allow update: if (isAdmin()
           && !incomingData().diff(resource.data).affectedKeys().hasAny(['impressions', 'clicks', 'createdBy', 'createdAt'])
           && adOk(incomingData())
           && incomingData().updatedAt == request.time)
@@ -761,42 +788,42 @@ service cloud.firestore {
           && incomingData().impressions == resource.data.impressions + 1)
         || (signedIn() && incomingData().diff(resource.data).affectedKeys().hasOnly(['clicks'])
           && incomingData().clicks == resource.data.clicks + 1);
-      allow delete: if isStaff();
+      allow delete: if isAdmin();
     }
 
     // Appeals: anyone whose post was blocked can ask a person to look again.
     // Only they and staff can read it; staff decide, and the decision stands.
     match /appeals/{appealId} {
-      allow get: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
-      allow list: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow get: if signedIn() && (resource.data.uid == request.auth.uid || contentTeam());
+      allow list: if signedIn() && (resource.data.uid == request.auth.uid || contentTeam());
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['uid', 'username', 'text', 'rule', 'where', 'note', 'status', 'createdAt'])
         && incomingData().uid == request.auth.uid
         && isMyName(incomingData().username)
         && incomingData().text is string && incomingData().text.size() >= 1 && incomingData().text.size() <= 5000
-        && incomingData().rule in ['slur', 'dehumanising', 'violence', 'exclusion', 'hatred', 'xenophobia', 'conspiracy', 'threat', 'harassment']
+        && incomingData().rule in ['slur', 'dehumanising', 'violence', 'exclusion', 'hatred', 'stereotype', 'xenophobia', 'conspiracy', 'threat', 'harassment']
         && incomingData().where is string && incomingData().where.size() <= 40
         && incomingData().note is string && incomingData().note.size() <= 500
         && incomingData().status == 'open'
         && incomingData().createdAt == request.time;
-      allow update: if isStaff()
+      allow update: if contentTeam()
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'decision', 'reviewedBy', 'reviewedAt'])
         && incomingData().status in ['upheld', 'overturned']
         && incomingData().decision is string && incomingData().decision.size() <= 500
         && incomingData().reviewedAt == request.time;
-      allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'open');
+      allow delete: if contentTeam() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'open');
     }
 
     // Suspensions (until when, and why): the owner and staff only.
     match /suspensions/{uid} {
-      allow get: if isUser(uid) || isStaff();
-      allow list: if isStaff();
-      allow create, update: if isStaff()
+      allow get: if isUser(uid) || canBan();
+      allow list: if canBan();
+      allow create, update: if canBan()
         && incomingData().keys().hasOnly(['until', 'reason', 'by', 'createdAt'])
         && incomingData().until is timestamp
         && incomingData().reason is string
         && incomingData().reason.size() <= 500;
-      allow delete: if isStaff();
+      allow delete: if canBan();
     }
 
     match /rateLimits/{uid} {
@@ -847,18 +874,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Staff appoint and remove moderators; a moderator can step down.
+    // Admins appoint staff and choose their teams; anyone on staff can step down.
+    function validTeams(t) {
+      return t is list && t.size() > 0 && t.size() <= 3 && t.hasOnly(['news', 'content', 'accounts']);
+    }
     match /moderators/{uid} {
       allow get: if isUser(uid) || isStaff();
       allow list: if isStaff();
-      allow create: if isStaff()
-        && incomingData().keys().hasOnly(['username', 'addedBy', 'addedAt'])
+      allow create: if isAdmin()
+        && incomingData().keys().hasOnly(['username', 'teams', 'addedBy', 'addedAt'])
+        && validTeams(incomingData().teams)
         && incomingData().addedBy == request.auth.uid
         && incomingData().addedAt == request.time
         && incomingData().username is string
         && exists(/databases/$(database)/documents/usernames/$(incomingData().username))
         && get(/databases/$(database)/documents/usernames/$(incomingData().username)).data.uid == uid;
-      allow delete: if isStaff() || isUser(uid);
+      allow update: if isAdmin()
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['teams'])
+        && validTeams(incomingData().teams);
+      allow delete: if isAdmin() || isUser(uid);
     }
 
     // Users
@@ -867,7 +901,7 @@ service cloud.firestore {
       allow get: if signedIn() || resource.data.get('birthYear', 0) == 0;
       // 50 at a time, so nobody can pull every profile in one go (staff
       // stats excepted). Search finds people by handle or name instead.
-      allow list: if signedIn() && (request.query.limit <= 50 || isStaff());
+      allow list: if signedIn() && (request.query.limit <= 50 || isAdmin());
       allow create: if isUser(uid)
         && incomingData().keys().hasOnly([
           // No email or phone: user docs are readable by every signed-in user.
@@ -936,10 +970,10 @@ service cloud.firestore {
           && hateFree(incomingData().name + ' ' + incomingData().get('nameLower', '') + ' ' + incomingData().bio + ' ' + incomingData().pronouns + ' ' + incomingData().town))
         // Suspensions live in suspensions/{uid}, not here. A suspendedUntil left
         // by an older version may only be removed.
-        || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['suspendedUntil'])
+        || (canBan() && incomingData().diff(resource.data).affectedKeys().hasOnly(['suspendedUntil'])
           && !('suspendedUntil' in incomingData()))
-        // Staff award badges, but not the pink check.
-        || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['badges'])
+        // The account team awards badges, but not the pink check.
+        || (accountTeam() && incomingData().diff(resource.data).affectedKeys().hasOnly(['badges'])
           && incomingData().badges is list && incomingData().badges.hasOnly(['beta', 'verified', 'pink'])
           && ('pink' in incomingData().badges) == ('pink' in resource.data.get('badges', [])))
         // The founder gives or takes the pink check, which follows badges/pink (one holder).
@@ -967,7 +1001,7 @@ service cloud.firestore {
         // Legacy fields that don't belong on a public profile: the owner or an
         // admin may remove them (remove only). A birth year must be in
         // private/age first, unchanged.
-        || ((isUser(uid) || isStaff())
+        || ((isUser(uid) || accountTeam())
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['email', 'phone', 'birthYear'])
           && !('email' in incomingData()) && !('phone' in incomingData())
           && (!incomingData().diff(resource.data).affectedKeys().hasAny(['birthYear'])
@@ -1108,7 +1142,7 @@ service cloud.firestore {
               || profileOf(uid).get('birthYear', 0) == 0
               || profileOf(uid).birthYear == incomingData().birthYear))
           // An admin may move a birth year left on a public profile here, unchanged.
-          || (isStaff()
+          || (accountTeam()
             && incomingData().keys().hasOnly(['birthYear'])
             && profileOf(uid).get('birthYear', 0) > 0
             && incomingData().birthYear == profileOf(uid).birthYear);
@@ -1471,8 +1505,8 @@ service cloud.firestore {
           && myProfile().createdAt < request.time - duration.value(1, 'd'))
         // Moderator review clears the hold or hides a post (image moderation),
         // and can label a post as made with AI.
-        || (isStaff() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', '', 'hidden'])
-        || (isStaff() && incomingData().diff(resource.data).affectedKeys().hasOnly(['aiGenerated', 'modStatus'])
+        || (contentTeam() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', '', 'hidden'])
+        || (contentTeam() && incomingData().diff(resource.data).affectedKeys().hasOnly(['aiGenerated', 'modStatus'])
             && incomingData().aiGenerated == true && incomingData().get('modStatus', '') in ['cleared', ''])
         // Circle mods can lock comments on a thread.
         || (onlyKey('locked')
@@ -1513,7 +1547,7 @@ service cloud.firestore {
       allow delete: if signedIn() && (
         resource.data.authorId == request.auth.uid
         || (resource.data.get('groupId', '') != '' && isModOf(resource.data.groupId))
-        || isStaff()
+        || contentTeam()
       );
 
       // Votes are private to the voter and final.
@@ -1611,7 +1645,7 @@ service cloud.firestore {
         allow delete: if signedIn()
           && (resource.data.authorId == request.auth.uid
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
-              || isStaff());
+              || contentTeam());
 
         match /likes/{uid} {
           allow read: if (guest() && get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public')
@@ -1752,7 +1786,7 @@ service cloud.firestore {
           && added().size() == 0
           && resource.data.ownerId != request.auth.uid)
         // Developing early: whoever started it, or Mesh staff testing, sets it to now.
-        || ((resource.data.ownerId == request.auth.uid || isStaff())
+        || ((resource.data.ownerId == request.auth.uid || contentTeam())
           && only(['developAt'])
           && incomingData().developAt == request.time
           && request.time < resource.data.developAt)
@@ -1764,7 +1798,7 @@ service cloud.firestore {
              == (exists(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid))
                  ? get(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid)).data.count : 0) + 1)
       );
-      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isStaff());
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || contentTeam());
 
       // Hidden from everyone until it develops. The app never shows you your
       // own early; you can only look them up, for downloading your data or
@@ -1786,7 +1820,7 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/rolls/$(rollId)/shots/$(request.auth.uid)).data.last == photoId;
         allow update: if false;
         allow delete: if signedIn()
-          && (resource.data.authorId == request.auth.uid || rollOf(rollId).ownerId == request.auth.uid || isStaff());
+          && (resource.data.authorId == request.auth.uid || rollOf(rollId).ownerId == request.auth.uid || contentTeam());
       }
 
       // Each member's shot count: up by one with each photo, to 27.
@@ -1811,8 +1845,8 @@ service cloud.firestore {
     // Staff stats: when an account was last active and which of its first 60
     // days it came back on. At most one write per 10 minutes; owner and staff only.
     match /activity/{uid} {
-      allow get: if isUser(uid) || isStaff();
-      allow list: if isStaff();
+      allow get: if isUser(uid) || isAdmin();
+      allow list: if isAdmin();
       allow create, update: if isUser(uid)
         && incomingData().keys().hasOnly(['joinedAt', 'lastActiveAt', 'days'])
         && incomingData().lastActiveAt == request.time
@@ -1838,12 +1872,17 @@ service cloud.firestore {
         && incomingData().data.size() <= 900000
         && incomingData().data.matches('^data:image/(webp|jpeg|png);base64,.*$');
       allow update: if false;
-      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isStaff());
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || (contentTeam() || accountTeam()));
     }
 
     // Reposts: id `{postId}_{uid}`; only others' public posts.
     // Staff look for bursts of fresh likes and comments (fake crowds) across
     // posts. Only fresh records can be listed this way.
+    // Your own memberships across every circle (Circles > Your circles): a
+    // query must ask for uid == you, so it can't list anyone else's.
+    match /{path=**}/members/{memberId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
     match /{path=**}/likes/{likeId} {
       allow list: if isStaff() && resource.data.get('fresh', false) == true;
     }
@@ -1972,7 +2011,7 @@ service cloud.firestore {
           && echoAllowed(storyNow());
         allow update: if false;
         allow delete: if signedIn()
-          && (resource.data.authorId == request.auth.uid || storyNow().authorId == request.auth.uid || isStaff());
+          && (resource.data.authorId == request.auth.uid || storyNow().authorId == request.auth.uid || contentTeam());
       }
       function echoAllowed(s) {
         return canSeeStory(s) && storyLive(s)
@@ -2047,8 +2086,8 @@ service cloud.firestore {
     // affiliation they declare. Public, like the stories.
     // How a journalist was checked before they could publish. Staff only.
     match /journalistChecks/{uid} {
-      allow read: if isStaff();
-      allow create, update: if isStaff()
+      allow read: if newsTeam();
+      allow create, update: if newsTeam()
         && incomingData().keys().hasOnly(['identity', 'method', 'evidence', 'outlet', 'checkedBy', 'checkedAt'])
         && incomingData().identity == true
         && incomingData().method in ['in person', 'video call', 'id document']
@@ -2056,14 +2095,14 @@ service cloud.firestore {
         && incomingData().outlet is string && incomingData().outlet.size() <= 80
         && incomingData().checkedBy == request.auth.uid
         && incomingData().checkedAt == request.time;
-      allow delete: if isStaff();
+      allow delete: if newsTeam();
     }
 
     match /newsWriters/{uid} {
       allow read: if true;
       // Public, so it doesn't say which admin added them (that would name the
       // admins). Only with a recorded check of who they are.
-      allow create: if isStaff()
+      allow create: if newsTeam()
         && incomingData().keys().hasOnly(['username', 'addedAt'])
         && incomingData().username == profileOf(uid).username
         && incomingData().addedAt == request.time
@@ -2073,7 +2112,7 @@ service cloud.firestore {
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['agreedAt', 'agreementVersion'])
         && incomingData().agreedAt == request.time
         && incomingData().agreementVersion is string && incomingData().agreementVersion.size() <= 20;
-      allow update: if (isUser(uid) || isStaff())
+      allow update: if (isUser(uid) || newsTeam())
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['outlet', 'logoUrl', 'region', 'affiliation', 'updatedAt'])
         && incomingData().get('outlet', '') is string && incomingData().get('outlet', '').size() <= 80
         && incomingData().get('region', '') is string && incomingData().get('region', '').size() <= 80
@@ -2085,10 +2124,69 @@ service cloud.firestore {
         && incomingData().updatedAt == request.time
         && hateFree(incomingData().get('outlet', '') + ' ' + incomingData().get('region', '') + ' ' + incomingData().get('affiliation', ''));
       // Older records named the admin; admins may remove that.
-      allow update: if isStaff()
+      allow update: if newsTeam()
         && incomingData().diff(resource.data).affectedKeys().hasOnly(['addedBy'])
         && !('addedBy' in incomingData());
-      allow delete: if isStaff() || isUser(uid);
+      allow delete: if newsTeam() || isUser(uid);
+    }
+
+    // Journalist applications (Settings > Become a journalist): private to the
+    // applicant and the news team. Proof photos sit in proof/{n}; when the news
+    // team decides, they and the CV details are deleted, leaving the outcome.
+    function applicationLinkOk(l, i) {
+      return l.size() <= i || (l[i] is string && l[i].size() <= 300 && l[i].matches('^https://[^ ]+$'));
+    }
+    function applicationOk(a) {
+      return a.keys().hasOnly(['name', 'outlet', 'region', 'experience', 'skills', 'qualification', 'links',
+                               'proofCount', 'declaration', 'status', 'submittedAt'])
+        && a.name is string && a.name.size() >= 2 && a.name.size() <= 80
+        && a.outlet is string && a.outlet.size() <= 80
+        && a.region is string && a.region.size() <= 60
+        && a.experience is string && a.experience.size() >= 50 && a.experience.size() <= 3000
+        && a.skills is string && a.skills.size() <= 600
+        && a.qualification is string && a.qualification.size() <= 200
+        && a.links is list && a.links.size() <= 5
+        && applicationLinkOk(a.links, 0) && applicationLinkOk(a.links, 1) && applicationLinkOk(a.links, 2)
+        && applicationLinkOk(a.links, 3) && applicationLinkOk(a.links, 4)
+        && a.proofCount is int && a.proofCount >= 0 && a.proofCount <= 3
+        && a.declaration == true
+        && a.status == 'pending'
+        && a.submittedAt == request.time
+        && hateFree(a.name + ' ' + a.outlet + ' ' + a.region);
+    }
+    match /journalistApplications/{uid} {
+      allow get: if isUser(uid) || newsTeam();
+      allow list: if newsTeam();
+      allow create: if isUser(uid) && applicationOk(incomingData())
+        && !exists(/databases/$(database)/documents/newsWriters/$(uid));
+      // Edit while pending, or apply again 30 days after a no.
+      allow update: if (isUser(uid) && applicationOk(incomingData())
+          && (resource.data.status == 'pending'
+              || (resource.data.status == 'declined' && resource.data.decidedAt < request.time - duration.value(30, 'd'))))
+        // The news team decides (not on their own). A yes only goes through
+        // with the writer record made in the same write.
+        || (newsTeam() && uid != request.auth.uid
+          && resource.data.status == 'pending'
+          && incomingData().keys().hasOnly(['name', 'status', 'note', 'decidedBy', 'decidedAt'])
+          && incomingData().name == resource.data.name
+          && incomingData().status in ['approved', 'declined']
+          && incomingData().note is string && incomingData().note.size() <= 300
+          && incomingData().decidedBy == request.auth.uid
+          && incomingData().decidedAt == request.time
+          && (incomingData().status == 'declined'
+              || existsAfter(/databases/$(database)/documents/newsWriters/$(uid))));
+      allow delete: if (isUser(uid) && resource.data.status == 'pending') || newsTeam();
+
+      match /proof/{n} {
+        allow get, list: if isUser(uid) || newsTeam();
+        allow create, update: if isUser(uid)
+          && n in ['1', '2', '3']
+          && incomingData().keys().hasOnly(['data'])
+          && incomingData().data is string && incomingData().data.size() <= 900000
+          && incomingData().data.matches('^data:image/(jpeg|webp|png);base64,.*')
+          && getAfter(/databases/$(database)/documents/journalistApplications/$(uid)).data.status == 'pending';
+        allow delete: if isUser(uid) || newsTeam();
+      }
     }
 
     match /news/{newsId} {
@@ -2098,7 +2196,7 @@ service cloud.firestore {
         && ((resource.data.status == 'approved' && !lockedFor('news'))
             || resource.data.authorId == request.auth.uid
             || request.auth.uid in resource.data.authors
-            || (resource.data.status != 'draft' && isStaff()));
+            || (resource.data.status != 'draft' && newsTeam()));
       allow create: if isNewsWriter()
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'authors', 'authorNames', 'title', 'standfirst', 'script', 'sources',
@@ -2171,7 +2269,7 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/news/$(newsId)/reads/$(request.auth.uid))
           && existsAfter(/databases/$(database)/documents/news/$(newsId)/reads/$(request.auth.uid)))
         // Corrections are append-only, by the story's journalists or an admin.
-        || ((isStaff() || isStoryAuthor(resource.data))
+        || ((newsTeam() || isStoryAuthor(resource.data))
           && resource.data.status == 'approved'
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['corrections'])
           && incomingData().corrections.size() == resource.data.get('corrections', []).size() + 1)
@@ -2181,7 +2279,7 @@ service cloud.firestore {
           && incomingData().diff(resource.data).affectedKeys().hasOnly(['live', 'updatedAt'])
           && incomingData().live is bool
           && incomingData().updatedAt == request.time);
-      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isStaff());
+      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || newsTeam());
 
       // Who has read it, so each reader counts once. Only the reader sees theirs.
       match /reads/{uid} {
@@ -2202,13 +2300,13 @@ service cloud.firestore {
           && isMyName(incomingData().username)
           && incomingData().at == request.time;
         allow delete: if isUser(uid) || (signedIn() && !existsAfter(/databases/$(database)/documents/news/$(newsId))
-          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isStaff()));
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || newsTeam()));
       }
 
       // Immutable revisions.
       match /revisions/{revisionId} {
         allow read: if signedIn()
-          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isStaff());
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || newsTeam());
         allow create: if isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data)
           && incomingData().keys().hasOnly(['title', 'standfirst', 'script', 'blockIds', 'blockTypes', 'blockTexts',
                                             'blockMedia', 'blockAlts', 'sources', 'version', 'note', 'by', 'byName', 'at'])
@@ -2220,7 +2318,7 @@ service cloud.firestore {
           && incomingData().blockIds is list && incomingData().blockIds.size() <= 150;
         allow update: if false;
         allow delete: if signedIn() && !existsAfter(/databases/$(database)/documents/news/$(newsId))
-          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isStaff());
+          && (isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || newsTeam());
       }
 
       // Live blog updates: authors post while live.
@@ -2240,12 +2338,12 @@ service cloud.firestore {
           && incomingData().key is bool
           && hateFree(incomingData().text)
           && notSuspended();
-        allow delete: if isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || isStaff();
+        allow delete: if isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data) || newsTeam();
       }
 
       // Correction requests: readable by reviewers only.
       match /correctionRequests/{requestId} {
-        allow read, delete: if isStaff() || isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data);
+        allow read, delete: if newsTeam() || isStoryAuthor(get(/databases/$(database)/documents/news/$(newsId)).data);
         allow create: if signedIn()
           && get(/databases/$(database)/documents/news/$(newsId)).data.status == 'approved'
           && incomingData().keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt'])
@@ -2486,7 +2584,7 @@ service cloud.firestore {
                     && incomingData().poll.votes[request.auth.uid] >= 0
                     && incomingData().poll.votes[request.auth.uid] < resource.data.poll.options.size())))
         );
-        allow delete: if signedIn() && (resource.data.senderId == request.auth.uid || isStaff());
+        allow delete: if signedIn() && (resource.data.senderId == request.auth.uid || accountTeam());
       }
 
       match /media/{mediaId} {
@@ -2684,7 +2782,7 @@ service cloud.firestore {
           && tiedCount(/databases/$(database)/documents/groups/$(groupId), 'memberCount',
                        /databases/$(database)/documents/groups/$(groupId)/members/$(incomingData().lastMember)))
       );
-      allow delete: if isCircleOwner() || isStaff();
+      allow delete: if isCircleOwner() || contentTeam();
 
       match /joinRequests/{uid} {
         allow read: if isUser(uid)
@@ -2978,7 +3076,7 @@ service cloud.firestore {
               || get(/databases/$(database)/documents/events/$(eventId)/rsvps/$(request.auth.uid)).data.get('status', '') == 'going');
         allow update: if false;
         allow delete: if signedIn()
-          && (resource.data.authorId == request.auth.uid || ev().hostId == request.auth.uid || isStaff());
+          && (resource.data.authorId == request.auth.uid || ev().hostId == request.auth.uid || contentTeam());
       }
 
       // Legacy announcements (read-only).

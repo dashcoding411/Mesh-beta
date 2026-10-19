@@ -85,6 +85,9 @@ export function noticePush(notice, to) {
     case "familyok": return make("account", who, "Accepted parental controls", "/account/brick");
     case "familyask": return make("account", who, `Asked you to change their limits${quote}`, "/account/brick");
     case "appeal": return make("account", "Mesh", notice.text === "overturned" ? "Your appeal was accepted" : "Your appeal was looked at", "/notifications");
+    case "journalist": return notice.text === "approved"
+      ? make("account", "Mesh", "You're a journalist on Mesh. Set up your byline to start writing.", "/news/desk")
+      : make("account", "Mesh", "Your journalist application was looked at", "/account/settings");
     default: return null; // likes, reposts, story likes: in the app only
   }
 }

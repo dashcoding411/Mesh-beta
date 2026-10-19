@@ -107,7 +107,7 @@ export default function Notifications() {
           )}
           {notices && sections.length === 0 && soon.length === 0 && (
             <EmptyState icon={Bell} title="Nothing yet"
-              body="When people like, comment on or share your posts, follow you or invite you somewhere, it shows up here." />
+              />
           )}
           {sections.map((s) => (
             <section key={s.title} aria-labelledby={`n-${s.title}`}>
@@ -153,7 +153,6 @@ function WeekReady() {
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text"><Sparkles size={20} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
           <span className="block text-callout font-semibold">Your week on Mesh is ready</span>
-          <span className="block text-caption text-fg-muted">Time on Mesh, gatherings, posts and more</span>
         </span>
         <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
       </button>

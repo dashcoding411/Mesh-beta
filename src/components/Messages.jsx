@@ -102,7 +102,7 @@ export default function Messages({ chatId }) {
               <EmptyState compact icon={SearchIcon} title={`No conversations match “${filter.trim()}”`} />
             ) : tab === "requests" ? (
               <EmptyState compact icon={Mail} title="No message requests"
-                body="Messages from people you don't follow wait here until you accept them, so strangers can't land in General." />
+                body="Messages from people you don't follow wait here." />
             ) : (
               <EmptyState compact icon={MessageCircle} title="No messages yet"
                 body="Message someone, or start a group."
@@ -306,7 +306,7 @@ function ThoughtsRail({ chats }) {
 
       {editing && (
         <Dialog title="Share a thought" onClose={() => setEditing(false)} size="sm">
-          <p className="mb-3 text-callout text-fg-muted">Up to 60 characters. People you message see it above their inbox for 24 hours.</p>
+          <p className="mb-3 text-callout text-fg-muted">Shown for 24 hours.</p>
           {mine && (
             <div className="mb-4 rounded-control bg-surface-2 p-3">
               <p className="text-callout font-semibold">Your thought: "{mine.text}"</p>

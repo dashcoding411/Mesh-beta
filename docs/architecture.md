@@ -541,11 +541,47 @@ Diffusion settings left in PNGs. Stripped metadata gets past it, so reports
 back it up.
 
 Staff are admins (`admins/{uid}`, set in the console) and moderators
-(`moderators/{uid}`, appointed by staff from the Moderation page). Every staff
-power in the rules is `isStaff()`, so moderators can do everything admins can:
-reports, suspensions, removals, checks, journalists, news review and
-appointing moderators. Only the founder gives the pink check. A moderator
-account opens on the moderation queue instead of Home and can't create posts.
+(`moderators/{uid}`, with `teams`), each team with its own job, enforced in
+the rules (`onTeam`):
+
+- **News** (`newsTeam()`): journalist applications, journalists, correction
+  requests, and taking down a story that breaks the rules. Journalists
+  publish their own stories; Mesh hosts them and doesn't approve them first.
+- **Content** (`contentTeam()`): post and comment reports, removals and AI
+  labels, story echoes, rolls, circles, gathering photos, appeals, the image
+  sweep and bans.
+- **Accounts** (`accountTeam()`): message and profile reports, deleting a
+  reported message, bans, verification and beta badges.
+- **Admins** are on every team, and alone appoint staff (choosing teams from
+  Moderation > Staff), run ads and see stats.
+
+Reports route by what was reported (`canHandleReport`: posts and comments to
+content, messages and accounts to accounts), and each team's queue queries
+only its kinds. A moderator appointed before teams existed is on all three.
+Only the founder gives the pink check. A moderator account opens on the
+moderation queue instead of Home and can't create posts.
+
+Journalist applications (`journalistApplications/{uid}`, Settings > Become a
+journalist; `lib/data/applications.js`): name, outlet, region, experience,
+skills, degree, up to five links and up to three proof photos (small inline
+images in `proof/{1-3}`), private to the applicant and the news team. A yes
+writes `journalistChecks/{uid}` and `newsWriters/{uid}` in the same batch as
+the decision (the rules refuse an approval without the writer record); either
+way the proof and CV details are deleted, leaving the outcome, and the
+applicant gets a `journalist` notification from Mesh. A declined applicant can
+apply again after 30 days.
+
+The filter allows venting: insults at a person, a company, Mesh or a
+government pass. What it stops is roping in who people are: slurs,
+dehumanising, putting a group down (insults, stereotypes, mockery and coded
+terms, all blocked), and the same in dressed-up language: pseudo-science
+("genetically predisposed to criminality", "lower average IQ"), "will never
+assimilate", "not real Australians", "a burden on society", clinical
+homophobia and transphobia, sexism in a lab coat, and code phrases ("great
+replacement", "13/50", "remigration"). Group names include their formal
+dressing (`DRESSED_UP`: "certain demographics", "people of African
+descent"). Absolute claims only, so policy and research talk pass;
+`moderation-cases.json` holds the examples both ways.
 
 `assessText` returns `block`, `borderline`, `quoted` or `ok`. Text is
 normalised (homoglyphs, accents, zero-width characters, leetspeak, stretching,

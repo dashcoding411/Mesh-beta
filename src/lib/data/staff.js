@@ -6,37 +6,59 @@ import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
 import { isAdmin } from "./news.js";
 
-let roleCheck = { uid: null, result: null };
+// Staff teams, each with its own job (firestore.rules, onTeam). Admins are
+// on every team, appoint the others and run ads and stats.
+export const TEAMS = [
+  { id: "news", label: "News", body: "Journalist applications, stories and corrections" },
+  { id: "content", label: "Content", body: "Posts, comments, stories, circles, appeals and bans" },
+  { id: "accounts", label: "Accounts", body: "Reported messages and profiles, bans and verification" },
+];
+const ALL_TEAMS = TEAMS.map((t) => t.id);
 
-/** "admin", "moderator" or null. Checked once per visit. */
-export function staffRole() {
+let accessCheck = { uid: null, result: null };
+
+/** What the signed-in account can do as staff: { admin, teams }, or null. Checked once per visit. */
+export function staffAccess() {
   const uid = me();
   if (!uid) return Promise.resolve(null);
-  if (roleCheck.uid !== uid) {
-    roleCheck = {
+  if (accessCheck.uid !== uid) {
+    accessCheck = {
       uid,
       result: Promise.all([
         isAdmin(),
-        getDoc(doc(db, "moderators", uid)).then((s) => s.exists()).catch(() => false),
-      ]).then(([admin, mod]) => (admin ? "admin" : mod ? "moderator" : null)),
+        getDoc(doc(db, "moderators", uid)).catch(() => null),
+      ]).then(([admin, mod]) => (admin ? { admin: true, teams: ALL_TEAMS }
+        : mod?.exists() ? { admin: false, teams: mod.data().teams || ALL_TEAMS } : null)),
     };
-    roleCheck.result.catch(() => { roleCheck = { uid: null, result: null }; });
+    accessCheck.result.catch(() => { accessCheck = { uid: null, result: null }; });
   }
-  return roleCheck.result;
+  return accessCheck.result;
+}
+
+/** Whether the signed-in account is on `team` ("news", "content" or "accounts"). */
+export const onTeam = (team) => staffAccess().then((a) => !!a?.teams.includes(team));
+
+/** "admin", "moderator" or null. */
+export function staffRole() {
+  return staffAccess().then((a) => (a ? (a.admin ? "admin" : "moderator") : null));
 }
 
 export async function fetchModerators() {
   return snapToList(await getDocs(query(collection(db, "moderators"), limit(200))));
 }
 
-/** Staff only. `username` must belong to `uid` (the rules check). */
-export async function addModerator({ uid, username }) {
-  await setDoc(doc(db, "moderators", uid), { username, addedBy: me(), addedAt: serverTimestamp() });
+/** Admins only. `username` must belong to `uid` (the rules check). */
+export async function addModerator({ uid, username, teams }) {
+  await setDoc(doc(db, "moderators", uid), { username, teams, addedBy: me(), addedAt: serverTimestamp() });
+}
+
+export async function setModeratorTeams(uid, teams) {
+  await setDoc(doc(db, "moderators", uid), { teams }, { merge: true });
 }
 
 export async function removeModerator(uid) {
   await deleteDoc(doc(db, "moderators", uid));
-  if (uid === me()) roleCheck = { uid: null, result: null };
+  if (uid === me()) accessCheck = { uid: null, result: null };
 }
 
 // Activity, for the staff stats: when each account was last active and which

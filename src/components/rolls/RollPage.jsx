@@ -6,7 +6,7 @@ import {
 import {
   fetchRoll, fetchMyShotCount, fetchRollPhotos, fetchProfiles, joinRoll, leaveRoll, removeFromRoll, updateRoll, deleteRoll,
   deleteRollPhoto, isDeveloped, isMember, developLabel, countdownLabel, rollUrl, rollIcs, rollGoogleCalendarUrl, markRollSeen,
-  rollSeen, onShotQueue, SHOTS_PER_PERSON, MAX_MEMBERS, tsMillis, me, openUserProfile, developRollNow, staffRole,
+  rollSeen, onShotQueue, SHOTS_PER_PERSON, MAX_MEMBERS, tsMillis, me, openUserProfile, developRollNow, onTeam,
   rollPhotoFile, pickedRollFiles, MAX_SLIDES,
 } from "../../lib/db";
 import { OthersNote, PickablePhotos } from "./RollPicker";
@@ -143,7 +143,7 @@ function Invite({ roll, developed, onJoined }) {
           <>
             <Button variant="primary" size="lg" className="mt-6" loading={busy} onClick={join}>Join and get {SHOTS_PER_PERSON} shots</Button>
             <p className="mx-auto mt-3 max-w-sm text-caption text-fg-subtle">
-              Nobody sees any photo until it develops, you included. After that, everyone in the roll can see all of them.
+              Nobody sees the photos until it develops, you included.
             </p>
           </>
         )}
@@ -266,7 +266,7 @@ function RollMenu({ roll, owner, onChange, onDialog }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [staff, setStaff] = useState(false);
-  useEffect(() => { staffRole().then((r) => setStaff(!!r)).catch(() => {}); }, []);
+  useEffect(() => { onTeam("content").then(setStaff).catch(() => {}); }, []);
   const developed = isDeveloped(roll);
   const pick = (d) => { setOpen(false); onDialog(d); };
   return (

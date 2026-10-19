@@ -82,7 +82,6 @@ export default function Shortcuts({ onCreate }) {
           </div>
         ))}
       </dl>
-      <p className="mt-4 text-caption text-fg-subtle">Shortcuts pause while you're typing or a window like this one is open.</p>
     </Dialog>
   );
 }

@@ -46,19 +46,19 @@ describe("rankFeed", () => {
   });
 
   it("never recommends borderline posts to people who don't follow the author", () => {
-    const mocking = Array.from({ length: 5 }, () => post({ authorId: "mocker", text: "indians are stupid", likeCount: 500 }));
+    const mocking = Array.from({ length: 5 }, () => post({ authorId: "mocker", text: "those people are animals", likeCount: 500 }));
     const normal = Array.from({ length: 20 }, () => post({ likeCount: 1 }));
     const out = rankFeed([...mocking, ...normal], ctx);
-    expect(out.some((p) => p.text === "indians are stupid")).toBe(false);
+    expect(out.some((p) => p.text === "those people are animals")).toBe(false);
     expect(out).toHaveLength(20);
   });
 
   it("keeps a followed author's borderline posts apart", () => {
-    const mocking = Array.from({ length: 4 }, (_, i) => post({ authorId: `followed${i}`, text: "indians are stupid", likeCount: 500 }));
+    const mocking = Array.from({ length: 4 }, (_, i) => post({ authorId: `followed${i}`, text: "those people are animals", likeCount: 500 }));
     const normal = Array.from({ length: 30 }, () => post({ likeCount: 1 }));
     const following = new Set(mocking.map((p) => p.authorId));
     const out = rankFeed([...mocking, ...normal], { ...ctx, followingSet: following });
-    const positions = out.map((p, i) => (p.text === "indians are stupid" ? i : -1)).filter((i) => i >= 0);
+    const positions = out.map((p, i) => (p.text === "those people are animals" ? i : -1)).filter((i) => i >= 0);
     expect(positions).toHaveLength(4);
     for (let i = 1; i < positions.length; i++) expect(positions[i] - positions[i - 1]).toBeGreaterThanOrEqual(8);
   });

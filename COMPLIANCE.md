@@ -124,6 +124,21 @@ safety expectations) expects reporting tools and timely action on reports:
 someone has to actually work the queue, and response times should be tracked
 once there's volume.
 
+### R9: The hate filter's context checks run in the app · **MEDIUM**
+
+Slurs are refused by the security rules too, but the contextual checks
+(putting a group down, the dressed-up versions, threats) run in the app
+before posting. Someone writing straight to the API with the public config
+can skip them, until App Check is enforced (R8). Reports and the moderation
+queue are the backstop.
+
+### R10: Journalist proof documents · **MEDIUM** · VERIFY
+
+Applicants can upload ID, a degree or a press card. They're readable only by
+the applicant and the news team, held in Firestore (Sydney), and deleted with
+the CV details when the news team decides. Make sure the news team knows
+not to copy them anywhere else.
+
 ### R8: App Check registered, not yet enforced · **LOW**
 
 The Firebase config is client-side, which is normal and not a secret. App

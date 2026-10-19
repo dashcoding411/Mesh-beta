@@ -12,7 +12,7 @@ export default function NotFound() {
       </span>
       <h1 className="mt-5 text-title-1">This page doesn't exist</h1>
       <p className="mt-2 max-w-sm text-callout text-fg-muted">
-        The link may be mistyped, or what it pointed to has moved. Nothing's been lost on your side.
+        The link may be mistyped or out of date.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Button variant="primary" icon={Home} onClick={() => navigate("/", { replace: true })}>Go to Home</Button>

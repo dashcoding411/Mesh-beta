@@ -11,9 +11,9 @@
 import { serverTimestamp, Timestamp } from "firebase/firestore";
 
 export const SECTIONS = [
-  { id: "feed", label: "Feed", blurb: "For you, Following, Search, Circles and Saved" },
-  { id: "flicks", label: "Flicks", blurb: "Short and long videos" },
-  { id: "news", label: "News", blurb: "Stories and where they come from" },
+  { id: "feed", label: "Feed", blurb: "Includes Search and Circles" },
+  { id: "flicks", label: "Flicks" },
+  { id: "news", label: "News" },
 ];
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

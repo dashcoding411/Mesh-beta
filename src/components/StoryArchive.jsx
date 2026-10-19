@@ -52,7 +52,7 @@ export default function StoryArchive() {
             <div className="grid grid-cols-3 gap-1 sm:grid-cols-4">{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="aspect-[9/16] !rounded-control" />)}</div>
           )}
           {stories?.length === 0 && (
-            <EmptyState icon={History} title="No stories yet" body="When you post a story, it stays here after it disappears from everyone else's view." />
+            <EmptyState icon={History} title="No stories yet" body="Your stories stay here after 24 hours." />
           )}
 
           {months.map(([month, list]) => (

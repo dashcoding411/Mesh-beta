@@ -9,7 +9,7 @@
 // real index (Typesense, Meilisearch, Algolia).
 
 import {
-  fetchFeed, fetchGroups, fetchEvents, fetchNews, searchUsers, searchNames, fetchPopularProfiles,
+  fetchFeed, fetchGroups, fetchUpcomingPublicEvents, fetchNews, searchUsers, searchNames, fetchPopularProfiles,
   fetchAffinity, tsMillis, isHeld, me,
 } from "./db";
 import { interestById, newsTopicById } from "./interests";
@@ -115,7 +115,7 @@ export async function loadPool({ force = false } = {}) {
     fetchFeed().catch(() => []),
     fetchPeoplePool().catch(() => []),
     fetchGroups().catch(() => []),
-    fetchEvents().catch(() => []),
+    fetchUpcomingPublicEvents().catch(() => []),
     fetchNews("approved").catch(() => []),
     fetchAffinity().catch(() => new Map()),
   ]);

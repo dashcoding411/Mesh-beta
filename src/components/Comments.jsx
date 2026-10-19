@@ -253,7 +253,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       )}
       {tree?.length === 0 && (
         <EmptyState compact icon={MessageCircle} title="No comments yet"
-          body={post.locked ? "Comments are paused on this post." : "Start the conversation. Say what you think."} />
+          body={post.locked ? "Comments are paused on this post." : null} />
       )}
       {tree?.length > 0 && (
         <>

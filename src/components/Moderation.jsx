@@ -3,7 +3,7 @@ import {
   ShieldCheck, BadgeCheck, Trash2, Check, Eye, EyeOff, ImageIcon, UserX, FileText, MessageCircle, Mail, UserRound, ExternalLink, Undo2, Gavel, WandSparkles, Scale,
 } from "lucide-react";
 import {
-  staffRole, fetchAppeals, decideAppeal, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
+  staffAccess, TEAMS, setModeratorTeams, fetchAppeals, decideAppeal, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
   suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
   fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername, setPostHidden,
 } from "../lib/db";
@@ -20,6 +20,7 @@ import MediaImg from "./ui/MediaImg";
 import { Field, Textarea } from "./ui/Field";
 import { EmptyState, ErrorState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import JournalistApplications from "./JournalistApplications";
 
 const TYPE = {
   post: { label: "Post", icon: FileText },
@@ -28,17 +29,39 @@ const TYPE = {
   user: { label: "Account", icon: UserRound },
 };
 
-// Reports are grouped per target, busiest first; decisions are recorded on each report.
+// Each staff member sees their own teams' work (firestore.rules, onTeam):
+// news (applications, journalists), content (post and comment reports,
+// appeals, images, bans) and accounts (message and profile reports, bans,
+// verification). Admins see everything and manage staff. Reports are grouped
+// per target, busiest first; decisions are recorded on each report.
 export default function Moderation() {
-  // Admin or moderator; null while checking.
-  const [admin, setAdmin] = useState(null);
-  const [tab, setTab] = useState("open");
+  // { admin, teams }; undefined while checking, null if not staff.
+  const [access, setAccess] = useState(undefined);
+  const [tab, setTab] = useState(null);
   const [reports, setReports] = useState(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    staffRole().then((r) => setAdmin(!!r)).catch(() => setAdmin(false));
+    staffAccess().then((a) => setAccess(a || null)).catch(() => setAccess(null));
   }, []);
+  const on = useCallback((team) => !!access?.teams.includes(team), [access]);
+  const admin = access === undefined ? null : !!access;
+  const handlesReports = !!access && (access.admin || on("content") || on("accounts"));
+  // Which kinds of report this person sees; null is all of them (admins).
+  const reportTypes = useMemo(() => (access?.admin ? null
+    : [...(on("content") ? ["post", "comment"] : []), ...(on("accounts") ? ["message", "user"] : [])]), [access, on]);
+  const tabs = useMemo(() => (access ? [
+    handlesReports && { id: "open", label: "Reports" },
+    on("content") && { id: "appeals", label: "Appeals" },
+    on("news") && { id: "applications", label: "Applications" },
+    on("news") && { id: "writers", label: "Journalists" },
+    on("content") && { id: "images", label: "Images" },
+    (on("content") || on("accounts")) && { id: "suspended", label: "Bans" },
+    on("accounts") && { id: "verified", label: "Verified" },
+    handlesReports && { id: "closed", label: "Resolved" },
+    access.admin && { id: "mods", label: "Staff" },
+  ].filter(Boolean) : []), [access, on, handlesReports]);
+  const current = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id;
 
   // The image sweep runs whenever a moderator opens this page.
   const [sweep, setSweep] = useState({ status: "idle", done: 0, total: 0, flagged: [] });
@@ -51,19 +74,21 @@ export default function Moderation() {
       setSweep((s) => ({ ...s, status: "error" }));
     }
   }, []);
-  useEffect(() => { if (admin) (async () => { await runSweep(); })(); }, [admin, runSweep]);
+  useEffect(() => { if (on("content")) (async () => { await runSweep(); })(); }, [on, runSweep]);
 
   const load = useCallback(async () => {
     setError(false);
     setReports(null);
+    if (current !== "open" && current !== "closed") return setReports([]);
+    if (reportTypes?.length === 0) return setReports([]);
     try {
-      setReports(["suspended", "writers", "verified", "images", "mods", "appeals"].includes(tab) ? [] : await fetchReports(tab === "open" ? "open" : "actioned")
-        .then(async (list) => (tab === "open" ? list : [...list, ...(await fetchReports("dismissed"))])));
+      const get = (status) => fetchReports(status, reportTypes);
+      setReports(current === "open" ? await get("open") : [...await get("actioned"), ...await get("dismissed")]);
     } catch (err) {
       console.error(err);
       setError(true);
     }
-  }, [tab]);
+  }, [current, reportTypes]);
   useEffect(() => { if (admin) (async () => { await load(); })(); }, [admin, load]);
 
   const cases = useMemo(() => {
@@ -102,23 +127,21 @@ export default function Moderation() {
                   countries and governments is permitted. Attacks on people for who they are are removed.
                 </span>
               </p>
-              <Tabs label="Reports" value={tab} onChange={setTab} variant="underline"
-                tabs={[{ id: "open", label: "Open reports" }, { id: "appeals", label: "Appeals" }, { id: "closed", label: "Resolved" }, { id: "suspended", label: "Suspensions" },
-                  { id: "images", label: sweep.flagged.length ? `Images (${sweep.flagged.length})` : "Images" },
-                  { id: "writers", label: "Journalists" }, { id: "verified", label: "Verified" }, { id: "mods", label: "Moderators" }]} />
+              <Tabs label="Moderation" value={current} onChange={setTab} variant="underline"
+                tabs={tabs.map((t) => (t.id === "images" && sweep.flagged.length ? { ...t, label: `Images (${sweep.flagged.length})` } : t))} />
 
-              {tab === "images" ? <ImageReview sweep={sweep} setSweep={setSweep} onRescan={runSweep} />
-                : tab === "appeals" ? <Appeals />
-                : tab === "mods" ? <Moderators /> : tab === "writers" ? <Writers /> : tab === "verified" ? <Verified /> : tab === "suspended" ? <Suspensions /> : (
+              {current === "images" ? <ImageReview sweep={sweep} setSweep={setSweep} onRescan={runSweep} />
+                : current === "appeals" ? <Appeals />
+                : current === "applications" ? <JournalistApplications />
+                : current === "mods" ? <Moderators /> : current === "writers" ? <Writers /> : current === "verified" ? <Verified /> : current === "suspended" ? <Suspensions /> : (
                 <>
                   {error && <ErrorState title="Reports could not be loaded" onRetry={load} />}
                   {!error && reports === null && <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-40 !rounded-card" />)}</div>}
                   {reports?.length === 0 && (
-                    <EmptyState icon={ShieldCheck} title={tab === "open" ? "No open reports" : "No resolved reports"}
-                      body={tab === "open" ? "New reports will appear here for review." : "Resolved reports are listed here with the decision, the moderator and the date."} />
+                    <EmptyState icon={ShieldCheck} title={current === "open" ? "No open reports" : "No resolved reports"} />
                   )}
                   <ul className="space-y-4">
-                    {cases.map((c) => <li key={c.key}><Case item={c} readOnly={tab !== "open"} onDone={() => done(c.key)} /></li>)}
+                    {cases.map((c) => <li key={c.key}><Case item={c} readOnly={current !== "open"} onDone={() => done(c.key)} /></li>)}
                   </ul>
                 </>
               )}
@@ -525,7 +548,7 @@ function Appeals() {
   };
 
   if (list === null) return <Skeleton className="h-32 !rounded-card" />;
-  if (!list.length) return <EmptyState icon={Scale} title="No appeals waiting" body="When someone appeals a block, it shows here for a person to decide." />;
+  if (!list.length) return <EmptyState icon={Scale} title="No appeals waiting" />;
   return (
     <section className="space-y-4">
       <p className="text-caption text-fg-muted">
@@ -558,14 +581,17 @@ function Appeals() {
 }
 
 /** Staff appoint moderator accounts, which can do everything admins can except give the pink check. */
+// Admins only: who's on staff and which teams they're on.
 function Moderators() {
   const toast = useToast();
   const [list, setList] = useState(null);
   const [handle, setHandle] = useState("");
+  const [teams, setTeams] = useState(["content"]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const load = () => fetchModerators().then((l) => setList(l.sort((a, b) => a.username.localeCompare(b.username)))).catch(() => setList([]));
   useEffect(() => { load(); }, []);
+  const toggle = (list, id) => (list.includes(id) ? list.filter((t) => t !== id) : [...list, id]);
   const add = async (e) => {
     e.preventDefault();
     const username = handle.trim().replace(/^@/, "").toLowerCase();
@@ -574,41 +600,64 @@ function Moderators() {
     try {
       const uid = await uidForUsername(username);
       if (!uid) throw new Error(`There's no account called @${username}.`);
-      await addModerator({ uid, username });
-      toast({ title: `@${username} is now a moderator`, body: "Mesh opens on the moderation queue for them." });
+      await addModerator({ uid, username, teams });
+      toast({ title: `@${username} is on staff` });
       setHandle("");
       load();
-    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins and moderators can add moderators." : err.message); }
+    } catch (err) { setError(err?.code === "permission-denied" ? "Only admins can add staff." : err.message); }
     finally { setBusy(false); }
   };
+  const changeTeams = async (m, next) => {
+    if (!next.length) return;
+    setList((l) => l.map((x) => (x.id === m.id ? { ...x, teams: next } : x)));
+    try { await setModeratorTeams(m.id, next); }
+    catch { toast({ tone: "error", title: "Couldn't change that" }); load(); }
+  };
+  const TeamChips = ({ value, onChange }) => (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Teams">
+      {TEAMS.map((t) => {
+        const onIt = value.includes(t.id);
+        return (
+          <button key={t.id} type="button" aria-pressed={onIt} title={t.body} onClick={() => onChange(toggle(value, t.id))}
+            className={`press min-h-8 rounded-full px-3 text-caption font-semibold ${onIt ? "bg-accent text-white" : "bg-surface-2 text-fg-muted"}`}>
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
   return (
     <section className="space-y-4">
-      <p className="text-caption text-fg-muted">
-        Moderators can do everything admins can: review reports, suspend accounts, remove content, give checks, add journalists,
-        review news and appoint other moderators. Only the founder gives the pink check. Mesh opens on this page for them, and they
-        can't create posts.
-      </p>
-      <form onSubmit={add} className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <label htmlFor="mod-handle" className="sr-only">Handle</label>
-          <input id="mod-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
-            className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
-          <InlineMessage>{error}</InlineMessage>
+      <ul className="space-y-1.5 text-caption text-fg-muted">
+        {TEAMS.map((t) => <li key={t.id}><strong className="font-semibold text-fg">{t.label}:</strong> {t.body}</li>)}
+      </ul>
+      <form onSubmit={add} className="space-y-2 rounded-card border border-line bg-surface p-3">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <label htmlFor="mod-handle" className="sr-only">Handle</label>
+            <input id="mod-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle"
+              className="field min-h-11 w-full rounded-control border border-field bg-surface-2 px-3 text-callout text-fg placeholder:text-fg-subtle" />
+            <InlineMessage>{error}</InlineMessage>
+          </div>
+          <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3 || !teams.length}>Add</Button>
         </div>
-        <Button type="submit" variant="primary" loading={busy} disabled={handle.trim().length < 3}>Add moderator</Button>
+        <TeamChips value={teams} onChange={setTeams} />
       </form>
       {list === null ? <Skeleton className="h-24 !rounded-card" /> : list.length === 0 ? (
-        <EmptyState compact icon={ShieldCheck} title="No moderators yet" body="Add someone you trust by their handle." />
+        <EmptyState compact icon={ShieldCheck} title="No staff yet" />
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
           {list.map((m) => (
-            <li key={m.id} className="flex min-h-12 items-center gap-3 px-4">
-              <button type="button" onClick={() => openUserProfile(m.id)} className="min-w-0 flex-1 truncate text-left text-callout hover:underline">@{m.username}</button>
-              <span className="text-caption text-fg-subtle">since {shortTime(m.addedAt)}</span>
-              <Button size="sm" variant="ghost" onClick={async () => {
-                try { await removeModerator(m.id); setList((l) => l.filter((x) => x.id !== m.id)); toast({ title: `@${m.username} is no longer a moderator` }); }
-                catch { toast({ tone: "error", title: "The moderator could not be removed" }); }
-              }}>Remove</Button>
+            <li key={m.id} className="space-y-2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => openUserProfile(m.id)} className="min-w-0 flex-1 truncate text-left text-callout font-medium hover:underline">@{m.username}</button>
+                <span className="text-caption text-fg-subtle">since {shortTime(m.addedAt)}</span>
+                <Button size="sm" variant="ghost" onClick={async () => {
+                  try { await removeModerator(m.id); setList((l) => l.filter((x) => x.id !== m.id)); toast({ title: `@${m.username} is off staff` }); }
+                  catch { toast({ tone: "error", title: "Couldn't remove them" }); }
+                }}>Remove</Button>
+              </div>
+              <TeamChips value={m.teams || TEAMS.map((t) => t.id)} onChange={(next) => changeTeams(m, next)} />
             </li>
           ))}
         </ul>

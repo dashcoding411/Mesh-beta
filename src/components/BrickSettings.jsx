@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus, Trophy, Flame, Share2,
-  ChevronDown, ChevronRight, MessageCircle,
+  BrickWall, CalendarClock, Timer, Plus, X, Hourglass, Users, ShieldCheck, Clock, Check, Info, UserPlus, Trophy, Share2,
+  ChevronRight,
 } from "lucide-react";
 import {
   SECTIONS, DAYS, DAY_NAMES, COOL_OFF_MS, emptyLayer, windowsToSlots, windowLabel, clockLabel, isTighterOrSame,
@@ -109,7 +109,6 @@ export default function BrickSettings() {
           <header className="hidden md:block">
             <h1 className="text-title-1">Brick mode</h1>
           </header>
-          <BrickIntro />
           <HelpLink guide="brick">How Brick mode works</HelpLink>
 
               <section aria-labelledby="brick-now" data-tour="brick-now" className="rounded-card border border-line bg-surface p-4">
@@ -148,7 +147,7 @@ export default function BrickSettings() {
                   : []).concat(looseningParts(policy.pending.self, self, now)).map((p) => <li key={p}>{p}</li>)}
               </ul>
               <p className="mt-2 text-caption text-fg-muted">
-                Takes effect {whenLabel(due, now)}{due > now ? `, in ${spanLabel(due - now)}` : ""}. Most people who ask for a looser limit end up cancelling it.
+                Takes effect {whenLabel(due, now)}{due > now ? `, in ${spanLabel(due - now)}` : ""}.
               </p>
               <Button size="sm" className="mt-3" loading={busy}
                 onClick={async () => { setBusy(true); try { await cancelPending(); toast({ title: "Change cancelled", body: "Your limits stay as they are." }); } catch { toast({ tone: "error", title: "Couldn't cancel" }); } finally { setBusy(false); } }}>
@@ -157,9 +156,9 @@ export default function BrickSettings() {
             </section>
           )}
 
-              <Group icon={CalendarClock} title="Scheduled times" help="Mesh goes to messages and calls only during these times, every week.">
+              <Group icon={CalendarClock} title="Scheduled times">
             {self.windows.length === 0 ? (
-              <p className="px-4 py-3 text-callout text-fg-subtle">None yet. For example: weekdays before 10am, or every night after 10pm.</p>
+              <p className="px-4 py-3 text-callout text-fg-subtle">None yet</p>
             ) : (
               <ul className="divide-y divide-line">
                 {self.windows.map((w) => (
@@ -177,7 +176,7 @@ export default function BrickSettings() {
             </div>
           </Group>
 
-              <Group icon={Timer} title="Daily limits" tour="brick-limits" help="When you reach one, that section locks until midnight. Everything else stays open.">
+              <Group icon={Timer} title="Daily limits" tour="brick-limits">
             <ul className="divide-y divide-line">
               {SECTIONS.map((s) => {
                 const cap = self.caps[s.id] || 0;
@@ -186,9 +185,11 @@ export default function BrickSettings() {
                   <li key={s.id} className="flex min-h-16 items-center gap-3 px-4 py-2">
                     <span className="min-w-0 flex-1">
                       <label htmlFor={`cap-${s.id}`} className="block text-callout font-medium text-fg">{s.label}</label>
-                      <span className="block text-caption text-fg-subtle">
-                        {s.blurb}{brick.cap(s.id) > 0 ? ` · ${used} of ${brick.cap(s.id)} min used today` : ""}
-                      </span>
+                      {(s.blurb || brick.cap(s.id) > 0) && (
+                        <span className="block text-caption text-fg-subtle">
+                          {[s.blurb, brick.cap(s.id) > 0 && `${used} of ${brick.cap(s.id)} min used today`].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
                     </span>
                     <Select id={`cap-${s.id}`} value={cap} disabled={busy} className="!w-auto"
                       onChange={(e) => setCap(s.id, Number(e.target.value))}>
@@ -200,7 +201,7 @@ export default function BrickSettings() {
             </ul>
           </Group>
 
-          {policy && (
+          {policy && tzDrift && (
             <p className="flex items-start gap-2 text-caption text-fg-subtle">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>
@@ -225,7 +226,6 @@ export default function BrickSettings() {
             <Users size={20} className="shrink-0 text-fg-muted" aria-hidden="true" />
             <span className="min-w-0 flex-1">
               <span className="block text-callout font-medium">Parental controls</span>
-              <span className="block text-caption text-fg-subtle">Limits a parent adds on top of yours, with your agreement. They have their own page.</span>
             </span>
             <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
           </button>
@@ -235,7 +235,7 @@ export default function BrickSettings() {
       {adding && <AddWindowDialog onClose={() => setAdding(false)} onAdd={addWindow} />}
       {instant && (
         <ConfirmDialog tone="accent" title={`Brick Mesh until ${whenLabel(instant)}?`} confirmLabel="Brick me" busy={busy}
-          body={`Feed, Flicks, Search, Circles and News lock straight away. Messages and calls still work. You can't end it early: that would be loosening, which waits 24 hours${lockNow?.reason === "instant" && lockNow.until > instant ? ". You're already bricked for longer than this, so nothing changes" : ""}.`}
+          body={`Messages and calls still work. You can't end it early${lockNow?.reason === "instant" && lockNow.until > instant ? ". You're already bricked for longer than this" : ""}.`}
           onClose={() => setInstant(null)} onConfirm={doBrick} />
       )}
       {confirm && (
@@ -244,8 +244,8 @@ export default function BrickSettings() {
             {confirm.parts.map((p) => <li key={p}>{p}</li>)}
           </ul>
           <p className="mt-3 text-callout text-fg-muted">
-            So it waits 24 hours and takes effect {whenLabel(now + COOL_OFF_MS, now)}. You can cancel it any time before then.
-            {policy?.pending ? " It's added to the change already waiting, and the 24 hours start again." : ""}
+            It takes effect {whenLabel(now + COOL_OFF_MS, now)}. You can cancel before then.
+            {policy?.pending ? " The change already waiting starts its 24 hours again." : ""}
           </p>
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button onClick={() => setConfirm(null)}>Keep my limits</Button>
@@ -392,59 +392,6 @@ function AddWindowDialog({ onClose, onAdd }) {
   );
 }
 
-// What Brick mode is, open on someone's first visit and a tap away after that.
-const INTRO_KEY = "mesh:brick-intro";
-const INTRO = [
-  { icon: Timer, title: "Brick me now", body: "Lock Mesh for a while, like two hours or until tomorrow. Ending it early counts as loosening, so it waits 24 hours." },
-  { icon: CalendarClock, title: "Schedules", body: "Lock Mesh at set times every week, like school nights or work hours." },
-  { icon: Hourglass, title: "Daily limits", body: "Give Home, Flicks and News a daily allowance. When it runs out, that section locks until tomorrow." },
-  { icon: Clock, title: "The 24-hour rule", body: "Stricter limits start straight away. Anything that loosens them waits 24 hours, so you decide in a calm moment, not a craving one." },
-  { icon: MessageCircle, title: "Always open", body: "Messages, calls, notifications and settings are never locked." },
-  { icon: Trophy, title: "Bricked time counts", body: "Time spent bricked can go on your profile and the leaderboard, if you choose to share it." },
-  { icon: Users, title: "Parents", body: "A parent can add limits to a teen's account, if the teen agrees." },
-];
-
-function BrickIntro() {
-  const [open, setOpen] = useState(() => {
-    try { return localStorage.getItem(INTRO_KEY) !== "seen"; } catch { return true; }
-  });
-  const toggle = (next) => {
-    setOpen(next);
-    if (!next) { try { localStorage.setItem(INTRO_KEY, "seen"); } catch { /* storage blocked: shows again next visit */ } }
-  };
-  return (
-    <section aria-labelledby="brick-intro" className="rounded-card border border-accent-text/30 bg-accent-soft/40">
-      <button type="button" onClick={() => toggle(!open)} aria-expanded={open}
-        className="press flex w-full items-center gap-3 p-4 text-left">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-white">
-          <BrickWall size={20} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span id="brick-intro" className="block text-callout font-semibold">What is Brick mode?</span>
-          <span className="block text-caption text-fg-muted">Lock the browsing parts of Mesh so you can put it down.</span>
-        </span>
-        <ChevronDown size={18} className={`shrink-0 text-fg-subtle transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="px-4 pb-4">
-          <ul className="space-y-3">
-            {INTRO.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex gap-3">
-                <Icon size={18} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
-                <span className="min-w-0">
-                  <span className="block text-callout font-semibold">{title}</span>
-                  <span className="block text-caption text-fg-muted">{body}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <Button size="sm" variant="primary" className="mt-4" onClick={() => toggle(false)}>Got it</Button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // Parental controls
 
 export function FamilySection({ profile, policy }) {
@@ -452,8 +399,8 @@ export function FamilySection({ profile, policy }) {
   const age = profile?.birthYear > 0 ? year - profile.birthYear : null;
   if (age === null) {
     return (
-      <Group icon={Users} title="Parental controls" help="Set your birth year in Settings to use parental controls.">
-        <p className="px-4 py-3 text-callout text-fg-subtle">Parents can add limits to an under-18 account, with the teen's agreement.</p>
+      <Group icon={Users} title="Parental controls">
+        <p className="px-4 py-3 text-callout text-fg-subtle">Set your birth year in Settings first.</p>
       </Group>
     );
   }
@@ -461,9 +408,7 @@ export function FamilySection({ profile, policy }) {
   if (age >= 19) return <ParentFamily />;
   return (
     <Group icon={Users} title="Parental controls">
-      <p className="px-4 py-3 text-callout text-fg-subtle">
-        Parental controls are for under-18 accounts and their parents (19 and over). At 18 your account is fully your own.
-      </p>
+      <p className="px-4 py-3 text-callout text-fg-subtle">For under-18 accounts and their parents.</p>
     </Group>
   );
 }
@@ -485,8 +430,8 @@ function TeenFamily({ profile, policy }) {
 
   if (!link) {
     return (
-      <Group icon={ShieldCheck} title="Parental controls" help="Nobody supervises this account.">
-        <p className="px-4 py-3 text-callout text-fg-subtle">A parent can ask to add limits from their own account. You'll see the request here and in Notifications.</p>
+      <Group icon={ShieldCheck} title="Parental controls">
+        <p className="px-4 py-3 text-callout text-fg-subtle">Nobody supervises this account.</p>
       </Group>
     );
   }
@@ -591,7 +536,7 @@ function ParentFamily() {
   };
 
   return (
-    <Group icon={Users} title="Parental controls" help="Add limits to your teen's account. They have to agree, and the limits end on 1 January of the year they turn 18.">
+    <Group icon={Users} title="Parental controls" help="Your teen has to agree. Limits end in the year they turn 18.">
       <form onSubmit={invite} className="flex items-start gap-2 p-4">
         <div className="min-w-0 flex-1">
           <label htmlFor="teen-handle" className="sr-only">Your teen's handle</label>
@@ -776,7 +721,7 @@ function BrickedTime({ policy }) {
   };
 
   return (
-    <Group icon={Trophy} title="Bricked time" help="Counted from bricks Mesh enforced: finished instant bricks and whole days of scheduled time.">
+    <Group icon={Trophy} title="Bricked time">
       {!stats ? (
         <p className="px-4 py-3 text-callout text-fg-subtle">Counting starts today.</p>
       ) : (
@@ -792,7 +737,6 @@ function BrickedTime({ policy }) {
           <div className="flex items-start gap-3 border-t border-line px-4 py-3">
             <span className="min-w-0 flex-1">
               <label htmlFor="stats-public" className="block text-callout font-medium text-fg">Show on my profile and the leaderboard</label>
-              <span className="mt-0.5 block text-caption text-fg-subtle">Only your bricked time, never your limits or what you use.</span>
             </span>
             <Switch id="stats-public" checked={!!stats.public} disabled={busy} onChange={toggle} />
           </div>
@@ -804,7 +748,6 @@ function BrickedTime({ policy }) {
                 text: `I've kept Mesh bricked for ${durationLabel(thisWeek || stats.totalSeconds)} ${thisWeek ? "this week" : "so far"}${stats.streakDays > 1 ? `, ${stats.streakDays} days in a row` : ""}. #brickmode`,
               })}>Share</Button>
             )}
-            {stats.streakDays > 1 && <span className="inline-flex items-center gap-1 text-caption text-fg-subtle"><Flame size={14} aria-hidden="true" /> Keep the streak going</span>}
           </div>
         </>
       )}

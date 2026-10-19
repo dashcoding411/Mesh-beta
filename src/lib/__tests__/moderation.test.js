@@ -48,7 +48,7 @@ describe("checkContent", () => {
     expect(r.error).toMatch(/less than human/);
   });
   it("lets borderline text through with a note", () => {
-    const r = checkContent("indians are stupid", { skipCooldown: true });
+    const r = checkContent("I'll kill you if you spoil the finale lol", { skipCooldown: true });
     expect(r.ok).toBe(true);
     expect(r.borderline).toBe(true);
     expect(r.note).toBeTruthy();

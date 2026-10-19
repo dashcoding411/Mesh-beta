@@ -99,8 +99,7 @@ export function InterestsDialog({ initial = [], onClose, onSaved, firstRun = fal
         </div>
       }>
       <p className="mb-5 text-callout text-fg-muted">
-        Pick a few. They become filters at the top of For you and Flicks, and help rank what you see.
-        Only you can see them.
+        Pick a few.
       </p>
       <InterestToggles value={value} onChange={setValue} />
     </Dialog>

@@ -57,7 +57,7 @@ function PhoneOnly() {
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#111114] text-[#ff9b2f]"><Aperture size={26} aria-hidden="true" /></span>
         <h1 className="mt-4 font-display text-title-1">Rolls live on your phone</h1>
         <p className="mt-2 text-body text-fg-muted">
-          A roll is a camera you carry. Scan this with your phone to open it there, or tap the camera button at the top of Home in Mesh on your phone.
+          Scan this with your phone to open it there.
         </p>
         <div className="mx-auto mt-6 w-56 rounded-card bg-white p-3">
           {qr ? <img src={qr} alt="QR code to open this page on your phone" className="block w-full" /> : <span className="block aspect-square w-full" />}

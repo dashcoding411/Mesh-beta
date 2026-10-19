@@ -31,7 +31,7 @@ export function About({ group, memberCount, limits }) {
       </Panel>
       <Panel title="Limits" icon={ShieldCheck}>
         {limits.length === 0 ? (
-          <p className="text-callout text-fg-muted">Open to everyone. Mesh's own hate-speech and spam filters always apply.</p>
+          <p className="text-callout text-fg-muted">Open to everyone.</p>
         ) : (
           <ul className="space-y-2">
             {limits.map((l) => (

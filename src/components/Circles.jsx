@@ -4,7 +4,7 @@ import { INTERESTS, interestById } from "../lib/interests";
 import { CircleAvatar } from "./circle/CircleImages";
 import { useShell } from "./shell/ShellContext";
 import { InterestToggles } from "./Interests";
-import { fetchGroups, createGroup, CIRCLE_PRIVACY, fetchEvents, fetchInvitedEvents, fetchMyRsvps, fetchMembership } from "../lib/db";
+import { fetchGroups, fetchGroupById, fetchMyCircleIds, createGroup, CIRCLE_PRIVACY, fetchUpcomingPublicEvents, fetchInvitedEvents, fetchMyRsvps, fetchMembership } from "../lib/db";
 import { LIMITS, validateText } from "../lib/validate";
 import { checkName } from "../lib/moderation";
 import { navigate } from "../lib/router";
@@ -45,20 +45,21 @@ export default function Circles({ circleId, view }) {
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[720px] px-4 pb-16 pt-5 md:px-6">
-          <Button full variant="secondary" icon={tab === "circles" ? Plus : CalendarPlus} className="mb-5 md:hidden"
-            onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
-            {tab === "circles" ? "Start a circle" : "Plan a gathering"}
-          </Button>
-          <HelpLink guide={tab === "circles" ? "circles" : "gatherings"} className="-mt-2 mb-3">
-            {tab === "circles" ? "How circles work" : "How gatherings work"}
-          </HelpLink>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <HelpLink guide={tab === "circles" ? "circles" : "gatherings"}>
+              {tab === "circles" ? "How circles work" : "How gatherings work"}
+            </HelpLink>
+            <Button size="sm" variant="primary" icon={tab === "circles" ? Plus : CalendarPlus} className="md:hidden"
+              onClick={() => create(tab === "circles" ? "circle" : "gathering")}>
+              {tab === "circles" ? "New circle" : "New gathering"}
+            </Button>
+          </div>
           {tab === "gatherings" && (
             <button type="button" onClick={() => navigate("/whats-on")}
               className="press mb-5 flex min-h-14 w-full items-center gap-3 rounded-card border border-line bg-surface px-4 text-left hover:border-line-strong">
               <MapPin size={18} className="shrink-0 text-accent-text" aria-hidden="true" />
               <span className="min-w-0 flex-1">
                 <span className="block text-callout font-semibold">What's on near you</span>
-                <span className="block text-caption text-fg-muted">Public gatherings by day, for your suburb or city</span>
               </span>
               <ChevronRight size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
             </button>
@@ -99,11 +100,15 @@ function CircleList({ onCreate }) {
   const [allChips, setAllChips] = useState(false);
   const load = useCallback(async () => {
     try {
-      const list = await fetchGroups();
-      setGroups(list);
+      const [list, ids] = await Promise.all([fetchGroups(), fetchMyCircleIds()]);
       setError(false);
-      const flags = await Promise.all(list.map((g) => fetchMembership(g.id).then((m) => (m ? g.id : null)).catch(() => null)));
-      setMine(new Set(flags.filter(Boolean)));
+      // One query finds yours; until its index exists, ask circle by circle.
+      const mineIds = ids ?? new Set((await Promise.all(list.map((g) => fetchMembership(g.id).then((m) => (m ? g.id : null)).catch(() => null)))).filter(Boolean));
+      // Yours that aren't listed (hidden, or past the first 100).
+      const missing = [...mineIds].filter((id) => !list.some((g) => g.id === id)).slice(0, 30);
+      const extra = (await Promise.all(missing.map((id) => fetchGroupById(id).catch(() => null)))).filter(Boolean);
+      setGroups([...extra, ...list]);
+      setMine(mineIds);
     } catch { setError(true); }
   }, []);
   useEffect(() => { (async () => { await load(); })(); }, [load]);
@@ -130,7 +135,7 @@ function CircleList({ onCreate }) {
   if (!groups.length) {
     return (
       <EmptyState icon={Blend} title="No circles yet"
-        body="Circles are communities with their own rules, limits, admins and gatherings. Start one for your people."
+        body="Start one for your people."
         action={<Button variant="primary" icon={Plus} onClick={onCreate}>Start a circle</Button>} />
     );
   }
@@ -211,12 +216,10 @@ function CircleSection({ title, groups, highlight }) {
               className="press flex w-full items-center gap-4 overflow-hidden rounded-card border border-line bg-surface p-3 text-left transition-colors hover:border-line-strong">
               <CircleAvatar group={g} size={64} />
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-title-3">{g.name}</span>
-                  <PrivacyBadge privacy={g.privacy} />
-                </span>
+                <span className="block truncate text-title-3">{g.name}</span>
                 {g.description && <span className="mt-0.5 line-clamp-1 block text-callout text-fg-muted">{g.description}</span>}
                 <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-subtle">
+                  {g.privacy !== "public" && <PrivacyBadge privacy={g.privacy} />}
                   <span>{plural(g.memberCount || 0, "member")}{g.ageLimit ? ` · ${g.ageLimit}+` : ""}</span>
                   {(g.interests || []).map((id) => {
                     const it = interestById(id);
@@ -248,7 +251,7 @@ function GatheringList({ onCreate }) {
 
   const load = useCallback(async () => {
     try {
-      const [list, inv] = await Promise.all([fetchEvents(), fetchInvitedEvents().catch(() => [])]);
+      const [list, inv] = await Promise.all([fetchUpcomingPublicEvents(), fetchInvitedEvents().catch(() => [])]);
       const upcoming = (e) => (e.startsAt?.toMillis?.() || 0) > Date.now() - 86400000;
       setEvents(list.filter(upcoming));
       setInvited(inv.filter(upcoming));
@@ -264,7 +267,7 @@ function GatheringList({ onCreate }) {
   if (!events.length && !invited.length) {
     return (
       <EmptyState icon={CalendarDays} title="Nothing planned yet"
-        body="Gatherings are events: a run, a dinner, a stream. Put one on the calendar."
+        body="Put one on the calendar."
         action={<Button variant="primary" icon={CalendarPlus} onClick={onCreate}>Plan a gathering</Button>} />
     );
   }
@@ -337,7 +340,7 @@ function NewCircleDialog({ onClose, onCreated }) {
           <Textarea autoGrow rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.groupDescription} />
         </Field>
         <fieldset>
-          <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3, so the right people find it</span></legend>
+          <legend className="mb-2 text-callout font-medium">Interests <span className="font-normal text-fg-subtle">Up to 3</span></legend>
           <InterestToggles value={topics} onChange={setTopics} max={3} label="Circle interests" />
         </fieldset>
         <fieldset>

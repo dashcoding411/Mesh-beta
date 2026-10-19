@@ -167,10 +167,10 @@ export function HighlightEditor({ highlight, preselect = [], onClose, onSaved, o
       <InlineMessage>{error}</InlineMessage>
 
       <h3 className="mb-1 mt-4 text-callout font-semibold">Stories</h3>
-      <p className="mb-3 text-caption text-fg-subtle">From your archive. Tap to add or remove; the star picks the cover.</p>
+      <p className="mb-3 text-caption text-fg-subtle">Tap to add or remove. The star picks the cover.</p>
       {archive === null && <div className="grid grid-cols-3 gap-1">{[0, 1, 2].map((i) => <Skeleton key={i} className="aspect-[9/16] !rounded-control" />)}</div>}
       {archive?.length === 0 && (
-        <EmptyState compact icon={History} title="No stories yet" body="Stories you post are kept here after 24 hours, so you can highlight them later." />
+        <EmptyState compact icon={History} title="No stories yet" body="Your stories stay here after 24 hours." />
       )}
       {archive?.length > 0 && (
         <ul className="grid grid-cols-3 gap-1 sm:grid-cols-4">

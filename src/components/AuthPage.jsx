@@ -300,7 +300,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           </form>
         ) : (
           <form onSubmit={sendSms} className="space-y-4" noValidate>
-            <Field id={ids.phone} label="Phone number" hint="Include your country code. We'll text you a 6-digit code.">
+            <Field id={ids.phone} label="Phone number" hint="With your country code, like +61.">
               <input id={ids.phone} className={FIELD} type="tel" autoComplete="tel"
                 value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+61 412 345 678" />
             </Field>
@@ -317,9 +317,6 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           </button>
         )}
 
-        {signup && (
-          <p className="mt-2 text-center text-caption text-fg-subtle">Next, you&apos;ll choose your name and handle.</p>
-        )}
 
         <PolicyLinks />
         <p className="mt-3 text-center text-label text-fg-subtle">Mesh version: {import.meta.env.VITE_BUILT || "development"}</p>
@@ -482,9 +479,9 @@ function FinishProfile({ user, onCreated, onUnderSixteen }) {
     <form onSubmit={submit} className="space-y-4 anim-rise" noValidate>
       <div>
         <h2 className="text-title-1 font-display">Set up your profile</h2>
-        <p className="mt-1 text-callout text-fg-muted">Step 2 of 2: how you&apos;ll appear on Mesh. You can change these later.</p>
+        <p className="mt-1 text-callout text-fg-muted">Step 2 of 2</p>
       </div>
-      <Field id={ids.name} label="Name" hint="Your name or a nickname. Names don't have to be unique.">
+      <Field id={ids.name} label="Name">
         <input id={ids.name} className={FIELD} value={displayName} autoComplete="name" autoFocus
           onChange={(e) => changeName(e.target.value)} maxLength={50} placeholder="Alex Nguyen" />
       </Field>
@@ -583,9 +580,6 @@ function Shell({ finishing = false, children }) {
           <LogoMark size={56} />
           <p className="mt-8 font-display text-[3rem] font-extrabold leading-[1.05] tracking-tight">
             Let&rsquo;s mesh<br />together again.
-          </p>
-          <p className="mt-6 text-body text-fg-muted">
-            Posts, short and long video, communities and news that has to cite its sources, in one place.
           </p>
           <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-6 text-callout">
             <div><dt className="text-fg-subtle">Ads on what you do</dt><dd className="mt-0.5 font-semibold">Never</dd></div>

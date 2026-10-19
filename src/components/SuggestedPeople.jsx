@@ -41,7 +41,6 @@ export default function SuggestedPeople({ title = "People you might like", class
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h2 id={id} className="text-title-3">{title}</h2>
-            <p className="text-caption text-fg-subtle">From your contacts if you sync them, people your friends follow, and what you engage with.</p>
           </div>
           <Button size="sm" icon={BookUser} onClick={() => setSyncing(true)}>Find contacts</Button>
         </div>

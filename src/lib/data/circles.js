@@ -1,7 +1,7 @@
 // Circles: settings, membership, moderation, guides and badges.
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
-  setDoc, Timestamp, updateDoc, where, writeBatch,
+  setDoc, Timestamp, updateDoc, where, writeBatch, collectionGroup,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { me, snapToList, tsMillis } from "./core.js";
@@ -30,9 +30,31 @@ export const COVER_COLORS = [
   "from-indigo-600 via-purple-600 to-pink-500",
 ];
 
+/** Listed circles (public and private), biggest first. Falls back to any 100 while the index builds. */
 export async function fetchGroups() {
-  const q = query(collection(db, "groups"), where("privacy", "in", ["public", "private"]), limit(100));
-  return snapToList(await getDocs(q)).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+  const listed = where("privacy", "in", ["public", "private"]);
+  try {
+    return snapToList(await getDocs(query(collection(db, "groups"), listed, orderBy("memberCount", "desc"), limit(100))));
+  } catch (err) {
+    if (err?.code !== "failed-precondition") throw err;
+    return snapToList(await getDocs(query(collection(db, "groups"), listed, limit(100))))
+      .sort((a, b) => (b.memberCount || 0) - (a.memberCount || 0));
+  }
+}
+
+/**
+ * The circles you're in, hidden ones included, in one query across every
+ * circle's members (firestore.rules lets you list only your own). Null if
+ * that can't run yet (its index is still building).
+ */
+export async function fetchMyCircleIds() {
+  if (!me()) return new Set();
+  try {
+    const snap = await getDocs(query(collectionGroup(db, "members"), where("uid", "==", me()), limit(300)));
+    return new Set(snap.docs.filter((d) => d.ref.parent.parent?.parent?.id === "groups").map((d) => d.ref.parent.parent.id));
+  } catch {
+    return null;
+  }
 }
 
 // Public circles, read once per visit for Home (their posts appear there).

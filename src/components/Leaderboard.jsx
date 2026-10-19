@@ -107,16 +107,13 @@ function PublicBoard({ scope, week, who }) {
       )}
       {list && rows.length === 0 && (
         <EmptyState icon={Trophy} title={who === "following" ? "Nobody you follow is on it yet" : "Nobody's on it yet"}
-          body={scope === "week" ? "Bricked time counted this week shows up here." : "Be the first: brick Mesh for a while and show your time."} />
+          body={null} />
       )}
       {rows.length > 0 && (
         <ol className="space-y-1.5">
           {rows.map((s, i) => <li key={s.id}><Row rank={i} person={s} value={valueOf(s)} mine={s.id === me()} /></li>)}
         </ol>
       )}
-      <p className="mt-6 text-center text-caption text-fg-subtle">
-        Only time the server enforced counts: finished instant bricks and whole days of scheduled time. People appear here only if they choose to.
-      </p>
     </>
   );
 }
@@ -134,7 +131,7 @@ function MyGroups() {
       <div className="mb-4 rounded-card border border-line bg-surface p-4">
         <p className="flex items-center gap-2 text-callout font-semibold"><Users size={18} className="text-accent-text" aria-hidden="true" /> Brick with friends</p>
         <p className="mt-1 text-caption text-fg-muted">
-          Make a group, send your friends the link, and see who's kept Mesh bricked the longest this week. Only the group sees it, even if your time isn't public.
+          See who's kept Mesh bricked the longest this week. Only the group sees it.
         </p>
         <Button size="sm" variant="primary" icon={Plus} className="mt-3" onClick={() => setCreating(true)}>New group</Button>
       </div>
@@ -284,7 +281,6 @@ function GroupBoard({ id, scope, week }) {
       {group.members.length === 1 && (
         <p className="mt-4 text-center text-caption text-fg-muted">It's just you so far. Tap Invite and send the link to friends.</p>
       )}
-      <p className="mt-6 text-center text-caption text-fg-subtle">Times come from Brick mode and are checked by the server, so nobody can pad theirs.</p>
 
       {dialog === "rename" && (
         <NameDialog title="Rename group" action="Save" initial={group.name} onClose={() => setDialog(null)}

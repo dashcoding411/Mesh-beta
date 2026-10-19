@@ -3,7 +3,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
-  addCorrection, deleteNews, fetchCorrectionRequests, fetchNewsStory, staffRole, me, recordNewsRead,
+  addCorrection, deleteNews, fetchCorrectionRequests, fetchNewsStory, onTeam, me, recordNewsRead,
   suggestCorrection, tsMillis,
 } from "../../lib/db";
 import { fullTime, isoTime, plural, shortTime } from "../../lib/format";
@@ -39,7 +39,7 @@ export function NewsStory({ id }) {
   const [requests, setRequests] = useState(null);
 
   const load = useCallback(async () => {
-    const [s, amAdmin] = await Promise.all([fetchNewsStory(id), staffRole().then(Boolean).catch(() => false)]);
+    const [s, amAdmin] = await Promise.all([fetchNewsStory(id), onTeam("news").catch(() => false)]);
     setStory(s);
     setAdmin(amAdmin);
     const author = !!s && (s.authors || [s.authorId]).includes(me());

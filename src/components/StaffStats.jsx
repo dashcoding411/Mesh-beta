@@ -29,7 +29,7 @@ export default function StaffStats() {
   const [round, setRound] = useState(0);
   const now = stats?.at || 0;
 
-  useEffect(() => { staffRole().then(setRole).catch(() => setRole(null)); }, []);
+  useEffect(() => { staffRole().then((r) => setRole(r === "admin" ? r : null)).catch(() => setRole(null)); }, []);
 
   useEffect(() => {
     if (!role) return undefined;

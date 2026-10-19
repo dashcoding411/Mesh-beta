@@ -54,9 +54,6 @@ export default function WhatsOn() {
       <HomeHeader section="whatson" />
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 pb-16 pt-4 md:px-6">
-          <p className="text-callout text-fg-muted">
-            Runs, dinners, gigs and meetups people are putting on. Public gatherings only. Anyone can look, and replying is free with a Mesh account.
-          </p>
           <HelpLink guide="gatherings">How gatherings work</HelpLink>
 
           <div className="mt-4">
@@ -111,7 +108,6 @@ export default function WhatsOn() {
                 ))}
                 <div className="rounded-card border border-line bg-surface p-4">
                   <p className="text-callout font-semibold">Putting something on?</p>
-                  <p className="mt-1 text-caption text-fg-muted">Plan a gathering and share the link anywhere. People can see it without an account.</p>
                   <Button size="sm" variant="primary" icon={CalendarPlus} className="mt-3" onClick={plan}>{guest ? "Sign up to plan one" : "Plan a gathering"}</Button>
                 </div>
               </div>

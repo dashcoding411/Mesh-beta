@@ -5,11 +5,16 @@
 // they are aren't.
 //
 // Outcomes (see assessText):
-//   block       slurs, dehumanising generalisations, conspiracy tropes about a
-//               group, calls for violence or exclusion, threats against a
-//               person, "go back to your country", self-harm incitement
-//   borderline  mockery and blanket insults: posted, but not recommended to
-//               non-followers and collapsed in comments
+//   block       slurs, dehumanising generalisations, putting down a group for
+//               who they are (insults, stereotypes, coded terms, mockery),
+//               conspiracy tropes about a group, calls for violence or
+//               exclusion, threats against a person, "go back to your
+//               country", self-harm incitement
+//   borderline  unclear targets ("those people...") and joking threats:
+//               posted, but not recommended to non-followers and collapsed
+//               in comments
+// Insulting a person, a company, Mesh or a government is fine; roping in
+// race, gender, sexuality, religion, disability or where someone's from isn't.
 //   quoted      abuse quoted to report or condemn it: posted behind a warning
 //   ok          everything else, including negation and counter-speech
 //
@@ -128,9 +133,22 @@ const POLITICAL = [
   "socialists?", "capitalists?", "zionists?", "feminists?", "boomers?", "zoomers?",
 ];
 
+// The same groups in formal or euphemistic dress, as used to make hate sound
+// like analysis ("certain demographics", "people of African descent").
+const DRESSED_UP = [
+  "(?:certain|some|these|those|such|particular) (?:demographics?|populations?|ethnicit(?:y|ies)|races?|cultures?|communities|ethnic groups|peoples|backgrounds)",
+  "(?:people|persons|individuals|populations?|those|men|women) of (?:african|asian|middle[- ]eastern|arab|arabic|jewish|indian|south asian|aboriginal|islamic|muslim|semitic|colou?r|mixed|non[- ]?white|non[- ]?european|migrant|third[- ]world) (?:descent|origin|heritage|extraction|background|stock|ancestry)",
+  "sub[- ]saharan (?:africans?|populations?|peoples?)", "third[- ]world(?:ers| migrants| immigrants| populations?| peoples?)",
+  "non[- ]?whites", "non[- ]?europeans", "homosexuals", "transgenders", "transsexuals", "the disabled", "the handicapped",
+  "(?:muslim|islamic|african|asian|indian|chinese|arab) (?:migrants|immigrants|populations?|communities|men|youths?)",
+  "(?:the )?(?:black|african|asian|indian|muslim|arab|aboriginal|jewish|white|chinese) (?:race|population|diaspora|community)",
+  "semites", "jewry", "the jews", "the blacks", "the muslims", "the gays", "the trans community", "the lgbt community",
+];
+
 const alt = (list) => `(?:${list.join("|")})`;
 const PEOPLE_RE = alt(PEOPLE);
-const ANY_GROUP_RE = alt([...PEOPLE, ...POLITICAL]);
+const DRESSED_RE = alt([...DRESSED_UP, ...PEOPLE]);
+const ANY_GROUP_RE = alt([...DRESSED_UP, ...PEOPLE, ...POLITICAL]);
 
 // As an object ("I hate X", "kill X"), singular/adjective forms only count
 // when not followed by a noun ("I hate Indian traffic" is fine). Plurals
@@ -160,6 +178,7 @@ const DEHUMANISING = [
   "(?:a )?(?:disease|cancer|plague|virus|infestation)", "trash", "garbage", "rubbish", "scum", "inferior", "invaders",
   "rapists", "terrorists", "criminals", "thieves", "scammers", "pedos?", "paedos?", "pedophiles", "paedophiles",
   "groomers", "predators", "degenerates?", "abominations?", "freaks", "mentally (?:ill|sick|deranged|disordered)",
+  "(?:sexual )?deviants?", "perverts?", "parasites", "leeches", "a parasite", "a blight", "a scourge",
   "sick in the head", "(?:a )?mental (?:illness|disorder)",
 ];
 
@@ -173,7 +192,7 @@ const FILLER = "(?:(?:all|so|just|literally|such|basically|fucking|fkn|fuckin|fr
 const DET = "(?:(?:all|every|most|these|those|the|them|you|ya|u|of)\\s+){0,3}";
 const IS = "(?:are|r|is|=|be|become|remain|were|was|all)";
 const VIOLENT = "(?:kill|murder|gas|shoot|exterminate|eradicate|slaughter|lynch|hang|burn|nuke|bomb|stab|behead|wipe out|get rid of|eliminate|genocide|ethnically cleanse|purge|sterili[sz]e)";
-const EXCLUDE = "(?:deport|expel|kick out|throw out|send back|ban)";
+const EXCLUDE = "(?:deport|expel|kick out|throw out|send back|ban|repatriate|remigrate)";
 const OUTCOME = "(?:die|be killed|be gassed|be shot|be exterminated|be wiped out|be put down|be rounded up|be locked up|burn|hang|be hanged|be hung|be lynched|not exist|be sterili[sz]ed|be deported|be kicked out|go back|get out|leave (?:the country|australia|our country))";
 // "I'll", "we're gonna", "I want to"...
 const WILL = "(?:i|we)\\s*(?:'?ll|will|'?m going to|am going to|'?m gonna|am gonna|m gonna|gonna|'?re going to|are going to|'?re gonna|want to|wanna)";
@@ -182,6 +201,20 @@ const HURT = "(?:kill|hurt|stab|shoot|murder|rape|strangle|choke|slit)";
 const BEAT_UP = "(?:beat|bash|smash)\\s+(?:you|u|ya)\\s+(?:up|to death|senseless|to a pulp)";
 
 const re = (src) => new RegExp(src, "i");
+
+// For the dressed-up patterns: "inherently", "genetically"...
+const INNATE = "(?:inherently|innately|naturally|genetically|biologically|intrinsically|fundamentally|essentially|by nature|congenitally|racially|evolutionarily|culturally|statistically|demonstrably|objectively|scientifically)";
+// ...and the claims made with them.
+const LACKING = [
+  "inferior", "subhuman", "primitive", "backward", "savage", "uncivili[sz]ed", "degenerate", "unintelligent",
+  "less (?:intelligent|evolved|civili[sz]ed|capable|human|rational)", "lower[- ](?:iq|intelligence)",
+  "of (?:lower|lesser) (?:intelligence|iq|worth|value|stock)", "unfit (?:for|to) (?:society|civili[sz]ation|citizenship|leadership|parenthood|govern)",
+  "(?:pre)?disposed (?:to|towards) (?:crime|criminality|violence|deviance|dishonesty|laziness|terrorism|rape|theft)",
+  "prone to (?:crime|criminality|violence|deviance|rape|terrorism|theft|dishonesty)",
+  "violent", "criminals?", "criminal by nature", "dishonest", "lazy", "untrustworthy", "unassimilable",
+  "more (?:violent|criminal|dangerous|dishonest|primitive|backward|aggressive|savage|barbaric|corrupt|stupid)",
+  "incompatible with (?:civili[sz]ation|western (?:society|civili[sz]ation|values)|democracy|our (?:society|values|way of life)|australian (?:society|values))",
+].join("|");
 
 const BLOCK_PATTERNS = [
   // "X are vermin", "all X are just animals"
@@ -221,28 +254,55 @@ const BLOCK_PATTERNS = [
   { category: "threat", kind: "threat", re: re(`${B}i know where (?:you|u) (?:live|work|go to school)${E}`) },
   // self-harm incitement
   { category: "harassment", re: re(`${B}(?:kys|k y s|kill (?:your ?self|urself|yourselves)|neck (?:your ?self|urself)|go die|hope (?:you|u) die|drink bleach)${E}`) },
+  // Putting down a group for who they are: blanket insults, stereotypes and
+  // coded terms ("X are stupid", "X belong in the kitchen", "kung flu").
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+${FILLER}(?:a |an |the )?${alt(INSULTING)}${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+(?:can'?t|cannot|can not)\\s+(?:drive|think|lead|cook|be trusted|do maths?|speak english|parallel park)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${PEOPLE_RE}\\s+(?:belong|should (?:be|stay)|need to (?:be|stay)|go back)\\s+(?:in|to)\\s+the\\s+kitchen${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:get|go)\\s+back\\s+(?:in|into|to)\\s+the\\s+kitchen${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+(?:ruining|destroying|taking over)\\s+(?:everything|this country|the country|our country|australia|the world|our jobs|our culture|the west)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:i'?m|im|i am)\\s+not\\s+(?:a\\s+)?(?:racist|sexist|homophobic|transphobic|bigot(?:ed)?)\\s*,?\\s+but${E}(?=.*${B}${PEOPLE_RE}${E})`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:kung flu|china virus|wuhan virus)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: /\({3}\s*[^()]{1,40}\s*\){3}/ },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:saar|saaar+|sirs? pls|redeem(?:ed)? sir|bloody bastard benchod)${E}`) },
+  // The same hate in academic or "just analysis" language. Each needs a group
+  // and an absolute claim about it, so policy and research talk stay fine
+  // ("migrants can't integrate without English classes", "IQ tests carry
+  // cultural bias").
+  // "X are inherently inferior", "these populations are predisposed to criminality"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:are|is|remain|tend to be|have proven to be|appear to be|seem to be|have always been)\\s+${FILLER}(?:${INNATE}\\s+)?(?:${LACKING})${E}`) },
+  // "X have lower average IQ", "X exhibit diminished impulse control"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:${INNATE}\\s+)?(?:have|has|possess|display|exhibit|show|demonstrate)\\s+(?:an?\\s+)?(?:[a-z]+\\s+){0,2}?(?:lower|reduced|inferior|diminished|limited|deficient)\\s+(?:average\\s+)?(?:iq|intelligence|cognitive (?:ability|abilities|capacity|function)|intellect|mental capacity|moral (?:capacity|development|sense)|impulse control|capacity for (?:reason|empathy|civili[sz]ation))${E}`) },
+  // "women lack the capacity for leadership", "X lack the intelligence for"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:${INNATE}\\s+)?(?:lack|lacks|are lacking|are devoid of|are without)\\s+(?:the\\s+|any\\s+)?(?:[a-z]+\\s+)?(?:intelligence|intellect|morality|morals|civility|self[- ]control|impulse control|capacity for (?:reason|logic|leadership|empathy|rational thought|abstract thought|civili[sz]ation|self[- ]government)|capacity to (?:reason|lead|think|govern))${E}`) },
+  // "X will never assimilate", "X are incapable of integrating"
+  { category: "xenophobia", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:will never|can never|could never|are incapable of|are inherently (?:unable|incapable) (?:to|of)|fundamentally cannot|simply cannot|by nature cannot|are unable to ever)\\s+(?:assimilat\\w*|integrat\\w*|be civili[sz]ed|becom\\w* civili[sz]ed|govern themselves|adapt\\w* to (?:our|western|australian) (?:values|society|culture|way of life))${E}`) },
+  // "X will never be real Australians", "trans women aren't real women"
+  { category: "xenophobia", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:are not|aren'?t|will never be|can never be|could never be|are never)\\s+(?:real|true|proper|genuine|fully|actual)\\s+(?:australians?|aussies?|citizens|members of (?:this|our) (?:society|nation|country)|humans?|people|women|men)${E}`) },
+  // "X pose a threat to Western civilisation", "X are a burden on society"
+  { category: "dehumanising", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:are|is|represent|pose|constitute|remain)\\s+(?:a\\s+|an\\s+)?(?:[a-z]+\\s+){0,2}?(?:threat|danger|burden|drain|cancer|plague|blight|scourge|menace|parasite|infestation|contagion)\\s+(?:to|on|upon|for)\\s+(?:society|civili[sz]ation|the nation|the country|our (?:country|nation|society|culture|values|way of life|people)|the west|western (?:society|civili[sz]ation|values)|australia|humanity)${E}`) },
+  // "X should not be permitted to vote", "X should be barred from public life"
+  { category: "exclusion", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:should|must|ought to)\\s+(?:not|never)\\s+be\\s+(?:permitted|allowed|granted|given|entitled)\\s+(?:to\\s+)?(?:vote|citizenship|to immigrate|immigrate|entry|enter|hold office|rights|equal rights|residency|visas?|to marry|marry|adopt|have children|reproduce)${E}`) },
+  { category: "exclusion", re: re(`${B}${DET}${DRESSED_RE}\\s+(?:should|must|ought to)\\s+be\\s+(?:barred|excluded|prohibited|banned|removed|expelled|repatriated|segregated|sterili[sz]ed)(?:\\s+(?:from|out of)\\s+[a-z ]{2,40})?${E}`) },
+  // Being gay or trans described as an illness or perversion.
+  { category: "dehumanising", re: re(`${B}(?:homosexuality|being (?:gay|lesbian|bi|bisexual|queer|trans|transgender)|gayness|same[- ]sex attraction|transgenderism|transsexualism|gender ideology)\\s+${IS}\\s+(?:a\\s+|an\\s+|just\\s+|simply\\s+|clearly\\s+)?(?:[a-z]+\\s+)?(?:mental illness|mental disorder|psychiatric disorder|psychological disorder|pathology|disease|deviance|deviancy|perversion|abomination|sickness|delusion|aberration|degeneracy|unnatural|a sin|sinful|immoral|evil|a choice to be corrected|curable)${E}`) },
+  // Sexism in a lab coat: "women are biologically suited only to domestic roles"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:women|females|girls|wives)\\s+(?:are|is)\\s+(?:[a-z]+\\s+){0,2}?(?:suited|designed|made|meant|built|fit)\\s+(?:only\\s+)?(?:to|for)\\s+(?:domestic\\w*|the home|housework|childbearing|child[- ]?rearing|motherhood|serving men|subservience|submission|the kitchen|obedience)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:women|females|girls)\\s+(?:are|is)\\s+(?:simply\\s+|just\\s+|naturally\\s+|biologically\\s+)?too\\s+(?:emotional|irrational|hysterical|weak|stupid|hormonal|illogical)\\s+(?:to|for)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:a\\s+)?wom[ae]n'?s\\s+(?:proper\\s+|rightful\\s+|natural\\s+)?place\\s+is\\s+in\\s+the\\s+(?:home|kitchen|house)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:women|wives|females)\\s+(?:should|must|ought to)\\s+(?:always\\s+)?(?:submit|obey|be subservient|be submissive|defer)\\b(?:\\s+to\\s+(?:men|their husbands|males))?`) },
+  // Known code phrases and pseudo-science, whoever they're about.
+  { category: "conspiracy", kind: "term", re: re(`${B}(?:the\\s+)?(?:great replacement|white genocide|kalergi plan|jewish question|zionist occupied government|globalist cabal|race realis[mt]|racial hierarchy|human biodiversity|racial purity|race mixing|mud races?|untermensch\\w*|remigration|replacement theory|white replacement)${E}`) },
+  { category: "conspiracy", kind: "term", re: re(`${B}(?:13\\s*/\\s*50|13\\s*/\\s*52|despite being 13\\s*%?|13\\s*%\\s*of the population(?:\\s+(?:but|yet|commit))?|the jq|zog)${E}`) },
 ];
 
 const BORDERLINE_PATTERNS = [
-  // blanket insults about a group
-  { category: "insult", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+${FILLER}(?:a |an |the )?${alt(INSULTING)}${E}`) },
-  // stereotypes: "X can't drive", "X belong in the kitchen", "X are ruining everything"
-  { category: "insult", re: re(`${B}${DET}${PEOPLE_RE}\\s+(?:can'?t|cannot|can not)\\s+(?:drive|think|lead|cook|be trusted|do maths?|speak english|parallel park)${E}`) },
-  { category: "insult", re: re(`${B}${PEOPLE_RE}\\s+(?:belong|should (?:be|stay)|need to (?:be|stay)|go back)\\s+(?:in|to)\\s+the\\s+kitchen${E}`) },
-  { category: "insult", re: re(`${B}(?:get|go)\\s+back\\s+(?:in|into|to)\\s+the\\s+kitchen${E}`) },
-  { category: "insult", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+(?:ruining|destroying|taking over)\\s+(?:everything|this country|the country|our country|australia|the world|our jobs|our culture|the west)${E}`) },
-  // "I'm not racist but" followed by a group
-  { category: "coded", re: re(`${B}(?:i'?m|im|i am)\\s+not\\s+(?:a\\s+)?(?:racist|sexist|homophobic|transphobic|bigot(?:ed)?)\\s*,?\\s+but${E}(?=.*${B}${PEOPLE_RE}${E})`) },
   // unnamed targets: "those people should die", "these people are animals"
   { category: "violence", re: re(`${B}(?:these|those)\\s+(?:people|guys|men|women|ones|freaks|animals|scum)\\s+(?:[a-z']+\\s+){0,4}?(?:should|deserve to|need to|must|ought to)\\s+(?:all\\s+)?(?:die|be killed|be put down|be shot|be hanged|be hung|be gassed|be exterminated|be wiped out|burn)${E}`) },
   { category: "dehumanising", re: re(`${B}(?:these|those)\\s+people\\s+${IS}\\s+${FILLER}(?:a |an |the )?${alt(DEHUMANISING)}${E}`) },
-  // coded or loaded terms
-  { category: "coded", re: re(`${B}(?:kung flu|china virus|wuhan virus)${E}`) },
-  { category: "coded", re: /\({3}\s*[^()]{1,40}\s*\){3}/ },
-  { category: "coded", re: re(`${B}(?:saar|saaar+|sirs? pls|redeem(?:ed)? sir|bloody bastard benchod)${E}`) },
 ];
 
-// Mockery: group + stereotype + laughter together (borderline).
+// Mockery: group + stereotype + laughter together (blocked, as putting down a group).
 const STEREOTYPE_RE = re(`${B}(?:curry|smell\\w*|stink\\w*|scam\\w*|call ?cent(?:er|re)|tech support|street|toilet|poo|shit\\w*|cows?|cow piss|bats?|dogs?|dog meat|rice|chopsticks|accent|sirs?|needful|bobs|vagene|taco|burrito|cartel|terrorists?|bombs?|camels?|sand|oven|shekels?|nose|welfare|centrelink|dole|petrol|goon|boat people|monkeys?|bananas?|watermelon|fried chicken)${E}`);
 const LAUGH_RE = /(😂|🤣|💀|😹|😆|(?<![a-z])(?:lmao+|lmfao+|lol+|rofl|kek|haha+|hehe+|xd)(?![a-z]))/i;
 const PEOPLE_ONLY_RE = re(`${B}${PEOPLE_RE}${E}`);
@@ -325,6 +385,17 @@ function judge(kind, c) {
     if ((c.condemned || c.reported || c.friendly) && !c.endorsed) return "quoted";
     return "block";
   }
+  // Putting down a group: fine about your own, or when denied or called out;
+  // reporting what someone else said posts behind a note.
+  // A code phrase on its own: fine when it's named to deny, report or call it out.
+  if (kind === "term") {
+    if (c.negated || c.condemned || c.framed || c.reported) return "ok";
+    return "block";
+  }
+  if (kind === "stereotype") {
+    if (c.negated || c.condemned || c.ingroup) return "ok";
+    return c.reported ? "borderline" : "block";
+  }
   if (kind === "harassment") {
     if (c.reported && !c.endorsed) return "quoted";
     return "block";
@@ -369,7 +440,7 @@ export function assessText(text) {
     if (PEOPLE_ONLY_RE.test(v) && STEREOTYPE_RE.test(v) && LAUGH_RE.test(v)) {
       const m = v.match(PEOPLE_ONLY_RE);
       const c = contextOf(v, m.index, m[0].length);
-      consider(c.condemned || c.ingroup ? "ok" : "borderline", "mockery");
+      consider(judge("stereotype", c), "stereotype");
     }
   }
   return worst;
@@ -385,6 +456,7 @@ const BLOCK_MESSAGES = {
   violence: "That calls for harm against a group of people. That's not allowed on Mesh, against anyone.",
   exclusion: "That calls for a whole group of people to be shut out for who they are. Debate policy all you like; targeting a group isn't allowed.",
   hatred: "That expresses hatred for a whole group of people. You can criticise beliefs, governments and ideas; not people for who they are.",
+  stereotype: "That puts down a whole group of people for who they are: their race, gender, sexuality, religion, disability or where they're from. Have a go at a person, a company or an idea all you like; not a group for who they are.",
   xenophobia: "That tells someone they don't belong because of where they or their family are from. Everyone belongs here.",
   conspiracy: "That blames a whole group of people for secretly running things, an old conspiracy theory used against many groups. Criticise specific people, companies or governments instead.",
   threat: "That reads as a threat to hurt someone. If it's a joke, make that clear; real threats aren't allowed on Mesh.",
@@ -402,6 +474,7 @@ export const RULE_NAMES = {
   violence: "Calls for violence",
   exclusion: "Shutting a group out",
   hatred: "Hatred of a group",
+  stereotype: "Putting down a group",
   xenophobia: "Telling people they don't belong",
   conspiracy: "Conspiracy theories about a group",
   threat: "Threats",

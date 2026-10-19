@@ -13,17 +13,17 @@ export const TABS = [
 ];
 
 const ALL = {
-  search: { id: "search", path: "/search", label: "Search", icon: Search, blurb: "People, posts, news and circles" },
-  foryou: { id: "foryou", path: "/", label: "For you", icon: Sparkles, blurb: "Flicks, Stills and Strands, ranked for you" },
-  flicks: { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard, blurb: "Short ones to swipe, long ones to sit down with" },
-  circles: { id: "circles", path: "/circles", label: "Circles", icon: Blend, blurb: "Communities and the gatherings they plan" },
-  following: { id: "following", path: "/following", label: "Following", icon: Users, blurb: "Only people you follow, newest first" },
-  news: { id: "news", path: "/news", label: "News", icon: Newspaper, blurb: "Verified journalists publishing their own stories" },
-  notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell, blurb: "Likes, comments, follows and invites" },
-  leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "Who's kept Mesh bricked the longest" },
-  whatson: { id: "whatson", path: "/whats-on", label: "What's on", icon: CalendarDays, blurb: "Public gatherings coming up" },
-  rolls: { id: "rolls", path: "/rolls", label: "Rolls", icon: Aperture, blurb: "Everyone shoots, nobody looks, it develops at 9am" },
-  help: { id: "help", path: "/help", label: "Help", icon: LifeBuoy, blurb: "Short guides to everything in Mesh, in plain words" },
+  search: { id: "search", path: "/search", label: "Search", icon: Search },
+  foryou: { id: "foryou", path: "/", label: "For you", icon: Sparkles },
+  flicks: { id: "flicks", path: "/flicks", label: "Flicks", icon: Clapperboard },
+  circles: { id: "circles", path: "/circles", label: "Circles", icon: Blend },
+  following: { id: "following", path: "/following", label: "Following", icon: Users },
+  news: { id: "news", path: "/news", label: "News", icon: Newspaper },
+  notifications: { id: "notifications", path: "/notifications", label: "Notifications", icon: Bell },
+  leaderboard: { id: "leaderboard", path: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  whatson: { id: "whatson", path: "/whats-on", label: "What's on", icon: CalendarDays },
+  rolls: { id: "rolls", path: "/rolls", label: "Rolls", icon: Aperture },
+  help: { id: "help", path: "/help", label: "Help", icon: LifeBuoy },
 };
 
 export const FEED_TABS = [ALL.foryou, ALL.following];

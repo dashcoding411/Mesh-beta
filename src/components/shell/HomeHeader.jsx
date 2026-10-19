@@ -70,7 +70,6 @@ export default function HomeHeader({ section, children, actions, transparent = f
         <div className="hidden md:flex min-h-16 items-center gap-4 px-6">
           <div className="min-w-0 flex-1 py-3">
             <h1 className="text-title-2">{meta.label}</h1>
-            <p className="text-caption text-fg-subtle">{meta.blurb}</p>
           </div>
           {actions}
         </div>

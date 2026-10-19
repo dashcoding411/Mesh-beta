@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import { MapPin, Globe, Lock, Users, ChevronRight, Check, Aperture } from "lucide-react";
+import { MapPin, Globe, Lock, Users, ChevronDown, ChevronRight, Check, Aperture } from "lucide-react";
 import { createEvent, isEventFull, friendsGoingLabel, startGatheringRoll } from "../lib/db";
 import Avatar from "./ui/Avatar";
 import { LIMITS, validateText } from "../lib/validate";
@@ -148,12 +148,16 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
           <input type="radio" name={name} checked={value === o.id} onChange={() => onChange(o.id)} className="mt-1 h-4 w-4 accent-violet-600" />
           <span>
             <span className="flex items-center gap-1.5 text-callout font-semibold">{o.icon && <o.icon size={14} aria-hidden="true" />}{o.label}</span>
-            <span className="block text-caption text-fg-muted">{o.blurb}</span>
+            {o.blurb && <span className="block text-caption text-fg-muted">{o.blurb}</span>}
           </span>
         </label>
       ))}
     </div>
   );
+
+  // Open when editing one that uses them, or when one needs fixing.
+  const more = !!(errors.capacity || errors.ticketUrl || initial?.capacity || initial?.ticketUrl
+    || initial?.guestPosting === "host" || initial?.showGuestList === false);
 
   return (
     <Dialog title={title} onClose={onClose} variant="full" size="lg"
@@ -185,47 +189,48 @@ export function GatheringForm({ initial, groupId = "", submitLabel, onSubmit, on
           {Radio({
             name: "eventPrivacy", value: form.privacy, onChange: (v) => setForm({ ...form, privacy: v }),
             options: [
-              { id: "public", label: "Public", icon: Globe, blurb: "Anyone can find it and reply Going or Interested." },
-              { id: "private", label: "Private", icon: Lock, blurb: groupId
-                ? "Circle members and people you invite. Replies are Going, Maybe or Can't go."
-                : "Only people you invite. Replies are Going, Maybe or Can't go." },
+              { id: "public", label: "Public", icon: Globe, blurb: "Anyone can find it" },
+              { id: "private", label: "Private", icon: Lock, blurb: groupId ? "Circle members and people you invite" : "Only people you invite" },
             ],
           })}
         </fieldset>
-
-        <Field label="Capacity" optional error={errors.capacity}
-          hint="The most people who can say they're going. Leave blank for no limit. Once it's full, Going is closed.">
-          <Input inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value.replace(/\D/g, "") })} placeholder="No limit" />
-        </Field>
-
-        <fieldset>
-          <legend className="mb-2 text-callout font-medium">Who can post in the discussion</legend>
-          {Radio({
-            name: "guestPosting", value: form.guestPosting, onChange: (v) => setForm({ ...form, guestPosting: v }),
-            options: [
-              { id: "guests", label: "Everyone who replies", blurb: "Guests can post once they've replied Going, Interested or Maybe." },
-              { id: "host", label: "Only you", blurb: "Use it for announcements. Guests can still like posts." },
-            ],
-          })}
-        </fieldset>
-
-        <Field label="Ticket link" optional error={errors.ticketUrl}>
-          <Input type="url" value={form.ticketUrl} onChange={set("ticketUrl")} placeholder="https://" autoCapitalize="none" />
-        </Field>
-
-        <Checkbox checked={form.showGuestList} onChange={(v) => setForm({ ...form, showGuestList: v })}
-          description="Turn off to keep the guest list between you and each guest.">
-          Let guests see who else is coming
-        </Checkbox>
 
         {initial?.rollId ? (
           <p className="flex items-center gap-2 text-callout text-fg-muted"><Aperture size={16} className="text-accent-text" aria-hidden="true" /> This gathering has a roll.</p>
         ) : (
-          <Checkbox checked={form.roll} onChange={(v) => setForm({ ...form, roll: v })}
-            description="A shared disposable camera for everyone coming: 27 shots each, nobody sees a thing, and it develops at 9am the morning after.">
+          <Checkbox checked={form.roll} onChange={(v) => setForm({ ...form, roll: v })} description="A shared camera for everyone coming">
             Add a roll
           </Checkbox>
         )}
+
+        {/* The rest have sensible defaults, so they wait behind a tap. */}
+        <details className="group rounded-card border border-line" open={more || undefined}>
+          <summary className="press flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-callout font-medium">
+            More options
+            <ChevronDown size={18} className="text-fg-subtle transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
+          <div className="space-y-5 border-t border-line p-4">
+            <Field label="Capacity" optional error={errors.capacity}>
+              <Input inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value.replace(/\D/g, "") })} placeholder="No limit" />
+            </Field>
+            <fieldset>
+              <legend className="mb-2 text-callout font-medium">Who can post in the discussion</legend>
+              {Radio({
+                name: "guestPosting", value: form.guestPosting, onChange: (v) => setForm({ ...form, guestPosting: v }),
+                options: [
+                  { id: "guests", label: "Everyone who replies" },
+                  { id: "host", label: "Only you" },
+                ],
+              })}
+            </fieldset>
+            <Field label="Ticket link" optional error={errors.ticketUrl}>
+              <Input type="url" value={form.ticketUrl} onChange={set("ticketUrl")} placeholder="https://" autoCapitalize="none" />
+            </Field>
+            <Checkbox checked={form.showGuestList} onChange={(v) => setForm({ ...form, showGuestList: v })}>
+              Let guests see who else is coming
+            </Checkbox>
+          </div>
+        </details>
       </form>
     </Dialog>
   );

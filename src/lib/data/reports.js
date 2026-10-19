@@ -81,8 +81,14 @@ export async function reportPost(post, reason, details = "") {
   return res;
 }
 
-export async function fetchReports(status = "open") {
-  const q = query(collection(db, "reports"), where("status", "==", status), limit(300));
+// Which report types each team handles (firestore.rules, canHandleReport).
+export const REPORT_TEAM = { post: "content", comment: "content", message: "accounts", user: "accounts" };
+
+/** Reports with `status`; `types` limits them to some kinds (a team's), or null for all (admins). */
+export async function fetchReports(status = "open", types = null) {
+  const q = types
+    ? query(collection(db, "reports"), where("status", "==", status), where("targetType", "in", types), limit(300))
+    : query(collection(db, "reports"), where("status", "==", status), limit(300));
   return snapToList(await getDocs(q))
     // Legacy reports predate `type` and were always posts.
     .map((r) => (r.targetType ? r : { ...r, targetType: "post", targetId: r.postId }))

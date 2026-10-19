@@ -67,9 +67,6 @@ export default function FlicksHome() {
           {!error && videos?.length === 0 && (
             <EmptyState icon={Clapperboard}
               title={topic === "all" ? "No Flicks yet" : `No ${interestById(topic)?.label || ""} Flicks yet`}
-              body={topic === "all"
-                ? "Short videos you swipe through, and longer ones to sit down with. They show here once people post them."
-                : "Flicks tagged with this interest show here."}
               action={topic !== "all"
                 ? <Button onClick={() => pick("all")}>Show all Flicks</Button>
                 : !guest && <Button variant="brand" icon={Plus} onClick={post}>Post a Flick</Button>} />

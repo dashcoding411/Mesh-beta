@@ -5,7 +5,7 @@ import {
 import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
-  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, staffRole, setBadge, setPinkCheck, me,
+  hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, onTeam, setBadge, setPinkCheck, me,
   uidForUsername, cachedUidFor,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
@@ -95,7 +95,7 @@ function ProfileView({ uid }) {
     let cancelled = false;
     fetchProfile(uid).then((p) => { if (!cancelled) setProfile(p); }).catch(() => { if (!cancelled) setProfile(null); });
     if (!guest) hasRequestedFollow(uid).then((r) => { if (!cancelled) setRequested(r); });
-    if (!guest) staffRole().then((r) => { if (!cancelled) setAdmin(!!r); }).catch(() => {});
+    if (!guest) onTeam("accounts").then((on) => { if (!cancelled) setAdmin(on); }).catch(() => {});
     fetchPostsByAuthor(uid, { follower: following.has(uid) })
       .then((l) => { if (!cancelled) setPosts(l.filter((p) => !p.groupId && (p.visibility !== "followers" || following.has(uid)))); })
       .catch(() => { if (!cancelled) setPosts([]); });
@@ -240,6 +240,7 @@ function ProfileView({ uid }) {
           <>
             <ProfileHeader profile={profile} postCount={locked ? null : posts?.length ?? null}
               onShowFollows={locked ? undefined : setFollows}
+              featured={!isBlocked && journalist && <JournalistCard uid={uid} journalist={journalist} stories={stories} className="" />}
               actions={isBlocked ? (
                 <Button className="flex-1" icon={Ban} onClick={() => setDialog("block")}>Unblock</Button>
               ) : (
@@ -256,7 +257,6 @@ function ProfileView({ uid }) {
             {!isBlocked && <MutualFollowers uid={uid} onOpen={() => setFollows("mutual")} />}
             {!isBlocked && !locked && !guest && <Highlights profile={profile} />}
             {!isBlocked && <BrickHighlight uid={uid} />}
-            {!isBlocked && journalist && <JournalistCard uid={uid} journalist={journalist} stories={stories} />}
             {isMuted && !isBlocked && (
               <p role="status" className="mx-4 mb-3 flex items-center gap-3 rounded-control bg-surface-2 px-3 py-2.5 text-caption text-fg-muted md:mx-6">
                 <VolumeX size={16} className="shrink-0" aria-hidden="true" />
@@ -266,7 +266,7 @@ function ProfileView({ uid }) {
             )}
             {isBlocked ? (
               <EmptyState icon={Ban} title={`You've blocked @${profile.username}`}
-                body="You won't see their posts, and they can't follow you, message you or comment on your posts." />
+                />
             ) : locked ? (
               <EmptyState icon={Lock} title="This account is private"
                 body={requested ? "Your request is waiting for their approval." : `Follow @${profile.username} to see their posts. They'll need to approve you.`} />
@@ -316,19 +316,18 @@ function ProfileView({ uid }) {
           </MenuGroup>
           {me() === FOUNDER_UID && (
             <MenuGroup>
-              <MenuItem icon={Heart} onClick={togglePink} description="Pink check, pink profile and a pink banner. Only you can give it, to one person at a time">
+              <MenuItem icon={Heart} onClick={togglePink}>
                 {profile.badges?.includes("pink") ? "Remove girlfriend privilege" : "Give girlfriend privilege"}
               </MenuItem>
             </MenuGroup>
           )}
           {admin && (
             <MenuGroup>
-              <MenuItem icon={BadgeCheck} onClick={() => toggleBadge("verified")}
-                description="Staff only. A purple tick by their name everywhere">
+              <MenuItem icon={BadgeCheck} onClick={() => toggleBadge("verified")}>
                 {profile.badges?.includes("verified") ? "Remove verification" : `Verify @${profile.username}`}
               </MenuItem>
               {!betaByJoinDate(profile) && (
-                <MenuItem icon={FlaskConical} onClick={() => toggleBadge("beta")} description="Staff only. Shows on their profile and posts">
+                <MenuItem icon={FlaskConical} onClick={() => toggleBadge("beta")}>
                   {profile.badges?.includes("beta") ? "Remove beta tester badge" : "Give beta tester badge"}
                 </MenuItem>
               )}

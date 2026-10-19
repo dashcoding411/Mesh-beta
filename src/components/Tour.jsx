@@ -46,7 +46,7 @@ const MEMBER_STEPS = [
     body: "Post a Still (photos), a Flick (video) or a Strand (words), and choose who can see it." },
   { targets: ["sections", "nav-flicks"], title: "Flicks, News and Circles",
     body: {
-      sections: "This menu has Flicks, Rolls, News, Circles and the rest. Flicks is video with limits you set, News is written by verified journalists, and Circles are communities, with Gatherings for meeting up in real life.",
+      sections: "This menu has Flicks, News, Circles and the rest. Flicks is video with limits you set, News is written by verified journalists, and Circles are communities, with Gatherings for meeting up in real life.",
       "nav-flicks": "Flicks is short and long video with limits you set. Below it, News is written by verified journalists, and Circles are communities, with Gatherings for meeting up in real life.",
     } },
   { targets: ["search", "nav-search"], title: "Search", body: "Find people, posts, circles and news." },
@@ -68,8 +68,8 @@ const MEMBER_STEPS = [
 
 const GUEST_STEPS = [
   { title: "The full tour", body: "Have a look around. Here's where everything is." },
-  { targets: ["sections", "nav-flicks"], title: "Flicks, Rolls, News and Circles",
-    body: "Video with limits you set, a shared disposable camera for nights out, news from verified journalists, and communities. Browsing is free." },
+  { targets: ["sections", "nav-flicks"], title: "Flicks, News and Circles",
+    body: "Video with limits you set, news from verified journalists, and communities. Browsing is free." },
   { targets: ["search", "nav-search", "tab-search"], title: "Search", body: "Find people, posts, circles and news." },
   { targets: ["login"], title: "Make an account", body: "Log in or sign up to post, follow people and message." },
   { targets: ["sections", "more"], title: "Help", body: "Help, in this menu, explains everything in Mesh in plain words." },

@@ -52,7 +52,8 @@ function PinkBanner() {
 }
 
 // Same layout for own and other profiles; only the actions differ.
-export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar }) {
+/** `featured` sits right under the counts: a journalist's card, so it's seen first. */
+export function ProfileHeader({ profile, postCount, actions, onShowFollows, avatar, featured }) {
   const joined = tsMillis(profile.createdAt);
   const spouse = useVerifiedSpouse(profile);
   const journalist = useJournalist(profile.id);
@@ -88,6 +89,8 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
           </dl>
         </div>
       </div>
+
+      {featured && <div className="mt-4">{featured}</div>}
 
       {profile.bio && <RichText text={profile.bio} className="mt-4 text-body text-fg" />}
 
@@ -381,7 +384,7 @@ export function EditProfileDialog({ profile, onClose, onSaved }) {
           <p className="mb-2 text-callout font-medium text-fg">Profile photo</p>
           <PhotoField />
         </div>
-        <Field label="Name" hint="Shown on everything you post. Names can repeat." error={errors.name} count={name.length} max={50}>
+        <Field label="Name" error={errors.name} count={name.length} max={50}>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} autoComplete="name" />
         </Field>
 
