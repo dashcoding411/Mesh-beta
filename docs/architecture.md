@@ -558,8 +558,18 @@ the rules (`onTeam`):
 Reports route by what was reported (`canHandleReport`: posts and comments to
 content, messages and accounts to accounts), and each team's queue queries
 only its kinds. A moderator appointed before teams existed is on all three.
-Only the founder gives the pink check. A moderator account opens on the
-moderation queue instead of Home and can't create posts.
+Only the founder gives the pink check.
+
+Staff accounts (admins and moderators) are work accounts, apart from the
+founder's own personal account (`FOUNDER_UID`): Home is the moderation queue;
+feeds (For you, Following, Flicks, the News list), Messages, Rolls, What's on,
+the leaderboard and circle discovery show the queue instead; navigation is
+Moderation, Search, Notifications, Settings and Help; Search has no Explore
+or suggestions; and `needsAccount` refuses posting, liking, following,
+commenting, messaging, stories, joining and replying with "Work accounts only
+moderate". Anything opened from a report (a post, profile, circle, gathering
+or story) still shows. No welcome or interests picker. This is in the app;
+the rules still let staff accounts write like anyone else.
 
 Journalist applications (`journalistApplications/{uid}`, Settings > Become a
 journalist; `lib/data/applications.js`): name, outlet, region, experience,

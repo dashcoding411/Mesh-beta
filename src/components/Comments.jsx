@@ -35,7 +35,7 @@ const MAX_DEPTH = 4;
 
 export default function Comments({ post, onClose, onCountChange, onAdded }) {
   const toast = useToast();
-  const { guest, needsAccount } = useShell();
+  const { guest, needsAccount, workAccount } = useShell();
   const [reporting, setReporting] = useState(null);
   const [closedReason, setClosedReason] = useState("");
   const [comments, setComments] = useState(null);
@@ -199,7 +199,9 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
   return (
     <Dialog title={count ? `Comments (${count})` : "Comments"} onClose={onClose} size="lg" initialFocusRef={inputRef}
       bodyClassName="!px-0"
-      footer={guest ? (
+      footer={workAccount ? (
+        <p className="text-center text-callout text-fg-muted">Work accounts don&apos;t comment.</p>
+      ) : guest ? (
         <p className="text-center text-callout text-fg-muted">
           <button type="button" onClick={() => navigate(authPath("login"))}
             className="inline-flex min-h-11 items-center font-semibold text-accent-text hover:underline">Log in</button> to join the conversation.

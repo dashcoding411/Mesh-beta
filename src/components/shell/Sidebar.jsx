@@ -6,7 +6,7 @@ import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
 // Desktop nav: icon rail at md, labelled column at xl.
-export default function Sidebar({ page, profile, unread, notifications, onCreate }) {
+export default function Sidebar({ page, profile, work = false, unread, notifications, onCreate }) {
   const guest = !profile;
   const current = activeNavId(page);
   const counts = { unread, notifications };
@@ -21,7 +21,7 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
       </button>
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-y-auto py-4 no-scrollbar">
-        {navFor(MAIN_NAV, guest).map((s) => (
+        {navFor(MAIN_NAV, guest, work).map((s) => (
           <NavRow key={s.id} tour={`nav-${s.id}`} icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
         ))}
         {guest ? (
@@ -31,7 +31,7 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
           </>
         ) : (
           <>
-            <NavRow tour="create" icon={Plus} label="Create" onClick={onCreate} />
+            {!work && <NavRow tour="create" icon={Plus} label="Create" onClick={onCreate} />}
             <button type="button" onClick={() => navigate("/account")} title="Profile" data-tour="profile"
               aria-current={page.tab === "account" && page.view === "profile" ? "page" : undefined}
               className={`press flex min-h-12 w-full items-center gap-3.5 rounded-control px-3 text-body transition-colors justify-center xl:justify-start ${
@@ -45,7 +45,7 @@ export default function Sidebar({ page, profile, unread, notifications, onCreate
         )}
       </nav>
 
-      <MoreMenu page={page} guest={guest} />
+      <MoreMenu page={page} guest={guest} work={work} />
     </aside>
   );
 }
@@ -70,11 +70,11 @@ function NavRow({ icon: Icon, label, active = false, onClick, badge = 0, tour })
   );
 }
 
-function MoreMenu({ page, guest }) {
+function MoreMenu({ page, guest, work }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef(null);
   const button = useRef(null);
-  const entries = navFor(MORE_NAV, guest).map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) }));
+  const entries = navFor(MORE_NAV, guest, work).map((m) => ({ label: m.label, icon: m.icon, run: () => navigate(m.path) }));
 
   useEffect(() => {
     if (!open) return;

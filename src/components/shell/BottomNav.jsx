@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { House, LogIn, MessageCircle, Search } from "lucide-react";
+import { House, LogIn, MessageCircle, Search, ShieldCheck } from "lucide-react";
 import { authPath, navigate } from "../../lib/router";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 import Avatar from "../ui/Avatar";
 
-// Mobile tab bar (Home, Messages, Account; signed out: Home, Search, Log in).
+// Mobile tab bar (Home, Messages, Account; signed out: Home, Search, Log in;
+// work accounts: Moderation, Search, Account).
 // Hidden while the on-screen keyboard is open.
-export default function BottomNav({ page, profile, unread, immersive }) {
+export default function BottomNav({ page, profile, work = false, unread, immersive }) {
   const keyboardUp = useKeyboardOpen();
   if (keyboardUp) return null;
 
@@ -16,7 +17,11 @@ export default function BottomNav({ page, profile, unread, immersive }) {
     navigate(path);
   };
 
-  const tabs = profile ? [
+  const tabs = work ? [
+    { id: "home", label: "Moderation", path: "/", icon: ShieldCheck },
+    { id: "search", label: "Search", path: "/search", icon: Search },
+    { id: "account", label: "Account", path: "/account" },
+  ] : profile ? [
     { id: "home", label: "Home", path: "/", icon: House },
     { id: "messages", label: "Messages", path: "/messages", icon: MessageCircle, badge: unread },
     { id: "account", label: "Account", path: "/account" },

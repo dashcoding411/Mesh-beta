@@ -26,7 +26,7 @@ const AddToHighlight = lazy(() => import("./Highlights").then((m) => ({ default:
 export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, startPanel = null, startTab = null, startAt = 0, highlight = null, onEditHighlight }) {
   const trap = useFocusTrap();
   const toast = useToast();
-  const { hiddenAuthors, hiddenWords } = useShell();
+  const { hiddenAuthors, hiddenWords, needsAccount } = useShell();
   const [idx, setIdx] = useState(Math.min(startAt, thread.items.length - 1));
   const [paused, setPaused] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -89,6 +89,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
   };
 
   const toggleLike = async () => {
+    if (needsAccount("like stories")) return;
     const on = !info.liked;
     patch(item.id, { liked: on });
     try { await likeStory(item, on); }
@@ -97,7 +98,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 
   const sendReply = async (text) => {
     const t = text.trim();
-    if (!t || sending) return;
+    if (!t || sending || needsAccount("reply to stories")) return;
     setSending(true);
     try {
       await replyToStory(item, t);
@@ -300,6 +301,7 @@ export default function StoryViewer({ thread, onClose, onNextThread, onDeleted, 
 }
 
 function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, viewers, authorName, onEchoes, startTab }) {
+  const { needsAccount } = useShell();
   const toast = useToast();
   const [tab, setTab] = useState(startTab || (panel === "activity" ? "viewers" : "echoes"));
   const [text, setText] = useState("");
@@ -313,7 +315,7 @@ function StoryPanel({ panel, setPanel, story, mine, expired, echoes, rawEchoes, 
   const post = async (e) => {
     e.preventDefault();
     const t = text.trim();
-    if (!t) return;
+    if (!t || needsAccount("echo stories")) return;
     const mod = checkContent(t, { key: "comment" });
     if (mod.error) return setError(mod.error);
     setBusy(true);

@@ -172,7 +172,7 @@ export default function Search({ initialQuery, filter }) {
 // Empty state
 
 function Discover({ recent, onPick, onForget, onClear }) {
-  const { guest } = useShell();
+  const { guest, workAccount } = useShell();
   return (
     <>
       {recent.length > 0 && (
@@ -193,11 +193,11 @@ function Discover({ recent, onPick, onForget, onClear }) {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-caption text-fg-subtle">Kept on this device only.</p>
         </section>
       )}
-      {!guest && <SuggestedPeople />}
-      <Explore />
+      {/* Work accounts look things up; they don't browse. */}
+      {!guest && !workAccount && <SuggestedPeople />}
+      {!workAccount && <Explore />}
     </>
   );
 }

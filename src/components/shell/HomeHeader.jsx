@@ -8,7 +8,7 @@ import { LogoMark } from "./Sidebar";
 // Home section header. Mobile adds drawer, search and create buttons;
 // `children` renders below on both (e.g. feed tabs).
 export default function HomeHeader({ section, children, actions, transparent = false }) {
-  const { openDrawer, openComposer, noticesUnread, guest, rollsDot } = useShell();
+  const { openDrawer, openComposer, noticesUnread, guest, rollsDot, workAccount } = useShell();
   const meta = sectionById(section);
   const isFeed = section === "foryou" || section === "following";
 
@@ -31,7 +31,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
             <h1 className="truncate text-title-3">{meta.label}</h1>
           )}
         </div>
-        {section !== "rolls" && (
+        {section !== "rolls" && !workAccount && (
           // Rolls get their own button: an orange dot while one is shooting, accent when one has developed.
           <span className="relative">
             <IconButton icon={Aperture} label={rollsDot === "new" ? "Rolls, one has developed" : rollsDot === "live" ? "Rolls, one is shooting" : "Rolls"}
@@ -61,7 +61,7 @@ export default function HomeHeader({ section, children, actions, transparent = f
           </span>
         )}
         {actions}
-        {!guest && <IconButton icon={Plus} label="Create" data-tour="create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
+        {!guest && !workAccount && <IconButton icon={Plus} label="Create" data-tour="create" onClick={() => openComposer()} tone={transparent ? "overlay" : "ghost"} />}
       </div>
 
       {isFeed ? (

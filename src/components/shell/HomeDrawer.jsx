@@ -6,7 +6,7 @@ import { LogoMark } from "./Sidebar";
 import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 
 // Mobile counterpart of Sidebar, driven by the same nav items.
-export default function HomeDrawer({ page, profile, unread = 0, notifications = 0, onCreate, onClose }) {
+export default function HomeDrawer({ page, profile, work = false, unread = 0, notifications = 0, onCreate, onClose }) {
   const guest = !profile;
   const current = activeNavId(page);
   const counts = { unread, notifications };
@@ -23,7 +23,7 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
 
       <nav aria-label="Main sections" className="flex min-h-0 flex-1 flex-col justify-center py-4">
         <ul className="space-y-1">
-          {navFor(MAIN_NAV, guest).map((s) => (
+          {navFor(MAIN_NAV, guest, work).map((s) => (
             <li key={s.id}>
               <Row icon={s.icon} label={s.label} badge={counts[s.badge] || 0} active={current === s.id} onClick={() => go(s.path)} />
             </li>
@@ -35,7 +35,7 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
             </>
           ) : (
             <>
-              <li><Row icon={Plus} label="Create" onClick={() => { onClose(); onCreate(); }} /></li>
+              {!work && <li><Row icon={Plus} label="Create" onClick={() => { onClose(); onCreate(); }} /></li>}
               <li>
                 <button type="button" onClick={() => go("/account")} aria-current={current === "profile" ? "page" : undefined}
                   className={`press flex min-h-12 w-full items-center gap-4 rounded-control px-3 text-left text-body transition-colors ${
@@ -51,8 +51,8 @@ export default function HomeDrawer({ page, profile, unread = 0, notifications = 
       </nav>
 
       <nav aria-label="More" className="shrink-0 border-t border-line pt-2">
-        <ul className="grid gap-1" style={{ gridTemplateColumns: `repeat(${navFor(MORE_NAV, guest).length}, minmax(0, 1fr))` }}>
-          {navFor(MORE_NAV, guest).map(({ id, label, icon: Icon, path }) => (
+        <ul className="grid gap-1" style={{ gridTemplateColumns: `repeat(${navFor(MORE_NAV, guest, work).length}, minmax(0, 1fr))` }}>
+          {navFor(MORE_NAV, guest, work).map(({ id, label, icon: Icon, path }) => (
             <li key={id}>
               <button type="button" onClick={() => go(path)} aria-current={current === id ? "page" : undefined}
                 className={`press flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-control text-label font-medium transition-colors ${

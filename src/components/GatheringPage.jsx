@@ -43,6 +43,7 @@ export default function GatheringPage({ eventId }) {
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "discussion"));
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null); // "edit" | "invite" | "delete"
+  const { needsAccount } = useShell();
 
   const load = useCallback(async () => {
     const ev = await fetchEvent(eventId).catch(() => null);
@@ -81,7 +82,7 @@ export default function GatheringPage({ eventId }) {
   const options = RSVP_OPTIONS[event.privacy === "private" ? "private" : "public"];
 
   const reply = async (next) => {
-    if (busy) return;
+    if (busy || needsAccount("reply to gatherings")) return;
     if (next === "going" && full && status !== "going") {
       return toast({ tone: "info", title: "This gathering is full", body: "Going is closed. You can still reply Interested or Maybe." });
     }
@@ -220,7 +221,7 @@ export default function GatheringPage({ eventId }) {
 }
 
 function Discussion({ event, status }) {
-  const { profile } = useShell();
+  const { profile, needsAccount } = useShell();
   const toast = useToast();
   const [posts, setPosts] = useState(null);
   const [text, setText] = useState("");
@@ -245,6 +246,7 @@ function Discussion({ event, status }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (needsAccount("post in gatherings")) return;
     const v = validateText(text, 1000, "Post");
     if (v.error) return setError(v.error);
     if (!v.text) return;

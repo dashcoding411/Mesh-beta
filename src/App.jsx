@@ -7,6 +7,7 @@ import { setPresenceHidden, tidyStoryViewers, openWatch, fetchOwnProfile, fetchM
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
 import { useTimeMeter } from "./lib/timeMeter";
+import { FOUNDER_UID } from "./lib/badges";
 import { justAgeLocked } from "./lib/ageLock";
 import { syncPush } from "./lib/push";
 import { primeCard } from "./lib/profileCache";
@@ -257,13 +258,30 @@ export default function App() {
 
   const signedIn = !!(user && profile);
   const guest = authReady && !user;
+  // Staff accounts are work accounts: Home is the moderation queue, there are
+  // no feeds, Messages or discovery, and they don't post, like, follow or
+  // message. The founder's own account is a personal one.
+  const [role, setRole] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (signedIn) staffRole().then((r) => { if (live) setRole(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [signedIn]);
+  const workAccount = signedIn && !!role && user.uid !== FOUNDER_UID;
   const [joinReason, setJoinReason] = useState(null);
-  /** For signed-out visitors: explains that `reason` needs an account and returns true. */
+  /**
+   * Returns true (and explains) when the viewer can't do `reason`: signed-out
+   * visitors need an account, and work accounts only moderate.
+   */
   const needsAccount = useCallback((reason) => {
+    if (workAccount) {
+      toast({ title: "Work accounts only moderate", body: `Use your personal account to ${reason}.` });
+      return true;
+    }
     if (!guest) return false;
     setJoinReason(reason);
     return true;
-  }, [guest]);
+  }, [guest, workAccount, toast]);
   // Keep the viewer's own card current in the profile cache.
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
   const inbox = useInbox(following, signedIn);
@@ -286,14 +304,6 @@ export default function App() {
   useEffect(() => {
     if (signedIn && brick.loaded) syncPush({ quietUntil: brickUntil > Date.now() ? brickUntil : 0 }).catch(() => {});
   }, [signedIn, brick.loaded, brickUntil]);
-  // Moderator accounts only moderate: Home is the queue and they don't post.
-  const [role, setRole] = useState(null);
-  useEffect(() => {
-    let live = true;
-    if (signedIn) staffRole().then((r) => { if (live) setRole(r); }).catch(() => {});
-    return () => { live = false; };
-  }, [signedIn]);
-  const modOnly = signedIn && role === "moderator";
 
   const [notices, setNotices] = useState(null);
   useEffect(() => {
@@ -376,9 +386,8 @@ export default function App() {
     await refuseCall(inc.id, "declined");
   };
   const openComposer = useCallback((opts = {}) => {
-    if (modOnly) return toast({ title: "Moderator accounts don't post", body: "Use your personal account to share things." });
     if (!needsAccount("post")) setComposer(opts);
-  }, [needsAccount, modOnly, toast]);
+  }, [needsAccount]);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
 
   const openInterests = useCallback(() => setInterestsDialog("edit"), []);
@@ -422,10 +431,10 @@ export default function App() {
   }, [signedIn, onRolls]);
 
   const shell = useMemo(() => ({
-    profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey, role, modOnly,
+    profile, setProfile, following, setFollowing, blocked, setBlocked, inbox, openComposer, openDrawer, feedKey, role, workAccount,
     interests, setInterests, openInterests, startCall, inCall: !!call, hiddenWords, setHiddenWords, hideAi, setHideAi, hideActive, setHideActive,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollsDot: rollSignal.dot,
-  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, modOnly, interests, openInterests, startCall, call, hiddenWords, hideAi, hideActive,
+  }), [profile, following, blocked, inbox, openComposer, openDrawer, feedKey, role, workAccount, interests, openInterests, startCall, call, hiddenWords, hideAi, hideActive,
     muted, toggleMute, hiddenAuthors, notices, noticesUnread, guest, needsAccount, rollSignal.dot]);
 
   const { page, overlay, bgQuery } = resolve(loc);
@@ -514,7 +523,7 @@ export default function App() {
       case "whatson": content = <WhatsOn />; break;
       case "help": content = <Help key={page.id || "home"} guideId={page.id} />; break;
       case "rolls": content = <Rolls rollId={page.id} />; break;
-      default: content = modOnly ? <Moderation /> : <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
+      default: content = <HomeFeed key={`foryou-${feedKey}`} mode="foryou" />;
     }
   } else if (page.tab === "messages") {
     content = <Messages chatId={page.id} />;
@@ -539,6 +548,15 @@ export default function App() {
   } else {
     content = <Profile key={page.profileTab || "profile"} initialTab={page.profileTab} />;
   }
+  // Work accounts get the queue in place of feeds, Messages and discovery;
+  // anything opened from a report (a post, profile, circle, gathering or
+  // story) still shows.
+  if (workAccount && (page.tab === "messages" || (page.tab === "home" && (
+    ["foryou", "following", "flicks", "leaderboard", "whatson", "rolls"].includes(page.section)
+    || (page.section === "news" && !page.id && !page.view)
+    || (page.section === "circles" && !page.id && !page.gatheringId))))) {
+    content = <Moderation />;
+  }
   if (page.notFound) content = <NotFound />;
 
   // Locked sections render the lock screen (the rules also refuse the reads).
@@ -560,7 +578,7 @@ export default function App() {
       <div className="flex h-dvh flex-col md:flex-row">
         <a href="#mesh-main" className="skip-link">Skip to content</a>
 
-        <Sidebar page={page} profile={profile} unread={inbox.unreadCount} notifications={noticesUnread} onCreate={() => openComposer()} />
+        <Sidebar page={page} profile={profile} work={workAccount} unread={inbox.unreadCount} notifications={noticesUnread} onCreate={() => openComposer()} />
 
         <main id="mesh-main" tabIndex={-1} className="relative flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           <OfflineBanner />
@@ -569,7 +587,7 @@ export default function App() {
           <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
         </main>
 
-        <BottomNav page={page} profile={profile} unread={inbox.unreadCount} immersive={immersive} />
+        <BottomNav page={page} profile={profile} work={workAccount} unread={inbox.unreadCount} immersive={immersive} />
 
         {/* Overlays render over the current page, so a null fallback avoids flashing it. */}
         <Suspense fallback={null}>
@@ -585,7 +603,7 @@ export default function App() {
         )}
 
         {drawerOpen && (
-          <HomeDrawer page={page} profile={profile} unread={inbox.unreadCount} notifications={noticesUnread}
+          <HomeDrawer page={page} profile={profile} work={workAccount} unread={inbox.unreadCount} notifications={noticesUnread}
             onCreate={() => openComposer()} onClose={() => setDrawerOpen(false)} />
         )}
 
@@ -609,7 +627,7 @@ export default function App() {
         {signedIn && rollSignal.fresh && !onRolls && (
           <RollReady key={rollSignal.fresh.id} roll={rollSignal.fresh} onDone={() => setRollSignal((s) => ({ ...s, fresh: null }))} />
         )}
-        {(signedIn || guest) && (
+        {((signedIn && !workAccount) || guest) && (
           <Suspense fallback={null}>
             <Tour uid={user?.uid} guest={guest} profile={profile} prefsDone={tourDone} onSeen={() => setTourDone(true)}
               ready={page.tab === "home" && page.section === "foryou" && !overlay && !composer && !drawerOpen && !interestsDialog && !joinReason} />
@@ -619,7 +637,7 @@ export default function App() {
         <ExternalLinkDialog />
         <StoryOpener />
 
-        {interestsDialog && (
+        {interestsDialog && !workAccount && (
           <InterestsDialog initial={interests} firstRun={interestsDialog === "first"}
             onClose={() => {
               try { localStorage.setItem(`mesh:asked-interests:${user.uid}`, "1"); } catch { /* storage blocked */ }
