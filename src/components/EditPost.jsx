@@ -10,6 +10,7 @@ import { Field, Input, Textarea } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import LocationField from "./LocationField";
 import { useToast } from "./ui/toast-context";
+import MentionTextarea from "./ui/MentionTextarea";
 
 // Text-only edits: media and polls are immutable once posted.
 export default function EditPostDialog({ post, onClose, onSaved }) {
@@ -97,7 +98,7 @@ export default function EditPostDialog({ post, onClose, onSaved }) {
         )}
         <Field label={isStrand ? "Strand" : long ? "Description" : "Caption"} error={errors.text}
           count={text.length} max={max} optional={!isStrand}>
-          <Textarea id="edit-text" autoGrow rows={3} maxRows={12} value={text} maxLength={max}
+          <MentionTextarea id="edit-text" autoGrow rows={3} maxRows={12} value={text} maxLength={max}
             onChange={(e) => setText(e.target.value)} autoFocus />
         </Field>
         {post.kind !== "text" && (

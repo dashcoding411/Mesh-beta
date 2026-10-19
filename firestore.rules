@@ -370,7 +370,7 @@ service cloud.firestore {
       return d.keys().hasOnly([
             'kind', 'authorId', 'authorName', 'authorDisplayName', 'authorPhoto', 'text', 'title',
             'alt', 'mediaUrl', 'mediaPath', 'mediaType', 'groupId', 'visibility',
-            'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'circleTopic',
+            'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'graphic', 'circleTopic',
             'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
             'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
             'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl', 'card'
@@ -394,6 +394,8 @@ service cloud.firestore {
           && d.get('mediaPath', '') is string && d.get('mediaPath', '').size() <= 500
           // Blocklisted terms are only allowed when flagged `sensitive` (rendered collapsed).
           && d.get('sensitive', false) is bool
+          // Graphic content (news, war, injury) shows behind a warning.
+          && d.get('graphic', false) is bool
           && (d.get('sensitive', false) == true
               || (hateFree(d.text + ' ' + d.title + ' ' + d.alt + ' ' + d.get('location', ''))
                   && (!('poll' in d) || hateFree(d.poll.options.join(' ')))))
@@ -709,7 +711,7 @@ service cloud.firestore {
         && incomingData().authorId != request.auth.uid
         && incomingData().status == 'open'
         && incomingData().createdAt == request.time
-        && incomingData().reason in ['hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'unlabelled_ai', 'other']
+        && incomingData().reason in ['child_safety', 'hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'unlabelled_ai', 'other']
         && incomingData().get('details', '') is string
         && incomingData().get('details', '').size() <= 500
         && ((incomingData().targetType == 'post'
@@ -801,7 +803,7 @@ service cloud.firestore {
         && incomingData().uid == request.auth.uid
         && isMyName(incomingData().username)
         && incomingData().text is string && incomingData().text.size() >= 1 && incomingData().text.size() <= 5000
-        && incomingData().rule in ['slur', 'dehumanising', 'violence', 'exclusion', 'hatred', 'stereotype', 'xenophobia', 'conspiracy', 'threat', 'harassment']
+        && incomingData().rule in ['slur', 'dehumanising', 'violence', 'exclusion', 'hatred', 'stereotype', 'xenophobia', 'conspiracy', 'threat', 'harassment', 'child_safety']
         && incomingData().where is string && incomingData().where.size() <= 40
         && incomingData().note is string && incomingData().note.size() <= 500
         && incomingData().status == 'open'
@@ -1508,6 +1510,8 @@ service cloud.firestore {
         || (contentTeam() && onlyKey('modStatus') && incomingData().modStatus in ['cleared', '', 'hidden'])
         || (contentTeam() && incomingData().diff(resource.data).affectedKeys().hasOnly(['aiGenerated', 'modStatus'])
             && incomingData().aiGenerated == true && incomingData().get('modStatus', '') in ['cleared', ''])
+        // ...and put a graphic content warning on it, or take one off.
+        || (contentTeam() && onlyKey('graphic') && incomingData().graphic is bool)
         // Circle mods can lock comments on a thread.
         || (onlyKey('locked')
           && resource.data.get('groupId', '') != ''

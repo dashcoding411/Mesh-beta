@@ -50,6 +50,8 @@ export default function PostCard({
   const seen = useInView(cardRef);
   const { hiddenAuthors, hiddenWords, guest, needsAccount, profile: viewerProfile } = useShell();
   const [revealed, setRevealed] = useState(false);
+  const viewerYear = useShell()?.profile?.birthYear;
+  const minorViewer = viewerYear > 0 && new Date().getFullYear() - viewerYear < 18;
   const mineNow = post.authorId === me();
   // Content allowed on context is collapsed for others, never for the author.
   const cover = useMemo(() => {
@@ -193,7 +195,19 @@ export default function PostCard({
           Several people reported this, so it's out of feeds while a moderator reviews it. If it follows the guidelines, it goes back up.
         </p>
       )}
-      {cover && !revealed ? (
+      {post.graphic && !mineNow && !revealed ? (
+        <div className="mx-4 mt-3 flex aspect-[4/5] max-h-[70vh] w-auto flex-col items-center justify-center gap-2 rounded-card bg-surface-2 p-6 text-center">
+          <EyeOff size={28} className="text-fg-muted" aria-hidden="true" />
+          <p className="text-callout font-semibold">Graphic content</p>
+          <p className="text-caption text-fg-muted">This may show violence or injury.</p>
+          {minorViewer ? (
+            <p className="text-caption text-fg-subtle">Hidden for under-18 accounts.</p>
+          ) : (
+            <button type="button" onClick={() => setRevealed(true)}
+              className="press mt-1 min-h-9 rounded-full bg-surface-3 px-4 text-callout font-semibold text-fg">Show</button>
+          )}
+        </div>
+      ) : cover && !revealed ? (
         <div className="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-control border border-line bg-surface-2 px-3 py-3">
           <EyeOff size={18} className="shrink-0 text-fg-subtle" aria-hidden="true" />
           <p className="min-w-0 flex-1 text-callout text-fg-muted">{cover}</p>

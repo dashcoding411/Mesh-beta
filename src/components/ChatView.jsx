@@ -28,10 +28,10 @@ import { readDraft, useDraft } from "../lib/drafts";
 import { useShell } from "./shell/ShellContext";
 import LiveAvatar from "./ui/LiveAvatar";
 import Button from "./ui/Button";
-import { Textarea } from "./ui/Field";
 import IconButton from "./ui/IconButton";
 import { Skeleton } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import MentionTextarea from "./ui/MentionTextarea";
 
 const GROUP_GAP = 5 * 60_000; // messages closer than this cluster together
 
@@ -504,7 +504,7 @@ export default function ChatView({ chat }) {
             <IconButton icon={Sticker} label="Send a GIF" tone="solid" onClick={() => setDialog("gif")} />
           )}
           <label htmlFor={`msg-${chat.id}`} className="sr-only">Message {title}</label>
-          <Textarea id={`msg-${chat.id}`} ref={inputRef} autoGrow rows={1} maxRows={6} value={text}
+          <MentionTextarea id={`msg-${chat.id}`} ref={inputRef} autoGrow rows={1} maxRows={6} value={text}
             onChange={(e) => { setText(e.target.value); if (e.target.value) setTyping(chat.id).catch(() => {}); }}
             onKeyDown={onKeyDown} maxLength={LIMITS.message} enterKeyHint="send"
             placeholder={editing ? "Edit your message" : "Message…"}

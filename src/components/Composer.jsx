@@ -133,6 +133,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
   const [activePhoto, setActivePhoto] = useState(0);
   const [location, setLocation] = useState(d.location || "");
   const [ai, setAi] = useState(false);
+  const [graphic, setGraphic] = useState(false);
   // Set when a picked file's own metadata says AI edited it.
   const [aiFound, setAiFound] = useState(false);
   const [visibility, setVisibility] = useState(minor ? "followers" : d.visibility || "public");
@@ -402,6 +403,7 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
         aiGenerated: spec.media ? ai || aiFound : false,
         topics: shownTopics,
         sensitive,
+        graphic: spec.media ? graphic : false,
         poll: kind === "text" && poll ? { options: poll.options.map((o) => o.trim()).filter(Boolean), hours: poll.hours } : null,
         gif: kind === "text" && gif ? { url: gif.url, width: gif.width, height: gif.height, title: gif.title } : null,
         groupId,
@@ -730,6 +732,9 @@ export default function Composer({ onClose, onPosted, groupId, group, membership
                 ? "This file says it was edited with AI, so Mesh labels it. Edits are welcome; pictures and videos made entirely by AI aren't allowed."
                 : "Tick this if you used AI to change a real photo or video, like a new background. Pictures and videos made entirely by AI aren't allowed on Mesh."}>
               <span className="inline-flex items-center gap-1.5"><WandSparkles size={15} aria-hidden="true" /> Edited with AI</span>
+            </Checkbox>
+            <Checkbox checked={graphic} onChange={setGraphic} description="Violence or injury, like war footage. It shows behind a warning.">
+              Graphic content
             </Checkbox>
           </div>
         )}

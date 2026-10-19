@@ -20,10 +20,10 @@ import { postingStatus } from "./status";
 import Avatar from "../ui/Avatar";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
-import { Textarea } from "../ui/Field";
 import IconButton from "../ui/IconButton";
 import { EmptyState, ErrorState, InlineMessage, Skeleton } from "../ui/States";
 import { useToast } from "../ui/toast-context";
+import MentionTextarea from "../ui/MentionTextarea";
 
 // Circle limits are checked client-side for messaging and again by the rules.
 function CircleQuickPost({ group, membership, onPosted }) {
@@ -74,7 +74,7 @@ function CircleQuickPost({ group, membership, onPosted }) {
         <Avatar profile={profile} size={40} />
         <div className="min-w-0 flex-1">
           <label htmlFor="circle-post" className="sr-only">Write a post</label>
-          <Textarea id="circle-post" autoGrow rows={1} maxRows={8} value={text}
+          <MentionTextarea id="circle-post" autoGrow rows={1} maxRows={8} value={text}
             onChange={(e) => { setText(e.target.value); setWarned(""); if (error) setError(""); }}
             placeholder={`Share something with ${group.name}…`} maxLength={STRAND_MAX}
             aria-invalid={error ? "true" : undefined} aria-describedby="circle-post-error"

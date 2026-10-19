@@ -1,9 +1,25 @@
 import { forwardRef, useEffect, useId, useRef, useState } from "react";
-import { searchUsers, me } from "../../lib/db";
+import { fetchProfiles, searchNames, searchUsers, me } from "../../lib/db";
+import { useShell } from "../shell/ShellContext";
 import { Textarea } from "./Field";
 import Avatar from "./Avatar";
 import { VerifiedTick } from "./Badges";
 import { tickOf } from "../../lib/badges";
+
+// The people you follow, read once per session the first time you type @
+// (up to 300), so they can be offered first.
+let followedCache = { key: "", list: null };
+async function followedPeople(following) {
+  const ids = [...(following || [])].slice(0, 300);
+  const key = ids.join(",");
+  if (followedCache.key !== key || !followedCache.list) {
+    followedCache = { key, list: fetchProfiles(ids).then((m) => [...m.values()]).catch(() => []) };
+  }
+  return followedCache.list;
+}
+
+const startsWith = (p, q) => p.username?.startsWith(q) || (p.name || "").toLowerCase().startsWith(q)
+  || (p.name || "").toLowerCase().split(/\s+/).some((w) => w.startsWith(q));
 
 // The @handle being typed just before the caret, if any.
 function mentionAt(text, caret) {
@@ -12,9 +28,10 @@ function mentionAt(text, caret) {
 }
 
 /**
- * A Textarea that suggests people while you type @. Arrow keys move, Enter or
- * Tab picks, Escape closes; picking writes "@handle ". `suggest` is people to
- * offer first (the post's author, others in the thread).
+ * A Textarea that suggests people while you type @, like other apps: people
+ * you follow first (just "@" lists them), then `suggest` (the post's author,
+ * others in the thread), then everyone else by handle or name. Arrow keys
+ * move, Enter or Tab picks, Escape closes; picking writes "@handle ".
  */
 const MentionTextarea = forwardRef(function MentionTextarea(
   { value, onChange, onKeyDown, suggest = [], wrapperClassName = "", ...rest }, ref,
@@ -30,6 +47,7 @@ const MentionTextarea = forwardRef(function MentionTextarea(
   const [active, setActive] = useState(0);
   const [closedAt, setClosedAt] = useState(null);
   const listId = useId();
+  const following = useShell()?.following;
 
   const sync = () => {
     const el = inner.current;
@@ -43,9 +61,18 @@ const MentionTextarea = forwardRef(function MentionTextarea(
     const t = setTimeout(async () => {
       const seen = new Set([me()]);
       const take = (p) => p?.username && !seen.has(p.id) && seen.add(p.id);
-      const local = suggest.filter((p) => p?.username?.startsWith(query)).filter(take);
-      const found = query ? (await searchUsers(query).catch(() => [])).filter(take) : [];
-      if (live) { setResults([...local, ...found].slice(0, 6)); setActive(0); }
+      const followed = (await followedPeople(following))
+        .filter((p) => !query || startsWith(p, query))
+        .sort((a, b) => (a.username.startsWith(query) ? 0 : 1) - (b.username.startsWith(query) ? 0 : 1) || a.username.localeCompare(b.username))
+        .filter(take);
+      const local = suggest.filter((p) => p?.username && (!query || startsWith(p, query))).filter(take);
+      const [byHandle, byName] = query ? await Promise.all([
+        searchUsers(query).catch(() => []),
+        query.length >= 2 ? searchNames(query, 6).catch(() => []) : [],
+      ]) : [[], []];
+      // Among everyone else, people you follow (missed above) still go first.
+      const rest = [...byHandle, ...byName].sort((a, b) => (following?.has(b.id) ? 1 : 0) - (following?.has(a.id) ? 1 : 0)).filter(take);
+      if (live) { setResults([...followed, ...local, ...rest].slice(0, 6)); setActive(0); }
     }, query ? 150 : 0);
     return () => { live = false; clearTimeout(t); };
     // `suggest` is usually rebuilt each render; the query is what matters.

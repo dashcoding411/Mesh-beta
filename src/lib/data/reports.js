@@ -12,9 +12,10 @@ import { myProfile } from "./users.js";
 // exact text, checked by the rules, since moderators can't read chats.
 
 export const REPORT_REASONS = [
+  { id: "child_safety", label: "Child sexual abuse or exploitation", description: "Sexual content involving anyone under 18, or grooming" },
   { id: "hate", label: "Hate or discrimination", description: "Attacks people for their race, ethnicity, nationality, religion, caste, sexuality, gender or disability" },
   { id: "harassment", label: "Bullying or harassment", description: "Targets someone, piles on, or tells them to hurt themselves" },
-  { id: "violence", label: "Violence or threats", description: "Threatens or encourages harm" },
+  { id: "violence", label: "Violence, threats or gore", description: "Threatens harm, or shows death or injury to shock" },
   { id: "sexual", label: "Sexual content or nudity" },
   { id: "self_harm", label: "Self-harm or suicide", description: "Someone may be at risk" },
   { id: "spam", label: "Spam or scam" },
@@ -33,6 +34,11 @@ export const HOLD_AFTER_REPORTS = 3;
 export function isHeld(post) {
   if (post?.modStatus === "hidden") return true;
   return (post?.reportCount || 0) >= HOLD_AFTER_REPORTS && post?.modStatus !== "cleared";
+}
+
+/** The content team: show a post behind a graphic content warning, or take it off. */
+export async function setPostGraphic(postId, on) {
+  await updateDoc(doc(db, "posts", postId), { graphic: !!on });
 }
 
 /** Admins: take a post out of feeds pending a decision, or put it back. */

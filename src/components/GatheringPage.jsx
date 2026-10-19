@@ -26,11 +26,12 @@ import Badge from "./ui/Badge";
 import Avatar from "./ui/Avatar";
 import RichText from "./ui/RichText";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
-import { Input, Textarea } from "./ui/Field";
+import { Input } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DateBlock, GatheringForm } from "./Events";
+import MentionTextarea from "./ui/MentionTextarea";
 
 const STATUS_LABEL = { going: "Going", interested: "Interested", maybe: "Maybe", cant: "Can't go" };
 
@@ -295,7 +296,7 @@ function Discussion({ event, status }) {
             <Avatar profile={profile} size={36} />
             <div className="min-w-0 flex-1">
               <label htmlFor="gathering-post" className="sr-only">Post to the gathering</label>
-              <Textarea id="gathering-post" autoGrow rows={1} maxRows={6} value={text} maxLength={1000}
+              <MentionTextarea id="gathering-post" autoGrow rows={1} maxRows={6} value={text} maxLength={1000}
                 onChange={(e) => { setText(e.target.value); if (error) setError(""); }}
                 placeholder={isHost ? "Post an update for your guests…" : "Say something to everyone coming…"}
                 aria-describedby="gathering-post-error"
