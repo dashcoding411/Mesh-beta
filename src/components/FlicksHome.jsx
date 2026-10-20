@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { BrickWall, Clapperboard, Play, Plus, WandSparkles } from "lucide-react";
+import { BrickWall, Clapperboard, EyeOff, Newspaper, Play, Plus, WandSparkles } from "lucide-react";
 import {
-  fetchVideos, fetchTopicPosts, fetchAffinity, fetchHiddenPostIds, openWatch, openUserProfile, me,
+  fetchVideos, fetchTopicPosts, fetchAffinity, fetchHiddenPostIds, fetchVideoNews, openWatch, openUserProfile, me,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { compact, formatDuration, plural, shortTime, spokenDuration } from "../lib/format";
@@ -11,6 +11,7 @@ import { useBrick } from "../lib/useBrick";
 import { useShell } from "./shell/ShellContext";
 import HomeHeader from "./shell/HomeHeader";
 import { InterestChips } from "./Interests";
+import MediaImg from "./ui/MediaImg";
 import LiveAvatar from "./ui/LiveAvatar";
 import VideoFrame from "./post/VideoFrame";
 import Badge from "./ui/Badge";
@@ -26,17 +27,20 @@ export default function FlicksHome() {
   const { following, hiddenAuthors, interests, openInterests, hiddenWords, hideAi, guest, openComposer } = useShell();
   const [topic, setTopic] = useState("all");
   const [videos, setVideos] = useState(null);
+  const [news, setNews] = useState([]);
   const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [all, affinity, hidden] = await Promise.all([
+      const [all, affinity, hidden, stories] = await Promise.all([
         topic === "all" ? fetchVideos() : fetchTopicPosts(topic).then((l) => l.filter(isVideo)),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
+        topic === "all" ? fetchVideoNews(12).catch(() => []) : Promise.resolve([]),
       ]);
       const pool = all.filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId));
+      setNews(stories.filter((s) => !hiddenAuthors.has(s.authorId)));
       setVideos(rankFeed(pool, { followingSet: following, affinity, myUid: me(), interests, hiddenWords, hideAi }));
     } catch (err) {
       console.error(err);
@@ -64,7 +68,7 @@ export default function FlicksHome() {
 
           {error && <ErrorState title="Couldn't load Flicks" onRetry={() => { setVideos(null); load(); }} />}
           {!error && videos === null && <HomeSkeleton />}
-          {!error && videos?.length === 0 && (
+          {!error && videos?.length === 0 && news.length === 0 && (
             <EmptyState icon={Clapperboard}
               title={topic === "all" ? "No Flicks yet" : `No ${interestById(topic)?.label || ""} Flicks yet`}
               action={topic !== "all"
@@ -72,9 +76,10 @@ export default function FlicksHome() {
                 : !guest && <Button variant="brand" icon={Plus} onClick={post}>Post a Flick</Button>} />
           )}
 
+          {!error && videos && news.length > 0 && <NewsShelf stories={news} />}
           {shorts.length > 0 && <ShortShelf posts={shorts} />}
           {longs.length > 0 && <LongGrid posts={longs} />}
-          {videos?.length > 0 && (
+          {(videos?.length > 0 || news.length > 0) && (
             <p className="px-4 pt-10 text-center text-caption text-fg-subtle md:px-6">That's every Flick for now.</p>
           )}
         </div>
@@ -99,6 +104,36 @@ function Allowance() {
         {cap > 0 ? "Change" : "Set a limit"}
       </button>
     </p>
+  );
+}
+
+// Journalists' video stories. They play in the Flicks player with their 60-second brief.
+function NewsShelf({ stories }) {
+  return (
+    <section aria-labelledby="news-flicks" className="mb-10">
+      <h2 id="news-flicks" className="mb-3 flex items-center gap-2 px-4 text-title-3 md:px-6">
+        <Newspaper size={18} aria-hidden="true" /> News
+      </h2>
+      <ul className="flex gap-3 overflow-x-auto no-scrollbar px-4 md:px-6">
+        {stories.map((s) => (
+          <li key={s.id} className="w-36 shrink-0 md:w-44">
+            <button type="button" onClick={() => navigate(`/flicks/news-${s.id}`)} aria-label={`News video: ${s.title}`}
+              className="press group relative block aspect-[9/16] w-full overflow-hidden rounded-card bg-surface-2 text-left">
+              {s.graphic ? (
+                <span className="flex h-full w-full items-center justify-center text-fg-muted"><EyeOff size={24} aria-hidden="true" /></span>
+              ) : s.videoPoster ? (
+                <MediaImg src={s.videoPoster} alt="" loading="lazy" className="h-full w-full object-cover" placeholderClass="h-full w-full" />
+              ) : null}
+              <span className="absolute left-2 top-2 rounded-full bg-white px-1.5 py-0.5 text-label font-bold uppercase tracking-wider text-black">News</span>
+              <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5 pt-10">
+                <span className="line-clamp-3 text-caption font-semibold text-white">{s.title}</span>
+                {s.videoSeconds > 0 && <span className="mt-0.5 block text-label text-white/75 tabular">{formatDuration(s.videoSeconds)}</span>}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

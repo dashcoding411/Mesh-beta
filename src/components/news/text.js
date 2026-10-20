@@ -6,6 +6,8 @@ const stripCites = (t) => String(t || "").replace(/\s?\[\d{1,2}\]/g, "");
 
 export const readMinutes = (t) => Math.max(1, Math.round(String(t || "").split(/\s+/).filter(Boolean).length / 220));
 
+export const isVideoStory = (s) => s?.format === "video" && !!s.videoUrl;
+
 export const summaryOf = (n) => n.standfirst || n.keyPoints?.[0] || stripCites(n.script).slice(0, 240);
 
 /** A story's 60-second version: the journalist's three points, or its summary for older stories. */

@@ -1,10 +1,9 @@
 import { Newspaper, Radio } from "lucide-react";
 import { navigate } from "../../lib/router";
 import { AuthorLine } from "./AuthorLine";
-import { KindBadge, Meta, TopicLabel } from "./parts";
+import { KindBadge, Meta, StoryCover, TopicLabel } from "./parts";
 import { summaryOf } from "./text";
 import Badge from "../ui/Badge";
-import MediaImg from "../ui/MediaImg";
 
 /** A story from a journalist the viewer follows, in the Home feed. */
 export default function NewsFeedCard({ story }) {
@@ -16,10 +15,7 @@ export default function NewsFeedCard({ story }) {
       </p>
       <div className="px-4"><AuthorLine item={story} /></div>
       <button type="button" onClick={() => navigate(`/news/${story.id}`)} className="press group mt-3 block w-full text-left">
-        {story.coverUrl && (
-          <MediaImg src={story.coverUrl} alt="" loading="lazy" className="aspect-[16/9] w-full object-cover"
-            placeholderClass="aspect-[16/9] w-full" />
-        )}
+        <StoryCover item={story} className="aspect-[16/9] w-full object-cover" placeholderClass="aspect-[16/9] w-full" />
         <span className="block px-4 pt-3">
           <span className="flex flex-wrap items-center gap-2 text-label">
             <KindBadge id={story.label} />

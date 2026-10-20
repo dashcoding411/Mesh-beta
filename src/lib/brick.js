@@ -1,5 +1,5 @@
 // Brick mode policy engine: weekly windows, daily caps per section, and
-// instant bricks. Messages and calls are never locked.
+// instant bricks. Messages, calls and News are never locked.
 //
 // Tightening applies immediately; loosening waits 24h in `pending`. A parent
 // can add a second layer to an under-18 account that only they can loosen;
@@ -13,8 +13,11 @@ import { serverTimestamp, Timestamp } from "firebase/firestore";
 export const SECTIONS = [
   { id: "feed", label: "Feed", blurb: "Includes Search and Circles" },
   { id: "flicks", label: "Flicks" },
-  { id: "news", label: "News" },
 ];
+// Every cap a lock document holds. News no longer locks (it stays open, like
+// messages), but an old News cap is carried through unchanged so editing other
+// limits doesn't read as loosening.
+const CAP_SECTIONS = [...SECTIONS, { id: "news", label: "News" }];
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 export const SLOT_MINUTES = 30;
@@ -184,7 +187,7 @@ export function isTighterOrSame(next, prev, now = Date.now()) {
     const has = new Set(next.slots?.[k] || []);
     if (!had.every((s) => has.has(s))) return false;
   }
-  for (const s of SECTIONS) if (!capNoLooser(next.caps?.[s.id] || 0, prev.caps?.[s.id] || 0)) return false;
+  for (const s of CAP_SECTIONS) if (!capNoLooser(next.caps?.[s.id] || 0, prev.caps?.[s.id] || 0)) return false;
   return (next.until || 0) >= (prev.until || 0) || (prev.until || 0) <= now;
 }
 
@@ -196,7 +199,7 @@ export function tightest(a, b) {
     if (set.size) slots[k] = [...set].sort((x, y) => x - y);
   }
   const caps = {};
-  for (const s of SECTIONS) {
+  for (const s of CAP_SECTIONS) {
     const x = a.caps?.[s.id] || 0;
     const y = b.caps?.[s.id] || 0;
     caps[s.id] = !x ? y : !y ? x : Math.min(x, y);
@@ -220,7 +223,7 @@ export function carryTightening(target, prev, next) {
     const added = (next.slots?.[k] || []).filter((s) => !had.has(s));
     if (added.length) out.slots[k] = [...new Set([...(out.slots[k] || []), ...added])].sort((a, b) => a - b);
   }
-  for (const s of SECTIONS) {
+  for (const s of CAP_SECTIONS) {
     const n = next.caps?.[s.id] || 0;
     if (n !== (prev.caps?.[s.id] || 0)) {
       const t = out.caps[s.id] || 0;
@@ -249,7 +252,7 @@ export function applyChange(target, prev, next) {
   const have = new Set(windows.map(key));
   for (const w of next.windows || []) if (!before.has(key(w)) && !have.has(key(w))) windows.push(w);
   const caps = { ...target.caps };
-  for (const s of SECTIONS) {
+  for (const s of CAP_SECTIONS) {
     if ((next.caps?.[s.id] || 0) !== (prev.caps?.[s.id] || 0)) caps[s.id] = next.caps?.[s.id] || 0;
   }
   const later = (next.until || 0) > (target.until || 0) ? next : target;
@@ -263,7 +266,7 @@ export function looseningParts(next, prev, now = Date.now()) {
   for (const w of prev.windows || []) {
     if (!nextKeys.has(JSON.stringify([w.days, w.from, w.to]))) out.push(`Remove "${windowLabel(w)}"`);
   }
-  for (const s of SECTIONS) {
+  for (const s of CAP_SECTIONS) {
     const a = prev.caps?.[s.id] || 0;
     const b = next.caps?.[s.id] || 0;
     if (!capNoLooser(b, a)) out.push(b === 0 ? `No daily limit on ${s.label}` : `${s.label} from ${a} to ${b} minutes a day`);
@@ -340,6 +343,6 @@ export function pendingDueAt(policy) {
 export function hasAnyLimit(layer) {
   if (!layer) return false;
   return Object.values(layer.slots || {}).some((l) => l.length)
-    || SECTIONS.some((s) => (layer.caps?.[s.id] || 0) > 0)
+    || CAP_SECTIONS.some((s) => (layer.caps?.[s.id] || 0) > 0)
     || (layer.until || 0) > Date.now();
 }

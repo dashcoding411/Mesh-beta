@@ -108,7 +108,7 @@ export default function Welcome({ signedIn, onBrowse }) {
                 Loosening a limit takes 24 hours, so you can't talk yourself out of it at 1am. Lock everything for exam week with one tap.
               </p>
               <p className="mt-3 flex items-center gap-2 text-callout font-medium text-fg">
-                <MessageCircle size={16} className="text-accent-text" aria-hidden="true" /> Messages and calls always work.
+                <MessageCircle size={16} className="text-accent-text" aria-hidden="true" /> Messages, calls and News always work.
               </p>
             </div>
             <BrickDemo />
@@ -225,7 +225,7 @@ function BrickDemo() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fg text-canvas" aria-hidden="true"><Lock size={18} /></span>
           <span>
             <span className="block text-callout font-semibold">Home is locked until midnight</span>
-            <span className="block text-caption text-fg-muted">You hit your 45 minutes. Messages still work.</span>
+            <span className="block text-caption text-fg-muted">You hit your 45 minutes. Messages and News still work.</span>
           </span>
         </div>
       </div>

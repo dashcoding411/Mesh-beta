@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   fetchPostsByKind, fetchPost, fetchAffinity, fetchHiddenPostIds, toggleLike, toggleSave, toggleRepost, toggleFollow,
-  recordSignal, openUserProfile, me,
+  recordSignal, openUserProfile, me, fetchVideoNews, fetchNewsStory,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { usePostStates } from "../lib/usePostStates";
@@ -19,18 +19,37 @@ import { EmptyState, ErrorState, Spinner } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import Comments from "./Comments";
 import { ShareSheet, PostMenu } from "./PostActions";
+import NewsFlick from "./news/NewsFlick";
 
 // Unmute persists for the session.
 let soundOn = false;
 
 // Every CHECKPOINT Flicks a card says how long you've been watching.
 const CHECKPOINT = 10;
+// A journalist's video story after every NEWS_EVERY short Flicks.
+const NEWS_EVERY = 4;
+
+// An older video story opened by link, if it's published.
+const storyFromSnapshot = (s) => (s?.status === "approved" && s.format === "video" && s.videoUrl ? s : null);
+
+// Short Flicks with video news mixed in; leftover news goes at the end.
+function mix(posts, stories) {
+  const out = [];
+  let n = 0;
+  posts.forEach((post, i) => {
+    out.push({ key: post.id, post });
+    if ((i + 1) % NEWS_EVERY === 0 && n < stories.length) { const story = stories[n++]; out.push({ key: `news-${story.id}`, story }); }
+  });
+  stories.slice(n).forEach((story) => out.push({ key: `news-${story.id}`, story }));
+  return out;
+}
 
 // Short Flicks, one at a time, starting from the one picked on Flicks home.
 // Long Flicks live on Flicks home and the full player. The feed ends.
 export default function Flicks({ startId }) {
   const { following, hiddenAuthors, interests, hiddenWords, hideAi } = useShell();
   const [videos, setVideos] = useState(null);
+  const [news, setNews] = useState([]);
   const [error, setError] = useState(false);
   const [viewer, setViewer] = usePostStates(videos);
   const [muted, setMuted] = useState(!soundOn);
@@ -40,17 +59,25 @@ export default function Flicks({ startId }) {
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [all, affinity, hidden] = await Promise.all([
+      const [all, affinity, hidden, stories] = await Promise.all([
         fetchPostsByKind("short"),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
+        fetchVideoNews().catch(() => []),
       ]);
       const list = all.filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId));
       let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords, hideAi });
-      if (startId) {
+      let videoNews = stories.filter((s) => !hiddenAuthors.has(s.authorId));
+      const startNews = startId?.startsWith("news-") ? startId.slice(5) : null;
+      if (startNews) {
+        const first = videoNews.find((s) => s.id === startNews)
+          || storyFromSnapshot(await fetchNewsStory(startNews).catch(() => null));
+        if (first) videoNews = [first, ...videoNews.filter((s) => s.id !== startNews)];
+      } else if (startId) {
         const start = ordered.find((p) => p.id === startId) || (await fetchPost(startId).catch(() => null));
         if (start?.kind === "short") ordered = [start, ...ordered.filter((p) => p.id !== startId)];
       }
+      setNews(videoNews);
       setVideos(ordered);
     } catch (err) {
       console.error(err);
@@ -82,6 +109,9 @@ export default function Flicks({ startId }) {
   }, []);
 
   const next = () => scroller.current?.scrollBy({ top: scroller.current.clientHeight, behavior: "smooth" });
+  // Opened from a news Flick: start with it.
+  const startsWithNews = startId?.startsWith("news-") && news[0] && `news-${news[0].id}` === startId;
+  const items = videos ? (startsWithNews ? [{ key: startId, story: news[0] }, ...mix(videos, news.slice(1))] : mix(videos, news)) : null;
 
   return (
     <div data-theme="dark" className="relative flex min-h-0 flex-1 flex-col bg-black text-white md:bg-canvas md:text-fg">
@@ -98,24 +128,28 @@ export default function Flicks({ startId }) {
         </div>
       )}
 
-      {!error && videos?.length === 0 && (
+      {!error && items?.length === 0 && (
         <div className="flex flex-1 items-center justify-center">
           <EmptyState icon={Clapperboard} title="No short Flicks yet"
             action={<Button onClick={() => goBack("/flicks")}>Back to Flicks</Button>} />
         </div>
       )}
 
-      {videos?.length > 0 && (
+      {items?.length > 0 && (
         <div ref={scroller} data-scroll aria-label="Flicks"
           className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto no-scrollbar overscroll-contain">
-          {videos.map((p, i) => (
-            <Fragment key={p.id}>
+          {items.map(({ key, post, story }, i) => (
+            <Fragment key={key}>
               {i > 0 && i % CHECKPOINT === 0 && <Checkpoint count={i} startedAt={startedAt} onContinue={next} />}
-              <FlickItem post={p} index={i} total={videos.length} viewer={viewer} onViewerChange={setViewer}
-                muted={muted} onToggleSound={toggleSound} onRemoved={(id) => setVideos((l) => l.filter((x) => x.id !== id))} />
+              {story ? (
+                <NewsFlick story={story} index={i} total={items.length} muted={muted} onToggleSound={toggleSound} />
+              ) : (
+                <FlickItem post={post} index={i} total={items.length} viewer={viewer} onViewerChange={setViewer}
+                  muted={muted} onToggleSound={toggleSound} onRemoved={(id) => setVideos((l) => l.filter((x) => x.id !== id))} />
+              )}
             </Fragment>
           ))}
-          <EndCard count={videos.length} />
+          <EndCard count={items.length} />
         </div>
       )}
     </div>
@@ -159,7 +193,7 @@ function EndCard({ count }) {
     <section aria-label="End of Flicks" className={STOP}>
       <CheckCheck size={30} className="mb-2 text-white/70 md:text-fg-muted" aria-hidden="true" />
       <p className="text-title-2">You're all caught up</p>
-      <p className="text-callout text-white/70 md:text-fg-muted">That's all {plural(count, "short Flick")} for now.</p>
+      <p className="text-callout text-white/70 md:text-fg-muted">That's all {plural(count, "Flick")} for now.</p>
       <Button className="mt-4" onClick={() => goBack("/flicks")}>Back to Flicks</Button>
     </section>
   );

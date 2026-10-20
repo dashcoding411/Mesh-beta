@@ -18,7 +18,7 @@ import { StoryBody } from "./StoryBody";
 import { LiveUpdates } from "./LiveUpdates";
 import { Byline } from "./Journalist";
 import { KindBadge, TopicLabel } from "./parts";
-import { readMinutes, storyUrl } from "./text";
+import { isVideoStory, readMinutes, storyUrl } from "./text";
 import { markStoryRead } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
@@ -134,7 +134,7 @@ export function NewsStory({ id }) {
 
               {story.corrections?.length > 0 && <Corrections list={story.corrections} />}
 
-              {story.coverUrl && (
+              {story.coverUrl && !isVideoStory(story) && (
                 <MediaImg src={story.coverUrl} alt={`Photo for: ${story.title}`}
                   className="mt-5 aspect-[16/9] w-full rounded-card object-cover" placeholderClass="mt-5 aspect-[16/9] w-full rounded-card" />
               )}

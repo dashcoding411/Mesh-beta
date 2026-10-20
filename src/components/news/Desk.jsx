@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronRight, Ellipsis, FilePen, FileText, Folder, FolderInput, FolderOpen, FolderPlus, LayoutGrid, List,
+  ChevronRight, Clapperboard, Ellipsis, FilePen, FileText, Folder, FolderInput, FolderOpen, FolderPlus, LayoutGrid, List,
   Pencil, Plus, Radio, RefreshCw, Search as SearchIcon, Trash2, Users, X,
 } from "lucide-react";
 import { createNewsStory, deleteNews, fetchDesk, saveDesk, setLive, tsMillis, me } from "../../lib/db";
@@ -203,6 +203,7 @@ export default function Desk({ stories, setStories }) {
       {/* Command bar */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button variant="primary" icon={Plus} loading={busy === "story"} onClick={() => startStory("story")}>New story</Button>
+        <Button icon={Clapperboard} loading={busy === "video"} onClick={() => startStory("video")}>New video</Button>
         <Button icon={Radio} loading={busy === "live"} onClick={() => startStory("live")}>New live blog</Button>
         <Button icon={FolderPlus} onClick={() => setDialog({ kind: "new-folder" })}>New folder</Button>
       </div>
@@ -284,7 +285,7 @@ export default function Desk({ stories, setStories }) {
             const st = status(s);
             return (
               <Item key={`s:${s.id}`} grid={grid} itemKey={`s:${s.id}`} selected={selected.has(`s:${s.id}`)} onToggle={toggle}
-                name={storyName(s)} icon={s.format === "live" ? Radio : FileText} cover={s.coverUrl}
+                name={storyName(s)} icon={{ live: Radio, video: Clapperboard }[s.format] || FileText} cover={s.coverUrl || (s.graphic ? "" : s.videoPoster)}
                 badge={<Badge tone={st.tone}>{st.label}</Badge>}
                 meta={[
                   shortTime(modified(s)),

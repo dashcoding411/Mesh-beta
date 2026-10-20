@@ -258,11 +258,11 @@ export const GUIDES = [
       "Open the menu and tap **Brick mode**.",
       "**Daily limits** set how long Home, Flicks and News get each day. When you reach one, that part locks until midnight.",
       "Lowering a limit works straight away. Raising one takes 24 hours, so it can't be undone in a weak moment.",
-      "**Brick me now** locks Mesh to messages and calls for a few hours or days, like exam week.",
+      "**Brick me now** locks Mesh to messages, calls and News for a few hours or days, like exam week.",
       "**Scheduled times** lock it at the same times every week, say before 10am.",
     ],
     tips: [
-      "Messages and calls always work, even when Mesh is locked.",
+      "Messages, calls and News always work, even when Mesh is locked.",
       "The Leaderboard shows who's kept Mesh bricked the longest.",
     ],
     go: { label: "Open Brick mode", path: "/account/brick" },
@@ -403,7 +403,7 @@ export const GUIDES = [
     summary: "You've reached a daily limit, or Brick mode is on.",
     steps: [
       "A daily limit unlocks at midnight.",
-      "Messages and calls always work in the meantime.",
+      "Messages, calls and News always work in the meantime.",
       "To change your limits, open **Brick mode**. Raising a limit takes 24 hours.",
     ],
     go: { label: "Open Brick mode", path: "/account/brick" },

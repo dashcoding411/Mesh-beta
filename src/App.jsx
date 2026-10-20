@@ -93,13 +93,12 @@ const SECTION_TITLES = {
   notifications: "Notifications", leaderboard: "Leaderboard", whatson: "What's on", rolls: "Rolls", help: "Help",
 };
 
-// Brick-mode section for a page. Messaging, notifications, settings and
+// Brick-mode section for a page. Messaging, News, notifications, settings and
 // gathering details are never locked.
 function lockSectionOf(page) {
   if (page.tab !== "home" || page.gatheringId || page.notFound) return null;
-  // The newsroom is exempt from News limits.
-  if (page.section === "news" && page.view) return null;
-  return { foryou: "feed", following: "feed", search: "feed", circles: "feed", flicks: "flicks", news: "news" }[page.section] || null;
+  // News is never locked: like messages and calls, it stays open.
+  return { foryou: "feed", following: "feed", search: "feed", circles: "feed", flicks: "flicks" }[page.section] || null;
 }
 
 // Pages that belong to an account, and what to tell a signed-out visitor.

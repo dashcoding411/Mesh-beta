@@ -5,11 +5,19 @@ import {
 import { db } from "../../firebase";
 import { me, snapToList } from "./core.js";
 import { deleteInline } from "./posts.js";
+import { deleteCloudMedia } from "./uploads.js";
 import { myProfile } from "./users.js";
 
 export async function fetchNews(status = "approved") {
   const q = query(collection(db, "news"), where("status", "==", status), orderBy("createdAt", "desc"), limit(100));
   return snapToList(await getDocs(q));
+}
+
+/** Published video stories, newest first, for the Flicks feed. */
+export async function fetchVideoNews(max = 20) {
+  const q = query(collection(db, "news"), where("status", "==", "approved"), where("format", "==", "video"),
+    orderBy("createdAt", "desc"), limit(max));
+  return snapToList(await getDocs(q)).filter((s) => s.videoUrl);
 }
 
 // Checked once per visit: it gates menus on every profile and post.
@@ -33,6 +41,7 @@ export async function deleteNews(id) {
   batch.delete(doc(db, "news", id));
   await batch.commit();
   await deleteInline(story?.coverUrl);
+  await Promise.all([deleteCloudMedia(story?.videoUrl), deleteCloudMedia(story?.videoPoster)]);
 }
 
 export async function fetchNewsStory(id) {

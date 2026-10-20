@@ -17,7 +17,7 @@ export const SETTINGS_INDEX = [
 
   // Your time
   { id: "brick", label: "Brick mode", group: "Your time", keywords: ["screen time", "limits", "daily limit", "time limit", "lock", "focus", "addiction", "doomscrolling", "break"], desc: "Daily limits, schedules and instant bricks", go: { path: "/account/brick" } },
-  { id: "brick-now", label: "Brick me now", group: "Your time", keywords: ["lock now", "exam", "study", "detox", "pause"], desc: "Lock Mesh to messages and calls for a while", go: { path: "/account/brick" } },
+  { id: "brick-now", label: "Brick me now", group: "Your time", keywords: ["lock now", "exam", "study", "detox", "pause"], desc: "Lock Mesh to messages, calls and News for a while", go: { path: "/account/brick" } },
   { id: "brick-schedule", label: "Scheduled brick times", group: "Your time", keywords: ["schedule", "bedtime", "night", "morning", "weekly"], desc: "Lock Mesh at the same times every week", go: { path: "/account/brick" } },
   { id: "brick-groups", label: "Brick groups and leaderboard", group: "Your time", keywords: ["leaderboard", "friends", "streak", "compete", "bricked time"], desc: "Compare bricked time with friends", go: { path: "/leaderboard" } },
   { id: "family", label: "Parental controls", group: "Your time", keywords: ["parent", "family", "teen", "child", "kid", "guardian", "supervision"], desc: "A parent's limits for an under-18 account", go: { path: "/account/family" } },

@@ -35,7 +35,7 @@ const MEMBER_STEPS = [
   { path: "/account/brick", targets: ["brick-limits"], title: "Your daily limits",
     body: "This is Brick mode. The limit you picked at sign-up lives here. When you hit it, Home or Flicks locks until midnight. Lowering a limit is instant; raising it takes 24 hours." },
   { path: "/account/brick", targets: ["brick-now"], title: "Brick me now",
-    body: "Lock Mesh to messages and calls for a few hours or days, like exam week. Scheduled times below lock it every week, say before 10am." },
+    body: "Lock Mesh to messages, calls and News for a few hours or days, like exam week. Scheduled times below lock it every week, say before 10am." },
   { targets: ["rolls"], title: "Rolls",
     body: "A shared disposable camera for a night out. Start one, send the link, and everyone gets 27 shots with no previews. It all develops at 9am the next morning." },
   { targets: ["feed-tabs"], title: "Your feed",

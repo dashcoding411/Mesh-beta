@@ -1,8 +1,10 @@
-import { ExternalLink, Timer } from "lucide-react";
-import { CITE, hostOf } from "./text";
+import { useState } from "react";
+import { ExternalLink, EyeOff, Timer } from "lucide-react";
+import { CITE, hostOf, isVideoStory } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
 import { followLink } from "../../lib/links";
+import { useShell } from "../shell/ShellContext";
 
 // Shared by the story page and the editor preview.
 export function StoryBody({ story }) {
@@ -33,6 +35,8 @@ export function StoryBody({ story }) {
 
   return (
     <>
+      {isVideoStory(story) && <StoryVideo story={story} />}
+
       {story.keyPoints?.filter(Boolean).length > 0 && (
         <section aria-label="The 60-second version" className="mt-6 rounded-card border border-line bg-surface p-4">
           <h2 className="mb-2 flex items-center gap-2 text-label font-semibold uppercase tracking-wider text-fg-subtle">
@@ -102,5 +106,32 @@ export function StoryBody({ story }) {
         </ol>
       </section>
     </>
+  );
+}
+
+/** A video story's video, behind a warning when it's marked graphic. */
+export function StoryVideo({ story, className = "mt-5" }) {
+  const [revealed, setRevealed] = useState(false);
+  const year = useShell()?.profile?.birthYear;
+  const minor = year > 0 && new Date().getFullYear() - year < 18;
+  const box = `${className} aspect-[9/16] max-h-[75vh] w-full rounded-card bg-black`;
+  if (story.graphic && !revealed) {
+    return (
+      <div className={`${box} flex flex-col items-center justify-center gap-2 !bg-surface-2 p-6 text-center`}>
+        <EyeOff size={28} className="text-fg-muted" aria-hidden="true" />
+        <p className="text-callout font-semibold">Graphic content</p>
+        <p className="text-caption text-fg-muted">This may show violence or injury.</p>
+        {minor ? (
+          <p className="text-caption text-fg-subtle">Hidden for under-18 accounts.</p>
+        ) : (
+          <button type="button" onClick={() => setRevealed(true)}
+            className="press mt-1 min-h-9 rounded-full bg-surface-3 px-4 text-callout font-semibold text-fg">Show</button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <video src={story.videoUrl} poster={story.videoPoster || undefined} controls playsInline preload="metadata"
+      aria-label={`Video: ${story.title}`} className={`${box} object-contain`} />
   );
 }

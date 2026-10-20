@@ -12,8 +12,8 @@ export default function LockScreen({ section, lock, opensAt, now, parentName, co
   const body = lock.reason === "cap"
     ? `${label} opens again at midnight. Everything else is still open.`
     : lock.reason === "instant"
-      ? `Until ${whenLabel(lock.until, now)}. Messages and calls still work.`
-      : `This is one of your scheduled times. Messages and calls still work.`;
+      ? `Until ${whenLabel(lock.until, now)}. Messages, calls and News still work.`
+      : `This is one of your scheduled times. Messages, calls and News still work.`;
 
   return (
     <div role="status" className={`flex flex-col items-center justify-center px-6 text-center ${compact ? "py-10" : "min-h-0 flex-1 py-16"} anim-fade`}>

@@ -4,15 +4,14 @@ import { fetchNews, isNewsWriter, tsMillis } from "../../lib/db";
 import { NEWS_TOPICS, newsTopicById } from "../../lib/interests";
 import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
-import { KindBadge, Meta, TopicLabel } from "./parts";
+import { KindBadge, Meta, StoryCover, TopicLabel } from "./parts";
 import { AuthorLine } from "./AuthorLine";
-import { quickMinutes, readMinutes, summaryOf } from "./text";
+import { isVideoStory, quickMinutes, readMinutes, summaryOf } from "./text";
 import QuickBrief from "./QuickBrief";
 import { BRIEF_SIZE, pickBrief, readStoryIds } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
 import { VerifiedTick } from "../ui/Badges";
 import Button from "../ui/Button";
-import MediaImg from "../ui/MediaImg";
 import { EmptyState, ErrorState, Skeleton } from "../ui/States";
 
 const publishedAt = (s) => tsMillis(s.publishedAt) || tsMillis(s.createdAt);
@@ -175,8 +174,8 @@ function LeadStory({ item }) {
     <article aria-labelledby={`lead-${item.id}`}>
       <button type="button" onClick={() => navigate(`/news/${item.id}`)}
         className="press group block w-full overflow-hidden rounded-card border border-line bg-surface text-left transition-colors hover:border-line-strong">
-        {item.coverUrl ? (
-          <MediaImg src={item.coverUrl} alt="" loading="lazy" className="aspect-[16/9] w-full object-cover" placeholderClass="aspect-[16/9] w-full" />
+        {item.coverUrl || isVideoStory(item) ? (
+          <StoryCover item={item} className="aspect-[16/9] w-full object-cover" placeholderClass="aspect-[16/9] w-full" />
         ) : (
           <span className="block h-1 bg-accent" aria-hidden="true" />
         )}
@@ -209,10 +208,7 @@ function StoryRow({ item }) {
           <span className="mt-2 block"><AuthorLine item={item} /></span>
           <span className="mt-1 block"><Meta item={item} /></span>
         </span>
-        {item.coverUrl && (
-          <MediaImg src={item.coverUrl} alt="" loading="lazy"
-            className="h-20 w-20 shrink-0 rounded-control object-cover md:h-24 md:w-32" placeholderClass="h-20 w-20 shrink-0 rounded-control md:h-24 md:w-32" />
-        )}
+        <StoryCover item={item} className="h-20 w-20 object-cover md:h-24 md:w-32" placeholderClass="h-20 w-20 rounded-control md:h-24 md:w-32" />
       </button>
     </article>
   );

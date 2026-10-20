@@ -235,7 +235,7 @@ export default function BrickSettings() {
       {adding && <AddWindowDialog onClose={() => setAdding(false)} onAdd={addWindow} />}
       {instant && (
         <ConfirmDialog tone="accent" title={`Brick Mesh until ${whenLabel(instant)}?`} confirmLabel="Brick me" busy={busy}
-          body={`Messages and calls still work. You can't end it early${lockNow?.reason === "instant" && lockNow.until > instant ? ". You're already bricked for longer than this" : ""}.`}
+          body={`Messages, calls and News still work. You can't end it early${lockNow?.reason === "instant" && lockNow.until > instant ? ". You're already bricked for longer than this" : ""}.`}
           onClose={() => setInstant(null)} onConfirm={doBrick} />
       )}
       {confirm && (

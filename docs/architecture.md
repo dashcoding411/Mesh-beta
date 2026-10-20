@@ -640,7 +640,9 @@ Brick mode right after its welcome, then returns to Home.
 Weekly windows (half-hour slots per local day), daily per-section caps and
 instant bricks (for a length of time, or until a clock time, up to 8 days). Tightening applies immediately; loosening waits 24 hours in
 `pending` (`tighterOrSame` in the rules). Browsing reads check `lockedFor()`;
-messaging, notifications and settings are never locked.
+messaging, calls, News, notifications and settings are never locked. Brick
+mode limits Feed and Flicks; an old News cap is carried through saves
+(`CAP_SECTIONS`) but nothing enforces it.
 
 Caps are metered by the client (+30s per 30s visible, at most once per 25s).
 A feed query can mix formats, so per-format caps can't be enforced on list
@@ -735,6 +737,17 @@ attestation, records a revision, and is blocked while the
 story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
+
+Video stories (`format: 'video'`) make the video the article: `videoUrl`,
+`videoPoster` and `videoSeconds` point at the media Worker, text is optional
+(`storyHasBody`), and the 60-second version and two sources are still
+required. They play at the top of the story page, show a play badge in News,
+and appear in the Flicks player (`fetchVideoNews`, mixed in after every four
+short Flicks and on a News shelf on Flicks home) with a news strip, a
+"60-sec brief" sheet and a link to the full story. Watching 80% counts as a
+read. A `graphic` flag (set by the journalists or the news team) hides the
+video and its still behind a warning, never shown to under-18s. Deleting the
+story deletes the video and still.
 
 Every story carries a `label` (Report, Analysis, Explainer or Opinion; reports
 go unlabelled to readers). A published story can be updated in place for
