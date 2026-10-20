@@ -3,7 +3,10 @@ import { ImagePlus, Megaphone, Pause, Pencil, Play, Plus, Trash2 } from "lucide-
 import { Timestamp } from "firebase/firestore";
 import {
   fetchAllAds, createAd, updateAd, setAdActive, deleteAd, staffRole, uploadMedia, adRunning, tsMillis, AD_LIMITS, CTA_CHOICES,
+  submitAdRequest, fetchAdRequests, decideAdRequest,
 } from "../lib/db";
+import { auth } from "../firebase";
+import { useShell } from "./shell/ShellContext";
 import { INTERESTS } from "../lib/interests";
 import { uploadProblem } from "../lib/imageCheck";
 import { plural } from "../lib/format";
@@ -36,13 +39,18 @@ export default function AdsManager() {
   const [ads, setAds] = useState(null);
   const [editing, setEditing] = useState(null); // ad, or {} for a new one
   const [deleting, setDeleting] = useState(null);
+  const [requests, setRequests] = useState(null);
+  const [declining, setDeclining] = useState(null);
 
   useEffect(() => {
     let live = true;
     staffRole().then((r) => {
       if (!live) return;
       setAllowed(r === "admin");
-      if (r === "admin") fetchAllAds().then((l) => { if (live) setAds(l); }).catch(() => { if (live) setAds([]); });
+      if (r === "admin") {
+        fetchAllAds().then((l) => { if (live) setAds(l); }).catch(() => { if (live) setAds([]); });
+        fetchAdRequests().then((l) => { if (live) setRequests(l); }).catch(() => { if (live) setRequests([]); });
+      }
     }).catch(() => { if (live) setAllowed(false); });
     return () => { live = false; };
   }, []);
@@ -66,6 +74,15 @@ export default function AdsManager() {
                 Ads show in Home after the 6th post and every 10 after, labelled &ldquo;Ad&rdquo;, never in Messages. Target by town,
                 interests people picked, and 18+ only. Advertisers get totals: views (once per person per visit) and taps.
               </p>
+              {requests?.length > 0 && (
+                <section aria-labelledby="ad-req-h" className="space-y-3">
+                  <h2 id="ad-req-h" className="text-title-3">Requests · {requests.length}</h2>
+                  {requests.map((r) => (
+                    <AdRequest key={r.id} req={r} onDecline={() => setDeclining(r)}
+                      onUse={() => { const { id, ...rest } = r; setEditing({ ...rest, active: true, fromRequest: id }); }} />
+                  ))}
+                </section>
+              )}
               {ads === null && <Skeleton className="h-32 !rounded-card" />}
               {ads?.length === 0 && <EmptyState icon={Megaphone} title="No ads yet" body="Create one for a local business, club or event." />}
               <ul className="space-y-3">
@@ -107,7 +124,18 @@ export default function AdsManager() {
           )}
         </div>
       </div>
-      {editing && <AdEditor ad={editing.id ? editing : null} onClose={() => setEditing(null)} onSaved={(a) => { replace(a); setEditing(null); }} />}
+      {editing && (
+        <AdEditor ad={editing.id || editing.fromRequest ? editing : null} requestId={editing.fromRequest || null} onClose={() => setEditing(null)}
+          onSaved={(a) => {
+            replace(a);
+            if (editing.fromRequest) setRequests((l) => (l || []).filter((x) => x.id !== editing.fromRequest));
+            setEditing(null);
+          }} />
+      )}
+      {declining && (
+        <DeclineRequest req={declining} onClose={() => setDeclining(null)}
+          onDone={() => { setRequests((l) => l.filter((x) => x.id !== declining.id)); setDeclining(null); toast({ title: "Request declined" }); }} />
+      )}
       {deleting && (
         <ConfirmDialog title={`Delete ${deleting.advertiser}'s ad?`} body="Its totals go with it. Pause it instead to keep them." confirmLabel="Delete"
           onClose={() => setDeleting(null)}
@@ -120,8 +148,16 @@ export default function AdsManager() {
   );
 }
 
-function AdEditor({ ad, onClose, onSaved }) {
+/**
+ * Makes or edits an ad (admins), or, with `mode="request"`, asks Mesh for a
+ * spot (Settings > Advertise on Mesh). `requestId` marks a request approved
+ * once its ad is made.
+ */
+export function AdEditor({ ad, onClose, onSaved, mode = "ad", requestId = null }) {
   const toast = useToast();
+  const request = mode === "request";
+  const { profile } = useShell() || {};
+  const [contact, setContact] = useState(() => ({ email: auth.currentUser?.email || "", budget: "", notes: "" }));
   const now = Date.now();
   const [form, setForm] = useState(() => ({
     advertiser: ad?.advertiser || "",
@@ -154,13 +190,26 @@ function AdEditor({ ad, onClose, onSaved }) {
     if (!form.advertiser.trim() || !form.headline.trim()) return setError("Add the advertiser and a headline.");
     if (!/^https:\/\/[^ ]+\.[^ ]+/.test(form.linkUrl.trim())) return setError("The link must start with https://.");
     if (!(endsAt > startsAt)) return setError("The end date must be after the start.");
+    if (request && !/^[^@ ]+@[^@ ]+\.[^@ ]+$/.test(contact.email.trim())) return setError("Add an email we can reach you on.");
     setBusy(true);
     const data = {
       ...form, towns: preview.towns, startsAt: Timestamp.fromMillis(startsAt), endsAt: Timestamp.fromMillis(endsAt),
     };
+    if (request) {
+      try {
+        await submitAdRequest(data, { contactEmail: contact.email, budget: contact.budget, notes: contact.notes, username: profile?.username || "" });
+        toast({ title: "Sent for review", body: "Mesh will email you about price and dates." });
+        onSaved?.();
+      } catch (err) {
+        setError(err?.code === "permission-denied" ? "That couldn't be sent. Advertisers need to be 18 or over, and the link must start with https://." : "Couldn't send it. Try again.");
+        setBusy(false);
+      }
+      return;
+    }
     try {
       let id = ad?.id;
       if (id) await updateAd(id, data); else id = await createAd(data);
+      if (requestId) await decideAdRequest(requestId, { approved: true, adId: id }).catch(() => {});
       toast({ title: ad ? "Ad saved" : "Ad created", body: adRunning({ ...data, active: form.active }) ? "It's running in Home now." : undefined });
       onSaved({ ...(ad || { impressions: 0, clicks: 0 }), ...data, id });
     } catch (err) {
@@ -170,14 +219,14 @@ function AdEditor({ ad, onClose, onSaved }) {
   };
 
   return (
-    <Dialog title={ad ? "Edit ad" : "New ad"} onClose={onClose} size="xl"
+    <Dialog title={request ? "Advertise on Mesh" : ad?.id ? "Edit ad" : "New ad"} onClose={onClose} size="xl"
       footer={(
         <div className="flex items-center gap-2">
           <span className="flex min-w-0 flex-1 items-center gap-2 text-callout">
-            <Switch checked={form.active} onChange={(v) => set({ active: v })} label="Running" /> {form.active ? "On" : "Paused"}
+            {!request && <><Switch checked={form.active} onChange={(v) => set({ active: v })} label="Running" /> {form.active ? "On" : "Paused"}</>}
           </span>
           <Button onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={save}>{ad ? "Save" : "Create ad"}</Button>
+          <Button variant="primary" loading={busy} onClick={save}>{request ? "Send for review" : ad?.id ? "Save" : "Create ad"}</Button>
         </div>
       )}>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
@@ -248,6 +297,19 @@ function AdEditor({ ad, onClose, onSaved }) {
           <p className="text-caption text-fg-subtle">
             No political or issue ads: nothing from or about a party, candidate, election or referendum, and nothing arguing one side of a political issue.
           </p>
+          {request && (
+            <div className="space-y-3 border-t border-line pt-3">
+              <Field label="Email">
+                <Input type="email" value={contact.email} maxLength={120} autoComplete="email" onChange={(e) => setContact((c) => ({ ...c, email: e.target.value }))} />
+              </Field>
+              <Field label="Budget" optional>
+                <Input value={contact.budget} maxLength={60} placeholder="$100 a week" onChange={(e) => setContact((c) => ({ ...c, budget: e.target.value }))} />
+              </Field>
+              <Field label="Anything else" optional count={contact.notes.length} max={500}>
+                <Textarea autoGrow rows={2} maxRows={5} value={contact.notes} maxLength={500} onChange={(e) => setContact((c) => ({ ...c, notes: e.target.value }))} />
+              </Field>
+            </div>
+          )}
           <InlineMessage>{error}</InlineMessage>
         </div>
         <div>
@@ -255,6 +317,48 @@ function AdEditor({ ad, onClose, onSaved }) {
           <div className="overflow-hidden rounded-card border border-line"><AdCard ad={preview} preview /></div>
         </div>
       </div>
+    </Dialog>
+  );
+}
+
+// An advertiser's request: the ad as they'd like it, and how to reach them.
+function AdRequest({ req, onUse, onDecline }) {
+  return (
+    <article className="grid gap-4 rounded-card border border-line bg-surface p-4 md:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="min-w-0 space-y-2 text-callout">
+        <p className="font-semibold">{req.advertiser}</p>
+        <p className="text-caption text-fg-muted">
+          From @{req.username} · {dayLabel(req.startsAt)} to {dayLabel(req.endsAt)}{req.budget ? ` · ${req.budget}` : ""}
+        </p>
+        <a href={`mailto:${req.contactEmail}`} className="block truncate text-accent-text hover:underline">{req.contactEmail}</a>
+        {req.notes && <p className="whitespace-pre-wrap rounded-control bg-surface-2 p-2.5 text-caption">{req.notes}</p>}
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" variant="primary" onClick={onUse}>Use this</Button>
+          <Button size="sm" onClick={onDecline}>Decline</Button>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-card border border-line"><AdCard ad={{ ...req, id: `req-${req.id}` }} preview /></div>
+    </article>
+  );
+}
+
+function DeclineRequest({ req, onClose, onDone }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog title={`Decline ${req.advertiser}?`} onClose={busy ? undefined : onClose} size="sm"
+      footer={(
+        <div className="flex w-full gap-2">
+          <Button full onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button full variant="danger" loading={busy} onClick={async () => {
+            setBusy(true);
+            try { await decideAdRequest(req.id, { approved: false, note }); onDone(); } catch { setBusy(false); }
+          }}>Decline</Button>
+        </div>
+      )}>
+      <Field label="Reason" optional count={note.length} max={300}>
+        <Textarea value={note} maxLength={300} rows={3} onChange={(e) => setNote(e.target.value)} placeholder="They'll see this in Settings" />
+      </Field>
     </Dialog>
   );
 }

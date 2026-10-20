@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronRight, Info } from "lucide-react";
 import { adReason, countAdTap, countAdView } from "../lib/db";
 import { followLink } from "../lib/links";
+import { navigate } from "../lib/router";
 import { useInView } from "../lib/useInView";
 import MediaImg from "./ui/MediaImg";
 
@@ -27,7 +28,10 @@ export default function AdCard({ ad, preview = false }) {
       <AdHeader name={ad.advertiser} initial={ad.advertiser.slice(0, 1).toUpperCase()} why={why} setWhy={setWhy} whyId={whyId} />
       {why && (
         <p id={whyId} className="mx-4 mt-2 rounded-control bg-surface-2 p-3 text-caption text-fg-muted">
-          {adReason(ad)} Ads pay for Mesh's servers and moderators. Mesh never sells your data or targets ads on what you do.
+          {adReason(ad)} Ads pay for Mesh's servers and moderators. Mesh never sells your data or targets ads on what you do.{" "}
+          <button type="button" onClick={() => navigate("/account/settings?open=advertise")} className="font-semibold text-accent-text hover:underline">
+            Advertise on Mesh
+          </button>
         </p>
       )}
       {ad.imageUrl && (

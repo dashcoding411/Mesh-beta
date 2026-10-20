@@ -10,6 +10,8 @@ import { motionReduced } from "../lib/appearance";
 import { clearTime } from "../lib/timeMeter";
 import NotificationSettings from "./NotificationSettings";
 import JournalistApply from "./JournalistApply";
+// The ad editor, in request mode; loaded when opened.
+const AdRequestEditor = lazy(() => import("./AdsManager").then((m) => ({ default: m.AdEditor })));
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
 import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail, signOutHere } from "../lib/auth";
@@ -38,7 +40,7 @@ function brickSummary(brick) {
 import {
   exportMyData, deleteMyAccountData, POLICY_VERSION, tsMillis, setMyBirthYear,
   setPrivacySettings, setPostsVisibility, removeMyReposts, fetchFollowRequests, approveFollowRequest, declineFollowRequest,
-  fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi, setHideActive as saveHideActive, fetchMyApplication, isNewsWriter,
+  fetchBlocked, unblockUser, openUserProfile, saveHiddenWords, fetchProfile, setHideAi as saveHideAi, setHideActive as saveHideActive, fetchMyApplication, isNewsWriter, fetchMyAdRequests,
 } from "../lib/db";
 import Switch from "./ui/Switch";
 import Segmented from "./ui/Segmented";
@@ -80,9 +82,18 @@ export default function Settings() {
   const providers = user?.providerData?.map((p) => p.providerId) || [];
   const hasPassword = providers.includes("password");
   // password | birthyear | delete | signout | private | public | messages | comments | requests | blocked | journalist
-  const [dialog, setDialog] = useState(() => (new URLSearchParams(window.location.search).get("open") === "journalist" ? "journalist" : null));
-  // Where a journalist application is up to, for its row.
+  const [dialog, setDialog] = useState(() => {
+    const open = new URLSearchParams(window.location.search).get("open");
+    return open === "journalist" || open === "advertise" ? open : null;
+  });
+  // Where a journalist application and an ad request are up to, for their rows.
   const [press, setPress] = useState(null);
+  const [adReq, setAdReq] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetchMyAdRequests().then((l) => { if (live) setAdReq(l[0] || null); }).catch(() => {});
+    return () => { live = false; };
+  }, [dialog]);
   useEffect(() => {
     let live = true;
     Promise.all([isNewsWriter(), fetchMyApplication()])
@@ -104,6 +115,7 @@ export default function Settings() {
     if (go.run === "interests") return openInterests();
     if (go.run === "tour") return replayTour();
     if (go.run === "journalist") return setDialog("journalist");
+    if (go.run === "advertise") return setDialog("advertise");
     if (go.run === "cookies") return openCookieChoices();
     if (go.run === "contact") { window.location.href = `mailto:${BUSINESS.supportEmail}`; return undefined; }
     if (go.run === "licenses") { window.open("/licenses.txt", "_blank", "noopener"); return undefined; }
@@ -176,6 +188,12 @@ export default function Settings() {
               action={!(profile?.birthYear > 0) && <Button size="sm" onClick={() => setDialog("birthyear")}>Set</Button>} />
             {!(profile?.birthYear > 0 && new Date().getFullYear() - profile.birthYear < 18) && (
               <Row id="journalist" icon={Newspaper} label="Become a journalist" value={press || null} onClick={() => setDialog("journalist")} />
+            )}
+            {!(profile?.birthYear > 0 && new Date().getFullYear() - profile.birthYear < 18) && (
+              <Row id="advertise" icon={Megaphone} label="Advertise on Mesh"
+                value={{ pending: "Request sent", approved: "Approved", declined: "Not approved" }[adReq?.status] || null}
+                help={adReq?.status === "declined" && adReq.note ? adReq.note : null}
+                onClick={() => setDialog("advertise")} />
             )}
           </Group>
 
@@ -319,6 +337,11 @@ export default function Settings() {
       {dialog === "password" && <PasswordDialog onClose={() => setDialog(null)} />}
       {dialog === "contacts" && <Suspense fallback={null}><ContactSync onClose={() => setDialog(null)} /></Suspense>}
       {dialog === "journalist" && <JournalistApply onClose={() => setDialog(null)} />}
+      {dialog === "advertise" && (
+        <Suspense fallback={null}>
+          <AdRequestEditor mode="request" onClose={() => setDialog(null)} onSaved={() => setDialog(null)} />
+        </Suspense>
+      )}
       {dialog === "birthyear" && (
         <BirthYearDialog onClose={() => setDialog(null)} onSaved={(y) => { setProfile({ ...profile, birthYear: y }); setDialog(null); }} />
       )}

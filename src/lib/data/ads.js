@@ -107,3 +107,44 @@ export async function deleteAd(id) {
   await deleteDoc(doc(db, "ads", id));
   liveOnce = null;
 }
+
+// Ad requests (Settings > Advertise on Mesh): an adult asks for a spot with
+// the ad they'd like; admins review it and turn it into an ad. Private to
+// them and admins (firestore.rules).
+
+const requestsRef = () => collection(db, "adRequests");
+
+export async function submitAdRequest(ad, { contactEmail, budget = "", notes = "", username }) {
+  const { active: _active, ...content } = fields({ ...ad, active: false });
+  await addDoc(requestsRef(), {
+    ...content,
+    uid: me(),
+    username,
+    contactEmail: contactEmail.trim().slice(0, 120),
+    budget: budget.trim().slice(0, 60),
+    notes: notes.trim().slice(0, 500),
+    status: "pending",
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function fetchMyAdRequests() {
+  if (!me()) return [];
+  const snap = await getDocs(query(requestsRef(), where("uid", "==", me()), limit(20)));
+  return snapToList(snap).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+}
+
+/** Admins: requests waiting for a decision, oldest first. */
+export async function fetchAdRequests() {
+  const snap = await getDocs(query(requestsRef(), where("status", "==", "pending"), limit(100)));
+  return snapToList(snap).sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt));
+}
+
+export async function decideAdRequest(id, { approved, note = "", adId = "" }) {
+  await updateDoc(doc(db, "adRequests", id), {
+    status: approved ? "approved" : "declined",
+    note: note.trim().slice(0, 300),
+    ...(adId ? { adId } : {}),
+    decidedAt: serverTimestamp(),
+  });
+}

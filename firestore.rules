@@ -759,6 +759,12 @@ service cloud.firestore {
     // in Home); targeting is limited to town, picked interests and 18+, and
     // counters are totals that signed-in viewers can only add one to.
     function adOk(d) {
+      return adContentOk(d)
+        && d.active is bool
+        && d.impressions is int && d.clicks is int;
+    }
+    // What an ad says, where and when: shared by ads and ad requests.
+    function adContentOk(d) {
       return d.advertiser is string && d.advertiser.size() >= 1 && d.advertiser.size() <= 60
         && d.headline is string && d.headline.size() >= 1 && d.headline.size() <= 80
         && d.body is string && d.body.size() <= 240
@@ -766,11 +772,35 @@ service cloud.firestore {
         && d.linkUrl is string && d.linkUrl.size() <= 500 && d.linkUrl.matches('^https://[^ ]+$')
         && d.cta in ['Learn more', 'Visit', 'Get the deal', 'Book now', 'Order now', 'Sign up', 'RSVP']
         && d.startsAt is timestamp && d.endsAt is timestamp && d.endsAt > d.startsAt
-        && d.active is bool && d.adultsOnly is bool
+        && d.adultsOnly is bool
         && d.towns is list && d.towns.size() <= 10
         && d.interests is list && d.interests.size() <= 5 && d.interests.hasOnly(interestIds())
-        && d.impressions is int && d.clicks is int
         && hateFree(d.advertiser + ' ' + d.headline + ' ' + d.body);
+    }
+    // Ad requests (Settings > Advertise on Mesh): an adult asks for a spot;
+    // admins review it and turn it into an ad. Private to them and admins.
+    match /adRequests/{requestId} {
+      allow get, list: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if signedIn() && isAdult() && notSuspended()
+        && incomingData().keys().hasOnly(['uid', 'username', 'advertiser', 'headline', 'body', 'imageUrl', 'linkUrl', 'cta',
+                                          'startsAt', 'endsAt', 'towns', 'interests', 'adultsOnly', 'contactEmail', 'budget',
+                                          'notes', 'status', 'createdAt'])
+        && incomingData().uid == request.auth.uid
+        && isMyName(incomingData().username)
+        && adContentOk(incomingData())
+        && incomingData().contactEmail is string && incomingData().contactEmail.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$')
+        && incomingData().contactEmail.size() <= 120
+        && incomingData().budget is string && incomingData().budget.size() <= 60
+        && incomingData().notes is string && incomingData().notes.size() <= 500
+        && hateFree(incomingData().notes)
+        && incomingData().status == 'pending'
+        && incomingData().createdAt == request.time;
+      allow update: if isAdmin()
+        && incomingData().diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'decidedAt', 'adId'])
+        && incomingData().status in ['approved', 'declined']
+        && incomingData().get('note', '') is string && incomingData().get('note', '').size() <= 300
+        && incomingData().decidedAt == request.time;
+      allow delete: if signedIn() && ((resource.data.uid == request.auth.uid && resource.data.status == 'pending') || isAdmin());
     }
     match /ads/{adId} {
       allow read: if true;
