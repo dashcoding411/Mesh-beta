@@ -13,9 +13,9 @@ export async function fetchNews(status = "approved") {
   return snapToList(await getDocs(q));
 }
 
-/** Published video stories, newest first, for the Flicks feed. */
-export async function fetchVideoNews(max = 20) {
-  const q = query(collection(db, "news"), where("status", "==", "approved"), where("format", "==", "video"),
+/** Published stories with a Flick, newest first, for the Flicks feed. */
+export async function fetchNewsFlicks(max = 20) {
+  const q = query(collection(db, "news"), where("status", "==", "approved"), where("hasVideo", "==", true),
     orderBy("createdAt", "desc"), limit(max));
   return snapToList(await getDocs(q)).filter((s) => s.videoUrl);
 }

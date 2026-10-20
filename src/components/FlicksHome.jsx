@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrickWall, Clapperboard, EyeOff, Newspaper, Play, Plus, WandSparkles } from "lucide-react";
 import {
-  fetchVideos, fetchTopicPosts, fetchAffinity, fetchHiddenPostIds, fetchVideoNews, openWatch, openUserProfile, me,
+  fetchVideos, fetchTopicPosts, fetchAffinity, fetchHiddenPostIds, fetchNewsFlicks, openWatch, openUserProfile, me,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { compact, formatDuration, plural, shortTime, spokenDuration } from "../lib/format";
@@ -37,7 +37,7 @@ export default function FlicksHome() {
         topic === "all" ? fetchVideos() : fetchTopicPosts(topic).then((l) => l.filter(isVideo)),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
-        topic === "all" ? fetchVideoNews(12).catch(() => []) : Promise.resolve([]),
+        topic === "all" ? fetchNewsFlicks(12).catch(() => []) : Promise.resolve([]),
       ]);
       const pool = all.filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId));
       setNews(stories.filter((s) => !hiddenAuthors.has(s.authorId)));
@@ -107,7 +107,7 @@ function Allowance() {
   );
 }
 
-// Journalists' video stories. They play in the Flicks player with their 60-second brief.
+// News Flicks: each opens in the Flicks player, linked to its article.
 function NewsShelf({ stories }) {
   return (
     <section aria-labelledby="news-flicks" className="mb-10">

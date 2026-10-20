@@ -459,46 +459,7 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
     <>
       <section className={cls} aria-label="Story details">
         <Segmented label="Format" value={story.format} onChange={(v) => editable && story.status !== "approved" && update({ format: v })} className="mb-4"
-          options={[{ id: "story", label: "Story" }, { id: "video", label: "Video" }, { id: "live", label: "Live blog" }]} />
-        {story.format === "video" && (
-          <div className="mb-4">
-            <p className="mb-1.5 text-callout font-medium">Video</p>
-            {story.videoUrl && (
-              <video src={story.videoUrl} poster={story.videoPoster || undefined} controls playsInline preload="metadata"
-                className="aspect-[9/16] max-h-96 w-full rounded-control bg-black object-contain" />
-            )}
-            {videoProgress !== null && (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label="Uploading the video" aria-valuenow={videoProgress}>
-                <div className="h-full bg-accent transition-[width] duration-standard" style={{ width: `${videoProgress}%` }} />
-              </div>
-            )}
-            {editable && (
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" icon={Clapperboard} loading={videoProgress !== null} onClick={() => videoRef.current?.click()}>{story.videoUrl ? "Change" : "Add the video"}</Button>
-                {story.videoUrl && <Button size="sm" variant="ghost" onClick={() => update({ videoUrl: "", videoPoster: "", videoSeconds: 0 })}>Remove</Button>}
-              </div>
-            )}
-            <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" tabIndex={-1} aria-hidden="true" onChange={async (e) => {
-              const f = e.target.files[0]; e.target.value = "";
-              if (!f) return;
-              if (f.size > MAX_CLOUD_BYTES) { toast({ tone: "error", title: "That video is over 100 MB" }); return; }
-              setVideoProgress(0);
-              try {
-                const seconds = await readDuration(f);
-                const { url } = await uploadMedia(f, setVideoProgress);
-                const poster = await uploadPoster(f, 0.5);
-                update({ videoUrl: url, videoPoster: poster, videoSeconds: Math.round(seconds) });
-              } catch (err) { toast({ tone: "error", title: uploadProblem(err, "Couldn't upload the video") }); }
-              finally { setVideoProgress(null); }
-            }} />
-            <div className="mt-2">
-              <Checkbox checked={!!story.graphic} onChange={(v) => editable && update({ graphic: v })}
-                description="Violence or injury, like war footage. It shows behind a warning.">
-                Graphic content
-              </Checkbox>
-            </div>
-          </div>
-        )}
+          options={[{ id: "story", label: "Story" }, { id: "live", label: "Live blog" }]} />
         <fieldset className="mb-4">
           <legend className="mb-1.5 text-callout font-medium">What kind of piece</legend>
           <div role="radiogroup" aria-label="What kind of piece" className="grid grid-cols-2 gap-1.5">
@@ -540,6 +501,45 @@ function DetailsPanel({ story, editable, lead, update, stats, onSaveVersion }) {
               catch (err) { toast({ tone: "error", title: uploadProblem(err, "Couldn't upload the cover") }); }
               finally { setCoverBusy(false); }
             }} />
+          </div>
+          <div>
+            <p className="mb-1.5 text-callout font-medium">Flick <span className="font-normal text-fg-subtle">Optional</span></p>
+            {story.videoUrl && (
+              <video src={story.videoUrl} poster={story.videoPoster || undefined} controls playsInline preload="metadata"
+                className="aspect-[9/16] max-h-96 w-full rounded-control bg-black object-contain" />
+            )}
+            {videoProgress !== null && (
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label="Uploading the Flick" aria-valuenow={videoProgress}>
+                <div className="h-full bg-accent transition-[width] duration-standard" style={{ width: `${videoProgress}%` }} />
+              </div>
+            )}
+            {editable && (
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" icon={Clapperboard} loading={videoProgress !== null} onClick={() => videoRef.current?.click()}>{story.videoUrl ? "Change" : "Add a Flick"}</Button>
+                {story.videoUrl && <Button size="sm" variant="ghost" onClick={() => update({ videoUrl: "", videoPoster: "", videoSeconds: 0 })}>Remove</Button>}
+              </div>
+            )}
+            <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" tabIndex={-1} aria-hidden="true" onChange={async (e) => {
+              const f = e.target.files[0]; e.target.value = "";
+              if (!f) return;
+              if (f.size > MAX_CLOUD_BYTES) { toast({ tone: "error", title: "That video is over 100 MB" }); return; }
+              setVideoProgress(0);
+              try {
+                const seconds = await readDuration(f);
+                const { url } = await uploadMedia(f, setVideoProgress);
+                const poster = await uploadPoster(f, 0.5);
+                update({ videoUrl: url, videoPoster: poster, videoSeconds: Math.round(seconds) });
+              } catch (err) { toast({ tone: "error", title: uploadProblem(err, "Couldn't upload the Flick") }); }
+              finally { setVideoProgress(null); }
+            }} />
+            {story.videoUrl && (
+              <div className="mt-2">
+                <Checkbox checked={!!story.graphic} onChange={(v) => editable && update({ graphic: v })}
+                  description="Violence or injury, like war footage. It shows behind a warning.">
+                  Graphic content
+                </Checkbox>
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -6,7 +6,7 @@ import { navigate } from "../../lib/router";
 import HomeHeader from "../shell/HomeHeader";
 import { KindBadge, Meta, StoryCover, TopicLabel } from "./parts";
 import { AuthorLine } from "./AuthorLine";
-import { isVideoStory, quickMinutes, readMinutes, summaryOf } from "./text";
+import { hasFlick, quickMinutes, readMinutes, summaryOf } from "./text";
 import QuickBrief from "./QuickBrief";
 import { BRIEF_SIZE, pickBrief, readStoryIds } from "../../lib/newsBrief";
 import Badge from "../ui/Badge";
@@ -174,7 +174,7 @@ function LeadStory({ item }) {
     <article aria-labelledby={`lead-${item.id}`}>
       <button type="button" onClick={() => navigate(`/news/${item.id}`)}
         className="press group block w-full overflow-hidden rounded-card border border-line bg-surface text-left transition-colors hover:border-line-strong">
-        {item.coverUrl || isVideoStory(item) ? (
+        {item.coverUrl || hasFlick(item) ? (
           <StoryCover item={item} className="aspect-[16/9] w-full object-cover" placeholderClass="aspect-[16/9] w-full" />
         ) : (
           <span className="block h-1 bg-accent" aria-hidden="true" />

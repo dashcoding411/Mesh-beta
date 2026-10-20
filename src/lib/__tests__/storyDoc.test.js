@@ -69,11 +69,9 @@ describe("ready for review", () => {
     const short = { ...base, keyPoints: ["Budget up.", "Rates go up to pay for it.", "Councillors vote on it next month."] };
     expect(reviewProblems(story([blk("a", text)], short)).join(" ")).toMatch(/full sentence/);
   });
-  it("lets a video story publish with the video, brief and sources but no text", () => {
+  it("still needs the article when a story has a Flick", () => {
     const keyPoints = ["The council's budget rose four per cent.", "Rates go up to pay for it.", "Councillors vote on it next month."];
-    const base = { title: "Council budget rises four per cent", sources: ["https://a.example/1", "https://b.example/2"], keyPoints, format: "video" };
-    expect(reviewProblems(story([blk("a", "")], base)).join(" ")).toMatch(/Add the video/);
-    expect(reviewProblems(story([blk("a", "")], { ...base, videoUrl: "https://media.example/v/a.mp4" }))).toEqual([]);
-    expect(reviewProblems(story([blk("a", "")], { ...base, videoUrl: "https://media.example/v/a.mp4", keyPoints: [] })).join(" ")).toMatch(/60-second version/);
+    const base = { title: "Council budget rises four per cent", sources: ["https://a.example/1", "https://b.example/2"], keyPoints, videoUrl: "https://media.example/v/a.mp4" };
+    expect(reviewProblems(story([blk("a", "")], base)).join(" ")).toMatch(/paragraph or two/);
   });
 });

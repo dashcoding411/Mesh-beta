@@ -738,16 +738,16 @@ story is marked for legal review. Readers send correction requests to the
 story's journalists, who (or an admin) add append-only corrections; live
 blogs post updates to a subcollection.
 
-Video stories (`format: 'video'`) make the video the article: `videoUrl`,
-`videoPoster` and `videoSeconds` point at the media Worker, text is optional
-(`storyHasBody`), and the 60-second version and two sources are still
-required. They play at the top of the story page, show a play badge in News,
-and appear in the Flicks player (`fetchVideoNews`, mixed in after every four
-short Flicks and on a News shelf on Flicks home) with a news strip, a
-"60-sec brief" sheet and a link to the full story. Watching 80% counts as a
-read. A `graphic` flag (set by the journalists or the news team) hides the
-video and its still behind a warning, never shown to under-18s. Deleting the
-story deletes the video and still.
+Any story can carry a Flick: a video (`videoUrl`, `videoPoster`,
+`videoSeconds` on the media Worker, with `hasVideo` kept in step for the
+Flicks query) that plays at the top of the article, above the 60-second
+version and the text. The article is still required. Stories with a Flick show
+a play badge in News and appear in the Flicks player (`fetchNewsFlicks`, mixed
+in after every four short Flicks and on a News shelf on Flicks home) with the
+headline, the journalist and outlet, "Read the article" (or swipe left) and a
+60-second sheet. Watching 80% counts as a read. A `graphic` flag (set by the
+journalists or the news team) hides the video and its still behind a warning,
+never shown to under-18s. Deleting the story deletes the video and still.
 
 Every story carries a `label` (Report, Analysis, Explainer or Opinion; reports
 go unlabelled to readers). A published story can be updated in place for

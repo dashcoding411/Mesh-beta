@@ -2,7 +2,7 @@ import { AlertTriangle, Play, RefreshCw } from "lucide-react";
 import { labelOf } from "../../lib/storyDoc";
 import { formatDuration, fullTime, isoTime, plural, shortTime } from "../../lib/format";
 import { newsTopicById } from "../../lib/interests";
-import { isVideoStory, readMinutes } from "./text";
+import { hasFlick, readMinutes } from "./text";
 import Badge from "../ui/Badge";
 import MediaImg from "../ui/MediaImg";
 
@@ -26,7 +26,7 @@ export function Meta({ item }) {
   const sources = (item.sources || []).length;
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-fg-subtle">
-      <span>{isVideoStory(item) ? `${formatDuration(item.videoSeconds)} video` : `${readMinutes(item.script)} min read`}</span>
+      <span>{readMinutes(item.script)} min read</span>
       <span aria-hidden="true">·</span>
       <span>{plural(sources, "source")}</span>
       <span aria-hidden="true">·</span>
@@ -37,9 +37,9 @@ export function Meta({ item }) {
   );
 }
 
-/** A story's picture for lists: the cover, or a video story's still with a play badge. */
+/** A story's picture for lists: its cover or its Flick's still, with a play badge when it has a Flick. */
 export function StoryCover({ item, className, placeholderClass }) {
-  const video = isVideoStory(item);
+  const video = hasFlick(item);
   // A graphic video's still isn't shown until someone chooses to watch.
   const src = item.graphic ? "" : item.coverUrl || (video ? item.videoPoster : "");
   if (!src && !video) return null;

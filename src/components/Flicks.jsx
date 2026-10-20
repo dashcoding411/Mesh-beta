@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   fetchPostsByKind, fetchPost, fetchAffinity, fetchHiddenPostIds, toggleLike, toggleSave, toggleRepost, toggleFollow,
-  recordSignal, openUserProfile, me, fetchVideoNews, fetchNewsStory,
+  recordSignal, openUserProfile, me, fetchNewsFlicks, fetchNewsStory,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { usePostStates } from "../lib/usePostStates";
@@ -26,13 +26,13 @@ let soundOn = false;
 
 // Every CHECKPOINT Flicks a card says how long you've been watching.
 const CHECKPOINT = 10;
-// A journalist's video story after every NEWS_EVERY short Flicks.
+// A news Flick after every NEWS_EVERY short Flicks.
 const NEWS_EVERY = 4;
 
-// An older video story opened by link, if it's published.
-const storyFromSnapshot = (s) => (s?.status === "approved" && s.format === "video" && s.videoUrl ? s : null);
+// An older story's Flick opened by link, if it's published.
+const storyFromSnapshot = (s) => (s?.status === "approved" && s.videoUrl ? s : null);
 
-// Short Flicks with video news mixed in; leftover news goes at the end.
+// Short Flicks with news Flicks mixed in; leftover news goes at the end.
 function mix(posts, stories) {
   const out = [];
   let n = 0;
@@ -63,7 +63,7 @@ export default function Flicks({ startId }) {
         fetchPostsByKind("short"),
         fetchAffinity().catch(() => new Map()),
         fetchHiddenPostIds().catch(() => new Set()),
-        fetchVideoNews().catch(() => []),
+        fetchNewsFlicks().catch(() => []),
       ]);
       const list = all.filter((p) => !hidden.has(p.id) && !hiddenAuthors.has(p.authorId));
       let ordered = rankFeed(list, { followingSet: following, affinity, myUid: me(), interests, hiddenWords, hideAi });

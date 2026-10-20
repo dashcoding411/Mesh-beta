@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, EyeOff, Newspaper, Pause, Play, Timer, Volume2, VolumeX } from "lucide-react";
+import { ChevronRight, ExternalLink, EyeOff, Newspaper, Pause, Play, Timer, Volume2, VolumeX } from "lucide-react";
 import { recordNewsRead } from "../../lib/db";
 import { outletOf, useJournalist } from "../../lib/journalists";
 import { followLink } from "../../lib/links";
@@ -13,7 +13,7 @@ import Dialog from "../ui/Dialog";
 import { KindBadge } from "./parts";
 import { hostOf, quickPoints } from "./text";
 
-/** A journalist's video story in the Flicks player: the video is the article, with the 60-second brief a tap away. */
+/** A story's Flick in the Flicks player: the video tells the story, and the article is a tap or a swipe left away. */
 export default function NewsFlick({ story, index, total, muted, onToggleSound }) {
   const box = useRef(null);
   const video = useRef(null);
@@ -81,11 +81,26 @@ export default function NewsFlick({ story, index, total, muted, onToggleSound })
     if (el.paused) el.play().catch(() => {}); else el.pause();
   };
 
+  const read = () => navigate(`/news/${story.id}`);
+  // Swiping left opens the article, like moving from a reel to its post.
+  const touch = useRef(null);
+  const swipe = {
+    onTouchStart: (e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; },
+    onTouchEnd: (e) => {
+      const start = touch.current;
+      touch.current = null;
+      if (!start) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - start.x;
+      if (dx < -70 && Math.abs(t.clientY - start.y) < 40) read();
+    },
+  };
+
   const openBrief = () => { video.current?.pause(); setBrief(true); };
 
   return (
     <section ref={box} aria-roledescription="News Flick" aria-label={`${index + 1} of ${total}: news from @${username}, ${story.title}`}
-      className="relative flex h-full w-full snap-start snap-always items-center justify-center md:py-4">
+      className="relative flex h-full w-full snap-start snap-always items-center justify-center md:py-4" {...swipe}>
       <div className="relative h-full w-full overflow-hidden bg-black md:aspect-[9/16] md:h-full md:w-auto md:max-w-full md:rounded-card">
         <video ref={video} muted={muted} loop playsInline preload="none" poster={revealed ? story.videoPoster || undefined : undefined}
           aria-label={`Video: ${story.title}`} onTimeUpdate={onTime} onClick={togglePlay}
@@ -129,8 +144,8 @@ export default function NewsFlick({ story, index, total, muted, onToggleSound })
               {topic && <span className="shrink-0 uppercase tracking-wider text-white/80">{topic.label}</span>}
               <KindBadge id={story.label} />
             </p>
-            <button type="button" onClick={() => navigate(`/news/${story.id}`)}
-              className="mt-2 block text-left font-display text-title-3 leading-snug text-white hover:underline">
+            <button type="button" onClick={read}
+              className="mt-2 block text-left font-display text-title-2 leading-tight text-white drop-shadow hover:underline">
               {story.title}
             </button>
             <p className="mt-1 truncate text-caption text-white/75">
@@ -139,13 +154,13 @@ export default function NewsFlick({ story, index, total, muted, onToggleSound })
               {` · ${outletOf(journalist)}`}
             </p>
             <div className="mt-3 flex gap-2">
-              <button type="button" onClick={openBrief}
-                className="press inline-flex min-h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-callout font-semibold text-black">
-                <Timer size={16} aria-hidden="true" /> 60-sec brief
+              <button type="button" onClick={read}
+                className="press inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-callout font-semibold text-black">
+                Read the article <ChevronRight size={18} aria-hidden="true" />
               </button>
-              <button type="button" onClick={() => navigate(`/news/${story.id}`)}
-                className="press inline-flex min-h-9 items-center rounded-full bg-white/20 px-3.5 text-callout font-semibold text-white backdrop-blur">
-                Full story
+              <button type="button" onClick={openBrief}
+                className="press inline-flex min-h-11 items-center gap-1.5 rounded-full bg-white/20 px-4 text-callout font-semibold text-white backdrop-blur">
+                <Timer size={16} aria-hidden="true" /> 60 sec
               </button>
             </div>
           </div>
@@ -165,7 +180,7 @@ function BriefSheet({ story, onClose }) {
   const sources = (story.sources || []).filter(Boolean);
   return (
     <Dialog title="The 60-second version" onClose={onClose}
-      footer={<Button variant="primary" full onClick={() => { onClose(); navigate(`/news/${story.id}`); }}>Full story</Button>}>
+      footer={<Button variant="primary" full onClick={() => { onClose(); navigate(`/news/${story.id}`); }}>Read the article</Button>}>
       <p className="font-display text-title-3 leading-snug">{story.title}</p>
       <ul className="mt-3 space-y-2">
         {quickPoints(story).map((k, i) => (

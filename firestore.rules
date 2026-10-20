@@ -396,6 +396,8 @@ service cloud.firestore {
           && d.get('sensitive', false) is bool
           // Graphic content (news, war, injury) shows behind a warning.
           && d.get('graphic', false) is bool
+        // Lets Flicks list the stories that have one.
+        && d.get('hasVideo', false) == (d.get('videoUrl', '') != '')
           && (d.get('sensitive', false) == true
               || (hateFree(d.text + ' ' + d.title + ' ' + d.alt + ' ' + d.get('location', ''))
                   && (!('poll' in d) || hateFree(d.poll.options.join(' ')))))
@@ -2091,7 +2093,7 @@ service cloud.firestore {
             || d.coverUrl.matches('^(https://firebasestorage[.]googleapis[.]com/.*|mesh-media:[A-Za-z0-9_-]+)$'))
         && d.script is string && d.script.size() <= 40000
         && d.sources is list && d.sources.size() <= 10 && newsSourcesOk(d.sources)
-        && d.get('format', 'story') in ['story', 'live', 'video']
+        && d.get('format', 'story') in ['story', 'live']
         // A video story's video (and its still) on Mesh's media Worker.
         && (d.get('videoUrl', '') == ''
             || d.videoUrl.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/v/[A-Za-z0-9]{20,40}/[a-f0-9]{32}[.](mp4|webm|mov)$'))
@@ -2110,11 +2112,8 @@ service cloud.firestore {
     // Approved journalists publish their own stories; there's no review step,
     // but the one publishing must have accepted the journalist agreement.
     // Written text, or for a video story, the video itself.
-    function storyHasBody(d) {
-      return d.script.size() >= 100 || (d.get('format', 'story') == 'video' && d.get('videoUrl', '') != '');
-    }
     function readyToPublish(d) {
-      return d.title.size() >= 10 && storyHasBody(d) && d.sources.size() >= 2
+      return d.title.size() >= 10 && d.script.size() >= 100 && d.sources.size() >= 2
         // The 60-second version: three points, each a sentence.
         && d.get('keyPoints', []).size() == 3
         && d.keyPoints[0].size() >= 20 && d.keyPoints[1].size() >= 20 && d.keyPoints[2].size() >= 20
@@ -2247,7 +2246,7 @@ service cloud.firestore {
         && incomingData().keys().hasOnly([
           'authorId', 'authorName', 'authors', 'authorNames', 'title', 'standfirst', 'script', 'sources',
           'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'label', 'live', 'legalHold', 'legalNote',
-          'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts', 'videoUrl', 'videoPoster', 'videoSeconds', 'graphic',
+          'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts', 'videoUrl', 'videoPoster', 'videoSeconds', 'graphic', 'hasVideo',
           'corrections', 'status', 'reviewNote', 'likeCount', 'commentCount', 'version', 'createdAt', 'updatedAt'
         ])
         && incomingData().authorId == request.auth.uid
@@ -2273,7 +2272,7 @@ service cloud.firestore {
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
                'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'format', 'label',
                'legalHold', 'legalNote', 'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts',
-               'videoUrl', 'videoPoster', 'videoSeconds', 'graphic', 'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'publishedAt', 'version', 'updatedAt'])
+               'videoUrl', 'videoPoster', 'videoSeconds', 'graphic', 'hasVideo', 'authors', 'authorNames', 'status', 'submittedAt', 'attestedAt', 'publishedAt', 'version', 'updatedAt'])
           && incomingData().version == resource.data.version + 1
           && incomingData().updatedAt == request.time
           // Only the lead edits co-authors, and all authors must be writers.
@@ -2296,7 +2295,7 @@ service cloud.firestore {
           && resource.data.status == 'approved'
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
                'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'label',
-               'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts', 'videoUrl', 'videoPoster', 'videoSeconds', 'graphic',
+               'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts', 'videoUrl', 'videoPoster', 'videoSeconds', 'graphic', 'hasVideo',
                'updateNote', 'updateNoteAt', 'version', 'updatedAt'])
           && incomingData().version == resource.data.version + 1
           && incomingData().updatedAt == request.time
@@ -2304,7 +2303,7 @@ service cloud.firestore {
           && incomingData().updateNote is string && incomingData().updateNote.size() >= 3 && incomingData().updateNote.size() <= 200
           && hateFree(incomingData().updateNote)
           && storyContentOk(incomingData())
-          && incomingData().title.size() >= 10 && storyHasBody(incomingData()) && incomingData().sources.size() >= 2
+          && incomingData().title.size() >= 10 && incomingData().script.size() >= 100 && incomingData().sources.size() >= 2
           && incomingData().get('legalHold', false) != true
           && notSuspended())
         // Each signed-in reader adds one read, alongside their reads/{uid} marker.

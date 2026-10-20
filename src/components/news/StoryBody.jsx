@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ExternalLink, EyeOff, Timer } from "lucide-react";
-import { CITE, hostOf, isVideoStory } from "./text";
+import { CITE, hostOf, hasFlick } from "./text";
 import { blocksFromDoc } from "../../lib/storyDoc";
 import MediaImg from "../ui/MediaImg";
 import { followLink } from "../../lib/links";
@@ -35,7 +35,7 @@ export function StoryBody({ story }) {
 
   return (
     <>
-      {isVideoStory(story) && <StoryVideo story={story} />}
+      {hasFlick(story) && <StoryVideo story={story} />}
 
       {story.keyPoints?.filter(Boolean).length > 0 && (
         <section aria-label="The 60-second version" className="mt-6 rounded-card border border-line bg-surface p-4">
@@ -109,7 +109,7 @@ export function StoryBody({ story }) {
   );
 }
 
-/** A video story's video, behind a warning when it's marked graphic. */
+/** The story's Flick, behind a warning when it's marked graphic. */
 export function StoryVideo({ story, className = "mt-5" }) {
   const [revealed, setRevealed] = useState(false);
   const year = useShell()?.profile?.birthYear;

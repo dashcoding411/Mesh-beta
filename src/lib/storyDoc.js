@@ -116,17 +116,14 @@ export function reviewProblems(story) {
   const out = [];
   const body = blocksToDoc(story.blocks).script;
   if ((story.title || "").trim().length < 10) out.push("Write a headline of at least 10 characters.");
-  if (story.format === "video") {
-    if (!story.videoUrl) out.push("Add the video.");
-  } else if (body.replace(/\s/g, "").length < 100) out.push("The story needs at least a paragraph or two (100 characters).");
+  if (body.replace(/\s/g, "").length < 100) out.push("The story needs at least a paragraph or two (100 characters).");
   const points = (story.keyPoints || []).map((k) => (k || "").trim());
   if (points.filter(Boolean).length < 3) out.push("Write the 60-second version: all three points.");
   else if (points.some((k) => k.length < 20)) out.push("Make each point of the 60-second version a full sentence (at least 20 characters).");
   const sources = (story.sources || []).filter(Boolean);
   if (sources.length < 2) out.push("List at least two sources.");
   const { cited } = storyStats(story);
-  // A video story's sources are listed; there may be no text to cite them in.
-  if (!cited.length && !(story.format === "video" && body.replace(/\s/g, "").length < 100)) out.push("Cite your sources in the text by number, like [1] or [2].");
+  if (!cited.length) out.push("Cite your sources in the text by number, like [1] or [2].");
   const tooHigh = cited.find((n) => n < 1 || n > sources.length);
   if (tooHigh !== undefined) out.push(`You cite [${tooHigh}] but list ${sources.length} source${sources.length === 1 ? "" : "s"}.`);
   if (story.blocks.some((b) => b.type === "image" && b.media && !b.alt.trim())) out.push("Describe every image (alt text) for people who can't see it.");

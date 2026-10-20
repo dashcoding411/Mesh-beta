@@ -6,7 +6,8 @@ const stripCites = (t) => String(t || "").replace(/\s?\[\d{1,2}\]/g, "");
 
 export const readMinutes = (t) => Math.max(1, Math.round(String(t || "").split(/\s+/).filter(Boolean).length / 220));
 
-export const isVideoStory = (s) => s?.format === "video" && !!s.videoUrl;
+/** Whether a story has a Flick: a video at the top of the article that also plays in Flicks. */
+export const hasFlick = (s) => !!s?.videoUrl;
 
 export const summaryOf = (n) => n.standfirst || n.keyPoints?.[0] || stripCites(n.script).slice(0, 240);
 
