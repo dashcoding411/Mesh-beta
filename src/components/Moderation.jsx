@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import {
   staffAccess, TEAMS, setModeratorTeams, fetchAppeals, decideAppeal, fetchModerators, addModerator, removeModerator, fetchReports, resolveReports, clearPost, labelPostAi, removeComment, removeMessage, deletePost, fetchPost, fetchProfile,
-  suspendUser, liftSuspension, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
+  suspendUser, liftSuspension, setPostGraphic, fetchSuspensions, openPost, openUserProfile, REPORT_LABEL, SUSPENSION_LENGTHS, tsMillis,
   fetchWriters, addWriter, removeWriter, fetchVerified, setBadge, uidForUsername, setPostHidden,
 } from "../lib/db";
 import { assessText, RULE_NAMES } from "../lib/moderation";
@@ -98,8 +98,9 @@ export default function Moderation() {
       if (!byTarget.has(key)) byTarget.set(key, { key, type: r.targetType, targetId: r.targetId, reports: [] });
       byTarget.get(key).reports.push(r);
     }
+    const urgent = (c) => (c.reports.some((r) => r.reason === "child_safety") ? 1 : 0);
     return [...byTarget.values()].sort((a, b) =>
-      b.reports.length - a.reports.length || tsMillis(b.reports[0].createdAt) - tsMillis(a.reports[0].createdAt));
+      urgent(b) - urgent(a) || b.reports.length - a.reports.length || tsMillis(b.reports[0].createdAt) - tsMillis(a.reports[0].createdAt));
   }, [reports]);
 
   const done = (key) => setReports((list) => list.filter((r) => `${r.targetType}_${r.targetId}` !== key));
@@ -189,6 +190,10 @@ function Case({ item, readOnly, onDone }) {
         if (item.type === "message") await removeMessage(first.chatId, item.targetId);
         await resolveReports(item.reports, "actioned", "removed");
         toast({ title: `${T.label} removed`, body: "The reports have been marked as actioned." });
+      } else if (kind === "graphic") {
+        await setPostGraphic(item.targetId, true);
+        await resolveReports(item.reports, "actioned", "graphic warning");
+        toast({ title: "Graphic warning added" });
       } else if (kind === "label") {
         await labelPostAi(item.targetId);
         await resolveReports(item.reports, "actioned", "labelled");
@@ -211,9 +216,19 @@ function Case({ item, readOnly, onDone }) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge icon={T.icon}>{T.label}</Badge>
         <span className="text-callout font-semibold">{plural(item.reports.length, "report")}</span>
-        {reasons.map(([id, n]) => <Badge key={id} tone={id === "hate" || id === "violence" ? "danger" : "neutral"}>{REPORT_LABEL[id] || id}{n > 1 ? ` × ${n}` : ""}</Badge>)}
+        {reasons.map(([id, n]) => <Badge key={id} tone={id === "hate" || id === "violence" || id === "child_safety" ? "danger" : "neutral"}>{REPORT_LABEL[id] || id}{n > 1 ? ` × ${n}` : ""}</Badge>)}
         <span className="ml-auto text-caption text-fg-subtle" title={fullTime(first.createdAt)}>{shortTime(first.createdAt)}</span>
       </div>
+      {reasons.some(([id]) => id === "child_safety") && (
+        <div role="alert" className="mt-3 rounded-control border border-danger-text/40 bg-danger/10 p-3 text-callout text-danger-text">
+          <p className="font-semibold">Child safety: deal with this first.</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-caption">
+            <li>Don&apos;t download, screenshot, forward or share it, even to report it.</li>
+            <li>If it is sexual content involving a child, remove it and suspend the account permanently.</li>
+            <li>Report it to the ACCCE at accce.gov.au/report, with the account&apos;s handle and when it was posted. If a child is in danger now, call 000.</li>
+          </ul>
+        </div>
+      )}
 
       <div className="mt-3 rounded-control bg-surface-2 p-3">
         {target === undefined && <Skeleton className="h-12" />}
@@ -270,6 +285,11 @@ function Case({ item, readOnly, onDone }) {
           {item.type !== "user" && target && (
             <Button size="sm" variant="danger" icon={Trash2} loading={busy === "remove"} disabled={!!busy} onClick={() => act("remove")}>
               Remove {T.label.toLowerCase()}
+            </Button>
+          )}
+          {item.type === "post" && target && !target.graphic && (
+            <Button size="sm" icon={EyeOff} loading={busy === "graphic"} disabled={!!busy} onClick={() => act("graphic")}>
+              Add graphic warning
             </Button>
           )}
           {item.type === "post" && target && !target.aiGenerated && (

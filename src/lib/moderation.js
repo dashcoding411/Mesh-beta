@@ -294,6 +294,13 @@ const BLOCK_PATTERNS = [
   // Known code phrases and pseudo-science, whoever they're about.
   { category: "conspiracy", kind: "term", re: re(`${B}(?:the\\s+)?(?:great replacement|white genocide|kalergi plan|jewish question|zionist occupied government|globalist cabal|race realis[mt]|racial hierarchy|human biodiversity|racial purity|race mixing|mud races?|untermensch\\w*|remigration|replacement theory|white replacement)${E}`) },
   { category: "conspiracy", kind: "term", re: re(`${B}(?:13\\s*/\\s*50|13\\s*/\\s*52|despite being 13\\s*%?|13\\s*%\\s*of the population(?:\\s+(?:but|yet|commit))?|the jq|zog)${E}`) },
+  // Child sexual abuse material: asking for it, offering it, or its code
+  // words. Always blocked, and checked in private messages too.
+  { category: "child_safety", kind: "csam", re: re(`${B}(?:child|kiddie|kiddy|kid|toddler|infant|baby|preteen|pre-teen|underage|minor)s?\\s*(?:porn\\w*|p0rn\\w*|pr0n|nudes?|naked pics?|sex (?:pics?|vids?|videos?|content)|xxx|erotica)${E}`) },
+  { category: "child_safety", kind: "csam", re: re(`${B}(?:jail ?bait|loli(?:con)?s?|shota(?:con)?|pthc|hussyfan|cheese ?pizza|c\\.?p\\.? (?:links?|trade|trading|vids?|videos?|pics?|folder|collection|for sale|mega|drive)|(?:selling|trading|buying|got|have|send|share|dm me for) (?:cp|c\\.p\\.))${E}`) },
+  { category: "child_safety", kind: "csam", re: re(`${B}(?:(?:1[0-5]|[5-9])\\s*(?:yo|y\\/o|y\\.o\\.?|yr ?olds?|year ?olds?)|(?:five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)[ -]year[ -]olds?)\\s+(?:[a-z]+\\s+){0,2}?(?:nudes?|naked|porn\\w*|sex(?:y|ual)?|horny|xxx|onlyfans|pics? (?:of (?:her|him|them) )?naked)${E}`) },
+  { category: "child_safety", kind: "csam", re: re(`${B}(?:nudes?|naked pics?|porn\\w*|sex(?:ual)? (?:pics?|vids?|videos?|content))\\s+(?:of|from|with)\\s+(?:a\\s+)?(?:kids?|children|child|minors?|underage (?:girls?|boys?|kids?)|little (?:girls?|boys?)|(?:1[0-5]|[5-9])\\s*(?:yo|y\\/o|year ?olds?))${E}`) },
+  { category: "child_safety", kind: "csam", re: re(`${B}(?:map pride|minor[- ]attracted|pro[- ]?contact|i(?:'m| am) a (?:pedo|paedo|pedophile|paedophile)|pedo (?:links?|groups?|content|chat)|paedo (?:links?|groups?|content|chat))${E}`) },
 ];
 
 const BORDERLINE_PATTERNS = [
@@ -388,6 +395,8 @@ function judge(kind, c) {
   // Putting down a group: fine about your own, or when denied or called out;
   // reporting what someone else said posts behind a note.
   // A code phrase on its own: fine when it's named to deny, report or call it out.
+  // Child sexual abuse material: no framing makes it postable.
+  if (kind === "csam") return "block";
   if (kind === "term") {
     if (c.negated || c.condemned || c.framed || c.reported) return "ok";
     return "block";
@@ -461,6 +470,7 @@ const BLOCK_MESSAGES = {
   conspiracy: "That blames a whole group of people for secretly running things, an old conspiracy theory used against many groups. Criticise specific people, companies or governments instead.",
   threat: "That reads as a threat to hurt someone. If it's a joke, make that clear; real threats aren't allowed on Mesh.",
   harassment: "Telling someone to hurt themselves isn't allowed. If you or someone you know is struggling, Lifeline is on 13 11 14.",
+  child_safety: "That reads as sexual content involving children. It's never allowed on Mesh. If a child is in danger, call 000, or report it to the ACCCE at accce.gov.au/report.",
 };
 
 export function blockMessage(category) {
@@ -479,6 +489,7 @@ export const RULE_NAMES = {
   conspiracy: "Conspiracy theories about a group",
   threat: "Threats",
   harassment: "Telling someone to hurt themselves",
+  child_safety: "Child sexual abuse",
 };
 
 // Appeals. Each block is remembered by its message so the message can offer
@@ -603,4 +614,13 @@ export function checkName(text) {
     return { error: "That name contains language that isn't allowed on Mesh." };
   }
   return { ok: true };
+}
+
+/**
+ * The one check private messages get: sexual content involving children.
+ * Returns the message to show, or "" if it's fine.
+ */
+export function childSafetyBlock(text) {
+  const v = assessText(text);
+  return v.level === "block" && v.category === "child_safety" ? blockMessage("child_safety") : "";
 }

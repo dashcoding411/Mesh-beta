@@ -13,7 +13,7 @@ import {
 } from "../lib/db";
 import { clockTime, dayLabel, plural, shortTime } from "../lib/format";
 import { gifsEnabled } from "../lib/gifs";
-import { checkContent } from "../lib/moderation";
+import { checkContent, childSafetyBlock } from "../lib/moderation";
 import { checkFile, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { navigate } from "../lib/router";
 import { usePageTitle } from "../lib/usePageTitle";
@@ -237,7 +237,10 @@ export default function ChatView({ chat }) {
     const t = value.trim();
     if (!t || sending) return;
     if (t.length > LIMITS.message) return toast({ tone: "error", title: `Messages can be up to ${LIMITS.message} characters` });
-    // DMs skip the hate filter (block/report instead); spam checks still apply.
+    // DMs skip the hate filter (block/report instead); spam checks still
+    // apply, and so does the child safety check.
+    const csam = childSafetyBlock(t);
+    if (csam) return toast({ tone: "error", title: csam });
     const mod = checkContent(t, { key: "msg", skipCooldown: true, hate: false });
     if (mod.error) return toast({ tone: "error", title: mod.error });
 
