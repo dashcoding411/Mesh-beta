@@ -1,6 +1,7 @@
-// Post-build: renders the policy pages, the welcome page and What's on to
-// static HTML (title, description, canonical URL, text) and writes sitemap.xml.
-// The app replaces the text once it loads.
+// Post-build: renders the home page, the policy pages, the welcome page and
+// What's on to static HTML (title, description, canonical URL, text) and writes
+// sitemap.xml. The app replaces the text once it loads. The home page's HTML is
+// also what every other app route starts from.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { DOCUMENTS } from "../src/legal/content.js";
@@ -33,8 +34,8 @@ function renderDoc(doc) {
       </main>`;
 }
 
-function page(template, { path, title, description, body }) {
-  const url = `${SITE_URL}${path}`;
+function page(template, { path, canonical = path, title, description, body }) {
+  const url = `${SITE_URL}${canonical}`;
   const out = template
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(title)}</title>`)
     .replace(/(<meta name="description" content=")[^"]*(")/, `$1${esc(description)}$2`)
@@ -57,7 +58,8 @@ const urls = [{ loc: `${SITE_URL}/`, priority: "1.0" }];
 const PAGES = [
   {
     path: "/welcome",
-    priority: "0.9",
+    // Same text as the home page, so search engines treat them as one.
+    canonical: "/",
     title: "Mesh: social media for humans",
     description: "Rolls: a shared disposable camera for every night out that develops at 9am. Plus real news, and an app that knows when to stop. 16+.",
     body: `<main class="mx-auto max-w-2xl px-6 py-12">
@@ -68,18 +70,23 @@ const PAGES = [
         <h2 class="mt-10 text-title-2">Rolls: everyone shoots, nobody looks</h2>
         <p class="mt-3 text-body text-fg-muted">Start a roll for a party, a trip or O-Week and send the link. Everyone gets 27 shots on one shared camera, with a 2000s digicam look and no previews. At 9am the next morning it develops, and everyone wakes up to every photo from the night.</p>
         <h2 class="mt-10 text-title-2">You control the scroll</h2>
-        <p class="mt-3 text-body text-fg-muted">Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button. Loosening a limit takes 24 hours. Messages and calls always work.</p>
+        <p class="mt-3 text-body text-fg-muted">Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button. Loosening a limit takes 24 hours, so you can't talk yourself out of it at 1am. Lock everything for exam week with one tap. Messages, calls and News always work.</p>
         <h2 class="mt-10 text-title-2">Made by humans</h2>
         <p class="mt-3 text-body text-fg-muted">AI-generated photos and videos aren't allowed. Editing your own photos is fine. Fakes aren't.</p>
         <h2 class="mt-10 text-title-2">Real news</h2>
-        <p class="mt-3 text-body text-fg-muted">Mesh News is written by journalists whose identity is verified. Every story cites its sources.</p>
+        <p class="mt-3 text-body text-fg-muted">Independent journalists whose identity Mesh has checked publish their own stories here. Every story cites its sources and opens with a 60-second version, and corrections stay on the story. <a href="/news">Read the news</a>.</p>
         <h2 class="mt-10 text-title-2">Mesh together</h2>
         <p class="mt-3 text-body text-fg-muted">Circles are communities with their own rules. Gatherings get you off your phone. <a href="/whats-on">See what's on</a>.</p>
         <h2 class="mt-10 text-title-2">Hate stopped at the door</h2>
         <p class="mt-3 text-body text-fg-muted">Slurs and attacks are caught before they post. Every block can be appealed to a person.</p>
         <h2 class="mt-10 text-title-2">Not greedy</h2>
         <p class="mt-3 text-body text-fg-muted">Ads are labelled and never target you based on what you do. Your data is never sold.</p>
-        <p class="mt-10"><a href="/signup">Sign up, it's free</a> · <a href="/">Look around</a></p>
+        <p class="mt-10"><a href="/signup">Sign up, it's free</a> · <a href="/login">Log in</a></p>
+        <nav aria-label="Mesh" class="mt-10 flex flex-wrap gap-x-5 gap-y-2 text-callout text-fg-muted">
+          <a href="/news">News</a>
+          <a href="/whats-on">What's on</a>
+          ${DOCUMENTS.map((d) => `<a href="/legal/${d.id}">${esc(d.title)}</a>`).join("\n          ")}
+        </nav>
       </main>`,
   },
   {
@@ -95,11 +102,15 @@ const PAGES = [
   },
 ];
 
+// The home page: the welcome text, so it isn't an empty shell before the app starts.
+const welcome = PAGES.find((p) => p.path === "/welcome");
+const home = page(template, { ...welcome, path: "/", title: "Mesh: social media for humans" });
+
 for (const p of PAGES) {
   const dir = new URL(`${p.path.slice(1)}/`, dist);
   await mkdir(dir, { recursive: true });
   await writeFile(new URL("index.html", dir), page(template, p));
-  urls.push({ loc: `${SITE_URL}${p.path}`, priority: p.priority });
+  if (!p.canonical) urls.push({ loc: `${SITE_URL}${p.path}`, priority: p.priority });
 }
 
 for (const doc of DOCUMENTS) {
@@ -111,6 +122,8 @@ for (const doc of DOCUMENTS) {
   }));
   urls.push({ loc: `${SITE_URL}${path}`, priority: "0.3" });
 }
+
+await writeFile(new URL("index.html", dist), home);
 
 await writeFile(new URL("sitemap.xml", dist), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

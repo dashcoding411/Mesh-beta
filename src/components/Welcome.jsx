@@ -72,7 +72,7 @@ export default function Welcome({ signedIn, onBrowse }) {
                 A shared disposable camera for every night out, real news, and an app that knows when to stop.
               </p>
               {cta("hero")}
-              <p className="mt-5 text-caption text-fg-subtle">16+ · Made in Brisbane · In beta, so things may change</p>
+              <p className="mt-5 text-caption text-fg-subtle">16+ · Made in Brisbane</p>
             </div>
             <RollsDemo />
           </div>
