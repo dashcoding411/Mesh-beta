@@ -40,7 +40,7 @@ service cloud.firestore {
     function canHandleReport(r) {
       return isAdmin()
         || (contentTeam() && r.get('targetType', 'post') in ['post', 'comment'])
-        || (accountTeam() && r.get('targetType', 'post') in ['message', 'user']);
+        || (accountTeam() && (r.get('targetType', 'post') in ['message', 'user'] || r.get('reason', '') == 'fake'));
     }
     // @the_admin, the only account that can give the pink check.
     function isFounder() {
@@ -82,7 +82,8 @@ service cloud.firestore {
       return u == myProfile().get('photoURL', '');
     }
     function authorIsMe(d) {
-      return d.authorId == request.auth.uid
+      return verifiedContact()
+        && d.authorId == request.auth.uid
         && isMyName(d.authorName)
         && isMyDisplayName(d.get('authorDisplayName', myProfile().username))
         && isMyPhoto(d.get('authorPhoto', ''));
@@ -104,13 +105,36 @@ service cloud.firestore {
         && ((after == before + 1 && existsAfter(rel) && !exists(rel))
             || (after == before - 1 && !existsAfter(rel) && exists(rel)));
     }
-    // Fake crowds (src/lib/fresh.js): what an account under a week old adds is
-    // stamped fresh, and the count's fresh twin moves with the count.
+    // Fake crowds (src/lib/fresh.js): what a low-trust account adds (under a
+    // week old, or no confirmed email or phone) is stamped fresh, and the
+    // count's fresh twin moves with the count.
     function newAccount() {
       return myProfile().get('createdAt', timestamp.value(0)) > request.time - duration.value(7, 'd');
     }
+    // A confirmed email (Google and Apple sign-ins come confirmed) or a phone
+    // number. Needed to post, comment, message or follow.
+    function verifiedContact() {
+      return request.auth.token.get('phone_number', '') != ''
+        || request.auth.token.get('email_verified', false) == true;
+    }
+    function lowTrust() {
+      return newAccount() || !verifiedContact();
+    }
     function freshOk(d) {
-      return d.get('fresh', false) == newAccount();
+      return d.get('fresh', false) == lowTrust();
+    }
+    // New accounts' daily caps (follows, new chats): a 24-hour window in
+    // rateLimits/{uid} (`<kind>Win` when it opened, `<kind>N` used), moved in
+    // the same write. Older accounts keep the window but have no cap.
+    function dailyOk(kind, max) {
+      let path = /databases/$(database)/documents/rateLimits/$(request.auth.uid);
+      let before = exists(path) ? get(path).data : {};
+      let after = getAfter(path).data;
+      let open = before.get(kind + 'Win', timestamp.value(0)) > request.time - duration.value(1, 'd');
+      return (open
+          ? after.get(kind + 'Win', null) == before.get(kind + 'Win', null) && after.get(kind + 'N', 0) == before.get(kind + 'N', 0) + 1
+          : after.get(kind + 'Win', null) == request.time && after.get(kind + 'N', 0) == 1)
+        && (!newAccount() || after.get(kind + 'N', 0) <= max);
     }
     function tiedFresh(self, field, twin, rel) {
       let delta = incomingData().get(field, 0) - resource.data.get(field, 0);
@@ -373,8 +397,10 @@ service cloud.firestore {
             'duration', 'trailerStart', 'aiGenerated', 'topics', 'poll', 'gif', 'sensitive', 'graphic', 'circleTopic',
             'pollVotes0', 'pollVotes1', 'pollVotes2', 'pollVotes3',
             'likeCount', 'commentCount', 'saveCount', 'sendCount', 'repostCount',
-            'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl', 'card'
+            'viewCount', 'completeCount', 'createdAt', 'media', 'location', 'posterUrl', 'card', 'fresh'
           ])
+          // Links in a fresh post aren't clickable (lib/fresh.js).
+          && freshOk(d)
           // A short Strand's background (src/lib/strandCards.js).
           && (!('card' in d) || (d.kind == 'text' && d.card in ['violet', 'blue', 'teal', 'rose', 'orange', 'slate', 'none']))
           && validTopics(d.get('topics', []))
@@ -396,8 +422,6 @@ service cloud.firestore {
           && d.get('sensitive', false) is bool
           // Graphic content (news, war, injury) shows behind a warning.
           && d.get('graphic', false) is bool
-        // Lets Flicks list the stories that have one.
-        && d.get('hasVideo', false) == (d.get('videoUrl', '') != '')
           && (d.get('sensitive', false) == true
               || (hateFree(d.text + ' ' + d.title + ' ' + d.alt + ' ' + d.get('location', ''))
                   && (!('poll' in d) || hateFree(d.poll.options.join(' ')))))
@@ -713,7 +737,7 @@ service cloud.firestore {
         && incomingData().authorId != request.auth.uid
         && incomingData().status == 'open'
         && incomingData().createdAt == request.time
-        && incomingData().reason in ['child_safety', 'hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'unlabelled_ai', 'other']
+        && incomingData().reason in ['child_safety', 'hate', 'harassment', 'spam', 'violence', 'sexual', 'self_harm', 'misinfo', 'impersonation', 'fake', 'unlabelled_ai', 'other']
         && incomingData().get('details', '') is string
         && incomingData().get('details', '').size() <= 500
         && ((incomingData().targetType == 'post'
@@ -861,10 +885,22 @@ service cloud.firestore {
     }
 
     match /rateLimits/{uid} {
+      // A daily window only moves on by one, or starts again once a day is up.
+      function windowOk(kind) {
+        let was = resource.data.get(kind + 'Win', null);
+        let n = resource.data.get(kind + 'N', 0);
+        return (incomingData().get(kind + 'Win', null) == was
+            && (incomingData().get(kind + 'N', 0) == n || incomingData().get(kind + 'N', 0) == n + 1))
+          || (incomingData().get(kind + 'Win', null) == request.time
+            && (was == null || was <= request.time - duration.value(1, 'd'))
+            && incomingData().get(kind + 'N', 0) == 1);
+      }
       allow read: if isUser(uid);
       // Each kind is a timestamp set to the time of the write it goes with.
       allow create: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow', 'followWin', 'followN', 'chatWin', 'chatN'])
+        && incomingData().get('followWin', request.time) == request.time && incomingData().get('followN', 1) == 1
+        && incomingData().get('chatWin', request.time) == request.time && incomingData().get('chatN', 1) == 1
         && incomingData().get('post', request.time) == request.time
         && incomingData().get('comment', request.time) == request.time
         && incomingData().get('media', request.time) == request.time
@@ -873,7 +909,8 @@ service cloud.firestore {
         && incomingData().get('message', request.time) == request.time
         && incomingData().get('follow', request.time) == request.time;
       allow update: if isUser(uid)
-        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow'])
+        && incomingData().keys().hasOnly(['post', 'comment', 'media', 'edit', 'chat', 'message', 'follow', 'followWin', 'followN', 'chatWin', 'chatN'])
+        && windowOk('follow') && windowOk('chat')
         && (incomingData().get('post', null) == resource.data.get('post', null) || incomingData().post == request.time)
         && (incomingData().get('comment', null) == resource.data.get('comment', null) || incomingData().comment == request.time)
         && (incomingData().get('media', null) == resource.data.get('media', null) || incomingData().media == request.time)
@@ -1068,6 +1105,8 @@ service cloud.firestore {
           && uid != targetUid
           && ((isUser(uid)
               && rateOkMs('follow', 500)
+              && verifiedContact()
+              && dailyOk('follow', 60)
               && !blockedBy(targetUid)
               && profileOf(targetUid).get('isPrivate', false) != true)
             || (isUser(targetUid)
@@ -1092,6 +1131,8 @@ service cloud.firestore {
         allow read: if isUser(uid) || isUser(requesterUid);
         allow create: if isUser(requesterUid)
           && rateOkMs('follow', 500)
+          && verifiedContact()
+          && dailyOk('follow', 60)
           && !exists(/databases/$(database)/documents/users/$(uid)/blocked/$(requesterUid))
           && incomingData().keys().hasOnly(['username', 'createdAt'])
           && isMyName(incomingData().username)
@@ -1931,6 +1972,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && incomingData().keys().hasOnly(['postId', 'postAuthorId', 'uid', 'username', 'createdAt', 'fresh'])
         && incomingData().uid == request.auth.uid
+        && verifiedContact()
         && freshOk(incomingData())
         && isMyName(incomingData().username)
         && repostId == incomingData().postId + '_' + request.auth.uid
@@ -2101,6 +2143,8 @@ service cloud.firestore {
             || d.videoPoster.matches('^https://mesh-media[.]meshadmin9[.]workers[.]dev/v/[A-Za-z0-9]{20,40}/[a-f0-9]{32}[.](jpg|webp)$'))
         && d.get('videoSeconds', 0) is int && d.get('videoSeconds', 0) >= 0 && d.get('videoSeconds', 0) <= 36000
         && d.get('graphic', false) is bool
+        // Lets Flicks list the stories that have one.
+        && d.get('hasVideo', false) == (d.get('videoUrl', '') != '')
         && d.get('label', 'report') in ['report', 'analysis', 'explainer', 'opinion']
         && d.get('legalHold', false) is bool
         && d.get('legalNote', '') is string && d.get('legalNote', '').size() <= 300
@@ -2458,8 +2502,11 @@ service cloud.firestore {
       // 1:1 chats use the sorted uid pair as id and require reachability. Groups
       // start with the creator as admin; members are added one write at a time.
       allow create: if signedIn()
-        // A new conversation at most every 10 seconds (lib/data/chats.js).
+        // A new conversation at most every 10 seconds (lib/data/chats.js), and
+        // 20 a day for new accounts.
         && rateOk('chat', 10)
+        && verifiedContact()
+        && dailyOk('chat', 20)
         && request.auth.uid in incomingData().members
         && incomingData().name is string
         && incomingData().name.size() <= 60
@@ -2565,8 +2612,14 @@ service cloud.firestore {
         allow create: if inChat()
           && incomingData().keys().hasOnly(['senderId', 'text', 'reactions', 'createdAt', 'replyTo', 'sharedPost', 'gif', 'voice', 'photo', 'poll', 'call', 'storyReply', 'thoughtReply'])
           && incomingData().senderId == request.auth.uid
+          && verifiedContact()
           // A message at most every 0.4 seconds (lib/data/chats.js).
           && rateOkMs('message', 400)
+          // New accounts can't send links to someone who doesn't follow them.
+          && (!newAccount()
+              || !incomingData().text.lower().matches('(?s).*(https?://|www[.]).*')
+              || chatData().get('isGroup', false) == true
+              || follows(chatData().members[0] == request.auth.uid ? chatData().members[1] : chatData().members[0], request.auth.uid))
           && incomingData().createdAt == request.time
           && incomingData().reactions == {}
           && incomingData().text is string
@@ -2771,6 +2824,7 @@ service cloud.firestore {
       }
 
       allow create: if signedIn()
+        && verifiedContact()
         && incomingData().keys().hasOnly([
           'name', 'description', 'privacy', 'ownerId', 'memberCount',
           'requireApproval', 'ageLimit', 'interests', 'rules', 'coverColor', 'pinnedPostId',
@@ -2979,6 +3033,7 @@ service cloud.firestore {
               || (resource.data.groupId != '' && isMemberOf(resource.data.groupId))));
 
       allow create: if signedIn()
+        && verifiedContact()
         && incomingData().keys().hasOnly([
           'title', 'description', 'location', 'startsAt', 'privacy', 'groupId',
           'ticketUrl', 'showGuestList', 'capacity', 'guestPosting', 'invitees',

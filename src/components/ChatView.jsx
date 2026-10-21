@@ -32,6 +32,7 @@ import IconButton from "./ui/IconButton";
 import { Skeleton } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import MentionTextarea from "./ui/MentionTextarea";
+import { isFreshAccount } from "../lib/fresh";
 
 const GROUP_GAP = 5 * 60_000; // messages closer than this cluster together
 
@@ -77,7 +78,7 @@ function receiptFor(m, chat, others, reads) {
 // Auto-scrolls only when already at the bottom; otherwise shows a "new
 // messages" pill. Enter sends on desktop, inserts a newline on touch.
 export default function ChatView({ chat }) {
-  const { inbox, blocked, setBlocked, following, startCall, inCall } = useShell();
+  const { inbox, blocked, setBlocked, following, startCall, inCall, needsAccount, profile } = useShell();
   const request = isRequest(chat, following);
   const [answering, setAnswering] = useState("");
   const recorder = useVoiceRecorder();
@@ -230,6 +231,7 @@ export default function ChatView({ chat }) {
   };
 
   const send = async (value = text) => {
+    if (needsAccount("message people")) return;
     if (photos.length && !editing && !sending) {
       const ok = await sendPhotos();
       if (!ok || !value.trim()) return;
@@ -269,8 +271,10 @@ export default function ChatView({ chat }) {
       setText(t);
       setReplyTo(wasReply);
       setEditing(wasEditing);
+      // New accounts can't send links to someone who doesn't follow them (the rules).
+      const link = /https?:\/\/|www\./i.test(t) && isFreshAccount(profile);
       toast(err?.code === "permission-denied"
-        ? { tone: "error", title: "Message not sent", body: "This person isn't accepting your messages." }
+        ? { tone: "error", title: "Message not sent", body: link ? "New accounts can't send links to people who don't follow them yet." : "This person isn't accepting your messages." }
         : { tone: "error", title: "Message not sent", body: "Check your connection.", action: { label: "Retry", onClick: () => send(t) } });
     } finally {
       setSending(false);
@@ -309,6 +313,7 @@ export default function ChatView({ chat }) {
     }
   };
   const sendGif = async (g) => {
+    if (needsAccount("message people")) return;
     setDialog(null);
     try {
       await sendMessage(chat.id, "", { gif: { url: g.url, width: g.width, height: g.height, title: g.title } });

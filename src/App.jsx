@@ -34,6 +34,7 @@ import { ExternalLinkDialog } from "./components/ui/ExternalLink";
 import StoryOpener from "./components/StoryOpener";
 import { Loading } from "./components/ui/States";
 import { usePageTitle } from "./lib/usePageTitle";
+import { isVerifiedUser } from "./lib/verified";
 import { DOCUMENT_TITLES } from "./legal/titles.js";
 import LockScreen from "./components/LockScreen";
 import HomeHeader from "./components/shell/HomeHeader";
@@ -60,6 +61,12 @@ const AdsManager = lazy(() => import("./components/AdsManager"));
 const AgeGate = lazy(() => import("./components/AgeGate"));
 const ParentalControls = lazy(() => import("./components/ParentalControls"));
 const NotFound = lazy(() => import("./components/NotFound"));
+const VerifyContact = lazy(() => import("./components/VerifyContact"));
+// What an account needs a confirmed email or phone for (needsAccount reasons).
+const NEEDS_CONTACT = new Set([
+  "post", "repost", "follow people", "follow journalists", "message people", "reply to comments", "reply to stories",
+  "echo stories", "reply to gatherings", "post in gatherings", "start a circle", "plan a gathering",
+]);
 const Welcome = lazy(() => import("./components/Welcome"));
 const WhatsOn = lazy(() => import("./components/WhatsOn"));
 const Help = lazy(() => import("./components/Help"));
@@ -272,14 +279,22 @@ export default function App() {
    * Returns true (and explains) when the viewer can't do `reason`: signed-out
    * visitors need an account, and work accounts only moderate.
    */
+  const [verifyReason, setVerifyReason] = useState(null);
   const needsAccount = useCallback((reason) => {
     if (workAccount) {
       toast({ title: "Work accounts only moderate", body: `Use your personal account to ${reason}.` });
       return true;
     }
-    if (!guest) return false;
-    setJoinReason(reason);
-    return true;
+    if (guest) {
+      setJoinReason(reason);
+      return true;
+    }
+    // Posting, messaging and following need a confirmed email or phone (the rules).
+    if (NEEDS_CONTACT.has(reason) && !isVerifiedUser(auth.currentUser)) {
+      setVerifyReason(reason);
+      return true;
+    }
+    return false;
   }, [guest, workAccount, toast]);
   // Keep the viewer's own card current in the profile cache.
   useEffect(() => { if (user && profile) primeCard(user.uid, profile); }, [user, profile]);
@@ -618,6 +633,7 @@ export default function App() {
         )}
 
         {joinReason && <JoinDialog reason={joinReason} onClose={() => setJoinReason(null)} />}
+        {verifyReason && <Suspense fallback={null}><VerifyContact reason={verifyReason} onClose={() => setVerifyReason(null)} /></Suspense>}
         {signedIn && (
           <NotificationBanner notices={notices} hidden={hiddenAuthors}
             onNotificationsPage={page.tab === "home" && page.section === "notifications"} />

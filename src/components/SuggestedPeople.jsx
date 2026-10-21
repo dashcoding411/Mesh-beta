@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useState } from "react";
 import { BookUser, UserCheck, UserPlus } from "lucide-react";
-import { toggleFollow, openUserProfile, me } from "../lib/db";
+import { toggleFollow, openUserProfile, me, limitMessage } from "../lib/db";
 import { suggestedAccounts } from "../lib/suggest";
 import { tickOf } from "../lib/badges";
 import { useShell } from "./shell/ShellContext";
@@ -84,8 +84,8 @@ export function FollowButton({ person, following, setFollowing, className = "" }
         if (on) next.delete(person.id); else next.add(person.id);
         return next;
       });
-    } catch {
-      toast({ tone: "error", title: "Couldn't update follow" });
+    } catch (err) {
+      toast({ tone: "error", title: limitMessage(err) || "Couldn't update follow" });
     } finally { setBusy(false); }
   };
   return (

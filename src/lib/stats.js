@@ -73,3 +73,49 @@ export function freshBursts(records, { windowMs = 3600000, min = 8 } = {}) {
   }
   return out.sort((a, b) => b.count - a.count);
 }
+
+/** Text reduced to its words, for spotting the same message from many accounts. */
+// Dots, colons and slashes stay inside links ("site.com/x"), not at the end of words.
+export const sameText = (t) => String(t || "").toLowerCase().normalize("NFKC")
+  .replace(/[.:/](?![\p{L}\p{N}])/gu, " ").replace(/[^\p{L}\p{N}:/.]+/gu, " ").trim();
+
+/**
+ * Texts posted by `min` or more different accounts, as
+ * [{ text, accounts, count, postIds }], most accounts first. Short ones
+ * ("congrats!") are left out: everyone writes those.
+ */
+export function copyClusters(items, { min = 3, minLength = 20 } = {}) {
+  const groups = new Map();
+  for (const it of items) {
+    const key = sameText(it.text);
+    if (key.length < minLength || !it.authorId) continue;
+    if (!groups.has(key)) groups.set(key, { text: it.text, authors: new Set(), count: 0, postIds: new Set() });
+    const g = groups.get(key);
+    g.authors.add(it.authorId);
+    g.count += 1;
+    if (it.postId) g.postIds.add(it.postId);
+  }
+  return [...groups.values()]
+    .filter((g) => g.authors.size >= min)
+    .map((g) => ({ text: g.text, accounts: g.authors.size, count: g.count, postIds: [...g.postIds] }))
+    .sort((a, b) => b.accounts - a.accounts);
+}
+
+/** Stretches where `min` or more accounts joined within `windowMs`, as [{ from, to, count }], busiest first. */
+export function signupBursts(times, { windowMs = 600000, min = 15 } = {}) {
+  const t = times.filter(Boolean).sort((a, b) => a - b);
+  const out = [];
+  let i = 0;
+  while (i < t.length) {
+    let j = i;
+    while (j + 1 < t.length && t[j + 1] - t[i] <= windowMs) j++;
+    const count = j - i + 1;
+    if (count >= min) {
+      out.push({ from: t[i], to: t[j], count });
+      i = j + 1;
+    } else {
+      i++;
+    }
+  }
+  return out.sort((a, b) => b.count - a.count);
+}

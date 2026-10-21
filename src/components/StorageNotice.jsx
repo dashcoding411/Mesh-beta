@@ -20,7 +20,7 @@ export default function StorageNotice({ onReadMore }) {
 
   return (
     <>
-      {consent === null && !choosing && (
+      {consent === null && !choosing && optionalItems().length > 0 && (
         <aside aria-label="Cookies on Mesh" data-cookie-banner
           className="fixed inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-overlay rounded-card border border-line-strong bg-surface-2 p-4 shadow-overlay anim-rise md:bottom-4 md:left-auto md:right-[92px] md:w-[400px] xl:right-[272px]">
           <div className="flex gap-3">
@@ -28,8 +28,8 @@ export default function StorageNotice({ onReadMore }) {
             <div className="min-w-0 flex-1">
               <p className="text-callout font-semibold text-fg">Your choice on cookies</p>
               <p className="mt-1 text-callout text-fg-muted">
-                Mesh only stores what it needs to work, like keeping you signed in. {optionalItems().length === 1
-                  ? "Google's security check sets its own cookies, so it stays off unless you allow it."
+                Mesh only stores what it needs to work, like keeping you signed in and keeping bots out. {optionalItems().length === 1
+                  ? `${optionalItems()[0].label} set their own cookies, so they stay off unless you allow them.`
                   : `Extras from other companies (${optionalItems().map((i) => i.label).join(", ")}) set their own cookies, so they stay off unless you allow them.`} No tracking ads, no analytics cookies.
               </p>
             </div>

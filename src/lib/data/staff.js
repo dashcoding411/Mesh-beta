@@ -96,7 +96,7 @@ export async function fetchStaffStats(now = Date.now()) {
   const DAY = 86400000;
   const ts = (ms) => Timestamp.fromMillis(ms);
   const count = (q) => getCountFromServer(q).then((s) => s.data().count).catch(() => null);
-  const [members, signups, activity, posts, gatherings, circles, stories, reports] = await Promise.all([
+  const [members, signups, activity, posts, gatherings, circles, stories, reports, recentPosts] = await Promise.all([
     count(collection(db, "users")),
     getDocs(query(collection(db, "users"), where("createdAt", ">=", ts(now - 30 * DAY)), orderBy("createdAt", "asc"), limit(5000)))
       .then((s) => s.docs.map((d) => tsMillis(d.data().createdAt))).catch(() => null),
@@ -107,8 +107,12 @@ export async function fetchStaffStats(now = Date.now()) {
     count(query(collection(db, "groups"), where("privacy", "in", ["public", "private"]))),
     count(query(collection(db, "news"), where("status", "==", "approved"))),
     count(query(collection(db, "reports"), where("status", "==", "open"))),
+    // The last day's public posts, for the same words from many accounts.
+    getDocs(query(collection(db, "posts"), where("visibility", "==", "public"), where("groupId", "==", ""),
+      where("createdAt", ">=", ts(now - DAY)), orderBy("createdAt", "desc"), limit(1000)))
+      .then((s) => s.docs.map((d) => ({ postId: d.id, authorId: d.data().authorId, text: d.data().text }))).catch(() => null),
   ]);
-  return { members, signups, activity, posts, gatherings, circles, stories, reports, fresh: await fetchFreshActivity(now) };
+  return { members, signups, activity, posts, gatherings, circles, stories, reports, recentPosts, fresh: await fetchFreshActivity(now) };
 }
 
 /**
@@ -129,7 +133,7 @@ export async function fetchFreshActivity(now = Date.now()) {
     const onPost = (d) => (d.ref.path.startsWith("posts/") ? d.ref.path.split("/")[1] : null);
     return [
       ...likes.docs.map((d) => ({ postId: onPost(d), kind: d.ref.path.includes("/comments/") ? "comment like" : "like", at: tsMillis(d.data().createdAt) })),
-      ...comments.docs.map((d) => ({ postId: onPost(d), kind: "comment", at: tsMillis(d.data().createdAt) })),
+      ...comments.docs.map((d) => ({ postId: onPost(d), kind: "comment", at: tsMillis(d.data().createdAt), authorId: d.data().authorId, text: d.data().text })),
       ...reposts.docs.map((d) => ({ postId: d.data().postId, kind: "repost", at: tsMillis(d.data().createdAt) })),
     ].filter((r) => r.postId && r.at);
   } catch (err) {

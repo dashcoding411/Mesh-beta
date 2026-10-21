@@ -249,6 +249,28 @@ message every 0.4 s and a follow or follow request every 0.5 s. Normal use
 doesn't meet them; scripts do. Likes aren't limited: each limit costs a write,
 likes are the most common action, and fresh accounts' likes barely count.
 
+Accounts under a week old also have daily caps (`dailyOk`, `lib/data/limits.js`):
+60 follows or follow requests and 20 new conversations in any 24 hours. Each
+kind keeps a window on rateLimits/{uid} (`followWin`/`followN`,
+`chatWin`/`chatN`) that moves by one in the same write, or restarts once a day
+has passed (`windowOk`); older accounts keep the window but have no cap. New
+accounts also can't send links in a 1:1 chat to someone who doesn't follow
+them.
+
+## Bots
+
+Posting, commenting, stories, messages, new chats, follows, reposts, circles
+and gatherings need a confirmed email or a phone number (`verifiedContact`
+in the rules, `lib/verified.js`; Google and Apple sign-ins come confirmed).
+Browsing, likes and reports don't. In the app, `needsAccount` opens
+`VerifyContact` for the reasons in `NEEDS_CONTACT` (App.jsx), which sends the
+link and refreshes the sign-in token once it's opened. Unconfirmed accounts
+count as fresh (below), new accounts have the daily caps above, and staff
+stats show fake crowds, the same words from 3 or more accounts in the last
+day (`copyClusters`) and 15 or more sign-ups within 10 minutes
+(`signupBursts`). Reports for "Fake account or bot" go to the accounts team
+whatever they're on.
+
 Suspensions live in suspensions/{uid} (until, reason, by), readable by the
 person and staff only; the rules' `notSuspended()` reads it, so a
 suspension, or a lifted one, never shows on a public profile.
@@ -298,7 +320,8 @@ phone numbers, which is why being findable is opt-in.
 The legal pages (`src/legal`) must match this code. Until `business.js` has
 the operator's legal name and ABN, the policies name "the founders" rather
 than placeholders; the warning about missing details shows in development
-only. App Check's code loads only after someone allows the security check.
+only. App Check (reCAPTCHA) is essential security and runs for everyone on
+the website.
 
 What each kind of record shows, and to whom:
 
@@ -318,13 +341,13 @@ What each kind of record shows, and to whom:
 - **Drafts** are stored per account and cleared at sign-out; the Firestore
   cache is in memory only. Sign-in redirects only go to pages on Mesh.
 - **Cookies and storage** (`lib/consent.js`, `StorageNotice.jsx`). Essential
-  storage is always on. Optional third parties (Google reCAPTCHA for App
-  Check; GIPHY when GIFs are on) stay off until the visitor picks "Allow all"
-  or switches them on in "Choose"; "Essential only" has the same weight. The
-  choice is kept under `mesh:consent` and can be changed in Settings or from
-  the Cookies policy. App Check only starts once reCAPTCHA is allowed (never in
-  the iPhone app), and then 3 seconds after Mesh is on screen rather than as
-  it opens: while it runs, every sign-in and database request waits for a
+  storage is always on, and so is Google reCAPTCHA for App Check, the bot
+  check. Optional third parties (GIPHY when GIFs are on, Google ads) stay off
+  until the visitor picks "Allow all" or switches them on in "Choose";
+  "Essential only" has the same weight. The choice is kept under
+  `mesh:consent` and can be changed in Settings or from the Cookies policy.
+  App Check never runs in the iPhone app, and starts 3 seconds after Mesh is
+  on screen rather than as it opens: while it runs, every sign-in and database request waits for a
   reCAPTCHA token, and loading reCAPTCHA takes a second or more (several on
   a phone). Requests before then count as unverified, which is fine while
   App Check isn't enforced; start it earlier before enforcing it. The
@@ -416,14 +439,18 @@ slots, met progressively to avoid clustering. A diversity pass limits
 repeated authors and formats. Borderline content is never recommended to
 non-followers and is spaced apart; reports reduce reach.
 
-Fake crowds (`lib/fresh.js`): likes, saves, sends, reposts, comments and
-comment likes from accounts under a week old carry `fresh: true`, and each
-count has a twin (`freshLikes`, `freshSaves`, `freshSends`, `freshReposts`,
-`freshComments`; `freshLikes` on comments). The rules (`newAccount`,
-`freshOk`, `tiedFresh`) make the stamp match the account's age and move the
-twin with the count. Ranking, comment order and search use `settled()`, which
-counts fresh ones at a quarter; the visible counts stay true. Comments by new
-accounts show "New account". Staff stats list posts with 8 or more fresh
+Fake crowds (`lib/fresh.js`): posts, likes, saves, sends, reposts, comments
+and comment likes from low-trust accounts (under a week old, or without a
+confirmed email or phone) carry `fresh: true`, and each count has a twin
+(`freshLikes`, `freshSaves`, `freshSends`, `freshReposts`, `freshComments`;
+`freshLikes` on comments). The rules (`lowTrust`, `freshOk`, `tiedFresh`)
+make the stamp match the account and move the twin with the count. Ranking,
+comment order and search use `settled()`, which counts fresh ones at a
+quarter and never more than `FRESH_CAP` (10) in total; the visible counts
+stay true. A fresh post isn't shown to people who don't follow the author
+until someone has engaged with it (`recommendable`), and links in fresh
+posts and comments, and in the bios of accounts under a week old, don't open.
+Comments by new accounts show "New account". Staff stats list posts with 8 or more fresh
 actions within an hour in the last day (`fetchFreshActivity`, `freshBursts`),
 read through collection-group queries that only return fresh records.
 

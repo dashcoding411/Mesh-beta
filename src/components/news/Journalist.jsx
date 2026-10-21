@@ -3,7 +3,7 @@ import { ImagePlus, Landmark, MapPin, Newspaper, PenLine, Trash2, UserCheck, Use
 import { newsTopicById } from "../../lib/interests";
 import { forgetJournalist, outletOf, useJournalist } from "../../lib/journalists";
 import { useLiveCard } from "../../lib/profileCache";
-import { openUserProfile, saveJournalist, toggleFollow, uploadMedia, me } from "../../lib/db";
+import { openUserProfile, saveJournalist, toggleFollow, uploadMedia, me, limitMessage } from "../../lib/db";
 import { useShell } from "../shell/ShellContext";
 import { navigate } from "../../lib/router";
 import { KindBadge, Meta, TopicLabel } from "./parts";
@@ -47,8 +47,8 @@ function FollowJournalist({ uid, username }) {
         return next;
       });
       if (!on) toast({ title: `Following @${username}`, body: "Their stories will show up in Home." });
-    } catch {
-      toast({ tone: "error", title: "Couldn't update follow" });
+    } catch (err) {
+      toast({ tone: "error", title: limitMessage(err) || "Couldn't update follow" });
     } finally {
       setBusy(false);
     }

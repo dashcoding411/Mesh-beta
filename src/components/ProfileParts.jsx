@@ -13,6 +13,7 @@ import { PhotoField } from "./ProfilePhoto";
 import Button from "./ui/Button";
 import Dialog from "./ui/Dialog";
 import RichText from "./ui/RichText";
+import { isFreshAccount } from "../lib/fresh";
 import { Field, Input, Textarea } from "./ui/Field";
 import { EmptyState, Skeleton, InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
@@ -92,7 +93,7 @@ export function ProfileHeader({ profile, postCount, actions, onShowFollows, avat
 
       {featured && <div className="mt-4">{featured}</div>}
 
-      {profile.bio && <RichText text={profile.bio} className="mt-4 text-body text-fg" />}
+      {profile.bio && <RichText text={profile.bio} plainLinks={isFreshAccount(profile)} className="mt-4 text-body text-fg" />}
 
       {(profile.town || spouse || joined > 0) && (
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-caption text-fg-muted">

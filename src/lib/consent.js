@@ -1,6 +1,6 @@
-// Cookie and storage choices. Essential storage (signing in, anti-spam, your
-// settings) is always on. The optional extras below come from other companies
-// and stay off until someone says yes; nothing is assumed from browsing.
+// Cookie and storage choices. Essential storage (signing in, the bot check,
+// your settings) is always on. The optional extras below come from other
+// companies and stay off until someone says yes; nothing is assumed from browsing.
 import { useSyncExternalStore } from "react";
 import { gifsEnabled } from "./gifs";
 import { adsenseEnabled } from "./adsense";
@@ -11,11 +11,6 @@ const VERSION = 1;
 /** The optional extras this build uses. */
 export function optionalItems() {
   return [
-    {
-      id: "recaptcha",
-      label: "Google security check",
-      body: "Google reCAPTCHA checks that visits come from a real browser, not a script. Google sets its own cookies for it and sees your browser and device details.",
-    },
     ...(gifsEnabled ? [{
       id: "giphy",
       label: "GIFs from GIPHY",

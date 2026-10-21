@@ -28,7 +28,7 @@ const lineUp = (threads) => {
  * other feeds use it so a swipe left still opens the story camera there.
  */
 export default function StoryRail({ bare = false }) {
-  const { profile, following, hiddenAuthors, openComposer } = useShell();
+  const { profile, following, hiddenAuthors, openComposer, needsAccount } = useShell();
   const toast = useToast();
   const [threads, setThreads] = useState([]);
   // Rail order, refreshed when stories load and when the viewer closes, not mid-viewing.
@@ -70,6 +70,7 @@ export default function StoryRail({ bare = false }) {
 
   // Every story goes through the editor first, from the camera or a file.
   const openEditor = async (file, fromCamera) => {
+    if (needsAccount("post")) return;
     const kind = file.type.startsWith("video/") ? "video" : "image";
     const v = validateMediaFile(file, kind);
     if (v.error) return toast({ tone: "error", title: v.error });

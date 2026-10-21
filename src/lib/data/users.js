@@ -9,6 +9,7 @@ import { me, snapToList, tsMillis } from "./core.js";
 import { bumpAffinity, deleteInline, fetchPostsByAuthor, SIGNAL } from "./posts.js";
 import { uploadMedia } from "./uploads.js";
 import { notify, unnotify } from "./notifications.js";
+import { inWindow } from "./limits.js";
 
 export async function fetchProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
@@ -336,14 +337,17 @@ export async function toggleFollow(target, currentlyFollowing) {
     return "requested";
   }
   const mine = await myProfile();
-  const batch = writeBatch(db);
-  // A follow at most every half second (the rules), against follow spam.
-  batch.set(doc(db, "rateLimits", uid), { follow: serverTimestamp() }, { merge: true });
-  batch.set(followingRef, { username: full?.username || target.username || "", createdAt: serverTimestamp() });
-  batch.set(followerRef, { username: mine?.username || "", createdAt: serverTimestamp() });
-  batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
-  batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
-  await batch.commit();
+  // A follow at most every half second (the rules), and a daily cap for new
+  // accounts (lib/data/limits.js), against follow farms.
+  await inWindow("follow", mine, (window) => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "rateLimits", uid), { follow: serverTimestamp(), ...window }, { merge: true });
+    batch.set(followingRef, { username: full?.username || target.username || "", createdAt: serverTimestamp() });
+    batch.set(followerRef, { username: mine?.username || "", createdAt: serverTimestamp() });
+    batch.update(doc(db, "users", uid), { followingCount: increment(1), lastFollowing: target.id });
+    batch.update(doc(db, "users", target.id), { followerCount: increment(1), lastFollower: uid });
+    return batch.commit();
+  });
   clearFollowMarkers(uid, target.id);
   bumpAffinity(target.id, SIGNAL.follow).catch(() => {});
   notify(target.id, "follow");
@@ -352,13 +356,15 @@ export async function toggleFollow(target, currentlyFollowing) {
 
 export async function requestFollow(target) {
   const profile = await myProfile();
-  const batch = writeBatch(db);
-  batch.set(doc(db, "rateLimits", me()), { follow: serverTimestamp() }, { merge: true });
-  batch.set(doc(db, "users", target.id, "followRequests", me()), {
-    username: profile?.username || "",
-    createdAt: serverTimestamp(),
+  await inWindow("follow", profile, (window) => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "rateLimits", me()), { follow: serverTimestamp(), ...window }, { merge: true });
+    batch.set(doc(db, "users", target.id, "followRequests", me()), {
+      username: profile?.username || "",
+      createdAt: serverTimestamp(),
+    });
+    return batch.commit();
   });
-  await batch.commit();
   notify(target.id, "request");
 }
 

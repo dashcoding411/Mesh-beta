@@ -45,7 +45,8 @@ export function LinkedText({ text, className = "" }) {
 
 // Tags link to Search; handles to the profile (or Search if unknown).
 // External links go through the leave-Mesh dialog with rel="ugc nofollow noopener".
-export default function RichText({ text, className = "", highlight, as: Tag = "p" }) {
+// `plainLinks`: links from a new account (lib/fresh.js) show as plain text.
+export default function RichText({ text, className = "", highlight, as: Tag = "p", plainLinks = false }) {
   if (!text) return null;
   const parts = tokenize(text);
 
@@ -54,6 +55,7 @@ export default function RichText({ text, className = "", highlight, as: Tag = "p
       {parts.map((p, i) => {
         if (p.t === "text") return <Fragment key={i}>{highlight ? <Highlight text={p.v} query={highlight} /> : p.v}</Fragment>;
         if (p.t === "url") {
+          if (plainLinks) return <Fragment key={i}>{p.v}</Fragment>;
           return (
             <a key={i} href={hrefOf(p.v)} target="_blank" rel="ugc nofollow noopener noreferrer" onClick={(e) => followLink(hrefOf(p.v), e)}
               className="text-accent-text underline decoration-accent-text/50 underline-offset-2 hover:decoration-current">

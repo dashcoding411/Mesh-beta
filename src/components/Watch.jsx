@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   fetchPost, fetchPostsByKind, fetchHiddenPostIds, toggleLike, toggleSave, toggleRepost, toggleFollow,
-  recordSignal, openUserProfile, openWatch, me, tsMillis,
+  recordSignal, openUserProfile, openWatch, me, tsMillis, limitMessage,
 } from "../lib/db";
 import { goBack } from "../lib/router";
 import { usePostStates } from "../lib/usePostStates";
@@ -173,7 +173,7 @@ export default function Watch({ postId }) {
         if (followsAuthor) next.delete(post.authorId); else next.add(post.authorId);
         return next;
       });
-    } catch { toast({ tone: "error", title: "Couldn't update follow" }); }
+    } catch (err) { toast({ tone: "error", title: limitMessage(err) || "Couldn't update follow" }); }
   };
 
   return (
@@ -303,7 +303,7 @@ export default function Watch({ postId }) {
 
               {post.text && (
                 <div className="mt-4 rounded-card bg-surface p-4">
-                  <RichText text={post.text} className="text-callout text-fg" />
+                  <RichText text={post.text} plainLinks={!!post.fresh} className="text-callout text-fg" />
                 </div>
               )}
             </div>

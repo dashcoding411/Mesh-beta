@@ -109,6 +109,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
 
   const submit = async (e) => {
     e?.preventDefault();
+    if (needsAccount("reply to comments")) return;
     const v = validateText(text, LIMITS.comment, "Comment");
     if (v.error) return setError(v.error);
     if (!v.text && !gif && !photo) return;
@@ -323,7 +324,7 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
         <time dateTime={isoTime(node.createdAt)} title={fullTime(node.createdAt)} className="text-caption text-fg-subtle">{shortTime(node.createdAt)}</time>
       </p>
       {replyingTo && <p className="text-caption text-fg-subtle">Replying to @{replyingTo}</p>}
-      {node.text && <RichText text={node.text} className="mt-0.5 text-callout text-fg" />}
+      {node.text && <RichText text={node.text} plainLinks={!!node.fresh} className="mt-0.5 text-callout text-fg" />}
       {node.gif && <GifView gif={node.gif} className="mt-1.5 max-w-[220px]" />}
       {node.image && (
         <MediaImg src={node.image.url} alt="Photo in a comment" loading="lazy"

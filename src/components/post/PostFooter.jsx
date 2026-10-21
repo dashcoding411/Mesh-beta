@@ -21,7 +21,7 @@ export function Caption({ post, highlight }) {
       {text && (
         <p className="whitespace-pre-wrap break-words">
           <button type="button" onClick={() => openUserProfile(post.authorId)} className="mr-1.5 font-semibold hover:opacity-70">{post.authorName}</button>
-          <RichText as="span" text={shown} highlight={highlight} className="inline" />
+          <RichText as="span" text={shown} highlight={highlight} plainLinks={!!post.fresh} className="inline" />
           {long && !open && (
             <button type="button" onClick={() => setOpen(true)} className="ml-1 text-fg-subtle hover:text-fg">more</button>
           )}

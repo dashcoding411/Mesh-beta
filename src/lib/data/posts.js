@@ -13,6 +13,7 @@ import { deleteCloudMedia, isCloudMedia } from "./uploads.js";
 import { removeFromAllAlbums } from "./albums.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
 import { isFreshAccount } from "../fresh.js";
+import { isVerifiedUser } from "../verified.js";
 
 // post: photo (Still), text: up to 500 chars (Strand), short: video up to
 // three minutes (Flick), video: longer Flick, shown in feeds as a
@@ -94,12 +95,15 @@ export async function createPost({
   };
   // The rules require the rate-limit stamp in the same batch (one post per 10s).
   const refDoc = doc(collection(db, "posts"));
-  const batch = writeBatch(db);
-  batch.set(refDoc, post);
-  batch.set(doc(db, "rateLimits", user.uid), { post: serverTimestamp() }, { merge: true });
-  // Circle slow mode reads the member's last post time.
-  if (groupId) batch.update(doc(db, "groups", groupId, "members", user.uid), { lastPostAt: serverTimestamp() });
-  await batch.commit();
+  await asFresh((fresh) => {
+    const batch = writeBatch(db);
+    if (fresh) post.fresh = true; else delete post.fresh;
+    batch.set(refDoc, post);
+    batch.set(doc(db, "rateLimits", user.uid), { post: serverTimestamp() }, { merge: true });
+    // Circle slow mode reads the member's last post time.
+    if (groupId) batch.update(doc(db, "groups", groupId, "members", user.uid), { lastPostAt: serverTimestamp() });
+    return batch.commit();
+  }, profile);
   // Mentions notify only for public posts; others may not be readable by the recipient.
   if (post.visibility === "public") {
     mentionedHandles(post.text).forEach(async (handle) => {
@@ -298,17 +302,18 @@ export async function bumpAffinity(authorId, amount) {
   );
 }
 
-// Fresh records (lib/fresh.js): an account under a week old stamps what it
-// adds, and the count's fresh twin moves with the count.
+// Fresh records (lib/fresh.js): a low-trust account stamps what it adds, and
+// the count's fresh twin moves with the count.
 const twin = (field, by, fresh) => (fresh ? { [field]: increment(by) } : {});
 const stamp = (fresh) => (fresh ? { fresh: true } : {});
 const wasFresh = async (ref_) => (await getDoc(ref_).catch(() => null))?.data()?.fresh === true;
 
-// The rules judge freshness by the server's clock. If this device's clock
-// disagrees right at the one-week mark the write is refused, so it's tried
-// once the other way. `write(fresh)` must build a new batch each time.
+// The rules judge freshness by the server's clock and the sign-in token. If
+// this device disagrees (its clock at the one-week mark, or an email confirmed
+// since the token was issued) the write is refused, so it's tried once the
+// other way. `write(fresh)` must build a new batch each time.
 async function asFresh(write, profile) {
-  const fresh = isFreshAccount(profile || await myProfile());
+  const fresh = isFreshAccount(profile || await myProfile(), Date.now(), isVerifiedUser(auth.currentUser));
   try { return await write(fresh); }
   catch (err) {
     if (err?.code !== "permission-denied") throw err;

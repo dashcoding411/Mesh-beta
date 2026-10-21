@@ -19,6 +19,7 @@ export const REPORT_REASONS = [
   { id: "sexual", label: "Sexual content or nudity" },
   { id: "self_harm", label: "Self-harm or suicide", description: "Someone may be at risk" },
   { id: "spam", label: "Spam or scam" },
+  { id: "fake", label: "Fake account or bot", description: "Run by a program, or one of many accounts working together" },
   { id: "misinfo", label: "False information" },
   { id: "impersonation", label: "Pretending to be someone else" },
   { id: "unlabelled_ai", label: "AI-generated, or an unlabelled AI edit", description: "Made entirely by AI (not allowed on Mesh), or edited with AI without the label" },
@@ -88,6 +89,7 @@ export async function reportPost(post, reason, details = "") {
 }
 
 // Which report types each team handles (firestore.rules, canHandleReport).
+// Fake-account reports go to the accounts team whatever they're on.
 export const REPORT_TEAM = { post: "content", comment: "content", message: "accounts", user: "accounts" };
 
 /** Reports with `status`; `types` limits them to some kinds (a team's), or null for all (admins). */
@@ -95,7 +97,13 @@ export async function fetchReports(status = "open", types = null) {
   const q = types
     ? query(collection(db, "reports"), where("status", "==", status), where("targetType", "in", types), limit(300))
     : query(collection(db, "reports"), where("status", "==", status), limit(300));
-  return snapToList(await getDocs(q))
+  // The accounts team also takes fake-account reports made on posts and comments.
+  const fakes = types?.includes("user")
+    ? await getDocs(query(collection(db, "reports"), where("status", "==", status), where("reason", "==", "fake"), limit(300))).then(snapToList, () => [])
+    : [];
+  const seen = new Set();
+  return [...snapToList(await getDocs(q)), ...fakes]
+    .filter((r) => !seen.has(r.id) && seen.add(r.id))
     // Legacy reports predate `type` and were always posts.
     .map((r) => (r.targetType ? r : { ...r, targetType: "post", targetId: r.postId }))
     .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));

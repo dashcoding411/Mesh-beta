@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   fetchPostsByKind, fetchPost, fetchAffinity, fetchHiddenPostIds, toggleLike, toggleSave, toggleRepost, toggleFollow,
-  recordSignal, openUserProfile, me, fetchNewsFlicks, fetchNewsStory,
+  recordSignal, openUserProfile, me, fetchNewsFlicks, fetchNewsStory, limitMessage,
 } from "../lib/db";
 import { rankFeed } from "../lib/algorithm";
 import { usePostStates } from "../lib/usePostStates";
@@ -342,8 +342,8 @@ function FlickItem({ post, index, total, viewer, onViewerChange, muted, onToggle
       await toggleFollow({ id: post.authorId, username: post.authorName }, false);
       setFollowing((prev) => new Set(prev).add(post.authorId));
       toast({ title: `Following @${post.authorName}` });
-    } catch {
-      toast({ tone: "error", title: "Couldn't follow right now" });
+    } catch (err) {
+      toast({ tone: "error", title: limitMessage(err) || "Couldn't follow right now" });
     }
   };
 

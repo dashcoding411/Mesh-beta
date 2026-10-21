@@ -6,7 +6,7 @@ import ReportDialog from "./ReportDialog";
 import {
   fetchProfile, fetchPostsByAuthor, fetchRepostedPosts, toggleFollow, openDirectChat,
   hasRequestedFollow, cancelFollowRequest, blockUser, unblockUser, onTeam, setBadge, setPinkCheck, me,
-  uidForUsername, cachedUidFor,
+  uidForUsername, cachedUidFor, limitMessage,
 } from "../lib/db";
 import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { MenuItem, MenuGroup } from "./ui/Menu";
@@ -139,7 +139,7 @@ function ProfileView({ uid }) {
       });
       setProfile((p) => ({ ...p, followerCount: Math.max(0, (p.followerCount || 0) + (followed ? -1 : 1)) }));
     } catch (err) {
-      toast({ tone: "error", title: err?.code === "permission-denied" ? "You can't follow this account" : "Couldn't update follow",
+      toast({ tone: "error", title: limitMessage(err) || (err?.code === "permission-denied" ? "You can't follow this account" : "Couldn't update follow"),
         body: err?.code === "permission-denied" ? undefined : "Try again in a moment." });
     } finally {
       setBusy(false);

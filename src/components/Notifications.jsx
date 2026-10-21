@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CalendarDays, CheckCheck, ChevronRight, Sparkles, X } from "lucide-react";
 import {
-  markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis,
+  markNoticesRead, deleteNotices, groupNotices, fetchUpcomingRsvps, approveFollowRequest, declineFollowRequest, toggleFollow, me, tsMillis, limitMessage,
 } from "../lib/db";
 import { openNotice } from "../lib/notices";
 import { NoticeAvatar, NoticeLine } from "./NoticeParts";
@@ -163,14 +163,17 @@ function WeekReady() {
 
 function NoticeRow({ group, fresh, following }) {
   const toast = useToast();
-  const { setFollowing } = useShell();
+  const { setFollowing, needsAccount } = useShell();
   const [done, setDone] = useState("");
   const n = group.items[0];
   const others = new Set(group.items.map((x) => x.actorId)).size - 1;
   const open = () => openNotice(n);
 
   const act = async (fn, label) => {
-    try { await fn(); setDone(label); } catch { toast({ tone: "error", title: "That didn't work", body: "Try again in a moment." }); }
+    try { await fn(); setDone(label); } catch (err) {
+      const capped = limitMessage(err);
+      toast({ tone: "error", title: capped || "That didn't work", body: capped ? undefined : "Try again in a moment." });
+    }
   };
 
   let action = null;
@@ -190,7 +193,7 @@ function NoticeRow({ group, fresh, following }) {
     );
   } else if ((n.type === "follow" || n.type === "accept") && !following.has(n.actorId) && n.actorId !== me()) {
     action = (
-      <Button size="sm" onClick={() => act(async () => {
+      <Button size="sm" onClick={() => !needsAccount("follow people") && act(async () => {
         const r = await toggleFollow({ id: n.actorId, username: n.actorName }, false);
         if (r === "following") setFollowing((prev) => new Set(prev).add(n.actorId));
       }, "Following")}>Follow back</Button>

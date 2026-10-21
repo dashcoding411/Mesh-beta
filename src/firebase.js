@@ -4,7 +4,6 @@ import {
 } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { isNativeApp } from "./lib/native";
-import { allowed, onConsent } from "./lib/consent";
 
 // Where Google and Apple sign-in run. On joinmesh.social it should be the
 // site itself: Safari blocks the cross-site storage the firebaseapp.com
@@ -41,10 +40,10 @@ const app = initializeApp(firebaseConfig);
 const APP_CHECK_SITE_KEY = import.meta.env.VITE_APPCHECK_SITE_KEY || "6Lfc89ItAAAAAM_UoSuReQkPRwbkFe5m0KXcI7Rb";
 const APP_CHECK_PROVIDER = import.meta.env.VITE_APPCHECK_PROVIDER || "enterprise"; // "enterprise" | "v3"
 
-// reCAPTCHA sets Google cookies, so it starts only once someone allows the
-// security check (lib/consent.js), never by default. It only runs on approved
-// websites, so the iPhone app skips it; that will use App Attest once App
-// Check is enforced. Its code loads only then, so most visitors never download it.
+// The bot check is essential security, like signing in, so it runs for
+// everyone (the privacy policy and cookie notice say so). It only runs on
+// approved websites, so the iPhone app skips it; that will use App Attest once
+// App Check is enforced.
 //
 // It starts a few seconds after Mesh is on screen (App.jsx), not as it
 // opens: while App Check runs, every sign-in and database request waits for
@@ -59,7 +58,7 @@ let appCheckStarted = false;
 export function releaseAppCheck() {
   if (!appCheckHeld) return;
   appCheckHeld = false;
-  if (allowed("recaptcha")) startAppCheck();
+  startAppCheck();
 }
 setTimeout(releaseAppCheck, 30_000);
 async function startAppCheck() {
@@ -77,8 +76,7 @@ async function startAppCheck() {
     isTokenAutoRefreshEnabled: true,
   });
 }
-if (allowed("recaptcha")) startAppCheck();
-onConsent((choice) => { if (choice?.recaptcha) startAppCheck(); });
+
 
 // Without a popup/redirect resolver here. Given one, Firebase loads Google's
 // sign-in frame and script on every page in Safari and on every phone, and

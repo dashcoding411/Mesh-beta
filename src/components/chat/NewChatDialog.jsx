@@ -8,10 +8,12 @@ import Dialog from "../ui/Dialog";
 import { Field, Input } from "../ui/Field";
 import { EmptyState, InlineMessage } from "../ui/States";
 import { useToast } from "../ui/toast-context";
+import { useShell } from "../shell/ShellContext";
 
 // Members who don't accept messages from the creator are skipped and reported.
 export function NewChatDialog({ onClose, onCreated, group = false }) {
   const toast = useToast();
+  const { needsAccount } = useShell();
   const [term, setTerm] = useState("");
   const [results, setResults] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -39,6 +41,7 @@ export function NewChatDialog({ onClose, onCreated, group = false }) {
 
   const start = async () => {
     setError("");
+    if (needsAccount("message people")) return;
     if (selected.length < needed) return setError(group ? "Pick at least two people for a group." : "Pick someone to message.");
     setBusy(true);
     try {

@@ -12,7 +12,7 @@
 
 import { tsMillis, isHeld } from "./db";
 import { assessText, hitsHiddenWords } from "./moderation";
-import { settled } from "./fresh";
+import { recommendable, settled } from "./fresh";
 
 const textOf = (p) => `${p.title || ""}\n${p.text || ""}\n${p.poll ? p.poll.options.join("\n") : ""}`;
 const verdicts = new Map(); // post id + text length -> "ok" | "quoted" | "borderline" | "block"
@@ -149,14 +149,15 @@ const BORDERLINE_GAP = 8;
 export function latestFirst(posts, ctx) {
   const at = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
   return screenForViewer(posts, ctx)
-    .filter((p) => !borderline(p) || p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId))
+    .filter((p) => p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId) || (!borderline(p) && recommendable(p)))
     .sort((a, b) => at(b) - at(a));
 }
 
 export function rankFeed(posts, ctx) {
-  // Borderline posts are never recommended to non-followers.
+  // Borderline posts are never recommended to non-followers, nor are fresh
+  // ones nobody has engaged with yet (lib/fresh.js).
   const pool = screenForViewer(posts, ctx)
-    .filter((p) => !borderline(p) || p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId));
+    .filter((p) => p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId) || (!borderline(p) && recommendable(p)));
   const scored = pool
     .map((p) => ({ post: p, score: scorePost(p, ctx) }))
     .sort((a, b) => b.score - a.score);

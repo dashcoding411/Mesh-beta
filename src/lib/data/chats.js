@@ -9,6 +9,7 @@ import { assertSafe } from "../imageCheck";
 import { me, snapToList, tsMillis } from "./core.js";
 import { fetchProfile, myProfile } from "./users.js";
 import { pushMessage } from "../push.js";
+import { inWindow } from "./limits.js";
 
 // Every bubble colour keeps white text at WCAG AA contrast (4.5:1+).
 export const CHAT_THEMES = {
@@ -32,7 +33,7 @@ function chatDoc(chatId) {
 // Normal use never meets them; a script mass-messaging people does.
 const CHAT_GAP_MS = 10_000;
 let lastChatAt = 0;
-const stampRate = (batch, kind) => batch.set(doc(db, "rateLimits", me()), { [kind]: serverTimestamp() }, { merge: true });
+const stampRate = (batch, kind, extra = {}) => batch.set(doc(db, "rateLimits", me()), { [kind]: serverTimestamp(), ...extra }, { merge: true });
 const tooQuick = () => Object.assign(new Error("You're starting conversations very quickly. Wait a few seconds and try again."), { code: "rate-limited" });
 
 export async function openDirectChat(target) {
@@ -48,23 +49,26 @@ export async function openDirectChat(target) {
   const [mine, theirs] = await Promise.all([myProfile(), fetchProfile(target.id)]);
   if (Date.now() - lastChatAt < CHAT_GAP_MS) throw tooQuick();
   try {
-    const batch = writeBatch(db);
-    batch.set(ref, {
-      members: [uid, target.id].sort(),
-      memberNames: { [uid]: mine?.username || "?", [target.id]: theirs?.username || target.username || "?" },
-      isGroup: false,
-      name: "",
-      nicknames: {},
-      theme: "default",
-      pinnedBy: [],
-      mutedBy: [],
-      lastMessage: "",
-      lastSenderId: "",
-      createdBy: uid,
-      updatedAt: serverTimestamp(),
+    // New accounts start at most 20 conversations a day (lib/data/limits.js).
+    await inWindow("chat", mine, (window) => {
+      const batch = writeBatch(db);
+      batch.set(ref, {
+        members: [uid, target.id].sort(),
+        memberNames: { [uid]: mine?.username || "?", [target.id]: theirs?.username || target.username || "?" },
+        isGroup: false,
+        name: "",
+        nicknames: {},
+        theme: "default",
+        pinnedBy: [],
+        mutedBy: [],
+        lastMessage: "",
+        lastSenderId: "",
+        createdBy: uid,
+        updatedAt: serverTimestamp(),
+      });
+      stampRate(batch, "chat", window);
+      return batch.commit();
     });
-    stampRate(batch, "chat");
-    await batch.commit();
     lastChatAt = Date.now();
   } catch (err) {
     if (err?.code === "permission-denied") {
@@ -82,25 +86,27 @@ export async function createGroupChat(name, targets, extra = {}) {
   const mine = await myProfile();
   if (Date.now() - lastChatAt < CHAT_GAP_MS) throw tooQuick();
   const refDoc = doc(collection(db, "chats"));
-  const batch = writeBatch(db);
-  batch.set(refDoc, {
-    members: [uid],
-    admins: [uid],
-    memberNames: { [uid]: mine?.username || "?" },
-    isGroup: true,
-    name,
-    nicknames: {},
-    theme: "default",
-    pinnedBy: [],
-    mutedBy: [],
-    lastMessage: "",
-    lastSenderId: "",
-    createdBy: uid,
-    updatedAt: serverTimestamp(),
-    ...extra,
+  await inWindow("chat", mine, (window) => {
+    const batch = writeBatch(db);
+    batch.set(refDoc, {
+      members: [uid],
+      admins: [uid],
+      memberNames: { [uid]: mine?.username || "?" },
+      isGroup: true,
+      name,
+      nicknames: {},
+      theme: "default",
+      pinnedBy: [],
+      mutedBy: [],
+      lastMessage: "",
+      lastSenderId: "",
+      createdBy: uid,
+      updatedAt: serverTimestamp(),
+      ...extra,
+    });
+    stampRate(batch, "chat", window);
+    return batch.commit();
   });
-  stampRate(batch, "chat");
-  await batch.commit();
   lastChatAt = Date.now();
   const skipped = await addToGroup(refDoc.id, targets);
   return { id: refDoc.id, skipped };

@@ -142,8 +142,11 @@ not to copy them anywhere else.
 ### R8: App Check registered, not yet enforced · **LOW**
 
 The Firebase config is client-side, which is normal and not a secret. App
-Check is now registered with reCAPTCHA Enterprise and the app sends a token
-with every request (`src/firebase.js`). Until enforcement is switched on for
+Check is registered with reCAPTCHA Enterprise, runs for every website
+visitor as essential security (no longer a cookie choice), and the app sends
+a token with every request (`src/firebase.js`). Before enforcing, start it
+before the first sign-in request, and give the iPhone app App Attest, or it
+will be locked out. Until enforcement is switched on for
 Firestore and Auth (Firebase console > App Check > APIs), requests without a
 token are still accepted, so a script with the config can still reach the
 API within the limits the rules set. **Next step:** once the App Check
@@ -160,9 +163,11 @@ metrics show nearly all requests verified, enforce for Firestore, then Auth.
 - **Google ads (AdSense): opt-in.** Off unless someone 18 or over turns on
   "Google ads" in their cookie choices; then non-personalised ads fill empty
   Home slots only. Disclosed in the Privacy and Cookies policies.
-- **Google reCAPTCHA Enterprise** (Firebase App Check) sets its own cookies,
-  so it stays off until someone allows it in their cookie choices. Phone
-  sign-in runs an invisible reCAPTCHA when an SMS code is requested.
+- **Google reCAPTCHA Enterprise** (Firebase App Check) sets its own cookies.
+  It's the bot check, so it's treated as essential security and runs for
+  everyone on the website, disclosed in the Privacy and Cookies policies.
+  Phone sign-in also runs an invisible reCAPTCHA when an SMS code is
+  requested.
 - **Others, each disclosed in the Privacy Policy:** Metered (TURN relays for
   calls), Photon by komoot (place search), Cloudflare (delivery, R2 media,
   push notifications), and the browser's own push service.

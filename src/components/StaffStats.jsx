@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Lock, RefreshCw, ShieldCheck, Users } from "lucide-react";
+import { Copy, ExternalLink, Lock, RefreshCw, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { ACTIVITY_SINCE, fetchStaffStats, staffRole } from "../lib/db";
 import { navigate } from "../lib/router";
-import { activeCounts, freshBursts, retention, signupsByDay } from "../lib/stats";
+import { activeCounts, copyClusters, freshBursts, retention, signupBursts, signupsByDay } from "../lib/stats";
 import TopBar from "./shell/TopBar";
 import Button from "./ui/Button";
 import { EmptyState, ErrorState, Skeleton } from "./ui/States";
@@ -44,6 +44,10 @@ export default function StaffStats() {
   const kept = useMemo(() => (stats?.activity ? retention(stats.activity, now, ACTIVITY_SINCE) : null), [stats, now]);
   const days = useMemo(() => (stats?.signups ? signupsByDay(stats.signups, now) : null), [stats, now]);
   const bursts = useMemo(() => (stats?.fresh ? freshBursts(stats.fresh) : null), [stats]);
+  const copies = useMemo(() => (stats?.recentPosts
+    ? copyClusters([...stats.recentPosts, ...(stats.fresh || []).filter((r) => r.kind === "comment")])
+    : null), [stats]);
+  const joins = useMemo(() => (stats?.signups ? signupBursts(stats.signups) : null), [stats]);
   const week = days ? days.slice(-7).reduce((s, d) => s + d.count, 0) : null;
   const month = days ? days.reduce((s, d) => s + d.count, 0) : null;
 
@@ -95,6 +99,16 @@ export default function StaffStats() {
                 <FakeCrowds bursts={bursts} />
               </Section>
 
+              <Section title="Same words from many accounts"
+                note="Public posts, and comments from accounts under a week old, from the last day where 3 or more accounts wrote the same thing. Bots copy and paste; people quoting a song or a meme can too.">
+                <Copies copies={copies} />
+              </Section>
+
+              <Section title="Sign-up bursts"
+                note="15 or more accounts joining within 10 minutes, in the last 30 days. A sign-up farm looks like this, and so does a busy O-Week stall.">
+                <JoinBursts bursts={joins} />
+              </Section>
+
               <Section title="Everything else" note="Each opens in a new tab, signed in as you.">
                 <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
                   {ELSEWHERE.map((e) => (
@@ -113,7 +127,7 @@ export default function StaffStats() {
               </Section>
 
               <p className="text-caption text-fg-subtle">
-                Loading this page reads each account that joined in the last 30 days, every activity record and the last day's likes, comments and reposts from new accounts, so it uses some of the free database allowance. Refresh only when you need to.
+                Loading this page reads each account that joined in the last 30 days, every activity record, the last day's public posts and the last day's likes, comments and reposts from new accounts, so it uses some of the free database allowance. Refresh only when you need to.
               </p>
             </div>
           )}
@@ -158,6 +172,51 @@ function FakeCrowds({ bursts }) {
               </span>
             </span>
           </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AllClear() {
+  return (
+    <p className="flex items-center gap-2 rounded-card border border-line bg-surface p-4 text-callout text-fg-muted">
+      <ShieldCheck size={18} className="shrink-0 text-success-text" aria-hidden="true" /> Nothing found.
+    </p>
+  );
+}
+
+function Copies({ copies }) {
+  if (!copies) return <p className="text-callout text-fg-muted">Couldn't check. Refresh to try again.</p>;
+  if (!copies.length) return <AllClear />;
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+      {copies.slice(0, 20).map((c) => (
+        <li key={c.text}>
+          <button type="button" disabled={!c.postIds.length} onClick={() => navigate(`/p/${c.postIds[0]}`)}
+            className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2">
+            <Copy size={18} className="shrink-0 text-warning-text" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="line-clamp-2 block text-callout">{c.text}</span>
+              <span className="block text-caption text-fg-muted">{c.accounts} accounts, {c.count} times</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function JoinBursts({ bursts }) {
+  if (!bursts) return <p className="text-callout text-fg-muted">Couldn't check. Refresh to try again.</p>;
+  if (!bursts.length) return <AllClear />;
+  const day = (ms) => new Date(ms).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+      {bursts.slice(0, 10).map((b) => (
+        <li key={b.from} className="flex min-h-14 items-center gap-3 px-4 py-3">
+          <UserPlus size={18} className="shrink-0 text-warning-text" aria-hidden="true" />
+          <span className="text-callout"><strong>{b.count} sign-ups</strong>, {day(b.from)} {clock(b.from)} to {clock(b.to)}</span>
         </li>
       ))}
     </ul>

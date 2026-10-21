@@ -20,7 +20,7 @@ export function PostBody({ post, highlight, onDoubleTap, burst, onSlide, engaged
       <div className="px-4 pt-3">
         {post.text && (
           <div className="rounded-card bg-surface-2 px-4 py-4">
-            <RichText text={post.text} highlight={highlight}
+            <RichText text={post.text} highlight={highlight} plainLinks={!!post.fresh}
               className={`text-fg ${short && !post.poll ? "text-title-2 font-normal leading-snug" : "text-body"}`} />
           </div>
         )}
