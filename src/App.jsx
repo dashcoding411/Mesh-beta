@@ -664,7 +664,7 @@ export default function App() {
 function LockedOverlay({ section, lock, brick }) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Locked"
-      className="fixed inset-0 z-overlay flex flex-col bg-canvas anim-fade md:left-[76px] xl:left-64">
+      className="fixed inset-0 z-overlay flex flex-col bg-canvas anim-fade md:right-[76px] xl:right-64">
       <div className="flex h-14 items-center px-2 pt-safe">
         <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack("/messages")} />
       </div>

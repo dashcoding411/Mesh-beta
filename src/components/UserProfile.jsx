@@ -30,7 +30,7 @@ import { primeCard } from "../lib/profileCache";
 import { useFocusTrap } from "../lib/useFocusTrap";
 
 // scroll-pt keeps keyboard focus clear of the sticky header.
-const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto scroll-pt-16 bg-canvas anim-fade md:left-[76px] xl:left-64";
+const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto scroll-pt-16 bg-canvas anim-fade md:right-[76px] xl:right-64";
 
 /** A profile overlay from /@handle (or an older /u/<uid> link). */
 export default function UserProfile({ uid: givenUid, handle }) {

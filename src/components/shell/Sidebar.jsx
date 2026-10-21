@@ -5,7 +5,7 @@ import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 import Avatar from "../ui/Avatar";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
-// Desktop nav: icon rail at md, labelled column at xl.
+// Desktop nav, on the right: icon rail at md, labelled column at xl.
 export default function Sidebar({ page, profile, work = false, unread, notifications, onCreate }) {
   const guest = !profile;
   const current = activeNavId(page);
@@ -13,7 +13,7 @@ export default function Sidebar({ page, profile, work = false, unread, notificat
   const go = (path) => (window.location.pathname === path ? scrollOrRefresh() : navigate(path));
 
   return (
-    <aside aria-label="Main" className="hidden md:flex w-[76px] xl:w-64 shrink-0 flex-col border-r border-line bg-canvas px-3 py-5">
+    <aside aria-label="Main" className="hidden md:order-last md:flex w-[76px] xl:w-64 shrink-0 flex-col border-l border-line bg-canvas px-3 py-5">
       <button type="button" onClick={() => navigate("/")} aria-label="Mesh home"
         className="press flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-control px-2.5 xl:justify-start xl:px-3">
         <LogoMark />
@@ -98,7 +98,7 @@ function MoreMenu({ page, guest, work }) {
   return (
     <div ref={wrap} className="relative shrink-0">
       {open && (
-        <div role="menu" aria-label="More" className="absolute bottom-full left-0 z-sheet mb-2 w-60 rounded-card border border-line bg-surface p-1.5 shadow-overlay anim-rise">
+        <div role="menu" aria-label="More" className="absolute bottom-full right-0 z-sheet mb-2 w-60 rounded-card border border-line bg-surface p-1.5 shadow-overlay anim-rise">
           {entries.map(({ label, icon: Icon, run }) => (
             <button key={label} type="button" role="menuitem" tabIndex={-1}
               onClick={() => { setOpen(false); run(); }}

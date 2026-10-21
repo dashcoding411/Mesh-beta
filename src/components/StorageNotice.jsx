@@ -22,7 +22,7 @@ export default function StorageNotice({ onReadMore }) {
     <>
       {consent === null && !choosing && (
         <aside aria-label="Cookies on Mesh" data-cookie-banner
-          className="fixed inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-overlay rounded-card border border-line-strong bg-surface-2 p-4 shadow-overlay anim-rise md:bottom-4 md:left-auto md:right-4 md:w-[400px]">
+          className="fixed inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-overlay rounded-card border border-line-strong bg-surface-2 p-4 shadow-overlay anim-rise md:bottom-4 md:left-auto md:right-[92px] md:w-[400px] xl:right-[272px]">
           <div className="flex gap-3">
             <Cookie size={20} className="mt-0.5 shrink-0 text-accent-text" aria-hidden="true" />
             <div className="min-w-0 flex-1">

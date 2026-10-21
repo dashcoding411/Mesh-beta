@@ -153,7 +153,7 @@ export function NewsStory({ id }) {
                 <Button icon={Share2} onClick={share}>Share</Button>
                 <Button icon={Link2} onClick={copy}>Copy link</Button>
                 {story.status === "approved" && (
-                  <Button icon={Flag} onClick={() => { if (!needsAccount("suggest corrections")) setDialog("suggest"); }}>Suggest a correction</Button>
+                  <Button icon={Flag} onClick={() => { if (!needsAccount("flag mistakes")) setDialog("suggest"); }}>Flag a mistake</Button>
                 )}
                 {story.status !== "approved" && (story.authors || [story.authorId]).includes(me()) && (
                   <Button icon={PenLine} onClick={() => navigate(`/news/write/${story.id}`)}>Open in the newsroom</Button>
@@ -240,7 +240,7 @@ function SuggestCorrectionDialog({ story, onClose }) {
     setBusy(true);
     try {
       await suggestCorrection(story.id, v.text);
-      toast({ title: "Correction request sent", body: "The journalist will review it. Accepted corrections are published on the story." });
+      toast({ title: "Sent to the journalist" });
       onClose();
     } catch {
       setError("Couldn't send that. Check your connection and try again.");
@@ -248,13 +248,13 @@ function SuggestCorrectionDialog({ story, onClose }) {
     }
   };
   return (
-    <Dialog title="Suggest a correction" onClose={onClose}
+    <Dialog title="Flag a mistake" onClose={onClose}
       footer={<div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" form="suggest-form" variant="primary" loading={busy}>Send request</Button>
+        <Button type="submit" form="suggest-form" variant="primary" loading={busy}>Send</Button>
       </div>}>
       <form id="suggest-form" onSubmit={submit} className="space-y-3" noValidate>
-        <p className="text-callout text-fg-muted">Describe the error and how you know. A link to a reliable source is the most helpful. Only the story's journalists and Mesh administrators can see your request.</p>
+        <p className="text-callout text-fg-muted">Only the journalist sees this. They decide whether to correct the story.</p>
         <Field label="Your note" error={error} count={text.length} max={1000}>
           <Textarea autoGrow rows={4} value={text} maxLength={1000} onChange={(e) => { setText(e.target.value); setError(""); }}
             placeholder="e.g. The second paragraph says 40%, but source 2 says 14%." />

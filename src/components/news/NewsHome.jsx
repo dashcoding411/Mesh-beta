@@ -226,11 +226,9 @@ function HowItWorks({ writer }) {
         <ChevronDown size={18} className="shrink-0 text-fg-subtle transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="space-y-2 border-t border-line px-4 py-4 text-callout text-fg-muted">
-        <p>Stories here are written and published by journalists whose identity Mesh has checked, whether they work for an outlet or independently. Each story carries the journalist's name, outlet, region and any declared political affiliation.</p>
-        <p>Each journalist is the publisher of their own stories and answers for them. Mesh hosts them: it doesn't commission, write, edit or approve them, and it lists them newest first rather than choosing which matter most.</p>
-        <p>Every story must cite at least two sources by number in the text, and the journalist confirms its accuracy when publishing. AI may not be used to fabricate evidence, such as generated images, footage, audio or quotations presented as genuine.</p>
-        <p>Readers can request a correction on any story. Corrections are published on the story itself and are never removed. If you think a story is defamatory or unlawful, report it and Mesh will look at it within 7 days.</p>
-        <p className="text-fg">Read the sources and form your own view.</p>
+        <p>Written and published by verified journalists. Mesh hosts the stories; it doesn't write, edit or pick them.</p>
+        <p>Every story lists its sources. Corrections come from the journalist, and stay on the story.</p>
+        <p>Something unlawful or defamatory? Report the story.</p>
         {writer && <Button size="sm" variant="primary" icon={PenLine} className="mt-2 md:hidden" onClick={() => navigate("/news/desk")}>Open the newsroom</Button>}
       </div>
     </details>

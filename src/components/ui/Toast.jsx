@@ -24,7 +24,7 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom))] z-toast flex flex-col items-center gap-2 px-4 md:bottom-6 md:items-end md:px-6">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom))] z-toast flex flex-col items-center gap-2 px-4 md:bottom-6 md:right-[76px] md:items-end md:px-6 xl:right-64">
           {toasts.map((t) => <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />)}
         </div>,
         document.body

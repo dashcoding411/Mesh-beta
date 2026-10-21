@@ -139,7 +139,7 @@ export function CallScreen({ session, onClose }) {
   if (minimized) {
     return createPortal(
       <div ref={rootRef} role="region" aria-label={`Call with @${session.peer.username}`} data-theme="dark"
-        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-toast w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-card bg-zinc-900 text-white shadow-overlay anim-rise md:bottom-6 md:right-6">
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-toast w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-card bg-zinc-900 text-white shadow-overlay anim-rise md:bottom-6 md:right-[100px] xl:right-[280px]">
         {audio}
         {showRemoteVideo && (
           <button type="button" onClick={() => setMinimized(false)} aria-label="Expand call" className="relative block aspect-video w-full bg-black">

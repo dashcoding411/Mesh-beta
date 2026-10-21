@@ -291,7 +291,7 @@ export const GUIDES = [
       "Open **News** from the menu.",
       "Every story starts with **the 60-second version**: three points the journalist writes, so you get the gist fast.",
       "**Today's brief** picks five recent stories. Tap **Quick read** to go through just their 60-second versions.",
-      "Spot a mistake? Tap **Suggest a correction** on the story.",
+      "Spot a mistake? Tap **Flag a mistake** on the story. Only the journalist sees it, and they decide what to correct.",
     ],
     tips: [
       "Corrections stay on the story, with the date.",

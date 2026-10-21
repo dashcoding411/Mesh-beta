@@ -211,12 +211,12 @@ export default function Tour({ ready, uid, guest, profile, prefsDone, onSeen }) 
   const cardW = Math.min(340, vw - 32);
   const pad = 6;
 
-  // Beside a narrow target at the left edge (the desktop sidebar), else
+  // Beside a narrow target at the right edge (the desktop sidebar), else
   // below it, or above when it sits low on the screen.
   let place;
   if (!rect) place = { left: (vw - cardW) / 2, top: vh / 2, transform: "translateY(-50%)" };
-  else if (rect.left + rect.width < vw * 0.3 && rect.height < vh * 0.5 && vw >= 768) {
-    place = { left: rect.left + rect.width + pad + 14, top: Math.min(Math.max(16, rect.top + rect.height / 2 - 90), vh - 240) };
+  else if (rect.left > vw * 0.7 && rect.height < vh * 0.5 && vw >= 768) {
+    place = { left: rect.left - cardW - pad - 14, top: Math.min(Math.max(16, rect.top + rect.height / 2 - 90), vh - 240) };
   } else {
     const left = Math.min(Math.max(16, rect.left + rect.width / 2 - cardW / 2), vw - cardW - 16);
     place = rect.top + rect.height / 2 < vh * 0.55
