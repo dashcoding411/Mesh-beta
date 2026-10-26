@@ -29,7 +29,7 @@
 
 | Path | Notes |
 | --- | --- |
-| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity`, `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once), `private/desk` (newsroom folders). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
+| `users/{uid}` | Public profile. Subcollections: `following`, `followers`, `followRequests`, `notifications`, `rsvps`, and owner-only `affinity` (one document, `all`), `saved`, `hidden`, `blocked`, `private/prefs` (interests, hidden words, mutes), `private/age` (birth year, set once), `private/desk` (newsroom folders). Profiles that still carry `birthYear` move it to `private/age` at sign-in and stay hidden from visitors until then. |
 | `usernames/{handle}` | Handle registry; claimed and released only together with the profile. |
 | `posts/{id}` | `kind`: `post` (Still), `text` (Strand), `short` / `video` (Flicks). Carousels store `media[]` (2–10 slides; `media[0]` mirrors `mediaUrl`). Subcollections: `likes`, `saves`, `sends`, `votes`, `comments` (each with `likes`). |
 | `reposts/{postId}_{uid}` | One per user per post; public posts by others only. |
@@ -256,6 +256,35 @@ kind keeps a window on rateLimits/{uid} (`followWin`/`followN`,
 has passed (`windowOk`); older accounts keep the window but have no cap. New
 accounts also can't send links in a 1:1 chat to someone who doesn't follow
 them.
+
+## Reads and writes
+
+Firestore bills (and the free plan limits) every document read and written,
+so the busy paths are kept small:
+
+- **Home** reads the latest 60 public posts (`FEED_SIZE`; the feed ends with
+  "You're all caught up"), public circles' posts, followers-only posts and
+  reposts for 30 followed accounts per query, and news only if you follow a
+  journalist. Following reads the people you follow directly instead of the
+  global list. Followers-only posts try an `authorId in` query first and fall
+  back to a query per author if the rules refuse it.
+- **Shared lists**: the latest posts, Flicks by kind and listed circles are
+  shared between pages for one to five minutes (`sharedList` in
+  `data/posts.js`, `fetchGroups`); pull to refresh skips the shared copy. The
+  hidden-post list is read once a visit, Search's pool lasts ten minutes and
+  suggested people a day.
+- **Affinity** is one document per account (`users/{uid}/affinity/all`,
+  `data/affinity.js`): bumps are added up on the device and written at most
+  once a minute and when Mesh is hidden. Older per-author documents are moved
+  into it the first time it's read.
+- **Like states** for a page of posts are one collection-group query on your
+  own like records (30 at a time), with a read per post as the fallback.
+- **Start-up** reuses this device's list of who you follow while it matches
+  `followingCount` (refreshed at least daily); inbox read markers are read
+  once per chat, not again each time a message reorders the inbox; the
+  notifications listener holds the latest 40.
+- **Brick usage** is saved about every two minutes rather than every 30
+  seconds, and Brick group entries only when they've changed.
 
 ## Bots
 
@@ -671,7 +700,9 @@ messaging, calls, News, notifications and settings are never locked. Brick
 mode limits Feed and Flicks; an old News cap is carried through saves
 (`CAP_SECTIONS`) but nothing enforces it.
 
-Caps are metered by the client (+30s per 30s visible, at most once per 25s).
+Caps are metered by the client and saved about every two minutes, at once on
+reaching a cap and when Mesh is hidden; the rules accept up to the seconds
+since the last save (at most five minutes, at most once per 25s).
 A feed query can mix formats, so per-format caps can't be enforced on list
 queries; the client closes those sections. Scheduled windows and instant
 bricks are enforced on every read.

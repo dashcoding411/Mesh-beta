@@ -98,7 +98,7 @@ const decay = (t, halfLifeDays) => Math.pow(0.5, ageDays(t) / halfLifeDays);
 
 let pool = null;
 let poolAt = 0;
-const POOL_TTL = 2 * 60_000;
+const POOL_TTL = 10 * 60_000;
 
 // People search needs an account, so profiles can't be listed anonymously.
 // The pool is the most followed accounts; anyone else is found by their

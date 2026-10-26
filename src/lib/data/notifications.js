@@ -62,7 +62,7 @@ export async function unnotify(recipientId, type, opts = {}) {
   await deleteDoc(doc(db, "users", recipientId, "notifications", noticeId(type, { actor, ...opts }))).catch(() => {});
 }
 
-export function listenNotifications(onChange, max = 60) {
+export function listenNotifications(onChange, max = 40) {
   const q = query(collection(db, "users", me(), "notifications"), orderBy("createdAt", "desc"), limit(max));
   return onSnapshot(q, (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), () => onChange([]));
 }

@@ -9,7 +9,7 @@ import { deleteCloudMedia } from "./uploads.js";
 import { myProfile } from "./users.js";
 
 export async function fetchNews(status = "approved") {
-  const q = query(collection(db, "news"), where("status", "==", status), orderBy("createdAt", "desc"), limit(100));
+  const q = query(collection(db, "news"), where("status", "==", status), orderBy("createdAt", "desc"), limit(60));
   return snapToList(await getDocs(q));
 }
 

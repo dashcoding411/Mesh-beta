@@ -1,6 +1,6 @@
 // Posts and interactions on them: likes, saves, sends, reposts, hides, comments.
 import {
-  collection, deleteDoc, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
+  collection, collectionGroup, deleteDoc, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp,
   setDoc, Timestamp, updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { auth, db, loadStorage } from "../../firebase";
@@ -14,6 +14,7 @@ import { removeFromAllAlbums } from "./albums.js";
 import { mentionedHandles, notify, unnotify } from "./notifications.js";
 import { isFreshAccount } from "../fresh.js";
 import { isVerifiedUser } from "../verified.js";
+import { bumpAffinity, fetchAffinity, flushAffinity } from "./affinity.js";
 
 // post: photo (Still), text: up to 500 chars (Strand), short: video up to
 // three minutes (Flick), video: longer Flick, shown in feeds as a
@@ -119,32 +120,58 @@ export async function createPost({
 
 const byNewest = (a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt);
 
-export async function fetchFeed() {
-  const q = query(
+// Lists that several pages read (Home and Search, Flicks home and the
+// player) are shared for a minute, so moving between them doesn't read the
+// same posts twice. `fresh` skips the shared copy (pull to refresh).
+const SHARED_MS = 60_000;
+const shared = new Map(); // key -> { at, promise }
+function sharedList(key, read, fresh) {
+  const hit = shared.get(key);
+  if (fresh || !hit || Date.now() - hit.at > SHARED_MS) {
+    const promise = read();
+    shared.set(key, { at: Date.now(), promise });
+    promise.catch(() => { if (shared.get(key)?.promise === promise) shared.delete(key); });
+    return promise.then((list) => [...list]);
+  }
+  return hit.promise.then((list) => [...list]);
+}
+
+// Home ends with "You're all caught up", so it reads the latest 60, not more.
+export const FEED_SIZE = 60;
+
+export function fetchFeed({ fresh = false } = {}) {
+  return sharedList("feed", async () => snapToList(await getDocs(query(
     collection(db, "posts"),
     where("visibility", "==", "public"),
     where("groupId", "==", ""),
     orderBy("createdAt", "desc"),
-    limit(150)
-  );
-  return snapToList(await getDocs(q));
+    limit(FEED_SIZE),
+  ))), fresh);
 }
 
-export async function fetchPostsByKind(kind) {
-  const q = query(
+export function fetchPostsByKind(kind, { fresh = false } = {}) {
+  return sharedList(`kind:${kind}`, async () => snapToList(await getDocs(query(
     collection(db, "posts"),
     where("visibility", "==", "public"),
     where("kind", "==", kind),
     orderBy("createdAt", "desc"),
-    limit(150)
-  );
-  return snapToList(await getDocs(q)).filter((p) => !p.groupId);
+    limit(FEED_SIZE),
+  ))).filter((p) => !p.groupId), fresh);
 }
 
 export async function fetchTopicPosts(topic) {
   const q = query(collection(db, "posts"), where("visibility", "==", "public"), where("topics", "array-contains", topic),
-    orderBy("createdAt", "desc"), limit(100));
+    orderBy("createdAt", "desc"), limit(FEED_SIZE));
   return snapToList(await getDocs(q)).filter((p) => !p.groupId);
+}
+
+/** Public posts by accounts the viewer follows (the first 150), newest first, for the Following tab. */
+export async function fetchFollowingPosts(uids, perChunk = 30) {
+  const lists = await Promise.all(chunks([...uids].slice(0, 150)).map((ids) => getDocs(query(
+    collection(db, "posts"), where("visibility", "==", "public"), where("authorId", "in", ids),
+    orderBy("createdAt", "desc"), limit(perChunk),
+  )).then(snapToList)));
+  return lists.flat().sort(byNewest);
 }
 
 // Votes are final and private to the voter. The rules require the vote and
@@ -184,9 +211,26 @@ export async function fetchPostsByAuthor(uid, { follower = false } = {}) {
 }
 
 // Followers-only posts by accounts the viewer follows. The rules check each
-// author's follower list, so it's a query per author.
-export async function fetchFollowersPosts(uids, { perAuthor = 10, maxAuthors = 100 } = {}) {
-  const lists = await Promise.all([...uids].slice(0, maxAuthors).map((uid) => getDocs(query(
+// author's follower list. A query for 30 authors at a time is tried first; if
+// the rules turn it down (say, one of them no longer has you as a follower),
+// it falls back to a query per author for the rest of the visit.
+let followersInOk = true;
+export async function fetchFollowersPosts(uids, { perAuthor = 5, maxAuthors = 150 } = {}) {
+  const list = [...uids].slice(0, maxAuthors);
+  if (!list.length) return [];
+  if (followersInOk && list.length > 1) {
+    try {
+      const lists = await Promise.all(chunks(list).map((ids) => getDocs(query(
+        collection(db, "posts"), where("visibility", "==", "followers"), where("authorId", "in", ids),
+        orderBy("createdAt", "desc"), limit(30),
+      )).then(snapToList)));
+      return lists.flat();
+    } catch (err) {
+      if (err?.code !== "permission-denied") throw err;
+      followersInOk = false;
+    }
+  }
+  const lists = await Promise.all(list.map((uid) => getDocs(query(
     collection(db, "posts"), where("visibility", "==", "followers"), where("authorId", "==", uid),
     orderBy("createdAt", "desc"), limit(perAuthor),
   )).then(snapToList).catch(() => [])));
@@ -259,15 +303,29 @@ export async function deletePost(post) {
 
 // Likes and affinity
 
+// One query for a page of posts (30 at a time) rather than a read per post.
+// If the rules turn it down, a read per post for the rest of the visit.
+let likesInOk = true;
 export async function fetchMyLikes(postIds) {
   const uid = me();
   const liked = new Set();
-  await Promise.all(
-    postIds.map(async (id) => {
-      const snap = await getDoc(doc(db, "posts", id, "likes", uid));
-      if (snap.exists()) liked.add(id);
-    })
-  );
+  if (!uid || !postIds.length) return liked;
+  if (likesInOk) {
+    try {
+      const snaps = await Promise.all(chunks(postIds).map((ids) => getDocs(query(
+        collectionGroup(db, "likes"), where(documentId(), "in", ids.map((id) => `posts/${id}/likes/${uid}`)),
+      ))));
+      snaps.forEach((snap) => snap.docs.forEach((d) => liked.add(d.ref.parent.parent.id)));
+      return liked;
+    } catch (err) {
+      if (err?.code !== "permission-denied" && err?.code !== "failed-precondition") throw err;
+      likesInOk = false;
+    }
+  }
+  await Promise.all(postIds.map(async (id) => {
+    const snap = await getDoc(doc(db, "posts", id, "likes", uid));
+    if (snap.exists()) liked.add(id);
+  }));
   return liked;
 }
 
@@ -293,14 +351,7 @@ export async function recordSignal(post, kind) {
   await bumpAffinity(post.authorId, weight).catch(() => {});
 }
 
-export async function bumpAffinity(authorId, amount) {
-  if (!me() || !authorId || authorId === me()) return;
-  await setDoc(
-    doc(db, "users", me(), "affinity", authorId),
-    { score: increment(amount), updatedAt: serverTimestamp() },
-    { merge: true }
-  );
-}
+export { bumpAffinity, fetchAffinity, flushAffinity };
 
 // Fresh records (lib/fresh.js): a low-trust account stamps what it adds, and
 // the count's fresh twin moves with the count.
@@ -353,32 +404,6 @@ export async function fetchLikers(postId, n = 2) {
     .filter((l) => l.username)
     .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt))
     .slice(0, n);
-}
-
-// A private score per account you interact with, for ordering your feed.
-// One you haven't interacted with for 90 days is forgotten.
-const AFFINITY_DAYS = 90;
-let affinityTidied = false;
-
-async function forgetOldAffinity(col) {
-  const cutoff = Timestamp.fromMillis(Date.now() - AFFINITY_DAYS * 86400000);
-  const old = await getDocs(query(col, where("updatedAt", "<", cutoff), limit(400)));
-  if (!old.size) return;
-  const batch = writeBatch(db);
-  old.docs.forEach((d) => batch.delete(d.ref));
-  await batch.commit();
-}
-
-export async function fetchAffinity() {
-  if (!me()) return new Map();
-  const col = collection(db, "users", me(), "affinity");
-  if (!affinityTidied) {
-    affinityTidied = true;
-    forgetOldAffinity(col).catch(() => {});
-  }
-  const map = new Map();
-  (await getDocs(query(col, orderBy("updatedAt", "desc"), limit(200)))).docs.forEach((d) => map.set(d.id, d.data().score || 0));
-  return map;
 }
 
 // Saves and sends
@@ -533,16 +558,14 @@ export async function toggleRepost(post, currentlyReposted) {
   }
 }
 
-export async function fetchRepostsBy(uids, max = 60) {
-  const list = [...uids];
-  const out = [];
-  for (let i = 0; i < list.length && i < 90; i += 30) {
-    const snap = await getDocs(
-      query(collection(db, "reposts"), where("uid", "in", list.slice(i, i + 30)), limit(max))
-    ).catch(() => null);
-    snap?.docs.forEach((d) => out.push({ id: d.id, ...d.data() }));
-  }
-  return out.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+/** The latest reposts by up to 90 accounts the viewer follows. */
+export async function fetchRepostsBy(uids, max = 30) {
+  const latest = (ids) => getDocs(query(collection(db, "reposts"), where("uid", "in", ids), orderBy("createdAt", "desc"), limit(max)))
+    // Until the index is built, any of them.
+    .catch((err) => (err?.code === "failed-precondition" ? getDocs(query(collection(db, "reposts"), where("uid", "in", ids), limit(max))) : null))
+    .catch(() => null);
+  const snaps = await Promise.all(chunks([...uids].slice(0, 90)).map(latest));
+  return snaps.flatMap((snap) => snapToList(snap || { docs: [] })).sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
 }
 
 /**
@@ -584,21 +607,29 @@ export function openWatch(postId) {
 
 // Hides
 
+// Only this account changes its hidden list, so it's read once a visit.
+let hiddenIds = null; // { uid, promise }
+
 export async function hidePost(post, reason = "not_interested") {
   await setDoc(doc(db, "users", me(), "hidden", post.id), {
     authorId: post.authorId,
     reason,
     createdAt: serverTimestamp(),
   });
+  if (hiddenIds?.uid === me()) hiddenIds.promise = hiddenIds.promise.then((set) => new Set(set).add(post.id));
   bumpAffinity(post.authorId, SIGNAL.hide).catch(() => {});
 }
 
 export async function fetchHiddenPostIds() {
-  if (!me()) return new Set();
-  const q = query(collection(db, "users", me(), "hidden"), limit(500));
-  const set = new Set();
-  (await getDocs(q)).docs.forEach((d) => set.add(d.id));
-  return set;
+  const uid = me();
+  if (!uid) return new Set();
+  if (hiddenIds?.uid !== uid) {
+    const promise = getDocs(query(collection(db, "users", uid, "hidden"), limit(500)))
+      .then((snap) => new Set(snap.docs.map((d) => d.id)));
+    hiddenIds = { uid, promise };
+    promise.catch(() => { if (hiddenIds?.promise === promise) hiddenIds = null; });
+  }
+  return new Set(await hiddenIds.promise);
 }
 
 // Comments

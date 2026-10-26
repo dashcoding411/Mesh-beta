@@ -1,7 +1,7 @@
 import { Fragment, useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Sparkles, Users, Search as SearchIcon, CheckCheck, Camera as CameraIcon } from "lucide-react";
 import {
-  fetchFeed, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchLiveAds, adRunning, adFits, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
+  fetchFeed, fetchFollowingPosts, fetchFollowersPosts, fetchFollowedNews, fetchHiddenPostIds, fetchCirclePosts, publicCircles, fetchLiveAds, adRunning, adFits, fetchRepostsBy, fetchPost, fetchTopicPosts, me, tsMillis,
 } from "../lib/db";
 import { interestById } from "../lib/interests";
 import { latestFirst } from "../lib/algorithm";
@@ -111,15 +111,19 @@ export default function HomeFeed({ mode }) {
     setError(false);
     if (quiet && !behind) setRefreshing(true);
     try {
+      // Following reads the people you follow directly; For you reads the
+      // latest public posts and public circles.
+      const followingOnly = mode === "following";
       const circlesP = publicCircles();
       const [list, followersOnly, hidden, reposts, news, circles, circlePosts] = await Promise.all([
-        topic !== "all" && mode === "foryou" ? fetchTopicPosts(topic) : fetchFeed(),
+        followingOnly ? (following.size ? fetchFollowingPosts(following) : [])
+          : topic !== "all" ? fetchTopicPosts(topic) : fetchFeed({ fresh: quiet }),
         following.size ? fetchFollowersPosts(following) : [],
         fetchHiddenPostIds().catch(() => new Set()),
         following.size ? fetchRepostsBy(following).catch(() => []) : [],
         following.size && topic === "all" ? fetchFollowedNews(following).catch(() => []) : [],
         circlesP,
-        circlesP.then((cs) => (cs.length ? fetchCirclePosts(cs.map((c) => c.id)) : [])),
+        followingOnly ? [] : circlesP.then((cs) => (cs.length ? fetchCirclePosts(cs.map((c) => c.id)) : [])),
       ]);
       const circleName = new Map(circles.map((c) => [c.id, c.name]));
       const pool = [...list, ...followersOnly, ...circlePosts].filter((p) => topic === "all" || p.topics?.includes(topic));

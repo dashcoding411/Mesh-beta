@@ -85,8 +85,13 @@ export function useBrickEngine(signedIn) {
   }), [policy, raw, usage, now, lock.loaded]);
 }
 
-// Adds 30s of usage every 30s while a capped section is visible. Uncapped
-// sections aren't metered.
+// Counts time while a capped section is visible and saves it about every two
+// minutes, at once when it reaches the cap (so the lock is on time), and when
+// Mesh is hidden. Uncapped sections aren't metered. The rules accept up to
+// the seconds since the last save, and at most one save every 25 seconds.
+const SAVE_EVERY = 120;
+const MIN_GAP_MS = 26_000;
+
 export function useUsageMeter(brick, section) {
   const ref = useRef(brick);
   useEffect(() => { ref.current = brick; }, [brick]);
@@ -96,16 +101,35 @@ export function useUsageMeter(brick, section) {
     if (!capped) return undefined;
     let last = Date.now();
     let seconds = 0;
+    let savedAt = 0;
+    let saving = false;
+    const save = (force) => {
+      const b = ref.current;
+      const whole = Math.floor(seconds);
+      if (saving || !b.policy || whole < 1 || Date.now() - savedAt < MIN_GAP_MS) return;
+      const used = b.usage?.[section] || 0;
+      const atCap = used + whole >= b.cap(section) * 60;
+      if (!force && !atCap && whole < SAVE_EVERY) return;
+      saving = true;
+      seconds -= whole;
+      pingUsage(b.policy, section, whole)
+        .then(() => { savedAt = Date.now(); })
+        .catch(() => { seconds += whole; })
+        .finally(() => { saving = false; });
+    };
     const t = setInterval(() => {
       const b = ref.current;
       const n = Date.now();
       if (document.visibilityState === "visible" && !b.state(section)) seconds += (n - last) / 1000;
       last = n;
-      if (seconds >= 30 && b.policy) {
-        seconds -= 30;
-        pingUsage(b.policy, section).catch(() => {});
-      }
+      save(false);
     }, 5000);
-    return () => clearInterval(t);
+    const onHide = () => { if (document.visibilityState === "hidden") save(true); };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onHide);
+      save(true);
+    };
   }, [capped, section]);
 }

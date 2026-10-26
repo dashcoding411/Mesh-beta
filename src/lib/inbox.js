@@ -15,21 +15,28 @@ export function useInbox(following, enabled = true) {
     return listenChats((list) => setChats(list && list.filter((c) => !isDeclined(c))));
   }, [enabled]);
 
-  // Read markers are per-chat subcollections: fetched on chat-set change, not streamed.
-  const ids = (chats || []).map((c) => c.id).join(",");
+  // Read markers are per-chat subcollections, read once per chat (this
+  // device updates its own as you read), not streamed. Sorted, so a new
+  // message reordering the inbox doesn't read them all again.
+  const ids = (chats || []).map((c) => c.id).sort().join(",");
+  const readFor = useRef({ uid: null, ids: new Set() });
   useEffect(() => {
-    if (!ids) return;
+    if (readFor.current.uid !== me()) readFor.current = { uid: me(), ids: new Set() };
+    const done = readFor.current.ids;
+    const fresh = ids ? ids.split(",").filter((id) => !done.has(id)) : [];
+    if (!fresh.length) return;
+    fresh.forEach((id) => done.add(id));
     let cancelled = false;
-    fetchMyReadTimes(ids.split(","))
+    fetchMyReadTimes(fresh)
       .then((fetched) => {
-        if (cancelled) return;
+        if (cancelled) { fresh.forEach((id) => done.delete(id)); return; }
         for (const [id, m] of fetched) {
           delivered.current.set(id, Math.max(delivered.current.get(id) ?? 0, m.at, m.deliveredAt));
         }
         // Local markers set since the fetch started win.
         setReads((prev) => {
-          const next = new Map([...fetched].map(([id, m]) => [id, m.at]));
-          for (const [id, at] of prev) if (at > (next.get(id) ?? 0)) next.set(id, at);
+          const next = new Map(prev);
+          for (const [id, m] of fetched) if (m.at > (next.get(id) ?? 0)) next.set(id, m.at);
           return next;
         });
       })

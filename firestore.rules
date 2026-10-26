@@ -1324,14 +1324,22 @@ service cloud.firestore {
       function todayId() {
         return request.auth.uid + '_' + dayKeyOf(get(/databases/$(database)/documents/locks/$(request.auth.uid)).data);
       }
+      // The client saves usage every two minutes or so (lib/useBrick.js), so a
+      // write may add up to the seconds since the last one, plus a little, and
+      // never more than five minutes (a day's first write too). Adding more only
+      // locks the account sooner; the floor (never less than before) matters.
+      function stepMax() {
+        return resource == null ? 300
+          : math.min(300, (request.time.toMillis() - resource.data.at.toMillis()) / 1000 + 5);
+      }
       function stepOk(k) {
         return incomingData().get(k, 0) is int
           && incomingData().get(k, 0) >= (resource == null ? 0 : resource.data.get(k, 0))
-          && incomingData().get(k, 0) <= (resource == null ? 0 : resource.data.get(k, 0)) + 30;
+          && incomingData().get(k, 0) <= (resource == null ? 0 : resource.data.get(k, 0)) + stepMax();
       }
       function totalStepOk() {
         return incomingData().get('feed', 0) + incomingData().get('flicks', 0) + incomingData().get('news', 0)
-          <= (resource == null ? 0 : resource.data.get('feed', 0) + resource.data.get('flicks', 0) + resource.data.get('news', 0)) + 30;
+          <= (resource == null ? 0 : resource.data.get('feed', 0) + resource.data.get('flicks', 0) + resource.data.get('news', 0)) + stepMax();
       }
       allow get: if signedIn() && (usageOwner() == request.auth.uid || isParentOf(usageOwner()));
       allow list: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
@@ -1961,7 +1969,10 @@ service cloud.firestore {
       allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
     match /{path=**}/likes/{likeId} {
-      allow list: if isStaff() && resource.data.get('fresh', false) == true;
+      // Staff look for fake crowds; anyone can look up their own likes (one
+      // query for a page of posts, lib/data/posts.js fetchMyLikes).
+      allow list: if (isStaff() && resource.data.get('fresh', false) == true)
+        || (signedIn() && likeId == request.auth.uid);
     }
     match /{path=**}/comments/{commentId} {
       allow list: if isStaff() && resource.data.get('fresh', false) == true;

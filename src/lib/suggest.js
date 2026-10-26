@@ -10,7 +10,8 @@
 import { fetchFollowList, fetchAffinity, fetchPopularProfiles, fetchProfiles, me, tsMillis } from "./db";
 import { fetchContactMatches } from "./contacts";
 
-const KEEP_MS = 6 * 3600_000;
+// Working these out reads a few hundred documents, so they last a day.
+const KEEP_MS = 24 * 3600_000;
 const keyFor = (uid) => `mesh:suggest:${uid}`;
 
 const REASONS = {
@@ -55,10 +56,10 @@ async function rankAccounts(uid, following, max) {
 
   // Friends of friends
   const mutualCounts = new Map();
-  const firstHop = [...following].slice(0, 12);
+  const firstHop = [...following].slice(0, 8);
   await Promise.all(
     firstHop.map(async (personIFollow) => {
-      const theirFollows = await fetchFollowList(personIFollow, "following", 40).catch(() => []);
+      const theirFollows = await fetchFollowList(personIFollow, "following", 25).catch(() => []);
       for (const f of theirFollows) {
         mutualCounts.set(f.id, (mutualCounts.get(f.id) || 0) + 1);
       }
@@ -73,15 +74,15 @@ async function rankAccounts(uid, following, max) {
   const affinity = await fetchAffinity().catch(() => new Map());
   const myTaste = [...affinity.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, 3)
     .map(([authorId]) => authorId);
 
   await Promise.all(
     myTaste.map(async (author) => {
-      const theirFollowers = await fetchFollowList(author, "followers", 25).catch(() => []);
+      const theirFollowers = await fetchFollowList(author, "followers", 4).catch(() => []);
       await Promise.all(
-        theirFollowers.slice(0, 4).map(async (peer) => {
-          const peerFollows = await fetchFollowList(peer.id, "following", 25).catch(() => []);
+        theirFollowers.map(async (peer) => {
+          const peerFollows = await fetchFollowList(peer.id, "following", 15).catch(() => []);
           for (const f of peerFollows) add(f.id, 1.5, REASONS.taste);
         })
       );

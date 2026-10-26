@@ -108,7 +108,10 @@ export async function saveJournalist({ outlet, logoUrl, region, affiliation }) {
 
 /** A journalist's published stories, newest first. */
 export async function fetchStoriesBy(uid) {
-  const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(100)));
+  const q = (filter) => getDocs(query(collection(db, "news"), where("status", "==", "approved"), filter, orderBy("createdAt", "desc"), limit(50)));
+  // Until the index is built, the latest stories, filtered here.
+  const snap = await q(where("authors", "array-contains", uid))
+    .catch((err) => (err?.code === "failed-precondition" ? getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(100))) : Promise.reject(err)));
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).includes(uid));
 }
 
@@ -116,7 +119,7 @@ export async function fetchStoriesBy(uid) {
 export async function fetchFollowedNews(following) {
   const writers = await writerIds();
   if (![...following].some((uid) => writers.has(uid))) return [];
-  const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(50)));
+  const snap = await getDocs(query(collection(db, "news"), where("status", "==", "approved"), orderBy("createdAt", "desc"), limit(25)));
   return snapToList(snap).filter((s) => (s.authors || [s.authorId]).some((uid) => following.has(uid)));
 }
 

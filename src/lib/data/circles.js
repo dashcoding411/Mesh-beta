@@ -30,8 +30,24 @@ export const COVER_COLORS = [
   "from-indigo-600 via-purple-600 to-pink-500",
 ];
 
-/** Listed circles (public and private), biggest first. Falls back to any 100 while the index builds. */
-export async function fetchGroups() {
+// Listed circles change slowly, so Home, Search and Circles share one read
+// for a few minutes. Creating or changing a circle starts again.
+const GROUPS_MS = 5 * 60_000;
+let groupsOnce = null; // { at, promise }
+export const forgetGroups = () => { groupsOnce = null; publicOnce = null; };
+
+/** Listed circles (public and private), biggest first. */
+export function fetchGroups({ fresh = false } = {}) {
+  if (fresh || !groupsOnce || Date.now() - groupsOnce.at > GROUPS_MS) {
+    const promise = readGroups();
+    groupsOnce = { at: Date.now(), promise };
+    promise.catch(() => { if (groupsOnce?.promise === promise) groupsOnce = null; });
+  }
+  return groupsOnce.promise.then((list) => [...list]);
+}
+
+// Falls back to any 100 while the index builds.
+async function readGroups() {
   const listed = where("privacy", "in", ["public", "private"]);
   try {
     return snapToList(await getDocs(query(collection(db, "groups"), listed, orderBy("memberCount", "desc"), limit(100))));
@@ -71,6 +87,7 @@ export async function fetchGroupById(groupId) {
 }
 
 export async function createGroup({ name, description, privacy = "public", ageLimit = 0, interests = [] }) {
+  forgetGroups();
   const uid = me();
   const profile = await myProfile();
   const group = {
@@ -157,6 +174,7 @@ export function circleVisibility(group) {
 
 /** Owner customisation: accent, welcome note, member title, hidden tabs. */
 export async function setCircleCustom(groupId, { accent, welcome, memberTitle, hiddenTabs }) {
+  forgetGroups();
   await updateDoc(doc(db, "groups", groupId), {
     accent, welcome: welcome.trim().slice(0, 300), memberTitle: memberTitle.trim().toLowerCase().slice(0, 24), hiddenTabs,
   });
@@ -168,6 +186,7 @@ export async function setCircleInterests(groupId, interests) {
 
 /** Sets or clears (file = null) a circle's banner or photo. */
 export async function setCircleImage(group, field, file) {
+  forgetGroups();
   if (!["bannerUrl", "photoUrl"].includes(field)) throw new Error("Unknown image");
   const url = file ? (await uploadMedia(file, undefined, field === "photoUrl" ? "avatars" : "uploads")).url : "";
   await updateDoc(doc(db, "groups", group.id), { [field]: url });
@@ -176,6 +195,7 @@ export async function setCircleImage(group, field, file) {
 }
 
 export async function setCircleCover(groupId, coverColor) {
+  forgetGroups();
   if (!COVER_COLORS.includes(coverColor)) throw new Error("Unknown cover");
   await updateDoc(doc(db, "groups", groupId), { coverColor });
 }
@@ -444,6 +464,7 @@ export async function fetchMembers(groupId) {
 }
 
 export async function joinGroup(groupId) {
+  forgetGroups();
   const uid = me();
   const profile = await myProfile();
   const batch = writeBatch(db);
@@ -458,6 +479,7 @@ export async function joinGroup(groupId) {
 }
 
 export async function leaveGroup(groupId) {
+  forgetGroups();
   const batch = writeBatch(db);
   batch.delete(doc(db, "groups", groupId, "members", me()));
   batch.update(doc(db, "groups", groupId), { memberCount: increment(-1), lastMember: me() });
@@ -479,6 +501,7 @@ export async function removeMember(groupId, uid) {
 // Order matters: member deletes are authorised against the circle's owner,
 // so the circle doc goes last.
 export async function deleteGroup(group) {
+  forgetGroups();
   const uid = me();
   // Abort if posts can't be listed (e.g. brick mode) rather than orphan them.
   const [posts, pending, requests, members] = await Promise.all([

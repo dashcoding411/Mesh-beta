@@ -61,6 +61,22 @@ const AdsManager = lazy(() => import("./components/AdsManager"));
 const AgeGate = lazy(() => import("./components/AgeGate"));
 const ParentalControls = lazy(() => import("./components/ParentalControls"));
 const NotFound = lazy(() => import("./components/NotFound"));
+
+// Who you follow, from this device's copy while it still matches the count
+// on your profile (it can run to hundreds of reads), and from the database
+// at least once a day.
+const FOLLOWING_FRESH_MS = 86400000;
+async function followingFor(uid, copy, profileP) {
+  const key = `mesh:following-at:${uid}`;
+  let at = 0;
+  try { at = Number(localStorage.getItem(key)) || 0; } catch { /* storage blocked */ }
+  const p = await profileP;
+  if (Array.isArray(copy?.following) && p && Date.now() - at < FOLLOWING_FRESH_MS
+    && (p.followingCount || 0) === copy.following.length) return copy.following;
+  const list = await fetchMyFollowingSet().then((set) => [...set]).catch(() => null);
+  if (list) try { localStorage.setItem(key, String(Date.now())); } catch { /* storage blocked */ }
+  return list;
+}
 const VerifyContact = lazy(() => import("./components/VerifyContact"));
 // What an account needs a confirmed email or phone for (needsAccount reasons).
 const NEEDS_CONTACT = new Set([
@@ -207,9 +223,10 @@ export default function App() {
         // bring it up to date. Anything that can't be read keeps the copy.
         const copy = readSnapshot(`me:${u.uid}`, ACCOUNT_COPY_MS);
         if (copy?.profile) { applyAccount(copy); setAuthReady(true); }
+        const profileP = fetchOwnProfile(u.uid).catch(() => undefined);
         const [p, f, b, prefs] = await Promise.all([
-          fetchOwnProfile(u.uid).catch(() => undefined),
-          fetchMyFollowingSet().then((s) => [...s]).catch(() => null),
+          profileP,
+          followingFor(u.uid, copy, profileP),
           fetchBlocked().then((l) => l.map((x) => x.id)).catch(() => null),
           fetchMyPrefs().catch(() => null),
         ]);

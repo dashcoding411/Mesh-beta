@@ -30,15 +30,17 @@ export async function fetchGroupEntries(gid) {
   return snapToList(await getDocs(query(collection(db, "brickGroups", gid, "members"), limit(MAX_GROUP_MEMBERS))));
 }
 
-// Copies your verified stats and current brick into one group.
-async function writeEntry(gid) {
+// Copies your verified stats and current brick into one group. Skipped when
+// nothing has changed since this device last wrote it (it runs at every start).
+async function writeEntry(gid, { force = false } = {}) {
   const uid = me();
   const [profile, stats, lock] = await Promise.all([
     myProfile(),
     getDoc(doc(db, "brickStats", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null),
     getDoc(doc(db, "locks", uid)).then((s) => (s.exists() ? s.data() : null)).catch(() => null),
   ]);
-  await setDoc(entryRef(gid, uid), {
+  const until = lock ? lock.self?.until ?? null : null;
+  const entry = {
     username: profile?.username || "",
     name: profile?.name || "",
     photoURL: profile?.photoURL || "",
@@ -46,9 +48,13 @@ async function writeEntry(gid) {
     weekSeconds: stats?.weekSeconds || 0,
     totalSeconds: stats?.totalSeconds || 0,
     streakDays: stats?.streakDays || 0,
-    brickedUntil: lock ? lock.self?.until ?? null : null,
-    updatedAt: serverTimestamp(),
-  });
+    brickedUntil: until,
+  };
+  const key = `mesh:brick-entry:${uid}:${gid}`;
+  const sig = JSON.stringify({ ...entry, brickedUntil: until?.toMillis?.() ?? null });
+  try { if (!force && localStorage.getItem(key) === sig) return; } catch { /* storage blocked */ }
+  await setDoc(entryRef(gid, uid), { ...entry, updatedAt: serverTimestamp() });
+  try { localStorage.setItem(key, sig); } catch { /* storage blocked */ }
 }
 
 /** Refreshes your entry in every group you're in (after stats change or a brick starts). */
@@ -61,13 +67,13 @@ export async function createBrickGroup(name) {
   const ref_ = await addDoc(collection(db, "brickGroups"), {
     name: name.trim().slice(0, 40), ownerId: me(), members: [me()], createdAt: serverTimestamp(),
   });
-  await writeEntry(ref_.id).catch(() => {});
+  await writeEntry(ref_.id, { force: true }).catch(() => {});
   return ref_.id;
 }
 
 export async function joinBrickGroup(group) {
   await updateDoc(groupRef(group.id), { members: arrayUnion(me()) });
-  await writeEntry(group.id).catch(() => {});
+  await writeEntry(group.id, { force: true }).catch(() => {});
 }
 
 export async function leaveBrickGroup(group) {
