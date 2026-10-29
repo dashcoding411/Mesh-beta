@@ -156,11 +156,20 @@ Run `app:sync` after every web change; the app ships its own copy of the web
 code, so updates reach phones through the App Store, not by deploying Hosting.
 
 App-specific behaviour lives in `src/lib/native.js` (status bar, launch
-screen, haptics). Inside the app, App Check's reCAPTCHA can't run and Google,
-Apple and phone sign-in need native sign-in, so the app offers email sign-in
-until that's set up (Firebase iOS app, `GoogleService-Info.plist` and a native
-auth plugin). The bundle ID is `com.meshsocial.app` (`capacitor.config.json`);
-change it before the first App Store upload if you want a different one.
+screen, haptics, sign-in) and `ios/App/App/MeshSignIn.swift`. The app is
+the website with a few differences:
+
+- Google sign-in runs in iOS's sign-in sheet, since Google won't sign anyone
+  in inside an app's web view. Its client belongs to the Firebase iOS app
+  "Mesh iOS" (bundle ID `com.meshsocial.app`).
+- Sign in with Apple is built but off (`APPLE_IN_APP` in `src/lib/native.js`).
+  It needs an Apple Developer Program membership: add the Sign in with Apple
+  capability in Xcode, enable the Apple provider in Firebase Authentication,
+  then turn it on. The App Store requires it whenever Google is offered, so do
+  this before the first upload.
+- Phone sign-in, App Check (reCAPTCHA), Google ads (AdSense isn't allowed in
+  apps) and web push are left out. Shared links and email links use
+  joinmesh.social, not the app's own address.
 
 ## Administration
 

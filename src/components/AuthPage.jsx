@@ -15,7 +15,7 @@ import { LogoMark } from "./shell/Sidebar";
 import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Segmented from "./ui/Segmented";
-import { isNativeApp } from "../lib/native";
+import { APPLE_IN_APP, isNativeApp } from "../lib/native";
 import { isStandalone } from "../lib/install";
 import { ageLockedUntil, lockAge, underSixteen, LOCK_DAYS } from "../lib/ageLock";
 import { BUSINESS } from "../legal/business";
@@ -43,9 +43,10 @@ function GoogleMark() {
 }
 
 const APPLE_ENABLED = import.meta.env.VITE_APPLE_SIGNIN === "on";
-// Inside the iPhone app, Google and Apple sign-in need native sign-in (not set
-// up yet) and phone sign-in needs reCAPTCHA, so the app offers email for now.
-const EMAIL_ONLY = isNativeApp;
+// Inside the iPhone app, Google and Apple sign in natively (lib/native.js), and
+// phone sign-in, which needs reCAPTCHA, is left out.
+const APPLE_ON = isNativeApp ? APPLE_IN_APP : APPLE_ENABLED;
+const PHONE_ON = !isNativeApp;
 
 function AppleMark() {
   return (
@@ -208,14 +209,13 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           {signup ? "Step 1 of 2: choose how you'll sign in." : "Log in to pick up where you left off."}
         </p>
 
-        {!EMAIL_ONLY && (<>
         <div className="space-y-2.5">
           <button type="button" onClick={() => handleProvider(signInGoogle)} disabled={busy}
             className={`${SOCIAL} border border-line-strong bg-white text-zinc-900 hover:bg-zinc-100`}>
             <GoogleMark /> Continue with Google
           </button>
-          {/* Apple sign-in is disabled until a Services ID is configured in Firebase. */}
-          {APPLE_ENABLED && (
+          {/* On the website, Apple sign-in waits for a Services ID in Firebase. */}
+          {APPLE_ON && (
             <button type="button" onClick={() => handleProvider(signInApple)} disabled={busy}
               className={`${SOCIAL} border border-line-strong bg-black text-white hover:bg-zinc-800`}>
               <AppleMark /> Continue with Apple
@@ -228,7 +228,6 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           <span>or</span>
           <div className="h-px flex-1 bg-line" />
         </div>
-        </>)}
 
         {method === "email" ? (
           <form onSubmit={handleEmail} className="space-y-4" noValidate>
@@ -310,7 +309,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
           </form>
         )}
 
-        {!EMAIL_ONLY && (
+        {PHONE_ON && (
           <button type="button" onClick={() => { setMethod(method === "email" ? "phone" : "email"); setError(""); setConfirmation(null); }}
             className="mt-3 inline-flex min-h-11 w-full items-center justify-center text-callout font-medium text-fg-muted hover:text-fg">
             {method === "email" ? "Use your phone number instead" : "Use your email instead"}

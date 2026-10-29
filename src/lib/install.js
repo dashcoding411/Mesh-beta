@@ -4,6 +4,7 @@
 // it send notifications (Apple's rule for web apps).
 
 import { useEffect, useState } from "react";
+import { isNativeApp } from "./native";
 
 let deferred = null;
 const listeners = new Set();
@@ -24,9 +25,10 @@ export function isIOS() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-/** Running from the home screen or as an installed app. */
+/** Running from the home screen or as an installed app (the iPhone app too). */
 export function isStandalone() {
   if (typeof window === "undefined") return false;
+  if (isNativeApp) return true;
   return window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
 

@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>Mesh</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -32,6 +32,8 @@
 	<string>Mesh uses the microphone for voice messages, videos and calls.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Mesh opens your photos when you choose ones to post or send.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Mesh saves a photo to your library when you choose Save Image.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

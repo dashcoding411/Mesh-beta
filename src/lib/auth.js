@@ -3,6 +3,7 @@ import { auth, homeScreenIOS, sameSiteAuth, storedSignInAtStart } from "../fireb
 import { isIOS, isStandalone } from "./install";
 import { googleAnswer } from "./googleAnswer";
 import { clearSnapshots } from "./snapshot";
+import { isNativeApp, nativeSignIn, siteOrigin } from "./native";
 import {
   GoogleAuthProvider,
   OAuthProvider,
@@ -270,7 +271,18 @@ export async function finishGoogleDirect() {
   }
 }
 
+// The iPhone app signs in natively (lib/native.js) and hands Firebase the token.
+async function signInNative(provider) {
+  const answer = await nativeSignIn(provider).catch((err) => {
+    throw Object.assign(new Error(err?.message || "failed"), { code: err?.code === "cancelled" ? "auth/user-cancelled" : "auth/native-failed" });
+  });
+  return signInWithCredential(auth, provider === "google"
+    ? GoogleAuthProvider.credential(answer.idToken)
+    : new OAuthProvider("apple.com").credential({ idToken: answer.idToken, rawNonce: answer.rawNonce }));
+}
+
 export function signInGoogle(remember) {
+  if (isNativeApp) return signInNative("google");
   // Google only returns to joinmesh.social (its redirect URI), so this is the live site's.
   if (sameSiteAuth && isIOS() && isStandalone()) return signInGoogleDirect(remember);
   const provider = new GoogleAuthProvider();
@@ -281,6 +293,7 @@ export function signInGoogle(remember) {
 }
 
 export function signInApple(remember) {
+  if (isNativeApp) return signInNative("apple");
   const provider = new OAuthProvider("apple.com");
   provider.addScope("email");
   provider.addScope("name");
@@ -304,7 +317,7 @@ export async function syncVerifiedToken(user = auth.currentUser) {
 
 /** Sends a verification email that links back to the app. */
 export function verifyEmail() {
-  return sendEmailVerification(auth.currentUser, { url: `${window.location.origin}/account/settings` });
+  return sendEmailVerification(auth.currentUser, { url: `${siteOrigin()}/account/settings` });
 }
 
 export async function changePassword(currentPassword, newPassword) {
@@ -349,6 +362,7 @@ const MESSAGES = {
   "auth/unauthorized-domain": "Sign-in isn't set up for this web address. Open joinmesh.social and try again.",
   "auth/internal-error": "Sign-in didn't finish. Try again, or use your email address instead.",
   "auth/timeout": "Signing in took too long. Check your connection and try again.",
+  "auth/native-failed": "That didn't sign you in. Try again, or use your email.",
   "auth/account-exists-with-different-credential":
     "You already have an account with that email using a different sign-in method.",
   "auth/operation-not-allowed": "That sign-in method isn't enabled for this app yet.",

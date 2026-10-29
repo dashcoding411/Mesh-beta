@@ -1,13 +1,16 @@
 // Google AdSense, as a fallback for ad spaces in Home that no local ad has
 // been booked for. Nothing from Google loads until someone 18 or over turns
 // on "Google ads" in their cookie choices; then ads are requested
-// non-personalised. Settings come from .env (VITE_ADSENSE_*).
+// non-personalised. Settings come from .env (VITE_ADSENSE_*). Never in the
+// iPhone app: AdSense isn't allowed in an app's web view.
+import { isNativeApp } from "./native";
+
 export const ADSENSE = {
   client: import.meta.env.VITE_ADSENSE_CLIENT || "",
   slot: import.meta.env.VITE_ADSENSE_SLOT || "",
   layoutKey: import.meta.env.VITE_ADSENSE_LAYOUT_KEY || "",
 };
-export const adsenseEnabled = !!(ADSENSE.client && ADSENSE.slot);
+export const adsenseEnabled = !!(ADSENSE.client && ADSENSE.slot) && !isNativeApp;
 
 let loading = null;
 /** Adds Google's ad script once. Call only after consent. */

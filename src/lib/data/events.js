@@ -10,6 +10,7 @@ import { notify } from "./notifications.js";
 import { uploadPhotos } from "./uploads.js";
 import { deleteInline } from "./posts.js";
 import { forget, remind } from "../push.js";
+import { siteOrigin } from "../native.js";
 
 // Public gatherings: going/interested. Private: going/maybe/not going.
 
@@ -206,7 +207,7 @@ export async function fetchPublicEvent(eventId) {
 }
 
 export function eventUrl(eventId) {
-  return `${window.location.origin}/gatherings/${encodeURIComponent(eventId)}`;
+  return `${siteOrigin()}/gatherings/${encodeURIComponent(eventId)}`;
 }
 
 // Calendar export. Events have no end time, so two hours is assumed.

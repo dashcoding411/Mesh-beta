@@ -2,6 +2,7 @@
 // URL but keep the underlying page mounted, so Back returns to it intact.
 
 import { useSyncExternalStore } from "react";
+import { siteOrigin } from "./native";
 
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l());
@@ -155,5 +156,5 @@ export function safeNext(next, origin = window.location.origin) {
 
 export function postUrl(post) {
   const id = typeof post === "string" ? post : post.id;
-  return `${window.location.origin}/p/${encodeURIComponent(id)}`;
+  return `${siteOrigin()}/p/${encodeURIComponent(id)}`;
 }

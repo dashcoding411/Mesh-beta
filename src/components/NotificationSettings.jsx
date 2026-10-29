@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Bell, BellOff, Smartphone } from "lucide-react";
 import { PUSH_KINDS, disablePush, enablePush, pushState, savedKinds, setPushKinds } from "../lib/push";
 import { useInstallState } from "../lib/install";
+import { isNativeApp } from "../lib/native";
 import Button from "./ui/Button";
 import Switch from "./ui/Switch";
 import InstallDialog from "./InstallDialog";
 import { useToast } from "./ui/toast-context";
 
 const STATUS = {
-  unsupported: "Not available in this browser",
+  unsupported: isNativeApp ? "Not in the iPhone app yet" : "Not available in this browser",
   install: "Add Mesh to your home screen first",
   denied: "Blocked in your phone or browser settings",
   off: "Off",

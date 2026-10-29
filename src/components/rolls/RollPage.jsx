@@ -29,6 +29,7 @@ import InstallDialog from "../InstallDialog";
 import { isIOS, isStandalone } from "../../lib/install";
 import RollCamera from "./RollCamera";
 import SevenSeg from "./SevenSeg";
+import { siteOrigin } from "../../lib/native";
 
 export default function RollPage({ rollId }) {
   const { guest } = useShell();
@@ -88,7 +89,7 @@ function GuestInvite() {
       ? "Links open in Safari, which signs in separately from Mesh on your home screen. Open Mesh from your home screen and tap Scan QR code in Rolls, or copy this link and tap Paste link there. Or log in here."
       : "You're not signed in on this browser. Log in, or copy the link and open it where you use Mesh.";
   const copy = async () => {
-    try { await navigator.clipboard.writeText(window.location.href); toast({ title: "Link copied" }); }
+    try { await navigator.clipboard.writeText(siteOrigin() + window.location.pathname); toast({ title: "Link copied" }); }
     catch { toast({ tone: "error", title: "Couldn't copy", body: "Copy it from the address bar instead." }); }
   };
   return (

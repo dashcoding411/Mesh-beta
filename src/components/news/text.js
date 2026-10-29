@@ -1,3 +1,5 @@
+import { siteOrigin } from "../../lib/native";
+
 
 
 export const CITE = /\[(\d{1,2})\]/g;
@@ -23,7 +25,7 @@ export function quickMinutes(stories) {
   return Math.max(1, Math.round(words / 240));
 }
 
-export const storyUrl = (id) => `${window.location.origin}/news/${encodeURIComponent(id)}`;
+export const storyUrl = (id) => `${siteOrigin()}/news/${encodeURIComponent(id)}`;
 
 export function hostOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }

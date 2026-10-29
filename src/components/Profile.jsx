@@ -21,6 +21,7 @@ import { ProfileHeader, FollowListDialog, PostGrid, EditProfileDialog } from "./
 import { JournalistCard, JournalistSettings, JournalistStories } from "./news/Journalist";
 import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { hasPinkCheck } from "../lib/badges";
+import { siteOrigin } from "../lib/native";
 
 export default function Profile({ initialTab = null }) {
   const { profile, setProfile, openComposer, openDrawer } = useShell();
@@ -66,7 +67,7 @@ export default function Profile({ initialTab = null }) {
   }, [current, reposts, saved]);
 
   const shareProfile = async () => {
-    const url = `${window.location.origin}/@${profile.username}`;
+    const url = `${siteOrigin()}/@${profile.username}`;
     try {
       if (navigator.share) await navigator.share({ title: `@${profile.username} on Mesh`, url });
       else { await navigator.clipboard.writeText(url); toast({ title: "Profile link copied" }); }

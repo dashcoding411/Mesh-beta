@@ -19,6 +19,7 @@ import Dialog, { ConfirmDialog } from "./ui/Dialog";
 import { Field, Input } from "./ui/Field";
 import { EmptyState, Skeleton, Loading } from "./ui/States";
 import { useToast } from "./ui/toast-context";
+import { siteOrigin } from "../lib/native";
 
 const MEDALS = ["bg-amber-400 text-amber-950", "bg-zinc-300 text-zinc-900", "bg-orange-400 text-orange-950"];
 
@@ -209,7 +210,7 @@ function GroupBoard({ id, scope, week }) {
     .sort((a, b) => valueOf(b) - valueOf(a)), [entries, group, scope, week]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invite = async () => {
-    const url = `${window.location.origin}/leaderboard/g/${id}`;
+    const url = `${siteOrigin()}/leaderboard/g/${id}`;
     try {
       if (navigator.share) await navigator.share({ title: `Join "${group.name}" on Mesh`, text: "Let's see who can brick Mesh the longest.", url });
       else { await navigator.clipboard.writeText(url); toast({ title: "Invite link copied", body: "Send it to friends you want in the group." }); }

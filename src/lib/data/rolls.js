@@ -14,6 +14,7 @@ import { deleteInline } from "./posts.js";
 import { assertSafe } from "../imageCheck";
 import { fetchInline, isInline } from "../media";
 import { forget, pushRollDeveloped, remind } from "../push.js";
+import { siteOrigin } from "../native.js";
 
 export const SHOTS_PER_PERSON = 27;
 export const MAX_MEMBERS = 50;
@@ -65,7 +66,7 @@ export function countdownLabel(ms, now = Date.now()) {
 
 export const isDeveloped = (roll, now = Date.now()) => !!roll && tsMillis(roll.developAt) <= now;
 export const isMember = (roll, uid = me()) => !!roll && !!uid && (roll.members || []).includes(uid);
-export const rollUrl = (id) => `${window.location.origin}/rolls/${encodeURIComponent(id)}`;
+export const rollUrl = (id) => `${siteOrigin()}/rolls/${encodeURIComponent(id)}`;
 
 const MESH_HOSTS = ["joinmesh.social", "www.joinmesh.social", "mesh-a293c.web.app", "mesh-a293c.firebaseapp.com"];
 /**

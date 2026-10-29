@@ -28,6 +28,7 @@ import { useJournalist, useJournalistStories } from "../lib/journalists";
 import { betaByJoinDate, FOUNDER_UID, hasPinkCheck } from "../lib/badges";
 import { primeCard } from "../lib/profileCache";
 import { useFocusTrap } from "../lib/useFocusTrap";
+import { siteOrigin } from "../lib/native";
 
 // scroll-pt keeps keyboard focus clear of the sticky header.
 const OVERLAY = "fixed inset-0 z-overlay overflow-y-auto scroll-pt-16 bg-canvas anim-fade md:right-[76px] xl:right-64";
@@ -205,7 +206,7 @@ function ProfileView({ uid }) {
   };
 
   const share = async () => {
-    const url = `${window.location.origin}/@${profile.username}`;
+    const url = `${siteOrigin()}/@${profile.username}`;
     try {
       if (navigator.share) await navigator.share({ title: `@${profile.username} on Mesh`, url });
       else { await navigator.clipboard.writeText(url); toast({ title: "Profile link copied" }); }

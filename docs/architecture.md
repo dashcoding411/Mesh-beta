@@ -371,7 +371,8 @@ What each kind of record shows, and to whom:
   cache is in memory only. Sign-in redirects only go to pages on Mesh.
 - **Cookies and storage** (`lib/consent.js`, `StorageNotice.jsx`). Essential
   storage is always on, and so is Google reCAPTCHA for App Check, the bot
-  check. Optional third parties (GIPHY when GIFs are on, Google ads) stay off
+  check. Optional third parties (GIPHY when GIFs are on, Google ads, never in
+  the iPhone app) stay off
   until the visitor picks "Allow all" or switches them on in "Choose";
   "Essential only" has the same weight. The choice is kept under
   `mesh:consent` and can be changed in Settings or from the Cookies policy.
