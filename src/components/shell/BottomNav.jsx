@@ -53,7 +53,8 @@ export default function BottomNav({ page, profile, work = false, unread, immersi
                   <Icon size={24} strokeWidth={active ? 2.3 : 1.8} aria-hidden="true"
                     fill={active && t.id === "home" ? "currentColor" : "none"} />
                 ) : (
-                  <span className={`rounded-full ${active ? "ring-2 ring-fg ring-offset-1 ring-offset-canvas" : ""}`}>
+                  // flex, so the ring hugs the photo rather than a line of text.
+                  <span className={`flex h-6 w-6 rounded-full ${active ? "ring-2 ring-fg ring-offset-2 ring-offset-canvas" : ""}`}>
                     <Avatar profile={profile} size={24} />
                   </span>
                 )}
