@@ -14,7 +14,7 @@ import JournalistApply from "./JournalistApply";
 const AdRequestEditor = lazy(() => import("./AdsManager").then((m) => ({ default: m.AdEditor })));
 import { interestById } from "../lib/interests";
 import { auth } from "../firebase";
-import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail, signOutHere } from "../lib/auth";
+import { changePassword, resetPassword, reauthenticateAndDelete, authMessage, verifyEmail, signOutHere, syncVerifiedToken } from "../lib/auth";
 import { OPTIONS as LOOKS, setAppearance, useAppearance } from "../lib/appearance";
 import { replayTour } from "../lib/tour";
 import { openCookieChoices, optionalItems, useConsent } from "../lib/consent";
@@ -75,7 +75,9 @@ export default function Settings() {
     fetchBlocked().then(setBlockedList).catch(() => setBlockedList([]));
     // Reload the auth user to pick up emailVerified after the link round-trip.
     if (auth.currentUser && !auth.currentUser.emailVerified) {
-      auth.currentUser.reload().then(() => setChecked((n) => n + 1)).catch(() => {});
+      auth.currentUser.reload()
+        .then(() => syncVerifiedToken())
+        .then(() => setChecked((n) => n + 1)).catch(() => {});
     }
   }, []);
   const user = auth.currentUser;

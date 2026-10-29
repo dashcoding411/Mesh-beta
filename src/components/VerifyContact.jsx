@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MailCheck } from "lucide-react";
 import { auth } from "../firebase";
-import { authMessage, verifyEmail } from "../lib/auth";
+import { authMessage, syncVerifiedToken, verifyEmail } from "../lib/auth";
 import { isVerifiedUser } from "../lib/verified";
 import Button from "./ui/Button";
 import Dialog from "./ui/Dialog";
@@ -26,6 +26,20 @@ export default function VerifyContact({ reason, onClose }) {
     finally { setBusy(null); }
   };
 
+  // Confirmed on another device already? Then there's nothing to ask.
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; }, [onClose]);
+  useEffect(() => {
+    let live = true;
+    auth.currentUser?.reload().then(async () => {
+      if (!live || !isVerifiedUser(auth.currentUser)) return;
+      await syncVerifiedToken();
+      toast({ title: "Email confirmed", body: "Try that again." });
+      close.current();
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [toast]);
+
   // The link is opened elsewhere, so reload the account and its sign-in token.
   const check = async () => {
     setBusy("check");
@@ -33,7 +47,7 @@ export default function VerifyContact({ reason, onClose }) {
     try {
       await auth.currentUser?.reload();
       if (isVerifiedUser(auth.currentUser)) {
-        await auth.currentUser.getIdToken(true);
+        await syncVerifiedToken();
         toast({ title: "Email confirmed" });
         onClose();
         return;

@@ -291,6 +291,17 @@ export function resetPassword(email) {
   return sendPasswordResetEmail(auth, email.trim());
 }
 
+/**
+ * The rules read "email confirmed" from the sign-in token, which only changes
+ * when it's renewed (up to an hour later). Once the account says it's
+ * confirmed and the token doesn't, renew the token now.
+ */
+export async function syncVerifiedToken(user = auth.currentUser) {
+  if (!user?.emailVerified) return;
+  const { claims } = await user.getIdTokenResult();
+  if (claims.email_verified !== true) await user.getIdToken(true);
+}
+
 /** Sends a verification email that links back to the app. */
 export function verifyEmail() {
   return sendEmailVerification(auth.currentUser, { url: `${window.location.origin}/account/settings` });

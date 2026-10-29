@@ -151,7 +151,8 @@ export function storyFromDoc(snap) {
     coverUrl: d.coverUrl || "",
     keyPoints: [points[0] || "", points[1] || "", points[2] || ""],
     sources: d.sources || [],
-    format: d.format || "story",
+    // "video" was a format for a few days; those are stories with a Flick.
+    format: d.format === "live" ? "live" : "story",
     videoUrl: d.videoUrl || "",
     videoPoster: d.videoPoster || "",
     videoSeconds: d.videoSeconds || 0,

@@ -2348,8 +2348,9 @@ service cloud.firestore {
         || (isNewsWriter()
           && isStoryAuthor(resource.data)
           && resource.data.status == 'approved'
+          // format: a story published as the short-lived "video" format becomes a story.
           && incomingData().diff(resource.data).affectedKeys().hasOnly([
-               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'label',
+               'title', 'standfirst', 'script', 'sources', 'topic', 'keyPoints', 'location', 'coverUrl', 'label', 'format',
                'blockIds', 'blockTypes', 'blockTexts', 'blockMedia', 'blockAlts', 'videoUrl', 'videoPoster', 'videoSeconds', 'graphic', 'hasVideo',
                'updateNote', 'updateNoteAt', 'version', 'updatedAt'])
           && incomingData().version == resource.data.version + 1

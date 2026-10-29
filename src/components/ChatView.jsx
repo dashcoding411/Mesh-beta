@@ -106,7 +106,10 @@ export default function ChatView({ chat }) {
   const firstLoad = useRef(true);
 
   const theme = CHAT_THEMES[chat.theme] || CHAT_THEMES.default;
-  const others = useMemo(() => chat.members.filter((m) => m !== me()), [chat.members]);
+  // Keyed on the ids: each new message brings a new members array, and the
+  // presence listener below shouldn't restart (a read) for every one.
+  const othersKey = chat.members.filter((m) => m !== me()).join(",");
+  const others = useMemo(() => (othersKey ? othersKey.split(",") : []), [othersKey]);
   const title = chatTitle(chat);
   usePageTitle(title, 1);
   const blockedOther = !chat.isGroup && others[0] && blocked.has(others[0]);

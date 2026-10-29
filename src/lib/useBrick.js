@@ -88,9 +88,26 @@ export function useBrickEngine(signedIn) {
 // Counts time while a capped section is visible and saves it about every two
 // minutes, at once when it reaches the cap (so the lock is on time), and when
 // Mesh is hidden. Uncapped sections aren't metered. The rules accept up to
-// the seconds since the last save, and at most one save every 25 seconds.
+// the seconds since the last save, and one save every 25 seconds per day's
+// record, which every section shares. So unsaved time and the last save are
+// kept here, not per section, and switching sections never drops any.
 const SAVE_EVERY = 120;
 const MIN_GAP_MS = 26_000;
+const meter = { unsaved: {}, savedAt: 0, saving: false };
+
+function saveUsage(b, section, force) {
+  const whole = Math.floor(meter.unsaved[section] || 0);
+  if (meter.saving || !b.policy || whole < 1 || Date.now() - meter.savedAt < MIN_GAP_MS) return;
+  const used = b.usage?.[section] || 0;
+  const atCap = used + whole >= b.cap(section) * 60;
+  if (!force && !atCap && whole < SAVE_EVERY) return;
+  meter.saving = true;
+  meter.unsaved[section] -= whole;
+  pingUsage(b.policy, section, whole)
+    .then(() => { meter.savedAt = Date.now(); })
+    .catch(() => { meter.unsaved[section] = (meter.unsaved[section] || 0) + whole; })
+    .finally(() => { meter.saving = false; });
+}
 
 export function useUsageMeter(brick, section) {
   const ref = useRef(brick);
@@ -100,36 +117,23 @@ export function useUsageMeter(brick, section) {
   useEffect(() => {
     if (!capped) return undefined;
     let last = Date.now();
-    let seconds = 0;
-    let savedAt = 0;
-    let saving = false;
-    const save = (force) => {
-      const b = ref.current;
-      const whole = Math.floor(seconds);
-      if (saving || !b.policy || whole < 1 || Date.now() - savedAt < MIN_GAP_MS) return;
-      const used = b.usage?.[section] || 0;
-      const atCap = used + whole >= b.cap(section) * 60;
-      if (!force && !atCap && whole < SAVE_EVERY) return;
-      saving = true;
-      seconds -= whole;
-      pingUsage(b.policy, section, whole)
-        .then(() => { savedAt = Date.now(); })
-        .catch(() => { seconds += whole; })
-        .finally(() => { saving = false; });
-    };
     const t = setInterval(() => {
       const b = ref.current;
       const n = Date.now();
-      if (document.visibilityState === "visible" && !b.state(section)) seconds += (n - last) / 1000;
+      if (document.visibilityState === "visible" && !b.state(section)) {
+        meter.unsaved[section] = (meter.unsaved[section] || 0) + (n - last) / 1000;
+      }
       last = n;
-      save(false);
+      // Time left from a section you've moved on from goes too.
+      for (const other of Object.keys(meter.unsaved)) if (other !== section) saveUsage(b, other, true);
+      saveUsage(b, section, false);
     }, 5000);
-    const onHide = () => { if (document.visibilityState === "hidden") save(true); };
+    const onHide = () => { if (document.visibilityState === "hidden") saveUsage(ref.current, section, true); };
     document.addEventListener("visibilitychange", onHide);
     return () => {
       clearInterval(t);
       document.removeEventListener("visibilitychange", onHide);
-      save(true);
+      saveUsage(ref.current, section, true);
     };
   }, [capped, section]);
 }

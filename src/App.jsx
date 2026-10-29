@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, releaseAppCheck } from "./firebase";
-import { finishGoogleDirect, googleReturning, lostSession, noteSignedIn, restoreSession } from "./lib/auth";
+import { finishGoogleDirect, googleReturning, lostSession, noteSignedIn, restoreSession, syncVerifiedToken } from "./lib/auth";
 import { clearSnapshots, readSnapshot, saveSnapshot } from "./lib/snapshot";
 import { setPresenceHidden, tidyStoryViewers, openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
@@ -219,6 +219,9 @@ export default function App() {
           return;
         }
         noteSignedIn(u.uid);
+        // An email confirmed since the last visit: renew the sign-in token so
+        // the rules see it too (lib/auth.js).
+        syncVerifiedToken(u).catch(() => {});
         // Open straight away from this device's copy of the account, then
         // bring it up to date. Anything that can't be read keeps the copy.
         const copy = readSnapshot(`me:${u.uid}`, ACCOUNT_COPY_MS);

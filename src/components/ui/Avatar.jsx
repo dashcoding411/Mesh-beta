@@ -11,8 +11,11 @@ function toneFor(name) {
 }
 
 export default function Avatar({ profile, size = 40, ring = false, className = "" }) {
-  const [broken, setBroken] = useState(false);
   const src = useMediaSrc(profile?.photoURL);
+  // Broken is per photo: a post can carry an old photo that's since been
+  // deleted, and the current one (from the profile) arrives a moment later.
+  const [brokenSrc, setBrokenSrc] = useState(null);
+  const broken = !!src && brokenSrc === src;
   const name = profile?.name || profile?.username || "?";
   const initials = name
     .replace(/^@/, "")
@@ -26,7 +29,7 @@ export default function Avatar({ profile, size = 40, ring = false, className = "
   const text = size >= 56 ? "text-title-3" : size >= 36 ? "text-callout" : "text-label";
 
   const face = src && !broken ? (
-    <img src={src} alt="" onError={() => setBroken(true)} style={style}
+    <img src={src} alt="" onError={() => setBrokenSrc(src)} style={style}
       className="shrink-0 rounded-full bg-surface-2 object-cover" />
   ) : (
     <span aria-hidden="true" style={style}
