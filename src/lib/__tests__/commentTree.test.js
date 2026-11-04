@@ -14,6 +14,14 @@ describe("buildCommentTree", () => {
     c("a", "", 1), c("b", "", 2, 5), c("a1", "a", 3), c("a2", "a", 4, 2), c("a1x", "a1", 5), c("orphan", "gone", 6),
   ];
 
+  it("keeps flagged comments below the rest in Best and Top, whatever their likes", () => {
+    const pile = [c("hate", "", 1, 10000), c("kind", "", 2, 3), c("late", "", 3, 0)];
+    const sinks = (x) => x.id === "hate";
+    expect(buildCommentTree(pile, "top", sinks).map((n) => n.id)).toEqual(["kind", "late", "hate"]);
+    expect(buildCommentTree(pile, "best", sinks).at(-1).id).toBe("hate");
+    expect(buildCommentTree(pile, "new", sinks).map((n) => n.id)).toEqual(["late", "kind", "hate"]);
+  });
+
   it("nests replies under their parents", () => {
     const tree = buildCommentTree(list, "top");
     const a = tree.find((n) => n.id === "a");

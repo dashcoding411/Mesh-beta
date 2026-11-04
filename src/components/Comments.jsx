@@ -16,7 +16,7 @@ import { buildCommentTree, countReplies, likesHidden } from "../lib/commentTree"
 import { checkFile, warmUp, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
-import { checkContent, assessText, hitsHiddenWords, markPosted } from "../lib/moderation";
+import { checkContent, assessText, hitsHiddenWords, markPosted, postAbout } from "../lib/moderation";
 import { shortTime, fullTime, isoTime, compact, plural } from "../lib/format";
 import Dialog from "./ui/Dialog";
 import LiveAvatar from "./ui/LiveAvatar";
@@ -83,7 +83,18 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
 
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
 
-  const tree = useMemo(() => (comments ? buildCommentTree(comments, sort) : null), [comments, sort]);
+  // Every comment is read against the post and the thread around it.
+  const about = postAbout(post);
+  const verdicts = useMemo(() => {
+    const list = comments || [];
+    const byId = new Map(list.map((c) => [c.id, c]));
+    const thread = list.map((c) => c.text).join("\n");
+    return new Map(list.map((c) => [c.id, assessText(c.text, { about, thread, parent: byId.get(c.parentId)?.text || "", comment: true })]));
+  }, [comments, about]);
+  const tree = useMemo(() => {
+    if (!comments) return null;
+    return buildCommentTree(comments, sort, (c) => ["block", "borderline"].includes(verdicts.get(c.id)?.level));
+  }, [comments, sort, verdicts]);
 
   const pickPhoto = (e) => {
     const file = e.target.files?.[0];
@@ -115,7 +126,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
     if (!v.text && !gif && !photo) return;
     let flagged = null;
     if (v.text) {
-      const mod = checkContent(v.text, { key: "comment", allowQuoted: true });
+      const mod = checkContent(v.text, { key: "comment", allowQuoted: true, about, thread: replyTo?.text || "", parent: replyTo?.text || "" });
       if (mod.error) return setError(mod.error);
       if (mod.sensitive) flagged = mod;
     }
@@ -192,7 +203,7 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
 
   const count = comments?.length ?? post.commentCount ?? 0;
   const ctx = {
-    post, isAuthor, liked, collapsed, revealed, onLike: like, onReply: startReply, onRemove: remove,
+    post, isAuthor, liked, collapsed, revealed, verdicts, onLike: like, onReply: startReply, onRemove: remove,
     onReport: (c) => (needsAccount("report comments") ? null : setReporting(c)),
     onToggle: toggleThread, onReveal: (id) => setRevealed((r) => new Set(r).add(id)),
   };
@@ -295,10 +306,13 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
   const hideCount = likesHidden(node);
 
   // Folded behind a tap: muted or blocked authors, hidden words, flagged wording.
-  const level = node.deleted || mine || ctx.revealed.has(node.id) ? "ok" : assessText(node.text).level;
+  const verdict = node.deleted || mine || ctx.revealed.has(node.id) ? null : ctx.verdicts.get(node.id);
+  const level = verdict?.level || "ok";
   const why = node.deleted || mine || ctx.revealed.has(node.id) ? ""
     : hiddenAuthors.has(node.authorId) ? "From an account you've muted or blocked"
     : hitsHiddenWords(node.text, hiddenWords) ? "Contains a word you've hidden"
+    : verdict?.category === "preaching" ? "Preaching, and not about this post"
+    : verdict?.category === "repeated" ? "The same thing over and over"
     : level === "quoted" ? "Quotes offensive language, to report or call it out"
     : level === "block" ? "May break the Community Guidelines"
     : level === "borderline" ? "Hidden because it may come across as mocking a group" : "";

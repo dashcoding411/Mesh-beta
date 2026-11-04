@@ -3,7 +3,7 @@ import { Eye } from "lucide-react";
 import { openUserProfile, me, fetchLikers, fetchTopComment, addComment } from "../../lib/db";
 import { compact as compactNum, plural } from "../../lib/format";
 import { LIMITS, validateText } from "../../lib/validate";
-import { checkContent, isBorderline, hitsHiddenWords, markPosted } from "../../lib/moderation";
+import { checkContent, isBorderline, hitsHiddenWords, markPosted, postAbout } from "../../lib/moderation";
 import { useShell } from "../shell/ShellContext";
 import Avatar from "../ui/Avatar";
 import RichText from "../ui/RichText";
@@ -66,7 +66,7 @@ export function SocialProof({ post, counts, seen, hiddenAuthors, mine, hiddenWor
 
   const shownLiker = likers.find((l) => !hiddenAuthors.has(l.id) && l.id !== me());
   // Stricter than the comment sheet: no borderline or hidden-word matches.
-  const topOk = top && !hiddenAuthors.has(top.authorId) && !isBorderline(top.text) && !hitsHiddenWords(top.text, hiddenWords);
+  const topOk = top && !hiddenAuthors.has(top.authorId) && !isBorderline(top.text, { about: postAbout(post), comment: true }) && !hitsHiddenWords(top.text, hiddenWords);
   const comment = preview || (topOk ? top : null);
   const stats = mine && ((post.saveCount || 0) > 0 || (post.sendCount || 0) > 0);
   if (!counts.like && !counts.comment && !stats && !caption && !tags) return null;
@@ -125,7 +125,7 @@ export function QuickComment({ post, onAdded }) {
     const v = validateText(text, LIMITS.comment, "Comment");
     if (v.error) return setError(v.error);
     if (!v.text) return;
-    const mod = checkContent(v.text, { key: "comment", allowQuoted: true });
+    const mod = checkContent(v.text, { key: "comment", allowQuoted: true, about: postAbout(post) });
     if (mod.error) return setError(mod.error);
     setBusy(true);
     setError("");

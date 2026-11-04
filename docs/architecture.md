@@ -681,6 +681,28 @@ can be argued with, but calling one a disease or filth, or calling for it to
 be banned or wiped out, is blocked as an attack on its followers ("Islam is a
 cancer", "ban Christianity"); hating one or calling it evil is borderline.
 
+Comments are read against their post (`postAbout`: title, text, image
+descriptions, topics) and thread. `assessText(text, { about, thread, parent,
+comment })` looks for a group named in any of them (`TOPICS`); if there is one,
+`ON_POST` runs: words that mean nothing alone but are hate there ("this is why
+Australia is falling", "how do they allow cancer in their team", 🐷 on a post
+about a Muslim). `declineKind` reads only the post, so a thread calling out
+racism can't clear what it's calling out; a contest, a crime or an attack on the
+group turns the decline family off, and a policy story softens it to borderline.
+`coded` isn't cleared by general condemnation ("disgusting" could be about the
+target), only by words aimed at the hate itself (`CALLED_OUT_RE`). Hidden
+spellings are uncovered first (`uncover`: "m u s l i m s", "m*slims", "isIam").
+
+It runs when writing and again when reading (`Comments.jsx`), so a comment that
+got past the check, or was written before a pattern existed, folds anyway. It
+reads words only: nothing here can see a picture, or what's said in a video.
+A post that doesn't name the group, under a thread that doesn't either, reads
+as nothing. `moderation-real.json` holds real wording both ways.
+
+In comments, `repeatsItself` stops a phrase pasted over and over (anywhere
+public, not in messages), and `isPreaching` stops a paragraph of it under a post
+that isn't about faith, any faith alike. A line like "Jesus loves you" is fine.
+
 - `block`: not posted.
 - `borderline`: posted after confirmation, never recommended to
   non-followers, collapsed in comments.
@@ -860,7 +882,8 @@ likes are `comments/{id}/likes/{uid}` tied to `likeCount` with `lastLiker`. A
 comment can carry one photo (`image`: Cloud Storage or the author's own inline
 media) or a GIF.
 
-Sorting (`lib/commentTree.js`): Best (the default) is the lower bound of the
+Sorting (`lib/commentTree.js`): comments the filter flags go below the rest in
+Best and Top, whatever their likes. Best (the default) is the lower bound of the
 Wilson score interval, as on Reddit. With likes and no downvotes, a comment's
 likes are weighed against the other people who commented after it, standing in
 for who has seen it, so being early doesn't win by itself and one like isn't

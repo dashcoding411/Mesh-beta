@@ -673,7 +673,8 @@ export async function addComment(post, text, { gif = null, image = null, parent 
   }, profile);
   if (fresh) comment.fresh = true;
   bumpAffinity(post.authorId, SIGNAL.comment).catch(() => {});
-  const notice = { postId: post.id, commentId: ref_.id, text: text.slice(0, 140) };
+  // A flagged comment doesn't get quoted to the person it may be aimed at.
+  const notice = { postId: post.id, commentId: ref_.id, text: sensitive ? "" : text.slice(0, 140) };
   if (parent) notify(parent.authorId, "reply", notice);
   if (!parent || parent.authorId !== post.authorId) notify(post.authorId, "comment", notice);
   return { id: ref_.id, ...comment, createdAt: Timestamp.now() };

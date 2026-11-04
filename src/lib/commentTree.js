@@ -39,8 +39,10 @@ export function bestScores(list) {
  * Comments as a tree of { ...comment, children }. Replies to a deleted
  * comment stay under a `{ deleted: true }` placeholder so the thread holds
  * together. Best: see bestScores. Top: most liked, then oldest. New: newest.
+ * In Best and Top, `sinks` comments (the filter's flagged ones) go below the
+ * rest, however many likes they have: a pile-on can't vote hate to the top.
  */
-export function buildCommentTree(list, sort = "best") {
+export function buildCommentTree(list, sort = "best", sinks = () => false) {
   const byId = new Map(list.map((c) => [c.id, { ...c, children: [] }]));
   const roots = [];
   for (const c of [...byId.values()]) {
@@ -64,7 +66,8 @@ export function buildCommentTree(list, sort = "best") {
     const of = (n) => (n.deleted ? Math.max(0, ...n.children.map(of)) : score.get(n.id) || 0);
     order = (a, b) => of(b) - of(a) || likes(a, b) || oldest(a, b);
   }
-  const sortAll = (nodes) => { nodes.sort(order); nodes.forEach((n) => sortAll(n.children)); };
+  const ranked = sort === "new" ? order : (a, b) => Number(sinks(a)) - Number(sinks(b)) || order(a, b);
+  const sortAll = (nodes) => { nodes.sort(ranked); nodes.forEach((n) => sortAll(n.children)); };
   sortAll(roots);
   return roots;
 }

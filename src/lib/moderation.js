@@ -23,6 +23,12 @@
 // Text is normalised first (homoglyphs, accents, zero-width chars, leetspeak,
 // stretching, separators). Unambiguous slurs are also enforced by the rules
 // (hateFree); the contextual checks here have no server-side equivalent.
+//
+// A comment is read against the post it's on (`about`) and the thread around
+// it (`thread`). "This is why Australia is falling" means nothing on a post
+// about interest rates, and something else on one about a Muslim player. All
+// of it runs on the device, when writing and again when reading, so a comment
+// that got past the writer's check still folds for everyone who reads it.
 // Private messages aren't filtered: the sender's device asks before sending
 // something that would be blocked here (messageWarning), and a message
 // request that would be is folded away on the recipient's (hideInRequest).
@@ -39,18 +45,33 @@ const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", 8: "b", "@": "a",
 
 export function normalize(text) {
   let t = String(text || "").normalize("NFKC").toLowerCase();
-  t = t.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, "");
+  t = t.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, "").replace(/\uFE0F/g, "");
   t = [...t].map((c) => HOMOGLYPHS[c] ?? c).join("");
   t = t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
   return t.replace(/[’‘`´]/g, "'").replace(/\s+/g, " ");
 }
 
-// Patterns run against the text as written and with leetspeak decoded, since
-// decoding alone would mangle punctuation ("dirty!" -> "dirtyi").
+// Ways of hiding a word: "m u s l i m s", "m*slims", "muuuslims", and spellings
+// that only look right ("isIam" lowercases to "isiam", "mus1ims" decodes to "musiims").
+const HIDDEN_RE = /\*|([a-z])\1\1|(?:^|[^a-z])[a-z][ .\-_][a-z][ .\-_][a-z]|isiam|izlam|musiim|muzlim|mvslim|moslem/;
+const RESPELT = { isiam: "islam", izlam: "islam", musiim: "muslim", muzlim: "muslim", mvslim: "muslim", moslem: "muslim" };
+const CENSORED = ["muslims", "muslim", "islam", "jews", "jew", "blacks", "indians", "indian", "asians", "chinese", "women", "gays", "migrants", "immigrants", "refugees", "hindus", "sikhs", "christians", "aboriginals", "africans", "arabs"];
+function uncover(v) {
+  return v
+    .replace(/(?<![a-z])(?:[a-z][ .\-_]){2,}[a-z](?![a-z])/g, (m) => m.replace(/[ .\-_]/g, ""))
+    .replace(/[a-z*]*\*[a-z*]*/g, (w) => CENSORED.find((c) => c.length === w.length && [...w].every((ch, i) => ch === "*" || ch === c[i])) ?? w)
+    .replace(/([a-z])\1{2,}/g, "$1")
+    .replace(/isiam|izlam|musiim|muzlim|mvslim|moslem/g, (m) => RESPELT[m]);
+}
+
+// Patterns run against the text as written, with leetspeak decoded (decoding
+// alone would mangle punctuation: "dirty!" -> "dirtyi"), and with hidden words
+// uncovered.
 function variants(text) {
   const plain = normalize(text);
   const leet = plain.replace(/[0134578@$!|€]/g, (c) => LEET[c] ?? c);
-  return plain === leet ? [plain] : [plain, leet];
+  const read = plain === leet ? [plain] : [plain, leet];
+  return [...read, ...read.filter((v) => HIDDEN_RE.test(v)).map(uncover)];
 }
 
 const B = "(?<![a-z])"; // not preceded by a letter
@@ -82,7 +103,7 @@ const SLURS = [
   // Jewish
   "kike", "oven dodger",
   // Muslim, Arab, Sikh
-  "raghead", "towelhead", "sand nigger", "muzrat", "muzzie", "camel jockey", "diaper head", "goat fucker",
+  "raghead", "towelhead", "sand nigger", "muzrat", "muzzie", "mudslime", "pisslam", "window licker", "camel jockey", "diaper head", "goat fucker",
   // Roma and Travellers
   "gyppo", "pikey",
   // Indigenous peoples of the Americas
@@ -202,7 +223,7 @@ const DEHUMANISING = [
   "(?:sexual )?deviants?", "perverts?", "parasites", "leeches", "a parasite", "a blight", "a scourge",
   "sick in the head", "(?:a )?mental (?:illness|disorder)",
   "property", "(?:sex |mere )?objects", "whores", "sluts", "hoes", "breeding (?:stock|machines?)",
-  "baby (?:machines?|factories)", "incubators",
+  "baby (?:machines?|factories)", "incubators", "holes",
 ];
 
 // Blanket insults (borderline).
@@ -241,6 +262,24 @@ const LACKING = [
   "more (?:violent|criminal|dangerous|dishonest|primitive|backward|aggressive|savage|barbaric|corrupt|stupid)",
   "incompatible with (?:civili[sz]ation|western (?:society|civili[sz]ation|values)|democracy|our (?:society|values|way of life)|australian (?:society|values))",
 ].join("|");
+
+// Coded hate: it doesn't name anyone, or it's a joke everyone's in on.
+// Nothing but punctuation, emoji or a throwaway word after it, so "Australia is
+// finished if they bat like that" stays a cricket opinion.
+const ENDS = "(?=(?:\\s+(?:lol|lmao|lmfao|haha+|mate|boys|lads|fellas|bro|bruh|tho|though|now|anyway|ay|eh|too))*\\s*(?:$|[.!?,…;:\\n)]|[^\\x00-\\x7f]))";
+const FOREIGN = "(?:pakistan|india|mumbai|delhi|karachi|dhaka|punjab|bangladesh|afghanistan|kabul|saudi(?: arabia)?|somalia|sudan|lebanon|iraq|iran|syria|nigeria)";
+const SEND_BACK = "(?:pakistan|india|china|bangladesh|sri lanka|nepal|afghanistan|iran|iraq|syria|lebanon|somalia|sudan|nigeria|africa|the middle east|saudi(?: arabia)?|vietnam|the philippines|indonesia|mexico|the jungle|the desert)";
+const HOME_PLACE = "(?:australia|aus|sydney|melbourne|brisbane|perth|adelaide|logan|ipswich|parramatta|harris park|uq|uni|campus|this suburb|my suburb|this street|my street|this city)";
+const UNNAMED = "(?:that|this|those|these|their|his|her|your|a certain|certain)\\s+(?:community|communities|people|lot|bunch|mob|religion|faith|kind|culture)";
+const SIGNS = {
+  islam: "(?:☪|🕌|🧕)", islamHarm: "(?:💣|💥|🧨|🔫|🔪|🐷|🐖|🐽|🥓)",
+  jewish: "(?:✡|🕎)", jewishHarm: "(?:⛽|🚿|🐀|👃|🤑|💰|🪙)",
+  india: "🇮🇳", indiaHarm: "(?:💩|🚽|🤮|🐄)",
+  pride: "(?:🏳🌈|🏳⚧)", prideHarm: "(?:🤮|🤢|🗑|🚮|🔫|🪓|🚫|🪢|💩|🤡)",
+};
+const nearEachOther = (a, b, gap = 40) => `(?:${a}[^\\n]{0,${gap}}${b}|${b}[^\\n]{0,${gap}}${a})`;
+// Celebrating, not threatening: "Eid Mubarak ☪️💥🎉".
+const GREETING_RE = /mubarak|(?<![a-z])eid(?![a-z])|ramadan|ramzan|alhamdulillah|inshallah|mashallah|masha allah|celebrat|congrat/;
 
 const BLOCK_PATTERNS = [
   // "X are vermin", "all X are just animals"
@@ -287,6 +326,41 @@ const BLOCK_PATTERNS = [
   { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:should|must|needs? to|has to|ought to|deserves? to)\\s+(?:all\\s+)?(?:be\\s+)?(?:banned|outlawed|eradicated|exterminated|wiped out|destroyed|erased|eliminated|stamped out|purged|nuked|wiped off the (?:map|earth|face of the earth)|die|burn)${E}${NOT_SECULAR}`) },
   { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:has|have)\\s+no\\s+place\\s+(?:here|in\\s+(?:australia|this country|our country|the west|society|our society|modern society|a (?:modern|civili[sz]ed) society))${E}`) },
   { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:doesn'?t|does not|dont|don'?t)\\s+belong(?:\\s+(?:here|in\\s+(?:australia|this country|our country|the west|society)))?${E}`) },
+  // "go back to Pakistan" (but not "I go back to India next month")
+  { category: "xenophobia", re: re(`(?:^|[.!?\\n]\\s*|${B}(?:should|just|can|must|needs? to|need to|better|then|please|ought to|gotta|could)\\s+)(?:go|get|run|head|move)\\s+back\\s+to\\s+${SEND_BACK}${E}${ENDS}`) },
+  { category: "xenophobia", re: re(`${B}(?:fuck|f\\*+k|piss|p\\*+ss|sod|bugger|rack)\\s+off\\s+(?:back\\s+)?(?:to\\s+)?(?:${SEND_BACK}|where (?:you|u|they|he|she) (?:came|come) from|(?:your|ur|their|his|her) (?:own\\s+)?country)${E}`) },
+  { category: "xenophobia", re: re(`${B}go\\s+back\\s+to\\s+(?:shitting|shit\\s+(?:in|on)|pooing|defecating)${E}`) },
+  { category: "xenophobia", re: re(`${B}go\\s+play\\s+for\\s+${SEND_BACK}${E}`) },
+  // "is this Brisbane or Mumbai", "Sydney is turning into Pakistan"
+  { category: "xenophobia", kind: "coded", re: re(`${B}(?:is this|are we in|thought this was|this is|is that)\\s+${HOME_PLACE}\\s+or\\s+(?:${FOREIGN}|china|beijing)${E}`) },
+  { category: "xenophobia", kind: "coded", re: re(`${B}${HOME_PLACE}\\s+(?:is\\s+|are\\s+|has\\s+|have\\s+)?(?:(?:already|basically|slowly|just)\\s+)?(?:turning into|becoming|become|turned into)\\s+(?:little\\s+|mini\\s+|the new\\s+|another\\s+)?${FOREIGN}${E}`) },
+  { category: "xenophobia", kind: "coded", re: re(`${B}(?:cant|can'?t|cannot)\\s+(?:go|walk|drive)\\s+anywhere\\s+without\\s+(?:seeing|hearing|smelling|running into)\\s+(?:an?\\s+)?${PEOPLE_RE}${E}`) },
+  // "X ruin everything", "every terrorist is X", "X get everything for free"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+(?:ruin|ruined|ruins|wreck|wrecked|wrecks|destroy|destroyed|destroys|trash|trashed|trashes|poison|poisoned|poisons)\\s+(?:every ?thing|every (?:country|place|suburb|city|uni|street)|this (?:country|suburb|place|city|street|uni)|our (?:country|suburbs?|cities|city|culture|schools|unis?)|australia|the (?:country|suburb|neighbou?rhood|city|west))${E}`) },
+  { category: "dehumanising", kind: "stereotype", re: re(`${B}(?:all|every|every single|most)\\s+(?:terrorists?|rapists?|paedos?|pedos?|paedophiles?|pedophiles?|scammers?|criminals?)\\s+(?:is|are)\\s+(?:a\\s+|an\\s+)?${PEOPLE_RE}${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${PEOPLE_RE}\\s+get\\s+(?:everything for free|everything free|free (?:houses?|cars?|money)|all the (?:handouts|money))${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${PEOPLE_RE}\\s+(?:never|didn'?t(?: even)?|did not(?: even)?|couldn'?t(?: even)?)\\s+(?:invent(?:ed)?|have|had|make|made)\\s+(?:the\\s+)?wheel${E}`) },
+  // "only in the team because he's Muslim", "she only got the job because she's a woman"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}only\\s+(?:got|in|there|picked|selected|chosen|hired|on|made)\\b[^.!?\\n]{0,40}\\b(?:because|cause|cos|coz|since)\\s+(?:she'?s|he'?s|they'?re|of (?:her|his|their))\\s+(?:a\\s+|an\\s+)?(?:woman|female|girl|black|gay|muslim|brown|asian|indian|aboriginal|trans|disabled|jewish|hindu|sikh|race|gender|religion|skin|colou?r|sexuality)${E}`) },
+  { category: "conspiracy", re: re(`${B}(?:the\\s+)?(?:zionists?|rothschilds?)\\s+(?:secretly\\s+|really\\s+|basically\\s+)?(?:control|run|own|rule)s?\\s+(?:the\\s+|our\\s+|all\\s+(?:the\\s+)?)?(?:media|news|banks?|banking|world|governments?|hollywood|money|finance|economy|everything|the west)${E}`) },
+  // "this place used to be white", "fix your own country"
+  { category: "xenophobia", kind: "coded", re: re(`${B}(?:used to be (?:so\\s+|all\\s+|mostly\\s+)?white|(?:a\\s+)?white (?:man'?s|men'?s|people'?s|persons?'?) (?:game|sport|country|land|suburb|town)|(?:go back and\\s+)?fix (?:your|ur|their|his|her) own country)${E}`) },
+  // The running jokes and slogans.
+  { category: "coded", kind: "coded", re: re(`${B}(?:religion of pieces|dindu(?: nuf+in)?|ooga booga|chimp(?:ed|ing|s)?\\s+out|(?:six|6) gorillion|khazarian mafia|synagogue of satan|me love you long time|sit[- ]down money|we grew here,?\\s+you flew here|fuck off,?\\s+we'?re full|(?:not\\s+)?adam and steve|creeping sharia|islami[sz]ation of (?:australia|the west|europe|britain|the uk|sweden|our country)|islamification|repeal the 19th|cow (?:piss|worship\\w*)|bat soup|ok(?:ay)? groomer|(?:your|their|the|ur) prophet (?:was|is) (?:a\\s+)?(?:pedo|paedo|pedophile|paedophile|child ?molester|child ?rapist))${E}`) },
+  { category: "coded", kind: "coded", re: re(`${B}(?:sharia(?: law)?\\s+(?:next|soon|incoming|is coming|coming)|next\\s+(?:it'?ll be|it will be|will be|they'?ll (?:want|ask for|demand)|up is|thing you know)\\s+sharia)${E}`) },
+  { category: "coded", kind: "term", re: re(`${B}(?:the\\s+)?stolen generations?\\s+(?:never happened|didn'?t happen|did not happen|(?:is|was|were)\\s+(?:a\\s+)?(?:myth|lie|hoax|fake|made up|exaggerated|overblown))${E}`) },
+  // "religion of peace" said with a smirk (not when someone means it).
+  { category: "coded", kind: "coded", re: re(`${B}so[- ]called\\s+(?:religion of peace|peaceful (?:religion|people|community))${E}`) },
+  { category: "coded", kind: "coded", re: re(`${B}(?:religion of peace|peaceful (?:religion|people|community|folks|lot|bunch))[^.!?\\n]{0,30}(?:💣|💥|🧨|😂|🤣|💀|(?<![a-z])(?:lol|lmao|lmfao|haha+|yeah right|my ass)(?![a-z]))`) },
+  { category: "coded", kind: "coded", re: re(`(?:💣|💥|🧨|😂|🤣|💀|(?<![a-z])(?:yeah right|sure)(?![a-z]))[^.!?\\n]{0,30}${B}religion of peace${E}`) },
+  // "those people blow themselves up", "that community 💣"
+  { category: "coded", kind: "coded", re: re(`${B}${UNNAMED}[^.!?\\n]{0,40}(?:(?<![a-z])(?:blow(?:s|ing)?\\s+(?:themselves|things|stuff|everything|us|you|people|buildings)|behead\\w*|jihad\\w*|suicide (?:bomb\\w*|vests?))(?![a-z])|💣|🧨)`) },
+  { category: "coded", kind: "coded", re: re(`${B}${UNNAMED}\\s+(?:are|is|all|just|=|r)\\s+(?:all\\s+|just\\s+)*(?:terrorists?|suicide bombers?|jihadis?)${E}`) },
+  // The same thing in emoji: a faith's or a community's symbol beside a bomb, a pig, a rat.
+  { category: "coded", kind: "coded", innocent: GREETING_RE, re: re(nearEachOther(SIGNS.islam, SIGNS.islamHarm)) },
+  { category: "coded", kind: "coded", re: re(nearEachOther(SIGNS.jewish, SIGNS.jewishHarm)) },
+  { category: "coded", kind: "coded", re: re(nearEachOther(SIGNS.india, SIGNS.indiaHarm)) },
+  { category: "coded", kind: "coded", re: re(nearEachOther(SIGNS.pride, SIGNS.prideHarm)) },
   // Threats against a person: "I'll find you and hurt you", "I know where you live"
   { category: "threat", kind: "threat", re: re(`${B}${WILL}\\s+(?:find|hunt|track)\\s+(?:you|u|ya)\\s+(?:down\\s+)?(?:and\\s+)?${HURT}${E}`) },
   { category: "threat", kind: "threat", re: re(`${B}${WILL}\\s+(?:${BEAT_UP}|${HURT}\\s+(?:you|u|ya|your (?:family|kids?|mum|mom|wife|husband|sister|brother|dog)))${E}(?!\\s+(?:a|an)\\s+(?:message|msg|text|email|dm|line|pic|photo|note|invite|link))`) },
@@ -374,11 +448,171 @@ const BORDERLINE_PATTERNS = [
   { category: "xenophobia", re: re(`${B}(?:way\\s+)?too many\\s+${XENO_OBJ}\\s+(?:in (?:australia|this country|our country|my (?:suburb|area|street|city|town))|here|around here|everywhere|coming (?:in|here|over))${E}`) },
   // Sexual put-downs aimed at someone: "she's a dumb slut"
   { category: "sexual_harassment", re: re(`${B}(?:you|u|ur|you'?re|youre|she'?s|shes|she is|her|that)\\s+(?:a\\s+|such a\\s+|one\\s+)?(?:[a-z]+\\s+)?(?:slut|whore|skank|thot)s?${E}`) },
+  // Not always hate, but the usual way of saying it: "typical Indian", "female logic".
+  { category: "stereotype", re: re(`${B}typical\\s+(?!aussies?|australians?)${PEOPLE_RE}(?:\\s+(?:behaviou?r|drivers?|driving|logic|mentality|move|thing|stuff|shit))?${E}${ENDS}`) },
+  { category: "stereotype", re: re(`${B}(?:(?:must|musta|probably|clearly|bet)\\s+(?:be\\s+)?(?:on\\s+)?(?:her|their|your|ur)\\s+(?:period|rag)|time of the month)${E}`) },
+  { category: "stereotype", re: re(`${B}(?:(?:female|woman|women)(?:'?s)?\\s+logic|(?:woman|women)\\s+moment|(?:women|woman|female|asian|indian|chinese)\\s+drivers?(?:\\s+(?:lol|lmao|haha+))?${ENDS})`) },
+  { category: "stereotype", re: re(`${B}(?:alphabet (?:people|mafia|crowd|gang)|(?:there(?:'?s| are| is)?\\s+)?only\\s+(?:2|two)\\s+genders|what is a woman|(?:diversity|dei|quota|token)\\s+(?:hire|pick|selection)|72 virgins)${E}`) },
+  { category: "exclusion", re: re(`${B}(?:mass deport\\w*|deport\\s+(?:them|em|'em)\\s+all|send\\s+(?:them|em|'em)\\s+(?:all\\s+)?back${E}${ENDS})`) },
+  { category: "xenophobia", re: re(`${B}(?:too many of (?:them|these people|those people)${E}(?:\\s+(?:here|around|now|in \\w+|everywhere))*${ENDS}|imagine if (?:white people|whites|we|a white \\w+)\\s+did)`) },
+  { category: "xenophobia", re: re(`${B}try\\s+(?:that|this|doing (?:that|this))\\s+in\\s+(?:saudi(?: arabia)?|pakistan|iran|afghanistan|iraq|qatar|dubai|a muslim country)${E}`) },
   // Hating a faith or calling it evil: "I hate Islam", "fuck Christianity"
   { category: "religion", re: re(`${B}(?:i|we|everyone)\\s+(?:fucking\\s+|really\\s+)?(?:hate|despise|loathe|can'?t stand|cannot stand)\\s+${FAITHS}${E}`) },
   { category: "religion", re: re(`${B}${FAITHS}\\s+${IS}\\s+${FILLER}(?:pure\\s+)?(?:evil|demonic|vile|disgusting|trash|garbage|rubbish)${E}`) },
   { category: "religion", re: re(`${B}(?:fuck|fck|fuk|fk|f\\*+ck)\\s+${FAITHS}${E}`) },
 ];
+
+// What a post is about. Words that mean nothing alone are hate on a post about
+// someone's faith, race, sexuality or gender.
+const TOPICS = {
+  muslim: `${B}(?:muslims?|islam|islamic|allah|ramadan|ramzan|eid|hijabi?|burqa|niqab|mosques?|halal|quran|koran|imam)${E}|☪|🕌|🧕`,
+  jewish: `${B}(?:jews?|jewish|judaism|synagogues?|hanukkah|chanukah|passover|yom kippur|rabbi|kosher)${E}|✡|🕎`,
+  south_asian: `${B}(?:indians?(?!\\s+(?:ocean|summer|food|restaurant|takeaway|curry))|pakistanis?|bangladeshis?|sri lankans?|nepalis?|nepalese|punjabis?|sikhs?|hindus?|hinduism|sikhism|gurdwara|diwali|holi|desi|bollywood)${E}`,
+  asian: `${B}(?:asians?|chinese(?!\\s+(?:food|takeaway|restaurant))|koreans?|japanese|vietnamese|filipin[oa]s?|thais?|indonesians?|malaysians?|lunar new year)${E}`,
+  black: `${B}(?:black (?:man|men|woman|women|people|community|lives|kid|kids|family|player|players|actor|actress|girl|boy|guy|student|students)|blacks|african americans?|blm)${E}`,
+  african: `${B}(?:africans?|sudanese|somalis?|nigerians?|ethiopians?)${E}`,
+  aboriginal: `${B}(?:aboriginals?|aborigines?|indigenous|first nations|torres strait|naidoc|welcome to country)${E}`,
+  arab: `${B}(?:arabs?|lebanese|palestinians?|iraqis?|syrians?|afghans?|iranians?|persians?)${E}`,
+  migrant: `${B}(?:migrants?|immigrants?|refugees?|asylum seekers?|multicultural)${E}`,
+  christian: `${B}(?:christians?|christianity|catholics?)${E}`,
+  gay: `${B}(?:gays?|lesbians?|lgbt\\w*|queer|same[- ]sex|pride (?:march|parade|month|flag|round|jersey)|mardi gras|two dads|two mums)${E}|🏳🌈`,
+  trans: `${B}(?:trans(?![- ](?:tasman|siberian|pacific|atlantic|am))|transgender|non[- ]?binary)${E}|🏳⚧`,
+  women: `${B}(?:women'?s (?:sport|cricket|footy|football|soccer|afl|nrl|league|team|rights|day)|aflw|nrlw|matildas|feminis[mt]s?|female (?:captain|ceo|pm|prime minister|boss|leader|coach|referee|umpire|driver|pilot)|first (?:woman|female))${E}`,
+  disabled: `${B}(?:disabled|disability|autistic|autism|down syndrome|wheelchair|paralympi\\w*)${E}`,
+};
+const TOPIC_RES = Object.entries(TOPICS).map(([name, source]) => [name, re(source)]);
+const remembered = new Map();
+function topicsIn(text) {
+  if (!text) return [];
+  if (remembered.has(text)) return remembered.get(text);
+  const v = normalize(text);
+  const found = TOPIC_RES.filter(([, r]) => r.test(v)).map(([name]) => name);
+  if (remembered.size > 300) remembered.clear();
+  remembered.set(text, found);
+  return found;
+}
+
+// "Australia is cooked" is fair comment on a loss, a crime or a rent rise.
+const NOT_ABOUT_THEM_RE = re(`${B}(?:vs?|versus|beat|beats|beaten|defeat\\w*|thrash\\w*|wickets?|innings|all out|series|test match|odi|t20|world cup|semi[- ]?finals?|grand finals?|finals?|scoreboard|rankings?|attack\\w*|charged|arrested|jailed|sentenced|assault\\w*|stabb\\w*|shot dead|shooting|murder\\w*|killed|vandal\\w*|graffiti|abus\\w*|threat\\w*|racis[mt]\\w*|bigot\\w*|hate crimes?|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|misogyn\\w*|sexis[mt]\\w*|discriminat\\w*|harass\\w*)${E}`);
+const POLICY_RE = re(`${B}(?:rents?|housing|house prices|buyers?|investors?|visas?|immigration|migration|policy|policies|budget|bill|government|minister|labor|liberals?|election|polls?|report finds|survey|data|statistics)${E}`);
+
+const PLACE = "(?:australia|aus|aussie land|straya|the west|the country|this country|our country|england|the uk|britain|america|canada|europe|the world|society|civili[sz]ation|western civili[sz]ation|cricket|the game|the sport|this sport|sport|the team|this team|cricket australia)";
+const FALLING = "(?:falling(?: apart)?|fallen|finished|cooked|doomed|dying|dead|done|gone|screwed|stuffed|ruined|rooted|over|going (?:down(?:hill)?|backwards|to (?:shit|hell|the dogs)|under)|in decline|declining|collapsing|on its knees|cucked)";
+const REALLY = "(?:so|just|absolutely|fully|truly|officially|already|well and truly|completely|totally|really|literally|bloody|fucking|fkn)";
+const THEIR_PLACE = "(?:(?:their|our|this|that|your)\\s+(?:team|side|squad|country|nation|society|club|sport|game|community|culture|dressing room|house|school|uni|neighbou?rhood|suburb|street|city)|society|australia)";
+const VILE = "(?:cancer|parasites?|vermin|filth|infestation|terrorists?|jihadis?)";
+const NOT_MEDICAL = "(?!\\s+(?:free|survivor|survivors|patient|patients|research|scare|diagnosis|treatment|ward|fund|charity|council|awareness|sign|season|horoscope))";
+const FOR_TERROR = ["muslim", "arab"];
+const KIND_RE = /(?<![a-z])(?:love\w*|great(?!,? another)|best|amazing|beautiful|gorgeous|legend\w*|proud|welcome|congrat\w*|thank\w*|well done|good|awesome|brilliant|stunning|respect|happy|yum\w*|wholesome|sweet|bless\w*)(?![a-z])|❤|🙌|😍|🥰|🙏|👏|🔥/;
+
+// Only read when the post, the thread or the comment names a group.
+//   decline  the "this is why Australia is falling" family (see readPost)
+//   coded    blocked; only explicitly calling out the hate clears it
+//   soft     resentment that could be fair comment: posted, but folded
+//   reaction soft, unless the post is about a crime against them or a contest
+const ON_POST = [
+  // "This is why Australia is falling", "RIP Australia", "not my Australia"
+  { kind: "decline", re: re(`${B}(?:(?:this is|that'?s|thats|see)\\s+)?(?:why\\s+)?${PLACE}(?:'s|\\s+(?:is|are|has|have|was))?(?:\\s+${REALLY})*\\s+${FALLING}${E}${ENDS}`) },
+  { kind: "decline", re: re(`${B}(?:rip|r\\.i\\.p\\.?|rest in peace|goodbye|bye bye|so long|farewell|sad day for|sad times for|pray for|what happened to)\\s+${PLACE}${E}${ENDS}`) },
+  { kind: "decline", re: re(`${B}what\\s+(?:has|have)\\s+${PLACE}\\s+become${E}`) },
+  { kind: "decline", re: re(`${B}not\\s+my\\s+${PLACE}${E}${ENDS}`) },
+  // "How do they allow cancer in their team", "he's a cancer"
+  { re: re(`${B}${VILE}\\s+(?:in|into|on|to|of)\\s+${THEIR_PLACE}${E}`) },
+  { re: re(`${B}(?:he|she|they|you|u|that guy|this guy|that bloke|this bloke|that lot|these people|those people|that community|this community|their lot)\\s*(?:'s|'re|is|are|r|=)?\\s*(?:a\\s+|an\\s+|such a\\s+|just a\\s+|nothing but a\\s+|absolute\\s+|total\\s+|bloody\\s+|fucking\\s+)*(?:cancer|parasites?|vermin|infestation|terrorists?|jihadis?|suicide bombers?|sub-?humans?)${E}${NOT_MEDICAL}`) },
+  // "And in return what will that community do", "would they do the same for us"
+  { re: re(`${B}in return\\s+what\\s+(?:will|would|do|did|does)\\s+(?:that|this|those|these|their|they|he|she)${E}`) },
+  { kind: "soft", re: re(`${B}(?:would|will)\\s+(?:they|he|she|those people|these people|that community)\\s+(?:ever\\s+)?do\\s+the\\s+same${E}`) },
+  { kind: "soft", re: re(`${B}they(?:'?d| would)?\\s+never\\s+do\\s+(?:that|this|the same)${E}`) },
+  // "send him back", "he's not a real Aussie", "they're taking over"
+  { re: re(`${B}(?:(?:send|kick|ship|throw)\\s+(?:him|her|them|em|'em|these people|those people|that lot|the lot of them)(?:\\s+all)?\\s+(?:back|out|home|away)(?:\\s+all)?|deport\\s+(?:him|her|them|em|'em|these people|those people|that lot|the lot of them)(?:\\s+all)?)${E}${ENDS}`) },
+  { re: re(`${B}(?:he|she|they|him|her|them)\\s*(?:'s|'re|is|are|r)?\\s*(?:not|isn'?t|aren'?t|ain'?t)\\s+(?:a\\s+|an\\s+)?(?:real\\s+|true\\s+|proper\\s+)?(?:aussies?|australians?)${E}(?![- ]born)`) },
+  { re: re(`${B}(?:not one of us|(?:just\\s+)?go (?:back )?home${E}${ENDS})`) },
+  { re: re(`${B}(?:they|these people|those people|that lot|them lot)\\s*(?:'re|are|r)?\\s+(?:all\\s+)?(?:everywhere|taking over|ruining|destroying|invading|breeding|multiplying)(?:\\s+(?:${PLACE}|our \\w+|here|everything|this place))?${E}${ENDS}`) },
+  // Resentment: "why should the team change", "our country our rules", "woke cricket"
+  { kind: "soft", re: re(`${B}(?:bend(?:s|ing)?\\s+(?:over|the knee|backwards)|bow(?:s|ing)?\\s+down|kneel(?:s|ing)?\\s+(?:to|for)|pander(?:s|ing)?|grovel\\w*|cater(?:s|ing)?\\s+(?:to|for)\\s+(?:them|him|her|these|those|one|every|a minority))${E}`) },
+  { kind: "soft", re: re(`${B}why\\s+(?:should|do|must|does|would)\\s+(?:we|they|the team|the boys|the rest|everyone|the whole team|aussies|australians)\\s+(?:(?:have|need)\\s+to\\s+)?(?:change|adapt|cater|hide|stop|give up|bend|bow|accommodate|put away)${E}`) },
+  { kind: "soft", re: re(`${B}(?:our (?:country|land),?\\s+our rules|when in rome|love it or leave|assimilate or|adapt or (?:leave|go)|if (?:you|they|he|she) (?:don'?t|doesn'?t) like it,?\\s+(?:leave|go home|get out|go back)|respect our (?:culture|traditions?|values|way of life))${E}`) },
+  { kind: "soft", re: re(`${B}(?:go woke,?\\s+go broke|(?:so|too|bloody|fucking)\\s+woke|woke\\s+(?:cricket|sport|team|australia|nonsense|garbage|rubbish|bs|bullshit|crap|shit|ca|cricket australia))${E}`) },
+  { kind: "soft", re: /🤮|🤢/ },
+  // "these people will never integrate", "pray in your own country"
+  { re: re(`${B}(?:these people|those people|they|them|he|she)\\s+(?:will never|can never|never|won'?t ever|don'?t|doesn'?t)\\s+(?:integrate|assimilate|fit in|speak english)${E}`) },
+  { re: re(`${B}(?:pray|go|stay|do that|do this|live|fight|celebrate)\\s+(?:in|to|back to)\\s+(?:your|ur|their|his|her)\\s+own\\s+country${E}`) },
+  { re: re(`${B}(?:(?:we|i)\\s+)?(?:don'?t|do not|dont)\\s+want\\s+(?:your|ur|their|his|her|them|any|more)\\b[^.!?\\n]{0,25}(?<![a-z])here${E}`) },
+  { re: re(`${B}(?:when you|if you|you)\\s+let\\s+them\\s+in|letting\\s+them\\s+in${E}`) },
+  { re: re(`${B}(?:bulldoze|burn (?:it|them|this) down|torch it|blow it up)${E}`) },
+  { re: re(`${B}they(?:'?re| are)?\\s+(?:run|control|own)s?\\s+(?:everything|the world|the media|the banks|hollywood|the country)${E}${ENDS}`) },
+  { kind: "soft", re: re(`${B}(?:play(?:s|ing)?\\s+the\\s+victim|(?:race|victim)\\s+card|affirmative action|what about (?:white|the white|us|aussies|australians)|all lives matter|they'?d riot|if (?:we|i|white people|whites) did (?:this|that)|they'?ll ban|ban(?:ning)? (?:beer|alcohol|pork|bacon|christmas|easter)|replac(?:e|ed|ing) us)${E}`) },
+  // A short hostile reaction, on a post about someone's identity, is about them
+  // however it's worded. Folds only, and not if it's kind or the post is a
+  // crime against them ("disgusting" under an attack on a mosque).
+  { kind: "reaction", innocent: KIND_RE, re: re(`^\\s*(?:gross|disgusting|vile|pathetic|embarrassing|shameful|shame|yuck|yuk|ew+|no thanks|nah|here we go again|not again|not another|another one|great,? another(?: one)?|enough|stop (?:it|them|this|building \\w+|letting \\w+|bringing \\w+)|ban (?:it|them|this)|shut it down|close it|get rid of (?:it|them)|who asked|who cares|nobody asked|no one asked|nobody cares|no one cares|cringe|what a joke|joke|clowns?|hard pass|keep it to yourselves?)${E}${ENDS}`) },
+  { kind: "reaction", re: /^\s*(?:🤡|🙄|🤦|🖕|🚮|💩|\s)+$/ },
+  // Aimed at one group, and only ever read on posts about them.
+  { topics: FOR_TERROR, re: re(`${B}(?:check|search|watch)\\s+(?:his|her|their|that|the)\\s+(?:bags?|backpacks?|vests?)${E}`) },
+  { topics: FOR_TERROR, re: re(`${B}(?:got|has|have|wearing|hiding|strapped(?:\\s+with)?)\\s+(?:a\\s+)?(?:suicide\\s+vest|bomb(?!\\s+of)|explosives?|vest\\s+under)${E}`) },
+  { topics: FOR_TERROR, re: re(`${B}(?:he|she|they)\\s*(?:'ll|will|gonna|going to|might|would|'d)\\s+blow\\s+(?:us|you|them|it|everyone|themselves|himself|the \\w+)(?:\\s+up)?${E}`) },
+  { topics: FOR_TERROR, kind: "soft", re: /^\s*(?:💣|🧨|\s)+$/ },
+  { topics: ["muslim"], re: /🐷|🐖|🐽|🥓/ },
+  { topics: ["muslim"], re: re(`${B}(?:(?:give|feed|offer|hand|get)\\s+(?:him|her|them|em)\\s+(?:a\\s+|some\\s+)?(?:bacon|pork|ham)|bring\\s+(?:a\\s+|some\\s+)?(?:bacon|pork|ham)|pray\\w*\\s+to\\s+a\\s+(?:paedo|pedo|paedophile|pedophile)|(?:yell|scream|shout)\\w*\\s+allah\\w*(?:\\s+akbar)?)${E}`) },
+  { topics: ["gay", "trans"], re: re(`${B}(?:keep|get)\\s+(?:them|those people|these people|him|her|it)\\s+away\\s+from\\s+(?:the\\s+|our\\s+|my\\s+)?(?:kids|children)${E}`) },
+  { topics: ["gay", "trans"], re: re(`${B}(?:groomers?|abominations?|sodom\\w*|gomorrah|degenerates?|mentally ill|mental illness|sick in the head)${E}`) },
+  { topics: ["gay", "trans"], kind: "soft", re: re(`${B}(?:adam and eve|praying for (?:your|their|his|her) soul|sinful|poor (?:kids?|child|children)|biological (?:male|man|men|boy)|born (?:a\\s+)?(?:male|man|boy)|delusional|(?:he|him)\\s+should\\s+compete)${E}`) },
+  { topics: ["gay", "trans"], kind: "soft", re: re(`${B}(?:not natural|unnatural|against (?:nature|god)|think of the (?:kids|children))${E}`) },
+  { topics: ["trans"], re: re(`${B}(?:that'?s|thats|(?:he|it)'?s)\\s+(?:a\\s+|just a\\s+|still a\\s+)?(?:man|dude|bloke|guy|male|woman|girl|female)${E}${ENDS}`) },
+  { topics: ["trans"], re: re(`${B}(?:(?:that|this)\\s+thing${E}${ENDS}|what\\s+even\\s+is\\s+(?:that|it)${E})`) },
+  { topics: ["black", "african"], re: /🐒|🐵|🦍|🍌|🍉|🍗|🪢/ },
+  { topics: ["black", "african"], re: re(`${B}monke?y?s?${E}`) },
+  { topics: ["jewish"], re: /🐀|👃|🤑|💰|🪙/ },
+  { topics: ["jewish"], re: re(`${B}(?:every (?:single )?time|noticing|early life|shekels?|the nose|guess who|who (?:owns|controls|runs) (?:the|everything))${E}${ENDS}`) },
+  { topics: ["jewish"], kind: "soft", re: re(`${B}free palestine${E}`) },
+  { topics: ["south_asian"], re: /🐄|💩|🚽/ },
+  { topics: ["south_asian", "asian", "african"], re: re(`${B}(?:(?:will|gonna|going to|must|already)\\s+(?:smell|stink|reek)${E}${ENDS}|do\\s+they\\s+(?:even\\s+)?(?:wash|shower|bathe)${E})`) },
+  { topics: ["south_asian"], kind: "soft", re: re(`${B}scam\\w*(?:\\s+incoming)?${E}${ENDS}`) },
+  { topics: ["asian"], kind: "soft", re: /🦇|🐶|🐕|🐈/ },
+  { topics: ["asian"], kind: "soft", re: re(`${B}(?:wuhan${E}${ENDS}|buying (?:up\\s+)?(?:all\\s+)?(?:our|the)\\s+(?:houses|homes|land)|(?:menu|eat\\w*|ate|cook\\w*)[^.!?\\n]{0,15}(?<![a-z])(?:dogs?|cats?|bats?)${E}${ENDS})`) },
+  { topics: ["aboriginal"], re: re(`${B}(?:bludg\\w*|dole|walkabout|petrol sniff\\w*|free (?:houses?|cars?|money)|built nothing|welcome to my country)${E}`) },
+  { topics: ["migrant"], kind: "soft", re: re(`^\\s*boats${E}${ENDS}`) },
+  { topics: ["aboriginal", "migrant"], kind: "soft", re: re(`${B}(?:get over it|(?:my|our) tax(?:es)?|taxpayers?)${E}`) },
+  { topics: ["women"], kind: "soft", re: re(`${B}(?:(?:nobody|no one|noone)\\s+(?:watches|cares|asked)|boys under|under[- ]?1[0-9]s?|who let (?:her|them|a woman|a girl|the girls?)\\s+(?:in|out|near|cook)|stick to (?:netball|the kitchen|cooking|cleaning)|(?:she'?ll|she will|she'?s gonna)\\s+(?:be\\s+)?(?:cry\\w*|quit\\w*)|last too)${E}`) },
+];
+
+// Preaching in comments: a sermon pasted under a post that has nothing to do
+// with it. Any faith, the same way. Faith itself is fine: "Jesus loves you",
+// "God bless", "praying for you", a long comment that happens to mention God,
+// and anything at all on your own post or one about faith.
+const FAITH_POST_RE = re(`${B}(?:god|gods|jesus|christ|christians?|christianity|catholics?|church|bible|gospel|pastor|priest|easter|christmas|scriptures?|sermon|faith|religions?|religious|pray|prayers?|praying|spiritual\\w*|muslims?|islam|islamic|allah|quran|koran|mosques?|ramadan|eid|imam|jews?|jewish|judaism|torah|synagogues?|rabbi|hindus?|hinduism|krishna|temple|gita|diwali|sikhs?|sikhism|gurdwara|buddhis[mt]|buddha|monk)${E}`);
+const VERSE_RE = re(`${B}(?:genesis|exodus|psalms?|proverbs|isaiah|jeremiah|matthew|mark|luke|john|acts|romans|(?:[12]\\s+)?corinthians|galatians|ephesians|philippians|hebrews|(?:[12]\\s+)?peter|revelations?|surah(?:\\s+[a-z-]+)?)\\s+\\d+\\s*:\\s*\\d+`);
+const PREACH_LINE_RE = re(`${B}(?:(?:jesus|christ|god|the lord|allah)(?:\\s+christ)?\\s+(?:still\\s+|really\\s+|truly\\s+)?(?:loves?\\s+(?:you|u|us|everyone)|saves?|died for|is\\s+(?:the\\s+)?(?:lord|king|way|only way|truth|coming|returning|saviou?r|answer)|is\\s+coming\\s+back|is\\s+calling\\s+you|can\\s+save|wants\\s+you)|repent|accept\\s+(?:jesus|christ|the lord|allah|islam)|give your (?:life|heart) to|turn (?:back )?to (?:jesus|god|christ|the lord|allah)|(?:revert|convert) to (?:islam|christianity)|hare krishna)${E}`);
+const PREACH_SIGNS = [
+  PREACH_LINE_RE, VERSE_RE,
+  re(`${B}(?:saviou?r|salvation|born again|the gospel|eternal life|end times|judg(?:e)?ment day|the rapture|kingdom of (?:god|heaven)|only begotten|the one true (?:god|religion)|burn in hell|go(?:ing)? to hell|lake of fire|sinners?)${E}`),
+  re(`${B}(?:(?:the\\s+)?(?:bible|quran|koran|scripture|word of god)\\s+(?:says|teaches|tells us|warns)|read (?:your|the) (?:bible|quran|koran)|dawah|shahada)${E}`),
+];
+const BULKY_CHARS = 120;
+const LONG_CHARS = 160;
+function isPreaching(text, about, parent) {
+  const v = normalize(text);
+  const bulky = v.length >= BULKY_CHARS || String(text).split("\n").filter((l) => l.trim()).length >= 3;
+  if (!bulky || FAITH_POST_RE.test(normalize(`${about}\n${parent}`))) return false;
+  const signs = PREACH_SIGNS.filter((r) => r.test(v)).length;
+  if (signs >= 2) return true;
+  // One line of it, drawn out and aimed at the reader.
+  return signs === 1 && v.length >= LONG_CHARS && PREACH_LINE_RE.test(v) && (v.match(/(?<![a-z])you(?![a-z])/g) || []).length >= 3;
+}
+
+/** The same words pasted over and over in one go, whatever they are: "jesus loves you" 500 times. */
+export function repeatsItself(text) {
+  const words = normalize(text).match(/[a-z0-9']+/g) || [];
+  for (let n = 1; n <= 12; n++) {
+    let same = 0;
+    for (let i = 0; i + n < words.length; i++) {
+      same = words[i] === words[i + n] ? same + 1 : 0;
+      const times = Math.floor(same / n) + 1;
+      if (same >= n && times >= 4 && words.slice(i - same + 1, i - same + 1 + n).join(" ").length * times >= 45) return true;
+    }
+  }
+  return false;
+}
 
 // Mockery: group + stereotype + laughter together (blocked, as putting down a group).
 const STEREOTYPE_RE = re(`${B}(?:curry|smell\\w*|stink\\w*|scam\\w*|call ?cent(?:er|re)|tech support|street|toilet|poo|shit\\w*|cows?|cow piss|bats?|dogs?|dog meat|rice|chopsticks|accent|sirs?|needful|bobs|vagene|taco|burrito|cartel|terrorists?|bombs?|camels?|sand|oven|shekels?|nose|welfare|centrelink|dole|petrol|goon|boat people|monkeys?|bananas?|watermelon|fried chicken)${E}`);
@@ -409,6 +643,8 @@ const FRIENDLY_RE = re(`${B}(?:my|ma|mah|wassup|sup|yo)\\s+$`);
 const HISTORY_RE = re(`${B}(?:history|historical|historians?|ww2|wwii|world war|nazi germany|the third reich|in the 1930s|in the 1940s|documentar(?:y|ies)|museum|textbook|history (?:unit|class|lesson|exam|assignment)|lesson|lecture|essay|assignment)${E}`);
 // ...unless history is called in to back the claim up ("history shows...").
 const HISTORY_PROVES_RE = re(`${B}(?:history|historians?|the (?:facts|evidence|data))\\s+(?:shows?|proves?|proved|teaches|taught|tells us|says|confirms?|backs (?:it|this|him) up)${E}`);
+// Words aimed at the hate itself, not at whoever the hate is about ("disgusting" could be either).
+const CALLED_OUT_RE = re(`${B}(?:racis[mt]s?|bigot\\w*|xenophob\\w*|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|sexis[mt]s?|misogyn\\w*|hate speech|hating on|the hate|these comments|this comment(?: section)?|the comments|comment section|comments like|people like (?:you|this|that)|(?:the way|how) (?:people|they) (?:talk|treat)|sick of|stop saying|stop calling)${E}`);
 const JOKE_RE = /(😂|🤣|💀|😹|😆|😅|😜|(?<![a-z])(?:lmao+|lmfao+|lol+|haha+|hehe+|jk|j\/k|kidding|joking|xd)(?![a-z])|(?<![a-z])if (?:you|u) (?:spoil|tell|forget|eat|touch|drink|finish|take|use|miss|skip|don'?t|ever)|(?<![a-z])(?:at|in) (?:the )?(?:game|games|match|final|grand final|chess|cards|poker|pool|golf|tennis|footy|fifa|cod|mario ?kart|fortnite|smash|monopoly|uno|trivia|quiz)(?![a-z]))/i;
 
 function around(v, index, length) {
@@ -448,6 +684,7 @@ function contextOf(v, index, length) {
     friendly: FRIENDLY_RE.test(before.slice(-12)),
     joking: JOKE_RE.test(rest),
     historical: HISTORY_RE.test(rest) && !HISTORY_PROVES_RE.test(rest),
+    calledOut: CALLED_OUT_RE.test(rest),
   };
 }
 
@@ -463,6 +700,14 @@ function judge(kind, c) {
     if (c.negated) return "ok";
     if ((c.reported || c.condemned) && !c.endorsed) return "quoted";
     return "block";
+  }
+  // Coded hate: only calling out the hate itself, or condemning a claim framed
+  // as someone else's, clears it. "This is why X is falling, disgusting" doesn't:
+  // "disgusting" might be about the people targeted.
+  if (kind === "coded") {
+    if (c.negated || c.calledOut || (c.condemned && c.framed && !c.endorsed)) return "ok";
+    if (c.reported && !c.endorsed) return "quoted";
+    return c.ingroup && !c.endorsed ? "borderline" : "block";
   }
   // Attacking a faith: fine to call out, and reporting it posts behind a warning.
   if (kind === "faith") {
@@ -512,12 +757,29 @@ const g = (r) => new RegExp(r.source, `${r.flags.replace("g", "")}g`);
 const RANK = { ok: 0, quoted: 1, borderline: 2, block: 3 };
 
 /**
+ * How to read the "decline" family on this post. Only the post's own words
+ * decide: a thread that calls out racism mustn't clear what it's calling out.
+ */
+function declineKind(about, text) {
+  const words = normalize(`${about}\n${text}`);
+  if (NOT_ABOUT_THEM_RE.test(words)) return null;
+  return POLICY_RE.test(words) ? "soft" : "coded";
+}
+
+/**
+ * `about` is the post a comment is on (see postAbout); `thread` is the comments
+ * around it. Either can name the group that unnamed words are aimed at.
+ * `comment` also checks for repetition and preaching, the latter against the
+ * post and `parent` (the comment it answers) only: a sermon mustn't make its
+ * own thread about faith.
  * @returns {{ level: "block"|"borderline"|"quoted"|"ok", category?: string, matched?: string }}
  * `matched` is for moderators only; never show it to the author.
  */
-export function assessText(text) {
+export function assessText(text, { about = "", thread = "", parent = "", comment = false } = {}) {
   if (!text || !String(text).trim()) return { level: "ok" };
   let worst = { level: "ok" };
+  const topics = new Set([...topicsIn(about), ...topicsIn(thread), ...topicsIn(String(text))]);
+  const decline = topics.size ? declineKind(about, text) : null;
   const consider = (level, category, matched) => {
     if (RANK[level] > RANK[worst.level]) worst = { level, category, matched };
   };
@@ -532,22 +794,39 @@ export function assessText(text) {
     for (const r of SLUR_RES) { scan(r, "slur", "slur"); if (worst.level === "block") return worst; }
     for (const { re: r, innocent } of CONTEXTUAL_RES) { scan(r, "slur", "slur", innocent); if (worst.level === "block") return worst; }
     for (const p of BLOCK_PATTERNS) {
-      scan(p.re, p.kind ?? (p.category === "harassment" ? "harassment" : "attack"), p.category);
+      scan(p.re, p.kind ?? (p.category === "harassment" ? "harassment" : "attack"), p.category, p.innocent);
       if (worst.level === "block") return worst;
     }
     for (const p of BORDERLINE_PATTERNS) scan(p.re, "soft", p.category);
+    if (topics.size) {
+      for (const p of ON_POST) {
+        if (p.topics && !p.topics.some((t) => topics.has(t))) continue;
+        const kind = p.kind === "decline" ? decline : p.kind === "reaction" ? decline && "soft" : p.kind ?? "coded";
+        if (kind) scan(p.re, kind, "coded", p.innocent);
+        if (worst.level === "block") return worst;
+      }
+    }
     if (PEOPLE_ONLY_RE.test(v) && STEREOTYPE_RE.test(v) && LAUGH_RE.test(v)) {
       const m = v.match(PEOPLE_ONLY_RE);
       const c = contextOf(v, m.index, m[0].length);
       consider(judge("stereotype", c), "stereotype");
     }
   }
+  if (comment && worst.level === "ok") {
+    if (repeatsItself(text)) return { level: "block", category: "repeated" };
+    if (isPreaching(String(text), about, parent)) return { level: "block", category: "preaching" };
+  }
   return worst;
 }
 
-export function isBorderline(text) {
-  return assessText(text).level !== "ok";
+export function isBorderline(text, context) {
+  return assessText(text, context).level !== "ok";
 }
+
+/** A post's own words, for reading its comments against. Its pictures can't be read. */
+export const postAbout = (post) => [post?.title, post?.text, post?.alt, ...(post?.media || []).map((m) => m.alt), ...(post?.topics || [])].filter(Boolean).join("\n");
+
+const REPEATED = "That's the same thing over and over. Once is enough.";
 
 const BLOCK_MESSAGES = {
   slur: "That includes a slur. Mesh blocks slurs against every group, equally. If you're describing something said to you or calling it out, say so and it can post behind a warning.",
@@ -563,6 +842,9 @@ const BLOCK_MESSAGES = {
   sexual_violence: "That threatens rape, or blames someone for being sexually assaulted. That's never allowed on Mesh. If it's happened to you, 1800RESPECT is on 1800 737 732.",
   sexual_harassment: "That's a sexual put-down aimed at someone. Disagree with them all you like; leave their body and sex life out of it.",
   extremism: "That's a Nazi or white-supremacist slogan, or denies the Holocaust. Mesh doesn't carry them. If you're calling it out or teaching history, say so and it can post.",
+  preaching: "That's a lot of preaching for a post that isn't about faith. A quick \"God bless\" is fine, and you can share your faith on your own posts all you like.",
+  repeated: REPEATED,
+  coded: "That reads as an attack on people for who they are, even without naming them. On this post it's clear who it's about. If you meant something else, say it another way.",
   religion: "That calls a religion a disease or filth, or calls for it to be banned or wiped out. That lands on everyone who follows it, whichever faith it is. Disagree with what a religion teaches all you like.",
   child_safety: "That reads as sexual content involving children. It's never allowed on Mesh. If a child is in danger, call 000, or report it to the ACCCE at accce.gov.au/report.",
 };
@@ -587,6 +869,9 @@ export const RULE_NAMES = {
   sexual_harassment: "Sexual put-downs",
   extremism: "Nazi slogans and Holocaust denial",
   religion: "Attacking a faith",
+  coded: "Coded hate",
+  preaching: "Preaching in comments",
+  repeated: "Repeating the same thing",
   child_safety: "Child sexual abuse",
 };
 
@@ -676,8 +961,8 @@ export function duplicateOfLast(text, key = "post") {
  * `allowQuoted` is for posts and comments only. `hate: false` skips the hate
  * checks (private messages).
  */
-export function checkContent(text, { key = "post", skipCooldown = false, allowQuoted = false, hate = true } = {}) {
-  let verdict = hate ? assessText(text) : { level: "ok" };
+export function checkContent(text, { key = "post", skipCooldown = false, allowQuoted = false, hate = true, about = "", thread = "", parent = "" } = {}) {
+  let verdict = hate ? assessText(text, { about, thread, parent, comment: key === "comment" }) : { level: "ok" };
   // Overturned on appeal: it posts. A slur still goes behind a warning (the
   // server only accepts slurs on posts flagged sensitive).
   if ((verdict.level === "block" || verdict.level === "quoted") && overturned.has(appealKey(text))) {
@@ -689,7 +974,8 @@ export function checkContent(text, { key = "post", skipCooldown = false, allowQu
     recentBlocks.set(error, { text: String(text).trim(), rule: verdict.category || "dehumanising", where: key });
     return { error, category: verdict.category };
   }
-  const spam = looksLikeSpam(text);
+  // Private messages can repeat themselves all they like.
+  const spam = looksLikeSpam(text) || (hate && repeatsItself(text) ? REPEATED : null);
   if (spam) return { error: spam };
   if (!skipCooldown) {
     const wait = postingCooldown(key);

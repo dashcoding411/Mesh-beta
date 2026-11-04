@@ -3,6 +3,7 @@ import {
 } from "lucide-react";
 import { LogoMark } from "./shell/Sidebar";
 import { plural } from "../lib/format";
+import { assessText } from "../lib/moderation";
 import LiveAvatar from "./ui/LiveAvatar";
 
 // Solid badges with white icons, so the photo never shows through.
@@ -53,7 +54,7 @@ export function NoticeAvatar({ n, size = 44 }) {
 export function NoticeLine({ n, others = 0 }) {
   const who = <strong className="font-semibold text-fg">@{n.actorName}</strong>;
   const rest = others > 0 ? <> and {plural(others, "other")}</> : null;
-  const quote = n.text ? <span className="text-fg-muted"> “{n.text}{n.text.length >= 140 ? "…" : ""}”</span> : null;
+  const quote = n.text && assessText(n.text).level === "ok" ? <span className="text-fg-muted"> “{n.text}{n.text.length >= 140 ? "…" : ""}”</span> : null;
   return {
     like: <>{who}{rest} liked your post</>,
     repost: <>{who}{rest} reposted your post</>,
