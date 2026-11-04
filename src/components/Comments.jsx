@@ -16,7 +16,8 @@ import { buildCommentTree, countReplies, likesHidden } from "../lib/commentTree"
 import { checkFile, warmUp, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { authPath, navigate } from "../lib/router";
 import { LIMITS, validateText, validateMediaFile } from "../lib/validate";
-import { checkContent, assessText, hitsHiddenWords, markPosted, postAbout } from "../lib/moderation";
+import { blockedByReader, checkContent, hitsHiddenWords, markPosted, postAbout, wonAppeal } from "../lib/moderation";
+import { readNewComment, readThread } from "../lib/threadContext";
 import { shortTime, fullTime, isoTime, compact, plural } from "../lib/format";
 import Dialog from "./ui/Dialog";
 import LiveAvatar from "./ui/LiveAvatar";
@@ -85,12 +86,8 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
 
   // Every comment is read against the post and the thread around it.
   const about = postAbout(post);
-  const verdicts = useMemo(() => {
-    const list = comments || [];
-    const byId = new Map(list.map((c) => [c.id, c]));
-    const thread = list.map((c) => c.text).join("\n");
-    return new Map(list.map((c) => [c.id, assessText(c.text, { about, thread, parent: byId.get(c.parentId)?.text || "", comment: true })]));
-  }, [comments, about]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const verdicts = useMemo(() => readThread(post, comments || []), [comments, about]);
   const tree = useMemo(() => {
     if (!comments) return null;
     return buildCommentTree(comments, sort, (c) => ["block", "borderline"].includes(verdicts.get(c.id)?.level));
@@ -129,6 +126,11 @@ export default function Comments({ post, onClose, onCountChange, onAdded }) {
       const mod = checkContent(v.text, { key: "comment", allowQuoted: true, about, thread: replyTo?.text || "", parent: replyTo?.text || "" });
       if (mod.error) return setError(mod.error);
       if (mod.sensitive) flagged = mod;
+      const read = wonAppeal(v.text) ? null : readNewComment(post, comments || [], v.text, { parent: replyTo, authorId: me() });
+      if (read?.category === "context") {
+        if (read.level === "block") return setError(blockedByReader(v.text, "context"));
+        flagged = { borderline: true, sensitive: true };
+      }
     }
     setBusy(true);
     setError("");
@@ -311,6 +313,7 @@ function CommentNode({ node, depth, ctx, replyingTo }) {
   const why = node.deleted || mine || ctx.revealed.has(node.id) ? ""
     : hiddenAuthors.has(node.authorId) ? "From an account you've muted or blocked"
     : hitsHiddenWords(node.text, hiddenWords) ? "Contains a word you've hidden"
+    : verdict?.category === "context" ? "May be aimed at who this post is about"
     : verdict?.category === "preaching" ? "Preaching, and not about this post"
     : verdict?.category === "repeated" ? "The same thing over and over"
     : level === "quoted" ? "Quotes offensive language, to report or call it out"

@@ -3,7 +3,8 @@ import { Eye } from "lucide-react";
 import { openUserProfile, me, fetchLikers, fetchTopComment, addComment } from "../../lib/db";
 import { compact as compactNum, plural } from "../../lib/format";
 import { LIMITS, validateText } from "../../lib/validate";
-import { checkContent, isBorderline, hitsHiddenWords, markPosted, postAbout } from "../../lib/moderation";
+import { blockedByReader, checkContent, hitsHiddenWords, markPosted, postAbout, wonAppeal } from "../../lib/moderation";
+import { readNewComment, readThread } from "../../lib/threadContext";
 import { useShell } from "../shell/ShellContext";
 import Avatar from "../ui/Avatar";
 import RichText from "../ui/RichText";
@@ -66,7 +67,7 @@ export function SocialProof({ post, counts, seen, hiddenAuthors, mine, hiddenWor
 
   const shownLiker = likers.find((l) => !hiddenAuthors.has(l.id) && l.id !== me());
   // Stricter than the comment sheet: no borderline or hidden-word matches.
-  const topOk = top && !hiddenAuthors.has(top.authorId) && !isBorderline(top.text, { about: postAbout(post), comment: true }) && !hitsHiddenWords(top.text, hiddenWords);
+  const topOk = top && !hiddenAuthors.has(top.authorId) && readThread(post, [top]).get(top.id).level === "ok" && !hitsHiddenWords(top.text, hiddenWords);
   const comment = preview || (topOk ? top : null);
   const stats = mine && ((post.saveCount || 0) > 0 || (post.sendCount || 0) > 0);
   if (!counts.like && !counts.comment && !stats && !caption && !tags) return null;
@@ -127,14 +128,17 @@ export function QuickComment({ post, onAdded }) {
     if (!v.text) return;
     const mod = checkContent(v.text, { key: "comment", allowQuoted: true, about: postAbout(post) });
     if (mod.error) return setError(mod.error);
+    const read = wonAppeal(v.text) ? null : readNewComment(post, [], v.text, { authorId: me() });
+    if (read?.category === "context" && read.level === "block") return setError(blockedByReader(v.text, "context"));
+    const sensitive = mod.sensitive || read?.category === "context";
     setBusy(true);
     setError("");
     try {
-      const c = await addComment(post, v.text, { sensitive: mod.sensitive });
+      const c = await addComment(post, v.text, { sensitive });
       markPosted("comment", v.text);
       setText("");
       onAdded(c);
-      if (mod.sensitive) toast({ tone: "info", title: "Posted", body: mod.quoted ? "Others will see a warning and tap to read it, as it quotes offensive language." : "It may be folded away for others, as it could come across as mocking a group." });
+      if (sensitive) toast({ tone: "info", title: "Posted", body: mod.quoted ? "Others will see a warning and tap to read it, as it quotes offensive language." : "It may be folded away for others, as it could come across as mocking a group." });
     } catch (err) {
       setError(err?.code === "permission-denied"
         ? `@${post.authorName} isn't taking comments from you on this post.`

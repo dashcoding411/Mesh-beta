@@ -699,6 +699,22 @@ reads words only: nothing here can see a picture, or what's said in a video.
 A post that doesn't name the group, under a thread that doesn't either, reads
 as nothing. `moderation-real.json` holds real wording both ways.
 
+`lib/threadContext.js` reads a whole thread together, with rules and no AI
+(nothing leaves the device). `readThread(post, comments)` starts from the word
+filter, then scores each comment: words long used against the group the post
+or thread names (`TROPES` in `threadWords.js`), doubting the person ("hope
+she's actually qualified"), us-and-them wording, shutting them out, hostility,
+and whether it has anything to do with the post. Warmth and real questions
+count against. Then it cross-references the thread, twice over: a reply telling
+a comment off counts against it, a short "facts" or "lol" under a flagged
+comment is flagged too, as are the same author's other comments and ones echoing
+flagged words if something else points the same way. 3 points folds, 5 blocks at
+writing. Nothing runs without a named group, or on a post about a crime against
+one. `thread-sets.json` holds whole threads with a floor on what's caught and
+none of the fair comments flagged. On threads it hadn't seen it caught 1 subtle
+line in 6 at best, and it's tuned to leave fair comments alone, so most new
+wording still gets through until someone reports it.
+
 In comments, `repeatsItself` stops a phrase pasted over and over (anywhere
 public, not in messages), and `isPreaching` stops a paragraph of it under a post
 that isn't about faith, any faith alike. A line like "Jesus loves you" is fine.

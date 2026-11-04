@@ -126,7 +126,7 @@ const CONTEXTUAL = [
   { term: "spic", innocent: /\bspic (and|n|&) span\b/ },
   { term: "fag", innocent: /\bfag (end|ends|break|packet)\b|\b(pack|packet|box|carton|smoke|smoked) of fags\b|\bfags? (and|&) (beer|booze|lighter)/ },
   { term: "tranny", innocent: /\btranny (fluid|oil|cooler|rebuild|service|pan|mount|flush)\b|\b(auto|manual|car|ute|truck|4wd|gearbox|diff) tranny\b/ },
-  { term: "cracker", innocent: /\b(barrel|cream|fire|nut|safe|code|jack|graham|water|cheese|christmas|rice|prawn|animal|soda|salt|holiday)\s?crackers?\b|\bcrackers? (barrel|jack|and|with)\b/ },
+  { term: "cracker", innocent: /\b(?:that|this|it|what|was|is|absolute|bloody|real|ripping|such)\s+(?:an?\s+)?(?:absolute\s+|bloody\s+|real\s+)?cracker\b|\bcracker of an?\b|\b(?:went|gone|going|go|drive|driving|drove|drives|you'?re|he'?s|she'?s|they'?re|are)\s+crackers\b|\b(barrel|cream|fire|nut|safe|code|jack|graham|water|cheese|christmas|rice|prawn|animal|soda|salt|holiday)\s?crackers?\b|\bcrackers? (barrel|jack|and|with)\b/ },
   { term: "redskin", innocent: /\bredskin (potato|potatoes|peanuts?|lollies|lolly)\b/ },
   { term: "retard", innocent: /\bretard (the|its|their|growth|ignition|timing|spark|progress|development|flow)\b/ },
   { term: "retarded", innocent: /\bretarded (growth|development|ignition|timing|spark|progress|flow|combustion|rate|ripening|corrosion|plants?|seedlings?)\b|\b(growth|ignition|timing|spark|development|ripening) (is |was |were |are |gets |got )?retarded\b/ },
@@ -482,7 +482,7 @@ const TOPICS = {
 };
 const TOPIC_RES = Object.entries(TOPICS).map(([name, source]) => [name, re(source)]);
 const remembered = new Map();
-function topicsIn(text) {
+export function topicsIn(text) {
   if (!text) return [];
   if (remembered.has(text)) return remembered.get(text);
   const v = normalize(text);
@@ -493,7 +493,8 @@ function topicsIn(text) {
 }
 
 // "Australia is cooked" is fair comment on a loss, a crime or a rent rise.
-const NOT_ABOUT_THEM_RE = re(`${B}(?:vs?|versus|beat|beats|beaten|defeat\\w*|thrash\\w*|wickets?|innings|all out|series|test match|odi|t20|world cup|semi[- ]?finals?|grand finals?|finals?|scoreboard|rankings?|attack\\w*|charged|arrested|jailed|sentenced|assault\\w*|stabb\\w*|shot dead|shooting|murder\\w*|killed|vandal\\w*|graffiti|abus\\w*|threat\\w*|racis[mt]\\w*|bigot\\w*|hate crimes?|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|misogyn\\w*|sexis[mt]\\w*|discriminat\\w*|harass\\w*)${E}`);
+const CONTEST_RE = re(`${B}(?:vs?|versus|beat|beats|beaten|defeat\\w*|thrash\\w*|wickets?|innings|all out|series|test match|odi|t20|world cup|semi[- ]?finals?|grand finals?|finals?|scoreboard|rankings?)${E}`);
+const CRIME_RE = re(`${B}(?:attack\\w*|charged|arrested|jailed|sentenced|assault\\w*|stabb\\w*|shot dead|shooting|murder\\w*|killed|vandal\\w*|graffiti|abus\\w*|threat\\w*|racis[mt]\\w*|bigot\\w*|hate crimes?|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|misogyn\\w*|sexis[mt]\\w*|discriminat\\w*|harass\\w*)${E}`);
 const POLICY_RE = re(`${B}(?:rents?|housing|house prices|buyers?|investors?|visas?|immigration|migration|policy|policies|budget|bill|government|minister|labor|liberals?|election|polls?|report finds|survey|data|statistics)${E}`);
 
 const PLACE = "(?:australia|aus|aussie land|straya|the west|the country|this country|our country|england|the uk|britain|america|canada|europe|the world|society|civili[sz]ation|western civili[sz]ation|cricket|the game|the sport|this sport|sport|the team|this team|cricket australia)";
@@ -644,7 +645,7 @@ const HISTORY_RE = re(`${B}(?:history|historical|historians?|ww2|wwii|world war|
 // ...unless history is called in to back the claim up ("history shows...").
 const HISTORY_PROVES_RE = re(`${B}(?:history|historians?|the (?:facts|evidence|data))\\s+(?:shows?|proves?|proved|teaches|taught|tells us|says|confirms?|backs (?:it|this|him) up)${E}`);
 // Words aimed at the hate itself, not at whoever the hate is about ("disgusting" could be either).
-const CALLED_OUT_RE = re(`${B}(?:racis[mt]s?|bigot\\w*|xenophob\\w*|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|sexis[mt]s?|misogyn\\w*|hate speech|hating on|the hate|these comments|this comment(?: section)?|the comments|comment section|comments like|people like (?:you|this|that)|(?:the way|how) (?:people|they) (?:talk|treat)|sick of|stop saying|stop calling)${E}`);
+export const CALLED_OUT_RE = re(`${B}(?:racis[mt]s?|bigot\\w*|xenophob\\w*|islamophob\\w*|antisemit\\w*|anti-semit\\w*|homophob\\w*|transphob\\w*|sexis[mt]s?|misogyn\\w*|hate speech|hating on|the hate|these comments|this comment(?: section)?|the comments|comment section|comments like|people like (?:you|this|that)|(?:the way|how) (?:people|they) (?:talk|treat)|sick of|stop saying|stop calling)${E}`);
 const JOKE_RE = /(😂|🤣|💀|😹|😆|😅|😜|(?<![a-z])(?:lmao+|lmfao+|lol+|haha+|hehe+|jk|j\/k|kidding|joking|xd)(?![a-z])|(?<![a-z])if (?:you|u) (?:spoil|tell|forget|eat|touch|drink|finish|take|use|miss|skip|don'?t|ever)|(?<![a-z])(?:at|in) (?:the )?(?:game|games|match|final|grand final|chess|cards|poker|pool|golf|tennis|footy|fifa|cod|mario ?kart|fortnite|smash|monopoly|uno|trivia|quiz)(?![a-z]))/i;
 
 function around(v, index, length) {
@@ -762,7 +763,7 @@ const RANK = { ok: 0, quoted: 1, borderline: 2, block: 3 };
  */
 function declineKind(about, text) {
   const words = normalize(`${about}\n${text}`);
-  if (NOT_ABOUT_THEM_RE.test(words)) return null;
+  if (CONTEST_RE.test(words) || CRIME_RE.test(words)) return null;
   return POLICY_RE.test(words) ? "soft" : "coded";
 }
 
@@ -819,6 +820,9 @@ export function assessText(text, { about = "", thread = "", parent = "", comment
   return worst;
 }
 
+/** The post is about a crime against someone, or abuse of them. */
+export const aboutCrime = (about) => CRIME_RE.test(normalize(about));
+
 export function isBorderline(text, context) {
   return assessText(text, context).level !== "ok";
 }
@@ -844,6 +848,7 @@ const BLOCK_MESSAGES = {
   extremism: "That's a Nazi or white-supremacist slogan, or denies the Holocaust. Mesh doesn't carry them. If you're calling it out or teaching history, say so and it can post.",
   preaching: "That's a lot of preaching for a post that isn't about faith. A quick \"God bless\" is fine, and you can share your faith on your own posts all you like.",
   repeated: REPEATED,
+  context: "That reads as aimed at the people this post is about, rather than at what's in it. If you meant something else, say it another way.",
   coded: "That reads as an attack on people for who they are, even without naming them. On this post it's clear who it's about. If you meant something else, say it another way.",
   religion: "That calls a religion a disease or filth, or calls for it to be banned or wiped out. That lands on everyone who follows it, whichever faith it is. Disagree with what a religion teaches all you like.",
   child_safety: "That reads as sexual content involving children. It's never allowed on Mesh. If a child is in danger, call 000, or report it to the ACCCE at accce.gov.au/report.",
@@ -870,6 +875,7 @@ export const RULE_NAMES = {
   extremism: "Nazi slogans and Holocaust denial",
   religion: "Attacking a faith",
   coded: "Coded hate",
+  context: "Aimed at who a post is about",
   preaching: "Preaching in comments",
   repeated: "Repeating the same thing",
   child_safety: "Child sexual abuse",
@@ -884,6 +890,15 @@ const appealKey = (text) => String(text || "").replace(/\s+/g, " ").trim().toLow
 
 /** What a block message was for: { text, rule, where }, or null. */
 export const blockFor = (message) => recentBlocks.get(message) || null;
+
+/** The message for a block decided by the thread reader, with the usual appeal. */
+export function blockedByReader(text, category, where = "comment") {
+  const error = blockMessage(category);
+  recentBlocks.set(error, { text: String(text).trim(), rule: category, where });
+  return error;
+}
+
+export const wonAppeal = (text) => overturned.has(appealKey(text));
 
 /** Texts this account won on appeal (loaded at sign-in). */
 export function allowOverturned(texts) {
