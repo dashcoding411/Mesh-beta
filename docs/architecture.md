@@ -300,6 +300,15 @@ day (`copyClusters`) and 15 or more sign-ups within 10 minutes
 (`signupBursts`). Reports for "Fake account or bot" go to the accounts team
 whatever they're on.
 
+A confirmed email at a throwaway inbox (`THROWAWAY_DOMAINS` in
+`lib/verified.js`, `throwawayEmail` in the rules; a test keeps the two lists
+the same) doesn't count as a confirmed contact, and sign-up refuses one.
+Privacy relays (Hide My Email, Firefox Relay, DuckDuckGo) are real inboxes
+and count. In ranking (`lib/fresh.js`), a fresh post reaches strangers only
+once an established account engages with it (fresh likes, comments, saves
+and reposts don't unlock it), and fresh posts that 3 or more fresh accounts
+made word for word (`crowdCopies`) never do.
+
 Suspensions live in suspensions/{uid} (until, reason, by), readable by the
 person and staff only; the rules' `notSuspended()` reads it, so a
 suspension, or a lifted one, never shows on a public profile.
@@ -589,6 +598,12 @@ and staff; staff uphold or overturn them in Moderation, and the author gets an
 (`allowOverturned`, loaded at sign-in); a slur still posts behind a warning,
 since the rules only accept slurs on posts flagged `sensitive`.
 
+Private messages aren't filtered for hate, but two checks run on the
+device and record nothing: `messageWarning` asks before sending a message
+that would be blocked in a post ("Send anyway" sends it), and `hideInRequest`
+folds such a message away in a message request (in the chat and the inbox
+preview) behind Show and Report.
+
 AI-generated pictures and videos aren't allowed; AI edits of real ones are,
 labelled "Edited with AI" (`aiGenerated`). `lib/aiMarkers.js` reads the
 file's own markers before upload: the IPTC/C2PA digital source type
@@ -661,7 +676,10 @@ against a person are blocked unless they read as a joke (laughter, a playful
 condition, a game), which makes them borderline. Words with innocent senses
 ("retarded growth", "spic and span") are judged by the words around them. The
 same group list and templates apply to every group; political identities are
-only protected from violence and dehumanisation.
+only protected from violence and dehumanisation. Faiths by name (`FAITHS`)
+can be argued with, but calling one a disease or filth, or calling for it to
+be banned or wiped out, is blocked as an attack on its followers ("Islam is a
+cancer", "ban Christianity"); hating one or calling it evil is borderline.
 
 - `block`: not posted.
 - `borderline`: posted after confirmation, never recommended to

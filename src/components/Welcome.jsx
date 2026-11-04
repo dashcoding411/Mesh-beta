@@ -84,7 +84,7 @@ export default function Welcome({ signedIn, onBrowse }) {
               <Aperture size={24} />
             </span>
             <div>
-              <h2 id="rolls-h" className="font-display text-title-1">Rolls: everyone shoots, nobody looks</h2>
+              <h2 id="rolls-h" className="font-display text-title-1">Rolls: a disposable camera you all share</h2>
               <p className="mt-3 max-w-2xl text-body text-white/75">
                 Start a roll for a party, a trip or O-Week and send the link. Everyone gets 27 shots on one shared camera, with a
                 2000s point-and-shoot look and no previews. At 9am the next morning it develops, and everyone wakes up to every photo from the night.

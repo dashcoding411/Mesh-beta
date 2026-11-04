@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Aperture, ChevronRight, ClipboardPaste, Plus, ScanQrCode } from "lucide-react";
+import { Aperture, ChevronRight, ClipboardPaste, Plus, ScanQrCode, ZapOff } from "lucide-react";
 import {
   createRoll, developChoices, developLabel, countdownLabel, fetchMyRolls, isDeveloped, rollIdFromLink, rollSeen, SHOTS_PER_PERSON, tsMillis,
 } from "../../lib/db";
@@ -11,7 +11,8 @@ import Button from "../ui/Button";
 import Badge from "../ui/Badge";
 import Dialog from "../ui/Dialog";
 import { Field, Input } from "../ui/Field";
-import { EmptyState, ErrorState, Skeleton } from "../ui/States";
+import { ErrorState, Skeleton } from "../ui/States";
+import { stampText, STAMP_COLOR } from "../../lib/stamp";
 import SevenSeg from "./SevenSeg";
 import HelpLink from "../ui/HelpLink";
 import RollPage from "./RollPage";
@@ -106,10 +107,6 @@ function RollsHome() {
               <ul className="space-y-3">{done.map((r) => <li key={r.id}><RollCard roll={r} now={now} /></li>)}</ul>
             </section>
           )}
-          {rolls?.length === 0 && !guest && (
-            <EmptyState compact icon={Aperture} title="No rolls yet" body="Start one for tonight, then send the link to whoever's coming." />
-          )}
-
         </div>
       </div>
       {creating && <NewRollDialog onClose={() => setCreating(false)} onCreated={(r) => { setCreating(false); navigate(`/rolls/${r.id}?invite=1`); }} />}
@@ -164,7 +161,7 @@ function JoinRoll() {
   );
 }
 
-// What Rolls are, with a little contact sheet. Smaller once you have some.
+// What Rolls are, shown on the camera's own screen. Just the button once you have some.
 function Intro({ onStart, compact, guest }) {
   if (compact) {
     return (
@@ -173,31 +170,47 @@ function Intro({ onStart, compact, guest }) {
   }
   return (
     <section className="overflow-hidden rounded-card border border-line bg-surface">
-      <div className="grid grid-cols-3 gap-1.5 bg-[#111114] p-3" aria-hidden="true">
-        {["from-amber-500 via-rose-500 to-fuchsia-700", "from-sky-500 via-indigo-600 to-violet-800", "from-emerald-400 via-teal-600 to-slate-800"].map((g, i) => (
-          <div key={g} className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${g}`}>
-            <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,.35),transparent_60%)]" />
-            <span className="absolute bottom-1.5 right-1.5"><SevenSeg text={["02 11 '26", "14 02 '27", "17 02 '27"][i]} height={9} color="#ff9b2f" glow /></span>
-          </div>
-        ))}
-      </div>
+      <CameraScreen />
       <div className="p-5">
-        <h2 className="font-display text-title-1">Everyone shoots. Nobody looks.</h2>
+        <h2 className="font-display text-title-1">A disposable camera you all share</h2>
         <p className="mt-2 text-body text-fg-muted">
-          A roll is a shared disposable camera for a night out, a trip or a gathering. Everyone gets {SHOTS_PER_PERSON} shots and no previews.
-          At 9am the next morning it develops, and everyone gets every photo at once.
+          Everyone gets {SHOTS_PER_PERSON} shots, and you can't see any of them till 9am the next morning.
         </p>
-        <ol className="mt-4 space-y-1.5 text-callout text-fg-muted">
-          <li><span className="font-semibold text-fg">1.</span> Start a roll and send the link</li>
-          <li><span className="font-semibold text-fg">2.</span> Shoot all night, with the camera only</li>
-          <li><span className="font-semibold text-fg">3.</span> Wake up to everyone's photos</li>
-        </ol>
-        <div className="mt-2"><HelpLink guide="rolls">More about Rolls</HelpLink></div>
-        <Button variant="primary" icon={guest ? undefined : Plus} className="mt-5" onClick={guest ? () => navigate(authPath("signup")) : onStart}>
-          {guest ? "Sign up to start a roll" : "Start a roll"}
-        </Button>
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Button variant="primary" icon={guest ? undefined : Plus} onClick={guest ? () => navigate(authPath("signup")) : onStart}>
+            {guest ? "Sign up to start a roll" : "Start a roll"}
+          </Button>
+          <HelpLink guide="rolls">How it works</HelpLink>
+        </div>
       </div>
     </section>
+  );
+}
+
+// The roll camera's screen (RollCamera) before the first shot, with today's date.
+function CameraScreen() {
+  return (
+    <div aria-hidden="true" className="relative aspect-[4/3] bg-[#0b0b0d] font-mono text-[13px] font-semibold tracking-wide text-white">
+      <span className="absolute left-3 top-3 flex items-center gap-2">
+        <span className="rounded-[3px] border border-white/80 px-1 text-[11px] leading-4">AUTO</span>
+        <ZapOff size={14} />
+      </span>
+      <span className="absolute right-3 top-3 flex items-center gap-1.5">
+        <span className="text-[11px]">4:3</span>
+        <span className="relative flex h-3 w-6 items-center rounded-[2px] border border-white/90 p-[1.5px] after:absolute after:-right-[3px] after:h-1.5 after:w-[2px] after:bg-white/90">
+          <span className="h-full w-3/4 bg-white/90" />
+        </span>
+      </span>
+      <span className="absolute left-1/2 top-1/2 h-16 w-20 -translate-x-1/2 -translate-y-1/2">
+        {["left-0 top-0 border-l-2 border-t-2", "right-0 top-0 border-r-2 border-t-2", "left-0 bottom-0 border-l-2 border-b-2", "right-0 bottom-0 border-r-2 border-b-2"]
+          .map((c) => <span key={c} className={`absolute h-3 w-3 border-white/90 ${c}`} />)}
+      </span>
+      <span className="absolute bottom-3 left-3 flex items-baseline gap-1">
+        <SevenSeg text={String(SHOTS_PER_PERSON).padStart(2, "0")} height={22} color="#ffffff" />
+        <span className="text-[11px] text-white/80">left</span>
+      </span>
+      <span className="absolute bottom-3 right-3"><SevenSeg text={stampText(new Date())} height={14} color={STAMP_COLOR} glow /></span>
+    </div>
   );
 }
 

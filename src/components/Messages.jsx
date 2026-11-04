@@ -25,6 +25,7 @@ import { useToast } from "./ui/toast-context";
 import ChatView from "./ChatView";
 import { NewChatDialog } from "./chat/NewChatDialog";
 import { chatTitle, chatAvatar, chatPeer } from "../lib/chat";
+import { hideInRequest } from "../lib/moderation";
 
 // Two-pane on desktop; on mobile the open chat is its own route.
 export default function Messages({ chatId }) {
@@ -116,7 +117,7 @@ export default function Messages({ chatId }) {
           )}
           <ul>
             {visible.map((c) => (
-              <ChatRow key={c.id} chat={c} active={c.id === chatId} unread={inbox.isUnread(c)} pinnedCount={pinnedCount} />
+              <ChatRow key={c.id} chat={c} active={c.id === chatId} unread={inbox.isUnread(c)} pinnedCount={pinnedCount} request={tab === "requests"} />
             ))}
           </ul>
         </div>
@@ -154,7 +155,7 @@ export default function Messages({ chatId }) {
   );
 }
 
-function ChatRow({ chat, active, unread, pinnedCount }) {
+function ChatRow({ chat, active, unread, pinnedCount, request }) {
   const toast = useToast();
   const { inbox } = useShell();
   const [menu, setMenu] = useState(false);
@@ -162,9 +163,9 @@ function ChatRow({ chat, active, unread, pinnedCount }) {
   const muted = (chat.mutedBy || []).includes(me());
   const title = chatTitle(chat);
   const draft = active ? null : readDraft(`chat:${chat.id}`)?.data?.text?.trim();
-  const preview = chat.lastMessage
-    ? `${chat.lastSenderId === me() ? "You: " : ""}${chat.lastMessage}`
-    : "No messages yet";
+  const preview = !chat.lastMessage ? "No messages yet"
+    : request && chat.lastSenderId !== me() && hideInRequest(chat.lastMessage) ? "Message hidden: may be offensive"
+      : `${chat.lastSenderId === me() ? "You: " : ""}${chat.lastMessage}`;
 
   const run = async (fn, done) => {
     setMenu(false);

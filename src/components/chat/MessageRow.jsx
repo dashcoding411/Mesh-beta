@@ -22,13 +22,15 @@ import { MenuGroup, MenuItem } from "../ui/Menu";
 import { useToast } from "../ui/toast-context";
 import { LinkedText } from "../ui/RichText";
 import { openStory } from "../../lib/openStory";
+import { hideInRequest } from "../../lib/moderation";
 
-export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
+export function MessageRow({ row, chat, theme, latest, request, onReply, onEdit }) {
   const { m, first, last } = row;
   const toast = useToast();
   const [menu, setMenu] = useState(false);
   const [confirmUnsend, setConfirmUnsend] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [shown, setShown] = useState(false);
   const mine = m.senderId === me();
   const withLink = !!m.text && !m.poll && !m.gif && !m.sharedPost && !m.call && !m.voice && !m.storyReply && !m.thoughtReply && /https?:\/\/|(^|[^\w.@/])www\./i.test(m.text);
   const name = chat.nicknames?.[m.senderId] || chat.memberNames?.[m.senderId] || "Someone";
@@ -63,6 +65,19 @@ export function MessageRow({ row, chat, theme, latest, onReply, onEdit }) {
         <span className="rounded-[20px] border border-line px-4 py-2 text-caption italic text-fg-subtle">
           {mine ? "You unsent a message" : `${name} unsent a message`}
         </span>
+      </li>
+    );
+  }
+
+  // A stranger's hateful message arrives folded away (checked on this device).
+  if (request && !mine && !shown && hideInRequest(m.text)) {
+    return (
+      <li className={`flex flex-wrap items-center gap-x-2 gap-y-1 pl-9 ${first ? "mt-3" : "mt-0.5"}`}>
+        <span className="rounded-[20px] border border-line px-4 py-2 text-caption italic text-fg-subtle">Hidden: this may be offensive</span>
+        <button type="button" onClick={() => setShown(true)} className="press min-h-11 px-1 text-caption font-medium text-fg-muted hover:text-fg">Show</button>
+        <button type="button" onClick={() => setReporting(true)} className="press min-h-11 px-1 text-caption font-medium text-danger-text">Report</button>
+        {reporting && <ReportDialog onClose={() => setReporting(false)}
+          target={{ type: "message", id: m.id, authorId: m.senderId, chatId: chat.id, text: m.text || "" }} />}
       </li>
     );
   }

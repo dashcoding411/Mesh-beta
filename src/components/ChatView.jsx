@@ -13,7 +13,7 @@ import {
 } from "../lib/db";
 import { clockTime, dayLabel, plural, shortTime } from "../lib/format";
 import { gifsEnabled } from "../lib/gifs";
-import { checkContent, childSafetyBlock } from "../lib/moderation";
+import { checkContent, childSafetyBlock, messageWarning } from "../lib/moderation";
 import { checkFile, UNSAFE_PHOTO } from "../lib/imageCheck";
 import { navigate } from "../lib/router";
 import { usePageTitle } from "../lib/usePageTitle";
@@ -233,7 +233,7 @@ export default function ChatView({ chat }) {
     return !failed.length;
   };
 
-  const send = async (value = text) => {
+  const send = async (value = text, { anyway = false } = {}) => {
     if (needsAccount("message people")) return;
     if (photos.length && !editing && !sending) {
       const ok = await sendPhotos();
@@ -248,6 +248,17 @@ export default function ChatView({ chat }) {
     if (csam) return toast({ tone: "error", title: csam });
     const mod = checkContent(t, { key: "msg", skipCooldown: true, hate: false });
     if (mod.error) return toast({ tone: "error", title: mod.error });
+    // Hate isn't filtered in messages, but the sender is asked first: it
+    // would be blocked in a post, and a report of it can suspend them.
+    const rule = !anyway && !editing && messageWarning(t);
+    if (rule) {
+      return toast({
+        tone: "error",
+        title: `That reads as: ${rule.toLowerCase()}`,
+        body: "Mesh wouldn't post it publicly. If they report it, your account can be suspended.",
+        action: { label: "Send anyway", onClick: () => send(t, { anyway: true }) },
+      });
+    }
 
     const wasEditing = editing;
     const wasReply = replyTo;
@@ -403,7 +414,7 @@ export default function ChatView({ chat }) {
           {messages?.length > 0 && (
             <ol aria-label={`Messages with ${title}`} className="flex flex-col">
               {rows.map((row) => row.type === "msg" ? (
-                <MessageRow key={row.key} row={row} chat={chat} theme={theme} latest={row.m?.id === last?.id}
+                <MessageRow key={row.key} row={row} chat={chat} theme={theme} latest={row.m?.id === last?.id} request={request}
                   onReply={(m) => { setReplyTo(m); setEditing(null); inputRef.current?.focus(); }}
                   onEdit={(m) => { setEditing(m); setReplyTo(null); setText(m.text); inputRef.current?.focus(); }} />
               ) : (

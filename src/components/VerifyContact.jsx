@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MailCheck } from "lucide-react";
 import { auth } from "../firebase";
 import { authMessage, syncVerifiedToken, verifyEmail } from "../lib/auth";
-import { isVerifiedUser } from "../lib/verified";
+import { isThrowawayEmail, isVerifiedUser } from "../lib/verified";
 import Button from "./ui/Button";
 import Dialog from "./ui/Dialog";
 import { useToast } from "./ui/toast-context";
@@ -14,6 +14,7 @@ import { useToast } from "./ui/toast-context";
 export default function VerifyContact({ reason, onClose }) {
   const toast = useToast();
   const email = auth.currentUser?.email || "";
+  const throwaway = isThrowawayEmail(email);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(null); // "send" | "check"
   const [error, setError] = useState("");
@@ -63,7 +64,9 @@ export default function VerifyContact({ reason, onClose }) {
   return (
     <Dialog title="Confirm your email" onClose={onClose} size="sm"
       footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        {sent ? (
+        {throwaway ? (
+          <Button variant="primary" onClick={onClose}>OK</Button>
+        ) : sent ? (
           <>
             <Button variant="ghost" loading={busy === "send"} onClick={send}>Send it again</Button>
             <Button variant="primary" loading={busy === "check"} onClick={check}>I've confirmed it</Button>
@@ -77,9 +80,11 @@ export default function VerifyContact({ reason, onClose }) {
       </div>}>
       <MailCheck size={28} className="text-accent-text" aria-hidden="true" />
       <p className="mt-3 text-body">
-        {sent
-          ? <>We sent a link to <strong>{email}</strong>. Open it, then come back here.</>
-          : <>To {reason} on Mesh, confirm your email first. It keeps bots out.</>}
+        {throwaway
+          ? <><strong>{email}</strong> is a throwaway inbox, which bot farms use by the thousand, so it can&apos;t be confirmed. To {reason} on Mesh, sign up again with an email you keep.</>
+          : sent
+            ? <>We sent a link to <strong>{email}</strong>. Open it, then come back here.</>
+            : <>To {reason} on Mesh, confirm your email first. It keeps bots out.</>}
       </p>
       {error && <p className="mt-3 text-callout text-danger-text">{error}</p>}
     </Dialog>

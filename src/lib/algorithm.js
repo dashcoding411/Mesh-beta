@@ -12,7 +12,7 @@
 
 import { tsMillis, isHeld } from "./db";
 import { assessText, hitsHiddenWords } from "./moderation";
-import { recommendable, settled } from "./fresh";
+import { crowdCopies, recommendable, settled } from "./fresh";
 
 const textOf = (p) => `${p.title || ""}\n${p.text || ""}\n${p.poll ? p.poll.options.join("\n") : ""}`;
 const verdicts = new Map(); // post id + text length -> "ok" | "quoted" | "borderline" | "block"
@@ -145,19 +145,23 @@ const MAX_PER_AUTHOR_IN_WINDOW = 2;
 const AUTHOR_WINDOW = 6;
 const BORDERLINE_GAP = 8;
 
+// Borderline posts are never recommended to non-followers, nor are fresh
+// ones no established account has engaged with yet, nor a fresh farm's
+// copies of one script (lib/fresh.js).
+function forViewer(posts, ctx) {
+  const copies = crowdCopies(posts);
+  return screenForViewer(posts, ctx).filter((p) => p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId)
+    || (!borderline(p) && recommendable(p) && !copies.has(p.id)));
+}
+
 /** Home feeds: newest activity first (a repost counts when it was reposted), screened like rankFeed. */
 export function latestFirst(posts, ctx) {
   const at = (p) => Math.max(tsMillis(p.createdAt), ...(p.repostedBy || []).map((r) => r.at));
-  return screenForViewer(posts, ctx)
-    .filter((p) => p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId) || (!borderline(p) && recommendable(p)))
-    .sort((a, b) => at(b) - at(a));
+  return forViewer(posts, ctx).sort((a, b) => at(b) - at(a));
 }
 
 export function rankFeed(posts, ctx) {
-  // Borderline posts are never recommended to non-followers, nor are fresh
-  // ones nobody has engaged with yet (lib/fresh.js).
-  const pool = screenForViewer(posts, ctx)
-    .filter((p) => p.authorId === ctx.myUid || ctx.followingSet?.has(p.authorId) || (!borderline(p) && recommendable(p)));
+  const pool = forViewer(posts, ctx);
   const scored = pool
     .map((p) => ({ post: p, score: scorePost(p, ctx) }))
     .sort((a, b) => b.score - a.score);

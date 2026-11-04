@@ -16,7 +16,7 @@ const ANYWHERE = [
   "goatfucker", "goat fucker", "ovendodger", "oven dodger", "shemale", "bobs and vagene",
 ];
 // Matched only as whole words (plural allowed).
-const WHOLE_WORD = ["paki", "kike", "gook", "boong", "gyppo", "honky", "dothead", "troon", "muzzie", "beaner", "polack"];
+const WHOLE_WORD = ["paki", "kike", "gook", "boong", "gyppo", "honky", "dothead", "troon", "muzzie", "beaner", "polack", "femoid", "foid"];
 
 // Also caught when spelled out with a space or dot between every letter
 // ("n i g g a"). Only for words where that can't be an innocent phrase:

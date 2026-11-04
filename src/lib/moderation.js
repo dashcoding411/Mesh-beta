@@ -1,15 +1,17 @@
 // Content moderation for public text: hate speech, harassment and spam.
 //
 // The same checks apply to every group and every side. Criticism of ideas,
-// religions, countries and policies is allowed; attacks on people for who
-// they are aren't.
+// religions' teachings, countries and policies is allowed; attacks on people
+// for who they are aren't, and calling a faith a disease or calling for it to
+// be wiped out is an attack on everyone who follows it.
 //
 // Outcomes (see assessText):
 //   block       slurs, dehumanising generalisations, putting down a group for
 //               who they are (insults, stereotypes, coded terms, mockery),
 //               conspiracy tropes about a group, calls for violence or
 //               exclusion, threats against a person, "go back to your
-//               country", self-harm incitement
+//               country", self-harm incitement, rape threats and
+//               victim-blaming, Nazi slogans and Holocaust denial
 //   borderline  unclear targets ("those people...") and joking threats:
 //               posted, but not recommended to non-followers and collapsed
 //               in comments
@@ -21,7 +23,10 @@
 // Text is normalised first (homoglyphs, accents, zero-width chars, leetspeak,
 // stretching, separators). Unambiguous slurs are also enforced by the rules
 // (hateFree); the contextual checks here have no server-side equivalent.
-// Private messages aren't checked.
+// Private messages aren't filtered: the sender's device asks before sending
+// something that would be blocked here (messageWarning), and a message
+// request that would be is folded away on the recipient's (hideInRequest).
+// Nothing about a message leaves the device for either.
 
 // Normalisation
 
@@ -88,6 +93,8 @@ const SLURS = [
   "faggot", "shemale", "troon",
   // disability
   "spastic", "spaz", "mongoloid",
+  // women
+  "femoid", "foid",
 ];
 
 // Also ordinary words; blocked unless the surrounding words make the benign sense clear.
@@ -102,6 +109,7 @@ const CONTEXTUAL = [
   { term: "redskin", innocent: /\bredskin (potato|potatoes|peanuts?|lollies|lolly)\b/ },
   { term: "retard", innocent: /\bretard (the|its|their|growth|ignition|timing|spark|progress|development|flow)\b/ },
   { term: "retarded", innocent: /\bretarded (growth|development|ignition|timing|spark|progress|flow|combustion|rate|ripening|corrosion|plants?|seedlings?)\b|\b(growth|ignition|timing|spark|development|ripening) (is |was |were |are |gets |got )?retarded\b/ },
+  { term: "roastie", innocent: /\b(crispy|crunchy|golden|duck fat|goose fat|potato(es)?|spuds?|gravy|roast (dinner|lunch|beef|lamb|chicken|pork)|sunday roast|oven|yorkshire|pudding|lamb|carrots|parsnips|veggies|veg|dinner|lunch)\b/ },
   { term: "dyke", innocent: /\b(the|a|dutch|sea|river|flood|stone|earth)\s(dyke|dykes)\b|\bdyke (wall|road|lane)\b/ },
 ];
 
@@ -125,6 +133,19 @@ const PEOPLE = [
   "bisexuals?", "queers", "queer (?:people|folks?)", "disabled (?:people|kids)", "autistic (?:people|kids)",
   "women", "men", "females", "males",
 ];
+
+// Where someone's from or what they believe, in adjective form ("an Indian
+// invasion"), and the plurals "too many X here" is said about.
+const ORIGIN_ADJ = "(?:indian|pakistani|asian|chinese|african|black|arab|muslim|islamic|jewish|hindu|sikh|migrant|immigrant|refugee|mexican|latino|lebanese|sudanese|somali|afghan|third[- ]world|brown|non[- ]?white|curry)";
+const XENO_OBJ = "(?:indians|pakistanis|asians|chinese|africans|arabs|muslims|jews|hindus|sikhs|immigrants|migrants|refugees|foreigners|asylum seekers|lebanese|sudanese|somalis|afghans|mexicans)";
+
+// Faiths by name, every one the same way. Arguing with what a religion
+// teaches is fine; calling it a disease, or calling for it to be banned or
+// wiped out, lands on everyone who follows it.
+const FAITHS = "(?:islam|christianity|judaism|hinduism|sikhism|buddhism|catholicism|atheism|(?:the\\s+)?(?:muslim|islamic|christian|jewish|hindu|sikh|buddhist|catholic)\\s+(?:faith|religion))";
+const FAITH_DISEASE = "(?:cancers?|cancerous|diseased|disease|plague|virus|infection|infestation|tumou?r|poison|parasite|pestilence|blight|scourge|sickness|mental (?:illness|disorder)|contagion|filth|filthy|vermin|cesspool|death cult|cult of death|(?:religion|ideology|cult) of (?:hate|hatred|terror|terrorism|death|violence|war|rape|paedos?|pedos?|paedophiles|pedophiles)|(?:terrorist|paedo|pedo|paedophile|pedophile|rapist) (?:religion|cult|ideology)|satanic|the enemy(?! of)|(?:threat|menace|danger) to (?:australia|society|humanity|civili[sz]ation|the west|western (?:civili[sz]ation|values|society)|our (?:country|way of life|values|kids|children|society)))";
+// Keeping a faith out of state schools or the law is a debate, not an attack.
+const NOT_SECULAR = "(?!\\s+(?:from|in|out of)\\s+(?:state schools?|public schools?|parliament|government|politics|the law|law|the curriculum))";
 
 // Political identities: only violence and dehumanisation are checked.
 const POLITICAL = [
@@ -180,6 +201,8 @@ const DEHUMANISING = [
   "groomers", "predators", "degenerates?", "abominations?", "freaks", "mentally (?:ill|sick|deranged|disordered)",
   "(?:sexual )?deviants?", "perverts?", "parasites", "leeches", "a parasite", "a blight", "a scourge",
   "sick in the head", "(?:a )?mental (?:illness|disorder)",
+  "property", "(?:sex |mere )?objects", "whores", "sluts", "hoes", "breeding (?:stock|machines?)",
+  "baby (?:machines?|factories)", "incubators",
 ];
 
 // Blanket insults (borderline).
@@ -198,6 +221,9 @@ const OUTCOME = "(?:die|be killed|be gassed|be shot|be exterminated|be wiped out
 const WILL = "(?:i|we)\\s*(?:'?ll|will|'?m going to|am going to|'?m gonna|am gonna|m gonna|gonna|'?re going to|are going to|'?re gonna|want to|wanna)";
 const HURT = "(?:kill|hurt|stab|shoot|murder|rape|strangle|choke|slit)";
 // "Beat" only with a violent ending: "I'll beat you at chess" is fine.
+const RAPE = "(?:gang ?)?(?:rape|raped|raping|molest|molested|sexually assault(?:ed)?)";
+const WOULD_RAPE = "(?:i'?d|i would|i will|i'?ll|i'?m (?:gonna|going to)|im (?:gonna|going to)|imma|ima|we'?ll|we will|we'?d|someone (?:should|needs to|oughta|ought to|has to|gotta|is gonna)|somebody (?:should|needs to|ought to|is gonna)|hope (?:she|he|you|u|they) (?:gets?|get))";
+const NOT_NEGATED = "(?!(?:never|not|ever|n'?t)(?![a-z]))";
 const BEAT_UP = "(?:beat|bash|smash)\\s+(?:you|u|ya)\\s+(?:up|to death|senseless|to a pulp)";
 
 const re = (src) => new RegExp(src, "i");
@@ -230,7 +256,7 @@ const BLOCK_PATTERNS = [
   // "X don't belong here", "no X allowed"
   { category: "exclusion", re: re(`${B}${PEOPLE_RE}\\s+(?:don'?t|do not|dont|doesn'?t) belong(?: (?:here|in (?:this country|australia|the west|our country)))?${E}`) },
   { category: "exclusion", re: re(`${B}no\\s+${PEOPLE_OBJ}\\s+(?:allowed|welcome|wanted)${E}`) },
-  // "I hate X" (people, not ideas: "I hate Islam" isn't this)
+  // "I hate X" (people, not ideas: "I hate Islam" is borderline, below)
   { category: "hatred", re: re(`${B}(?:i|we|everyone)\\s+(?:fucking\\s+)?(?:hate|despise|loathe|can'?t stand|cannot stand)\\s+${DET}${FILLER}${PEOPLE_OBJ}${E}`) },
   // "X smell", "X breed like rats"
   { category: "dehumanising", re: re(`${B}${PEOPLE_RE}\\s+(?:all\\s+)?(?:smell|stink|reek)s?${E}`) },
@@ -246,23 +272,52 @@ const BLOCK_PATTERNS = [
   // "X belong in cages", "X should be in camps"
   { category: "dehumanising", re: re(`${B}${PEOPLE_RE}\\s+(?:belong|should be|need to be|ought to be|deserve to be)\\s+(?:locked up\\s+)?in\\s+(?:the\\s+|a\\s+)?(?:cages?|zoos?|camps?|concentration camps?|gas chambers?|ovens?|chains|the ground|graves?)${E}`) },
   { category: "dehumanising", re: re(`${B}${PEOPLE_RE}\\s+${IS}\\s+(?:invading|infesting)${E}`) },
+  // "women shouldn't have rights", "X don't deserve a say"
+  { category: "exclusion", re: re(`${B}${DET}${PEOPLE_RE}\\s+(?:shouldn'?t|should not|must not|mustn'?t|don'?t deserve|do not deserve|doesn'?t deserve|dont deserve)\\s+(?:to\\s+)?(?:have|get)\\s+(?:any\\s+|equal\\s+|the same\\s+)?(?:rights|the vote|a vote|a say|an education|jobs|freedom|to vote)${E}`) },
+  // "an Indian invasion", "migrant hordes"
+  // (Not a cuisine or a music scene: "the Asian invasion of Sydney's food scene".)
+  { category: "dehumanising", re: re(`${B}${ORIGIN_ADJ}\\s+(?:invasion|invaders|infestation|horde|hordes|swarm|swarms|plague|takeover)${E}(?!\\s+of\\s+(?:the\\s+)?(?:[a-z']+\\s+){0,2}?(?:food|restaurants?|cuisine|dining|eats|music|fashion|films?|movies?|cinema|anime|k-?pop|scene|menus?)${E})`) },
   // "X shouldn't be allowed to vote"
   { category: "exclusion", re: re(`${B}${PEOPLE_RE}\\s+(?:shouldn'?t|should not|must not|mustn'?t)\\s+(?:be allowed to|get to|have the right to)\\s+(?:vote|work|drive|exist|live here|marry|have rights|have kids|breed|own (?:property|homes?))${E}`) },
+  // "Islam is a cancer", "Christianity is a mental illness", "ban Judaism",
+  // "Hinduism has no place in Australia"
+  { category: "religion", kind: "faith", re: re(`${B}${FAITHS}(?:\\s+${IS}\\s+${FILLER}(?:a |an |the )?|'s\\s+${FILLER}(?:a |an |the ))${FAITH_DISEASE}${E}`) },
+  { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:is\\s+)?(?:spreading|spreads|spread|growing|grows)\\s+like\\s+(?:a\\s+)?(?:cancer|disease|plague|virus|infection|tumou?r|rats|cockroaches|vermin)${E}`) },
+  { category: "religion", kind: "faith", re: re(`${B}(?:ban|outlaw|eradicate|exterminate|wipe out|destroy|kill|nuke|purge|erase|get rid of|eliminate|stamp out|rid (?:australia|the world|the west|our country|this country) of)\\s+(?:all\\s+)?${FAITHS}${E}${NOT_SECULAR}`) },
+  { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:should|must|needs? to|has to|ought to|deserves? to)\\s+(?:all\\s+)?(?:be\\s+)?(?:banned|outlawed|eradicated|exterminated|wiped out|destroyed|erased|eliminated|stamped out|purged|nuked|wiped off the (?:map|earth|face of the earth)|die|burn)${E}${NOT_SECULAR}`) },
+  { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:has|have)\\s+no\\s+place\\s+(?:here|in\\s+(?:australia|this country|our country|the west|society|our society|modern society|a (?:modern|civili[sz]ed) society))${E}`) },
+  { category: "religion", kind: "faith", re: re(`${B}${FAITHS}\\s+(?:doesn'?t|does not|dont|don'?t)\\s+belong(?:\\s+(?:here|in\\s+(?:australia|this country|our country|the west|society)))?${E}`) },
   // Threats against a person: "I'll find you and hurt you", "I know where you live"
   { category: "threat", kind: "threat", re: re(`${B}${WILL}\\s+(?:find|hunt|track)\\s+(?:you|u|ya)\\s+(?:down\\s+)?(?:and\\s+)?${HURT}${E}`) },
   { category: "threat", kind: "threat", re: re(`${B}${WILL}\\s+(?:${BEAT_UP}|${HURT}\\s+(?:you|u|ya|your (?:family|kids?|mum|mom|wife|husband|sister|brother|dog)))${E}(?!\\s+(?:a|an)\\s+(?:message|msg|text|email|dm|line|pic|photo|note|invite|link))`) },
   { category: "threat", kind: "threat", re: re(`${B}i know where (?:you|u) (?:live|work|go to school)${E}`) },
-  // self-harm incitement
+  // self-harm incitement ("join the 41%" is aimed at trans people)
   { category: "harassment", re: re(`${B}(?:kys|k y s|kill (?:your ?self|urself|yourselves)|neck (?:your ?self|urself)|go die|hope (?:you|u) die|drink bleach)${E}`) },
+  { category: "harassment", re: re(`${B}(?:join (?:the )?41\\s*%|be(?:come)? (?:part of )?(?:the )?41\\s*%|41\\s*%\\s*(?:yourself|urself|yourselves|it))`) },
+  // Rape threats and blaming the victim. A joke doesn't make them postable.
+  { category: "sexual_violence", kind: "sexual_threat", re: re(`${B}${WOULD_RAPE}\\s+(?:${NOT_NEGATED}[a-z']+\\s+){0,2}?${RAPE}${E}`) },
+  { category: "sexual_violence", kind: "sexual_threat", re: re(`${B}(?:should|needs? to|deserves? to|ought to|oughta)\\s+(?:get|be)\\s+${RAPE}${E}`) },
+  { category: "sexual_violence", kind: "sexual_threat", re: re(`${B}(?:deserved?|deserves|deserving)\\s+(?:to\\s+(?:be|get)\\s+|being\\s+|getting\\s+)?${RAPE}${E}`) },
+  { category: "sexual_violence", kind: "sexual_threat", re: re(`${B}(?:asking for it|had it coming)\\s*,?\\s*(?:[a-z']+\\s+){0,4}?(?:dressed|dressing|dress|wearing|skirt|outfit|drunk|short)${E}`) },
+  { category: "sexual_violence", kind: "sexual_threat", re: re(`${B}(?:dressed|dressing|wearing)\\s+(?:like\\s+)?(?:that|this|a slut|a whore|slutty|like a slut|like a whore)\\s*,?\\s*(?:[a-z']+\\s+){0,3}?(?:asking for it|had it coming|deserved it|deserves it)${E}`) },
   // Putting down a group for who they are: blanket insults, stereotypes and
   // coded terms ("X are stupid", "X belong in the kitchen", "kung flu").
   { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+${FILLER}(?:a |an |the )?${alt(INSULTING)}${E}`) },
   { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+(?:can'?t|cannot|can not)\\s+(?:drive|think|lead|cook|be trusted|do maths?|speak english|parallel park)${E}`) },
   { category: "stereotype", kind: "stereotype", re: re(`${B}${PEOPLE_RE}\\s+(?:belong|should (?:be|stay)|need to (?:be|stay)|go back)\\s+(?:in|to)\\s+the\\s+kitchen${E}`) },
   { category: "stereotype", kind: "stereotype", re: re(`${B}(?:get|go)\\s+back\\s+(?:in|into|to)\\s+the\\s+kitchen${E}`) },
-  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+(?:ruining|destroying|taking over)\\s+(?:everything|this country|the country|our country|australia|the world|our jobs|our culture|the west)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+${IS}\\s+(?:ruining|destroying|taking over|corrupting|poisoning|grooming)\\s+(?:everything|this country|the country|our country|australia|the world|our jobs|our culture|the west|society|our society|our kids|our children|kids|children|families|the family|western civili[sz]ation|our values|our way of life|our suburbs|our neighbou?rhoods?|our schools)${E}`) },
+  // "X are taking our jobs"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${DRESSED_RE}\\s+${IS}\\s+(?:taking|stealing|nicking)\\s+(?:all\\s+)?(?:of\\s+)?(?:our|the|aussie|australian)\\s+(?:jobs|houses|homes)${E}`) },
+  // "women are only good for sex", "make me a sandwich, woman"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}${DET}${PEOPLE_RE}\\s+${IS}\\s+(?:only|just|really only)\\s+(?:good|useful|there|made|here)\\s+(?:for\\s+)(?:sex|one thing|cooking|cleaning|breeding|making (?:babies|sandwiches|kids)|the kitchen|serving men|pleasing men|looking at)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:go\\s+)?(?:make|get)\\s+(?:me|us)\\s+a\\s+(?:sandwich|sammich|sammie|sammy)\\s*,?\\s*(?:woman|women|girl|girls|bitch|female|toots|sweetheart)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:woman|women|girl|bitch|female)\\s*,?\\s*(?:go\\s+)?(?:make|get)\\s+(?:me|us)\\s+a\\s+(?:sandwich|sammich|sammie|sammy)${E}`) },
+  // "trans women are just men"
+  { category: "stereotype", kind: "stereotype", re: re(`${B}trans(?:gender)?\\s*(?:women|woman|girls?|females?)\\s+(?:are|is|r)\\s+(?:just\\s+|only\\s+|really\\s+|actually\\s+|still\\s+|literally\\s+|all\\s+)*(?:(?:biological|bio)\\s+)?(?:men|man|males?|dudes?|blokes?|guys?|boys?)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}trans(?:gender)?\\s*(?:men|man|boys?|males?)\\s+(?:are|is|r)\\s+(?:just\\s+|only\\s+|really\\s+|actually\\s+|still\\s+|literally\\s+|all\\s+)*(?:(?:biological|bio)\\s+)?(?:women|woman|females?|girls?|chicks?)${E}`) },
   { category: "stereotype", kind: "stereotype", re: re(`${B}(?:i'?m|im|i am)\\s+not\\s+(?:a\\s+)?(?:racist|sexist|homophobic|transphobic|bigot(?:ed)?)\\s*,?\\s+but${E}(?=.*${B}${PEOPLE_RE}${E})`) },
-  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:kung flu|china virus|wuhan virus)${E}`) },
+  { category: "stereotype", kind: "stereotype", re: re(`${B}(?:kung flu|china virus|wuhan virus|chinese (?:virus|flu)|chink (?:virus|flu))${E}`) },
   { category: "stereotype", kind: "stereotype", re: /\({3}\s*[^()]{1,40}\s*\){3}/ },
   { category: "stereotype", kind: "stereotype", re: re(`${B}(?:saar|saaar+|sirs? pls|redeem(?:ed)? sir|bloody bastard benchod)${E}`) },
   // The same hate in academic or "just analysis" language. Each needs a group
@@ -294,6 +349,12 @@ const BLOCK_PATTERNS = [
   // Known code phrases and pseudo-science, whoever they're about.
   { category: "conspiracy", kind: "term", re: re(`${B}(?:the\\s+)?(?:great replacement|white genocide|kalergi plan|jewish question|zionist occupied government|globalist cabal|race realis[mt]|racial hierarchy|human biodiversity|racial purity|race mixing|mud races?|untermensch\\w*|remigration|replacement theory|white replacement)${E}`) },
   { category: "conspiracy", kind: "term", re: re(`${B}(?:13\\s*/\\s*50|13\\s*/\\s*52|despite being 13\\s*%?|13\\s*%\\s*of the population(?:\\s+(?:but|yet|commit))?|the jq|zog)${E}`) },
+  // Nazi and white-supremacist slogans, and Holocaust denial.
+  { category: "extremism", kind: "term", re: re(`${B}(?:(?:sieg|seig) heil|heil (?:hitler|victory)|hail hitler|hitler (?:was right|did nothing wrong|had (?:a point|the right idea)|should(?:'?ve| have) finished(?: (?:the|his) job)?|didn'?t finish(?: (?:the|his) job)?|was a (?:hero|genius|legend|great man))|finish(?:ing)? (?:what )?hitler started)${E}`) },
+  { category: "extremism", kind: "term", re: re(`${B}(?:(?:the\\s+)?holocaust\\s+(?:never happened|didn'?t happen|did not happen|(?:is|was) (?:a |an |just a )?(?:hoax|lie|myth|fake|fabricat\\w*|exaggerat\\w*|staged|overblown|made up|invented))|holo ?hoax|(?:six|6) million (?:lie|myth|hoax))${E}`) },
+  { category: "extremism", kind: "term", re: re(`${B}(?:white power(?! rangers?)|white pride world ?wide|wpww|rahowa|racial holy war|blood and soil|(?:the )?goyim know|day of the rope)${E}`) },
+  // 1488 and 14/88, but not as a street number, a price or a measure.
+  { category: "extremism", kind: "term", re: re(`(?<![0-9$.,#])(?:14\\s*[/|]\\s*88|1488)(?![0-9.,%])(?!\\s*(?:[a-z]+\\s+)?(?:rd|road|st|street|ave|avenue|dr|drive|hwy|highway|blvd|ln|lane|cres|ct|pde|tce|km|kms|kg|cal|calories|steps|words|dollars|bucks|points|pts|days|hours|minutes|mins|weeks|months|years|people|views|likes|followers)${E})`) },
   // Child sexual abuse material: asking for it, offering it, or its code
   // words. Always blocked, and checked in private messages too.
   { category: "child_safety", kind: "csam", re: re(`${B}(?:child|kiddie|kiddy|kid|toddler|infant|baby|preteen|pre-teen|underage|minor)s?\\s*(?:porn\\w*|p0rn\\w*|pr0n|nudes?|naked pics?|sex (?:pics?|vids?|videos?|content)|xxx|erotica)${E}`) },
@@ -307,6 +368,16 @@ const BORDERLINE_PATTERNS = [
   // unnamed targets: "those people should die", "these people are animals"
   { category: "violence", re: re(`${B}(?:these|those)\\s+(?:people|guys|men|women|ones|freaks|animals|scum)\\s+(?:[a-z']+\\s+){0,4}?(?:should|deserve to|need to|must|ought to)\\s+(?:all\\s+)?(?:die|be killed|be put down|be shot|be hanged|be hung|be gassed|be exterminated|be wiped out|burn)${E}`) },
   { category: "dehumanising", re: re(`${B}(?:these|those)\\s+people\\s+${IS}\\s+${FILLER}(?:a |an |the )?${alt(DEHUMANISING)}${E}`) },
+  // "your kind isn't welcome here"
+  { category: "exclusion", re: re(`${B}(?:(?:your|ur|their|his|her)\\s+kind\\s+(?:is ?n'?t|is not|are ?n'?t|are not|ain'?t|not)\\s+(?:welcome|wanted|allowed|needed)|(?:(?:we|i)\\s+)?(?:don'?t|do not|dont)\\s+want\\s+(?:your|ur|their|his|her)\\s+kind|no\\s+(?:room|place)\\s+(?:here\\s+)?for\\s+(?:your|ur|their)\\s+kind)${E}`) },
+  // "too many Indians here"
+  { category: "xenophobia", re: re(`${B}(?:way\\s+)?too many\\s+${XENO_OBJ}\\s+(?:in (?:australia|this country|our country|my (?:suburb|area|street|city|town))|here|around here|everywhere|coming (?:in|here|over))${E}`) },
+  // Sexual put-downs aimed at someone: "she's a dumb slut"
+  { category: "sexual_harassment", re: re(`${B}(?:you|u|ur|you'?re|youre|she'?s|shes|she is|her|that)\\s+(?:a\\s+|such a\\s+|one\\s+)?(?:[a-z]+\\s+)?(?:slut|whore|skank|thot)s?${E}`) },
+  // Hating a faith or calling it evil: "I hate Islam", "fuck Christianity"
+  { category: "religion", re: re(`${B}(?:i|we|everyone)\\s+(?:fucking\\s+|really\\s+)?(?:hate|despise|loathe|can'?t stand|cannot stand)\\s+${FAITHS}${E}`) },
+  { category: "religion", re: re(`${B}${FAITHS}\\s+${IS}\\s+${FILLER}(?:pure\\s+)?(?:evil|demonic|vile|disgusting|trash|garbage|rubbish)${E}`) },
+  { category: "religion", re: re(`${B}(?:fuck|fck|fuk|fk|f\\*+ck)\\s+${FAITHS}${E}`) },
 ];
 
 // Mockery: group + stereotype + laughter together (blocked, as putting down a group).
@@ -327,7 +398,7 @@ const PEOPLE_ONLY_RE = re(`${B}${PEOPLE_RE}${E}`);
 
 // Negation only counts immediately before the claim ("not gonna lie, X are
 // dirty" isn't negated); framing phrases count anywhere earlier.
-const NEGATION_NEAR_RE = re(`${B}(?:not|never|isn'?t|aren'?t|wasn'?t|weren'?t)\\s+$`);
+const NEGATION_NEAR_RE = re(`${B}(?:not|never|isn'?t|aren'?t|wasn'?t|weren'?t|didn'?t|doesn'?t|don'?t|dont|nobody|no one|noone)\\s+$`);
 const NEGATION_FAR_RE = re(`${B}(?:myth that|false that|lie that|stereotype that|untrue that|wrong to (?:say|think|claim)|stop saying|quit saying|don'?t say|dont say|stop calling|don'?t call|nobody should say|racist to say|doesn'?t mean)${E}`);
 const CONDEMN_RE = re(`${B}(?:racist|racism|racists|xenophob\\w*|bigot\\w*|hate speech|hateful|slurs?|offensive|unacceptable|not (?:okay|ok|cool|funny|acceptable|on|right)|shameful|ignorant|prejudice\\w*|discriminat\\w*|stereotyp\\w*|hurtful|abus(?:e|ed|ive)|harass\\w*|called (?:it )?out|stand (?:up )?(?:against|to)|so tired of|sick of|fed up|had enough of|why do people|people who say|stop calling|stop saying|don'?t call|wrong to say|reported (?:him|her|them|it)|disgusting|vile|gross|appalling|horrific|horrible|sickening|awful|messed up|report (?:anyone|people|them|him|her|it|this)(?: (?:who|that) (?:says?|said|thinks?|posts?|writes?|calls?))?|anyone who (?:says|said|thinks|posts)|(?:got|gets|get|getting|be|been|was|were) (?:banned|blocked|reported|suspended|kicked off|removed)|need to (?:read|learn|educate themselves|grow up|do better)|educate (?:yourself|yourselves|themselves)|(?:is|are|that'?s|it'?s) (?:just )?(?:wrong|false|untrue|nonsense|bs|bullshit))${E}`);
 const REPORT_RE = re(`${B}(?:called (?:me|us|him|her|them|my|our|his|their)|call(?:s|ing)? (?:me|us|him|her|them)|got called|was called|were called|being called|keeps? calling|kept calling|(?:said|says|saying|told (?:me|us|him|her|them)(?: to)?|yelled|shouted|screamed|wrote|commented|messaged|texted|dm'?d|posted|replied)${E}|someone said|heard (?:someone|a guy|a man|a woman|him|her|them)|(?:people|someone|they|he|she|some|many|folks|anyone|those)\\s+(?:who\\s+)?(?:think|thinks|believe|believes|claim|claims|reckon|reckons|insist|insists))`);
@@ -335,6 +406,9 @@ const ENDORSE_RE = /(😂|🤣|💀|😹|😆|👌|💯|(?<![a-z])(?:lmao+|lmfao
 const INGROUP_BEFORE_RE = re(`${B}(?:we|us)\\s+(?:all\\s+)?$`);
 const AS_A_RE = re(`${B}as an?\\s+(?:${PEOPLE.map((e) => e.replace(/s\?$/, "")).join("|")})${E}`);
 const FRIENDLY_RE = re(`${B}(?:my|ma|mah|wassup|sup|yo)\\s+$`);
+const HISTORY_RE = re(`${B}(?:history|historical|historians?|ww2|wwii|world war|nazi germany|the third reich|in the 1930s|in the 1940s|documentar(?:y|ies)|museum|textbook|history (?:unit|class|lesson|exam|assignment)|lesson|lecture|essay|assignment)${E}`);
+// ...unless history is called in to back the claim up ("history shows...").
+const HISTORY_PROVES_RE = re(`${B}(?:history|historians?|the (?:facts|evidence|data))\\s+(?:shows?|proves?|proved|teaches|taught|tells us|says|confirms?|backs (?:it|this|him) up)${E}`);
 const JOKE_RE = /(😂|🤣|💀|😹|😆|😅|😜|(?<![a-z])(?:lmao+|lmfao+|lol+|haha+|hehe+|jk|j\/k|kidding|joking|xd)(?![a-z])|(?<![a-z])if (?:you|u) (?:spoil|tell|forget|eat|touch|drink|finish|take|use|miss|skip|don'?t|ever)|(?<![a-z])(?:at|in) (?:the )?(?:game|games|match|final|grand final|chess|cards|poker|pool|golf|tennis|footy|fifa|cod|mario ?kart|fortnite|smash|monopoly|uno|trivia|quiz)(?![a-z]))/i;
 
 function around(v, index, length) {
@@ -373,6 +447,7 @@ function contextOf(v, index, length) {
     ingroup: INGROUP_BEFORE_RE.test(before) || AS_A_RE.test(v),
     friendly: FRIENDLY_RE.test(before.slice(-12)),
     joking: JOKE_RE.test(rest),
+    historical: HISTORY_RE.test(rest) && !HISTORY_PROVES_RE.test(rest),
   };
 }
 
@@ -382,6 +457,18 @@ function judge(kind, c) {
     if (c.condemned && !c.endorsed) return c.framed ? "ok" : "borderline";
     if ((c.reported || c.ingroup) && !c.endorsed) return "borderline";
     return "block";
+  }
+  // A rape threat or victim-blaming: only reporting or calling it out posts it.
+  if (kind === "sexual_threat") {
+    if (c.negated) return "ok";
+    if ((c.reported || c.condemned) && !c.endorsed) return "quoted";
+    return "block";
+  }
+  // Attacking a faith: fine to call out, and reporting it posts behind a warning.
+  if (kind === "faith") {
+    if (c.negated || (c.condemned && c.framed && !c.endorsed)) return "ok";
+    if (c.reported && !c.endorsed) return "quoted";
+    return c.ingroup && !c.endorsed ? "borderline" : "block";
   }
   if (kind === "threat") {
     if (c.negated) return "ok";
@@ -399,6 +486,7 @@ function judge(kind, c) {
   if (kind === "csam") return "block";
   if (kind === "term") {
     if (c.negated || c.condemned || c.framed || c.reported) return "ok";
+    if (c.historical && !c.endorsed) return "ok";
     return "block";
   }
   if (kind === "stereotype") {
@@ -416,8 +504,10 @@ function judge(kind, c) {
 
 // Assessment
 
-const SLUR_RES = SLURS.map((w) => re(`${B}${slurPattern(w)}(?:e?s)?${E}`));
-const CONTEXTUAL_RES = CONTEXTUAL.map(({ term, innocent }) => ({ re: re(`${B}${slurPattern(term, { gaps: false })}(?:e?s)?${E}`), innocent }));
+// With plurals, including "-ies" for words ending in y ("tranny", "trannies").
+const plural = (word, pattern) => (/y$/.test(word) ? `${pattern.replace(/y\+$/, "")}(?:y+s?|ies)` : `${pattern}(?:e?s)?`);
+const SLUR_RES = SLURS.map((w) => re(`${B}${plural(w, slurPattern(w))}${E}`));
+const CONTEXTUAL_RES = CONTEXTUAL.map(({ term, innocent }) => ({ re: re(`${B}${plural(term, slurPattern(term, { gaps: false }))}${E}`), innocent }));
 const g = (r) => new RegExp(r.source, `${r.flags.replace("g", "")}g`);
 const RANK = { ok: 0, quoted: 1, borderline: 2, block: 3 };
 
@@ -470,6 +560,10 @@ const BLOCK_MESSAGES = {
   conspiracy: "That blames a whole group of people for secretly running things, an old conspiracy theory used against many groups. Criticise specific people, companies or governments instead.",
   threat: "That reads as a threat to hurt someone. If it's a joke, make that clear; real threats aren't allowed on Mesh.",
   harassment: "Telling someone to hurt themselves isn't allowed. If you or someone you know is struggling, Lifeline is on 13 11 14.",
+  sexual_violence: "That threatens rape, or blames someone for being sexually assaulted. That's never allowed on Mesh. If it's happened to you, 1800RESPECT is on 1800 737 732.",
+  sexual_harassment: "That's a sexual put-down aimed at someone. Disagree with them all you like; leave their body and sex life out of it.",
+  extremism: "That's a Nazi or white-supremacist slogan, or denies the Holocaust. Mesh doesn't carry them. If you're calling it out or teaching history, say so and it can post.",
+  religion: "That calls a religion a disease or filth, or calls for it to be banned or wiped out. That lands on everyone who follows it, whichever faith it is. Disagree with what a religion teaches all you like.",
   child_safety: "That reads as sexual content involving children. It's never allowed on Mesh. If a child is in danger, call 000, or report it to the ACCCE at accce.gov.au/report.",
 };
 
@@ -489,6 +583,10 @@ export const RULE_NAMES = {
   conspiracy: "Conspiracy theories about a group",
   threat: "Threats",
   harassment: "Telling someone to hurt themselves",
+  sexual_violence: "Rape threats and victim-blaming",
+  sexual_harassment: "Sexual put-downs",
+  extremism: "Nazi slogans and Holocaust denial",
+  religion: "Attacking a faith",
   child_safety: "Child sexual abuse",
 };
 
@@ -615,6 +713,18 @@ export function checkName(text) {
   }
   return { ok: true };
 }
+
+/**
+ * Private messages, checked only on the device: before sending, the rule a
+ * message would break if it were posted, or "" (the sender can still send it,
+ * between friends); and whether a message request should arrive folded away.
+ * Nothing is recorded either way.
+ */
+export function messageWarning(text) {
+  const v = assessText(text);
+  return v.level === "block" && v.category !== "child_safety" ? RULE_NAMES[v.category] || RULE_NAMES.dehumanising : "";
+}
+export const hideInRequest = (text) => !!text && assessText(text).level === "block";
 
 /**
  * The one check private messages get: sexual content involving children.

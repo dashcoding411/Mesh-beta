@@ -16,6 +16,7 @@ import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Segmented from "./ui/Segmented";
 import { APPLE_IN_APP, isNativeApp } from "../lib/native";
+import { isThrowawayEmail } from "../lib/verified";
 import { isStandalone } from "../lib/install";
 import { ageLockedUntil, lockAge, underSixteen, LOCK_DAYS } from "../lib/ageLock";
 import { BUSINESS } from "../legal/business";
@@ -124,6 +125,9 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
     e.preventDefault();
     setError(""); setNotice("");
     if (!email.trim()) return setError("Enter your email address.");
+    if (signup && isThrowawayEmail(email)) {
+      return setError("That's a throwaway inbox. Use an email you keep: it's one of the ways Mesh keeps bots out.");
+    }
     const weak = signup ? passwordProblem(password, { email }) : "";
     if (weak) return setError(weak);
     if (!password) return setError("Enter your password.");

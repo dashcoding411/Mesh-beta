@@ -1,9 +1,10 @@
 // Fake crowds: what accounts under a week old add counts a quarter in
 // ranking, and bursts of it are found for staff.
 import { describe, expect, it } from "vitest";
-import { FRESH_CAP, FRESH_WEIGHT, isFreshAccount, recommendable, settled } from "../fresh";
+import { FRESH_CAP, FRESH_WEIGHT, crowdCopies, isFreshAccount, recommendable, settled } from "../fresh";
 import { copyClusters, freshBursts, signupBursts } from "../stats";
-import { isVerifiedUser } from "../verified";
+import { readFileSync } from "node:fs";
+import { THROWAWAY_DOMAINS, isThrowawayEmail, isVerifiedUser } from "../verified";
 import { buildCommentTree } from "../commentTree";
 
 const DAY = 86400000;
@@ -33,6 +34,26 @@ describe("isVerifiedUser", () => {
     expect(isVerifiedUser({ phoneNumber: "+61400000000" })).toBe(true);
     expect(isVerifiedUser(null)).toBe(false);
   });
+  it("doesn't count a confirmed throwaway inbox", () => {
+    expect(isVerifiedUser({ email: "bot123@mailinator.com", emailVerified: true })).toBe(false);
+    expect(isVerifiedUser({ email: "x@eu.yopmail.com", emailVerified: true })).toBe(false);
+    expect(isVerifiedUser({ email: "me@privaterelay.appleid.com", emailVerified: true })).toBe(true);
+  });
+});
+
+describe("isThrowawayEmail", () => {
+  it("knows throwaway inboxes, not real or relayed ones", () => {
+    expect(isThrowawayEmail("Someone@GuerrillaMail.com ")).toBe(true);
+    expect(isThrowawayEmail("student@uq.edu.au")).toBe(false);
+    expect(isThrowawayEmail("me@duck.com")).toBe(false);
+    expect(isThrowawayEmail("someone@notmailinator.com")).toBe(false);
+    expect(isThrowawayEmail("")).toBe(false);
+  });
+  it("has the same list as the rules", () => {
+    const rules = readFileSync(new URL("../../../firestore.rules", import.meta.url), "utf8");
+    const list = rules.match(/function throwawayEmail\(\) \{[^}]*\((?:\[a-z0-9-\]\+\[\.\]\)\*)?\(([^)]*)\)/)?.[1] ?? "";
+    expect(list.split("|").map((d) => d.replace(/\[\.\]/g, ".")).sort()).toEqual([...THROWAWAY_DOMAINS].sort());
+  });
 });
 
 describe("recommendable", () => {
@@ -41,6 +62,24 @@ describe("recommendable", () => {
     expect(recommendable({ fresh: true, likeCount: 1 })).toBe(true);
     expect(recommendable({ fresh: true, repostCount: 1 })).toBe(true);
     expect(recommendable({ likeCount: 0 })).toBe(true);
+  });
+  it("doesn't count fresh accounts engaging with each other", () => {
+    expect(recommendable({ fresh: true, likeCount: 40, freshLikes: 40, commentCount: 9, freshComments: 9 })).toBe(false);
+    expect(recommendable({ fresh: true, likeCount: 41, freshLikes: 40 })).toBe(true);
+  });
+});
+
+describe("crowdCopies", () => {
+  const post = (id, authorId, text, fresh = true) => ({ id, authorId, text, fresh });
+  const script = "Vote for the only party that cares about you!!";
+  it("finds one script posted by three or more fresh accounts", () => {
+    const ids = crowdCopies([post("a", "u1", script), post("b", "u2", script.toUpperCase()), post("c", "u3", `${script} `), post("d", "u4", "my own words about the weekend")]);
+    expect([...ids].sort()).toEqual(["a", "b", "c"]);
+  });
+  it("leaves established accounts, two-account coincidences and short posts alone", () => {
+    expect(crowdCopies([post("a", "u1", script, false), post("b", "u2", script, false), post("c", "u3", script)]).size).toBe(0);
+    expect(crowdCopies([post("a", "u1", script), post("b", "u2", script)]).size).toBe(0);
+    expect(crowdCopies([post("a", "u1", "happy new year!"), post("b", "u2", "happy new year!"), post("c", "u3", "happy new year!")]).size).toBe(0);
   });
 });
 

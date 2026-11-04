@@ -3,7 +3,7 @@
 // innocent text that shares words with slurs has to come through as ok.
 import { describe, expect, it } from "vitest";
 import cases from "./moderation-cases.json";
-import { assessText, checkContent, checkName, hitsHiddenWords, normalize } from "../moderation";
+import { assessText, checkContent, checkName, hitsHiddenWords, normalize, hideInRequest, messageWarning } from "../moderation";
 
 describe("assessText", () => {
   for (const [level, phrases] of Object.entries(cases)) {
@@ -17,6 +17,14 @@ describe("assessText", () => {
   it("treats every group the same way", () => {
     for (const group of ["Indians", "white people", "Muslims", "Jews", "Aboriginals", "Chinese", "immigrants", "men"]) {
       expect(assessText(`${group} are vermin`).level, group).toBe("block");
+    }
+  });
+
+  it("treats every faith the same way", () => {
+    for (const faith of ["Islam", "Christianity", "Judaism", "Hinduism", "Sikhism", "Buddhism", "Catholicism", "Atheism"]) {
+      expect(assessText(`${faith} is a cancer`).level, faith).toBe("block");
+      expect(assessText(`ban ${faith}`).level, faith).toBe("block");
+      expect(assessText(`I disagree with ${faith} on this`).level, faith).toBe("ok");
     }
   });
 
@@ -60,6 +68,13 @@ describe("checkContent", () => {
   });
   it("doesn't filter private messages for hate speech", () => {
     expect(checkContent("wassup my nigga", { skipCooldown: true, hate: false }).ok).toBe(true);
+  });
+  it("asks before a message that would be blocked in a post, and folds it away in a request", () => {
+    expect(messageWarning("all women are whores")).toBe("Dehumanising a group");
+    expect(messageWarning("see you at the game")).toBe("");
+    expect(hideInRequest("heil hitler")).toBe(true);
+    expect(hideInRequest("hey, loved your post about the protest")).toBe(false);
+    expect(hideInRequest("")).toBe(false);
   });
   it("still catches spam in private messages", () => {
     expect(checkContent("a".repeat(30), { skipCooldown: true, hate: false }).error).toMatch(/spam/);
