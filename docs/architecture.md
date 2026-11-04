@@ -395,6 +395,12 @@ What each kind of record shows, and to whom:
   credentials are in the site's code by design (there's no server to hand out
   short-lived ones). App Check isn't enforced yet, so the rules are the only
   barrier for scripted access.
+- **Cloudflare's blocked script.** Bot Fight Mode adds an inline script to each
+  page on joinmesh.social, and the CSP blocks it, which shows as a console
+  error. Leave it: the script changes on every load, so a hash can't allow it,
+  and `'unsafe-inline'` or a fixed nonce would weaken the CSP. It only sees page
+  loads, because sign-ups and database requests go straight to Google, and
+  acting on its result needs Cloudflare Enterprise.
 
 ## Accessibility
 
