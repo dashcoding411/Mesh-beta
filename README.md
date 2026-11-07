@@ -123,6 +123,11 @@ npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --pro
   shipping a client that depends on them.
 - Always pass `--project mesh-a293c`. The CLI's default project for this
   directory may point elsewhere.
+- Don't request a new build's `/assets/` files on joinmesh.social before it's
+  deployed. A missing file gets `index.html` with the one-year `/assets/**`
+  cache header, and Cloudflare keeps that HTML under the script's name, which
+  breaks the site there. Each build gets new file names (`VITE_BUILT`), so if
+  it happens, build and deploy again. Check the live files after deploying.
 
 The site's address is `https://joinmesh.social` (Firebase Hosting custom
 domain; `mesh-a293c.web.app` still serves the same site). The canonical link,
