@@ -1,7 +1,7 @@
 import {
   Heart, MessageCircle, Repeat2, UserPlus, AtSign, ShieldCheck, CalendarDays, Blend, UserCheck, Waves, Scale, Newspaper,
 } from "lucide-react";
-import { LogoMark } from "./shell/Sidebar";
+import { LogoMark } from "./ui/LogoMark";
 import { plural } from "../lib/format";
 import { assessText } from "../lib/moderation";
 import LiveAvatar from "./ui/LiveAvatar";

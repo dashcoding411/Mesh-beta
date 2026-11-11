@@ -8,8 +8,13 @@
     <!-- Google AdSense ownership check. Loads nothing; the ad script itself is never loaded without consent. -->
     <meta name="google-adsense-account" content="ca-pub-5587358450230709" />
     <link rel="canonical" href="https://joinmesh.social/" />
-    <meta name="theme-color" content="#0b0b0f" />
+    <meta name="theme-color" content="#09090b" />
     <meta name="color-scheme" content="dark" />
+
+    <!-- The database and the sign-in renewal are the first things the app
+         talks to, so the connections open while its code downloads. -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
 
     <link rel="icon" type="image/svg+xml" href="/mesh.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -1,7 +1,8 @@
+import { useEffect } from "react";
 import { Aperture, BrickWall, CalendarDays, Fingerprint, Lock, MessageCircle, Newspaper, ShieldCheck, Sprout } from "lucide-react";
 import { authPath, navigate } from "../lib/router";
 import { DOCUMENT_TITLES } from "../legal/titles.js";
-import { LogoMark } from "./shell/Sidebar";
+import { LogoMark } from "./ui/LogoMark";
 import Button from "./ui/Button";
 import SevenSeg from "./rolls/SevenSeg";
 
@@ -29,14 +30,31 @@ const NEVER = [
   "Let AI decide your appeal",
 ];
 
+// This page also arrives as plain HTML, before the app has loaded
+// (scripts/prerender.mjs draws it at build time), so everything that goes
+// somewhere is a real link: it works straight away, opens in a new tab, and
+// search engines can follow it. Once the app is running the same link moves
+// within it instead of loading a page.
+const inApp = (to) => (e) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+  e.preventDefault();
+  navigate(typeof to === "function" ? to() : to);
+};
+
 /**
  * The front door for people who haven't used Mesh: what it is and why, then
  * sign up or look around. Shown at /welcome, and at / the first time a
  * signed-out visitor arrives.
  */
 export default function Welcome({ signedIn, onBrowse }) {
-  const signUp = () => navigate(authPath("signup"));
-  const logIn = () => navigate(authPath("login"));
+  const signUp = inApp(() => authPath("signup"));
+  const logIn = inApp(() => authPath("login"));
+  // Signing up is the likeliest next tap, so its page is fetched while this one is read.
+  useEffect(() => {
+    if (signedIn) return undefined;
+    const t = setTimeout(() => { import("./AuthPage").catch(() => {}); }, 1500);
+    return () => clearTimeout(t);
+  }, [signedIn]);
 
   const cta = (where) => (
     <div className={`flex flex-wrap items-center gap-3 ${where === "hero" ? "mt-8" : "mt-6 justify-center"}`}>
@@ -44,7 +62,7 @@ export default function Welcome({ signedIn, onBrowse }) {
         <Button variant="primary" size="lg" onClick={onBrowse}>Back to Mesh</Button>
       ) : (
         <>
-          <Button variant="primary" size="lg" onClick={signUp}>Sign up, it's free</Button>
+          <Button href="/signup" variant="primary" size="lg" onClick={signUp}>Sign up, it's free</Button>
           <Button variant="secondary" size="lg" onClick={onBrowse}>Look around first</Button>
         </>
       )}
@@ -57,7 +75,7 @@ export default function Welcome({ signedIn, onBrowse }) {
         <LogoMark size={30} />
         <span className="font-display text-title-2 font-extrabold tracking-tight">Mesh</span>
         <span className="flex-1" />
-        {!signedIn && <Button variant="ghost" onClick={logIn}>Log in</Button>}
+        {!signedIn && <Button href="/login" variant="ghost" onClick={logIn}>Log in</Button>}
       </header>
 
       <main>
@@ -123,9 +141,9 @@ export default function Welcome({ signedIn, onBrowse }) {
                 <h2 className="mt-3 text-title-3">{p.title}</h2>
                 <p className="mt-2 text-callout text-fg-muted">{p.body}</p>
                 {p.link && (
-                  <button type="button" onClick={() => navigate(p.link.to)} className="mt-3 text-callout font-semibold text-accent-text hover:underline">
+                  <a href={p.link.to} onClick={inApp(p.link.to)} className="mt-3 inline-flex min-h-6 items-center text-callout font-semibold text-accent-text hover:underline">
                     {p.link.label}
-                  </button>
+                  </a>
                 )}
               </li>
             ))}
@@ -152,11 +170,13 @@ export default function Welcome({ signedIn, onBrowse }) {
         </section>
       </main>
 
-      <footer className="mx-auto flex max-w-5xl flex-wrap gap-x-5 gap-y-2 px-4 py-8 pb-safe text-caption text-fg-subtle md:px-6">
-        {Object.entries(DOCUMENT_TITLES).map(([id, title]) => (
-          <a key={id} href={`/legal/${id}`} onClick={(e) => { e.preventDefault(); navigate(`/legal/${id}`); }} className="hover:text-fg hover:underline">{title}</a>
-        ))}
-        <a href="/licenses.txt" target="_blank" rel="noopener" className="hover:text-fg hover:underline">Open-source licences</a>
+      <footer className="mx-auto max-w-5xl px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-8 md:px-6">
+        <nav aria-label="Policies" className="flex flex-wrap gap-x-5 gap-y-1 text-caption text-fg-subtle">
+          {Object.entries(DOCUMENT_TITLES).map(([id, title]) => (
+            <a key={id} href={`/legal/${id}`} onClick={inApp(`/legal/${id}`)} className="inline-flex min-h-6 items-center hover:text-fg hover:underline">{title}</a>
+          ))}
+          <a href="/licenses.txt" target="_blank" rel="noopener" className="inline-flex min-h-6 items-center hover:text-fg hover:underline">Open-source licences</a>
+        </nav>
       </footer>
     </div>
   );

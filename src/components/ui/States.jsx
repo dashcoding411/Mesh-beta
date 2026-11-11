@@ -29,7 +29,9 @@ export function Loading({ label = "Loading", children }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, body, action, compact = false }) {
+export function EmptyState({ icon: Icon, title, body, action, compact = false, heading = false }) {
+  // `heading`: this message is the whole page, so its title is the page's h1.
+  const Title = heading ? "h1" : "p";
   return (
     <div className={`flex flex-col items-center text-center ${compact ? "py-8" : "py-16"} px-6 anim-fade`}>
       {Icon && (
@@ -37,7 +39,7 @@ export function EmptyState({ icon: Icon, title, body, action, compact = false })
           <Icon size={26} strokeWidth={1.75} aria-hidden="true" />
         </div>
       )}
-      <p className="text-title-3 text-fg">{title}</p>
+      <Title className="text-title-3 text-fg">{title}</Title>
       {body && <p className="mt-2 max-w-xs text-callout text-fg-muted">{body}</p>}
       {action && <div className="mt-6">{action}</div>}
     </div>

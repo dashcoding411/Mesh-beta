@@ -11,7 +11,7 @@ import { claimUsernameAndCreateProfile, usernameTaken, fetchProfile, saveOwnLimi
 import { emptyLayer } from "../lib/brick";
 import { Eye, EyeOff, AlertTriangle, Check, ArrowLeft, Loader2 } from "lucide-react";
 import { authPath, goBack, navigate } from "../lib/router";
-import { LogoMark } from "./shell/Sidebar";
+import { LogoMark } from "./ui/LogoMark";
 import { LATTICE } from "../lib/covers";
 import Dialog from "./ui/Dialog";
 import Segmented from "./ui/Segmented";
@@ -20,6 +20,7 @@ import { isThrowawayEmail } from "../lib/verified";
 import { isStandalone } from "../lib/install";
 import { ageLockedUntil, lockAge, underSixteen, LOCK_DAYS } from "../lib/ageLock";
 import { BUSINESS } from "../legal/business";
+import { BUILT } from "../lib/built";
 
 // Inputs are 16px so iOS Safari doesn't zoom on focus.
 const FIELD =
@@ -322,7 +323,7 @@ export default function AuthPage({ initialMode = "login", pendingUser: signedInU
 
 
         <PolicyLinks />
-        <p className="mt-3 text-center text-label text-fg-subtle">Mesh version: {import.meta.env.VITE_BUILT || "development"}</p>
+        <p className="mt-3 text-center text-label text-fg-subtle">Mesh version: {BUILT}</p>
       </div>
 
       {showReset && (

@@ -16,12 +16,15 @@ async function latest() {
   return html.match(ENTRY)?.[0] || null;
 }
 
-// Stale chunks 404 after a deploy; reload once into the new build.
+// A page's code is gone from the server after a deploy: reload into the new
+// build. Not twice within a minute, so a file that's really missing can't
+// loop; that case reaches ErrorBoundary, which offers the reload instead.
+const RELOADED_KEY = "mesh:reloaded-for-update";
 if (typeof window !== "undefined") {
   window.addEventListener("vite:preloadError", (e) => {
     try {
-      if (sessionStorage.getItem("mesh:reloaded-for-update")) return;
-      sessionStorage.setItem("mesh:reloaded-for-update", "1");
+      if (Date.now() - (Number(sessionStorage.getItem(RELOADED_KEY)) || 0) < 60_000) return;
+      sessionStorage.setItem(RELOADED_KEY, String(Date.now()));
     } catch { /* storage blocked: reload anyway */ }
     e.preventDefault();
     window.location.reload();

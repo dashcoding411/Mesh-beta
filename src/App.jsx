@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, releaseAppCheck } from "./firebase";
 import { finishGoogleDirect, googleReturning, lostSession, noteSignedIn, restoreSession, syncVerifiedToken } from "./lib/auth";
 import { clearSnapshots, readSnapshot, saveSnapshot } from "./lib/snapshot";
+import { hadAccountHere, loadWelcome, welcomeNow } from "./lib/firstVisit";
 import { setPresenceHidden, tidyStoryViewers, openWatch, fetchOwnProfile, fetchMyFollowingSet, fetchBlocked, fetchMyPrefs, followsMe, setMuted, listenNotifications, removeMyReposts, staffRole, loadAppealAllowances, recordActivity, fetchMyRolls, isDeveloped, rollSeen, tsMillis } from "./lib/db";
 import RollReady from "./components/rolls/RollReady";
 import { BrickContext, useBrickEngine, useUsageMeter } from "./lib/useBrick";
@@ -19,7 +20,8 @@ import { ArrowLeft } from "lucide-react";
 import IconButton from "./components/ui/IconButton";
 import { useInbox } from "./lib/inbox";
 import { ShellContext } from "./components/shell/ShellContext";
-import Sidebar, { LogoMark } from "./components/shell/Sidebar";
+import Sidebar from "./components/shell/Sidebar";
+import { Splash } from "./components/ui/LogoMark";
 import BottomNav from "./components/shell/BottomNav";
 import HomeDrawer from "./components/shell/HomeDrawer";
 import { JoinDialog, JoinPage } from "./components/JoinPrompt";
@@ -37,6 +39,7 @@ import { usePageTitle } from "./lib/usePageTitle";
 import { isVerifiedUser } from "./lib/verified";
 import { DOCUMENT_TITLES } from "./legal/titles.js";
 import LockScreen from "./components/LockScreen";
+import ErrorBoundary from "./components/ErrorBoundary";
 import HomeHeader from "./components/shell/HomeHeader";
 
 // Route-level code splitting; only the shell and home feed are in the entry chunk.
@@ -83,7 +86,7 @@ const NEEDS_CONTACT = new Set([
   "post", "repost", "follow people", "follow journalists", "message people", "reply to comments", "reply to stories",
   "echo stories", "reply to gatherings", "post in gatherings", "start a circle", "plan a gathering",
 ]);
-const Welcome = lazy(() => import("./components/Welcome"));
+const WelcomeLazy = lazy(loadWelcome);
 const WhatsOn = lazy(() => import("./components/WhatsOn"));
 const Help = lazy(() => import("./components/Help"));
 const WeekRecap = lazy(() => import("./components/WeekRecap"));
@@ -100,16 +103,6 @@ const Tour = lazy(() => import("./components/Tour"));
 const CallScreen = named(() => import("./components/CallScreen"), "CallScreen");
 const IncomingCall = named(() => import("./components/CallScreen"), "IncomingCall");
 const InterestsDialog = named(() => import("./components/Interests"), "InterestsDialog");
-
-// The pulsing logo while Mesh (or a page it needs) loads.
-function Splash({ label = "Loading Mesh", children }) {
-  return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-4" role="status" aria-label={label}>
-      <div className="animate-pulse"><LogoMark size={56} /></div>
-      {children}
-    </div>
-  );
-}
 
 const SECTION_TITLES = {
   foryou: null, following: "Following", flicks: "Flicks", news: "News", circles: "Circles", search: "Search",
@@ -166,6 +159,11 @@ export default function App() {
   const [tourDone, setTourDone] = useState(null); // from private prefs; null until known
   // First-time signed-out visitors see the welcome page at / until they choose to look around.
   const [welcomed, setWelcomed] = useState(() => { try { return !!localStorage.getItem("mesh:welcomed"); } catch { return true; } });
+  // Read now: finding nobody signed in clears the note (lostSession).
+  const [hadAccount] = useState(hadAccountHere);
+  // The welcome page itself when its code is already here (main.jsx waits for
+  // it on a first visit), so it replaces the copy in the HTML in one step.
+  const [Welcome] = useState(() => welcomeNow() || WelcomeLazy);
   const [muted, setMutedSet] = useState(() => new Set());
   const [interestsDialog, setInterestsDialog] = useState(null); // null | "first" | "edit"
   const [incoming, setIncoming] = useState([]);
@@ -493,7 +491,24 @@ export default function App() {
   // Viewer lists on your own stories go once they're 48 hours old.
   useEffect(() => { if (signedIn) tidyStoryViewers().catch(() => {}); }, [signedIn]);
 
+  const firstVisitPage = !welcomed && page.tab === "home" && page.section === "foryou" && !page.notFound && !overlay;
+  const welcomePage = () => {
+    const browse = () => {
+      setWelcomed(true);
+      if (page.tab === "welcome") navigate("/");
+    };
+    return (
+      <Suspense fallback={<Splash />}>
+        <Welcome signedIn={signedIn} onBrowse={browse} />
+        <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
+      </Suspense>
+    );
+  };
+
   if (!authReady) {
+    // Someone new sees the welcome page at once: it's the same for anyone who
+    // isn't signed in, so it doesn't wait to learn who is (lib/firstVisit.js).
+    if (!hadAccount && !finishingSignIn && (page.tab === "welcome" || firstVisitPage)) return welcomePage();
     return (
       <Splash label={finishingSignIn ? "Finishing sign-in" : "Loading Mesh"}>
         {finishingSignIn && <p className="text-callout text-fg-muted">Finishing sign-in with Google…</p>}
@@ -518,19 +533,7 @@ export default function App() {
   if (guest && onAuthPage) return <Suspense fallback={<Splash />}><AuthPage initialMode={page.mode} onCreated={enter} /></Suspense>;
   if (onAuthPage) return null;
 
-  const firstVisit = guest && !welcomed && page.tab === "home" && page.section === "foryou" && !page.notFound && !overlay;
-  if (page.tab === "welcome" || firstVisit) {
-    const browse = () => {
-      setWelcomed(true);
-      if (page.tab === "welcome") navigate("/");
-    };
-    return (
-      <Suspense fallback={<div className="flex h-dvh items-center justify-center" role="status" aria-label="Loading Mesh"><div className="animate-pulse"><LogoMark size={56} /></div></div>}>
-        <Welcome signedIn={signedIn} onBrowse={browse} />
-        <StorageNotice onReadMore={() => navigate("/legal/cookies")} />
-      </Suspense>
-    );
-  }
+  if (page.tab === "welcome" || (guest && firstVisitPage)) return welcomePage();
 
   const query = overlay ? bgQuery : loc.query;
   const immersive = page.tab === "home" && page.section === "flicks" && !!page.id && !overlay;
@@ -618,7 +621,10 @@ export default function App() {
           <OfflineBanner />
           <UpdateBanner />
           <SuspensionBanner profile={profile} />
-          <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
+          {/* A page that crashes says so here, and the menus keep working. */}
+          <ErrorBoundary page resetKey={loc.path}>
+            <Suspense fallback={<Loading label="Loading" />}>{content}</Suspense>
+          </ErrorBoundary>
         </main>
 
         <BottomNav page={page} profile={profile} work={workAccount} unread={inbox.unreadCount} immersive={immersive} />

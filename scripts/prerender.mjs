@@ -1,9 +1,13 @@
 // Post-build: renders the home page, the policy pages, the welcome page and
-// What's on to static HTML (title, description, canonical URL, text) and writes
-// sitemap.xml. The app replaces the text once it loads. The home page's HTML is
-// also what every other app route starts from.
+// What's on to static HTML (title, description, canonical URL, content) and
+// writes sitemap.xml. The app replaces the content once it loads. The home
+// page's HTML is also what every other app route starts from.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { createElement as h, Fragment } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
 import { DOCUMENTS } from "../src/legal/content.js";
 import { BUSINESS } from "../src/legal/business.js";
 
@@ -43,11 +47,45 @@ function page(template, { path, canonical = path, title, description, body }) {
     .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${esc(title)}$2`)
     .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${esc(description)}$2`)
     .replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${url}$2`)
-    .replace(/<div id="root">[\s\S]*?<\/div>\s*(<script|<\/body>)/, `<div id="root">\n      ${body}\n    </div>\n    $1`);
+    // A function, so a "$" in the content is never read as a replacement pattern.
+    .replace(/<div id="root">[\s\S]*?<\/div>\s*(<script|<\/body>)/, (_, next) => `<div id="root">\n      ${body}\n    </div>\n    ${next}`);
   for (const [needle, what] of [[`<title>${esc(title)}</title>`, "title"], [url, "canonical"], [body.slice(0, 40), "body"]]) {
     if (!out.includes(needle)) throw new Error(`prerender: ${what} didn't make it into ${path}`);
   }
   return out;
+}
+
+/**
+ * The welcome page and the loading logo, drawn from the app's own components
+ * (through Vite, which understands their JSX), so what arrives in the HTML is
+ * exactly what the app shows a moment later and can't drift from it.
+ * src/boot.js and the [data-boot] rules in index.css choose which of the two
+ * is on screen before the app starts. Those components, and what they
+ * import, must load without a browser; if one stops doing so, the build
+ * fails here and says which.
+ */
+async function drawWelcome() {
+  const vite = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    appType: "custom",
+    logLevel: "error",
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    optimizeDeps: { noDiscovery: true },
+  });
+  try {
+    const [{ default: Welcome }, { Splash }] = await Promise.all([
+      vite.ssrLoadModule("/src/components/Welcome.jsx"),
+      vite.ssrLoadModule("/src/components/ui/LogoMark.jsx"),
+    ]);
+    // One pass, so the two logos get different gradient ids (see LogoMark).
+    const html = renderToStaticMarkup(h(Fragment, null,
+      h("div", { "data-boot": "splash" }, h(Splash)),
+      h("div", { "data-boot": "welcome" }, h(Welcome, { signedIn: false })),
+    ));
+    return `<noscript><p class="bg-surface-2 px-4 py-3 text-center text-callout">Mesh needs JavaScript switched on to sign in and use it.</p></noscript>\n      ${html}`;
+  } finally {
+    await vite.close();
+  }
 }
 
 const template = await readFile(new URL("index.html", dist), "utf8");
@@ -62,32 +100,7 @@ const PAGES = [
     canonical: "/",
     title: "Mesh: social media for humans",
     description: "Rolls: a shared disposable camera for every night out that develops at 9am. Plus real news, and an app that knows when to stop. 16+.",
-    body: `<main class="mx-auto max-w-2xl px-6 py-12">
-        <p class="font-display text-title-3 font-extrabold">Mesh</p>
-        <h1 class="mt-8 font-display text-title-1">Social media for humans.</h1>
-        <p class="mt-2 text-title-3">Get bored again.</p>
-        <p class="mt-4 text-body text-fg-muted">A shared disposable camera for every night out, real news, and an app that knows when to stop.</p>
-        <h2 class="mt-10 text-title-2">Rolls: a disposable camera you all share</h2>
-        <p class="mt-3 text-body text-fg-muted">Start a roll for a party, a trip or O-Week and send the link. Everyone gets 27 shots on one shared camera, with a 2000s digicam look and no previews. At 9am the next morning it develops, and everyone wakes up to every photo from the night.</p>
-        <h2 class="mt-10 text-title-2">You control the scroll</h2>
-        <p class="mt-3 text-body text-fg-muted">Pick a daily limit when you sign up. When you hit it, Home and Flicks lock until midnight, with no ignore button. Loosening a limit takes 24 hours, so you can't talk yourself out of it at 1am. Lock everything for exam week with one tap. Messages, calls and News always work.</p>
-        <h2 class="mt-10 text-title-2">Made by humans</h2>
-        <p class="mt-3 text-body text-fg-muted">AI-generated photos and videos aren't allowed. Editing your own photos is fine. Fakes aren't.</p>
-        <h2 class="mt-10 text-title-2">Real news</h2>
-        <p class="mt-3 text-body text-fg-muted">Independent journalists whose identity Mesh has checked publish their own stories here. Every story cites its sources and opens with a 60-second version, and corrections stay on the story. <a href="/news">Read the news</a>.</p>
-        <h2 class="mt-10 text-title-2">Mesh together</h2>
-        <p class="mt-3 text-body text-fg-muted">Circles are communities with their own rules. Gatherings get you off your phone. <a href="/whats-on">See what's on</a>.</p>
-        <h2 class="mt-10 text-title-2">Hate stopped at the door</h2>
-        <p class="mt-3 text-body text-fg-muted">Slurs and attacks are caught before they post. Every block can be appealed to a person.</p>
-        <h2 class="mt-10 text-title-2">Not greedy</h2>
-        <p class="mt-3 text-body text-fg-muted">Ads are labelled and never target you based on what you do. Your data is never sold.</p>
-        <p class="mt-10"><a href="/signup">Sign up, it's free</a> · <a href="/login">Log in</a></p>
-        <nav aria-label="Mesh" class="mt-10 flex flex-wrap gap-x-5 gap-y-2 text-callout text-fg-muted">
-          <a href="/news">News</a>
-          <a href="/whats-on">What's on</a>
-          ${DOCUMENTS.map((d) => `<a href="/legal/${d.id}">${esc(d.title)}</a>`).join("\n          ")}
-        </nav>
-      </main>`,
+    body: await drawWelcome(),
   },
   {
     path: "/whats-on",

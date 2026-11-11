@@ -4,7 +4,7 @@ import { auth } from "../firebase";
 import { signOutHere } from "../lib/auth";
 import { exportMyData } from "../lib/db";
 import { clearAllDrafts } from "../lib/drafts";
-import { LogoMark } from "./shell/Sidebar";
+import { LogoMark } from "./ui/LogoMark";
 import Button from "./ui/Button";
 import { useToast } from "./ui/toast-context";
 import { BirthYearDialog, DeleteDialog } from "./Settings";

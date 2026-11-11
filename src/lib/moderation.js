@@ -823,10 +823,6 @@ export function assessText(text, { about = "", thread = "", parent = "", comment
 /** The post is about a crime against someone, or abuse of them. */
 export const aboutCrime = (about) => CRIME_RE.test(normalize(about));
 
-export function isBorderline(text, context) {
-  return assessText(text, context).level !== "ok";
-}
-
 /** A post's own words, for reading its comments against. Its pictures can't be read. */
 export const postAbout = (post) => [post?.title, post?.text, post?.alt, ...(post?.media || []).map((m) => m.alt), ...(post?.topics || [])].filter(Boolean).join("\n");
 

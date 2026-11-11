@@ -18,8 +18,13 @@ createServer(async (req, res) => {
   // Like Hosting: a file, else a folder's index.html (the prerendered
   // pages), else the app's index.html.
   const isFile = async (f) => { try { return (await stat(f)).isFile(); } catch { return false; } };
-  if (!(await isFile(file))) file = (await isFile(join(file, "index.html"))) ? join(file, "index.html") : join(root, "index.html");
+  let status = 200;
+  if (!(await isFile(file))) {
+    // A built file that isn't there is a 404, as the "!/assets/**" rewrite makes it on Hosting.
+    if (url.startsWith("/assets/")) { status = 404; file = join(root, "404.html"); }
+    else file = (await isFile(join(file, "index.html"))) ? join(file, "index.html") : join(root, "index.html");
+  }
   const body = await readFile(file);
-  res.writeHead(200, { ...globalHeaders, "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
+  res.writeHead(status, { ...globalHeaders, "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
   res.end(body);
 }).listen(4174, () => console.log("Production preview on http://localhost:4174"));

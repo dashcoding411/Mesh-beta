@@ -88,10 +88,6 @@ export async function reportPost(post, reason, details = "") {
   return res;
 }
 
-// Which report types each team handles (firestore.rules, canHandleReport).
-// Fake-account reports go to the accounts team whatever they're on.
-export const REPORT_TEAM = { post: "content", comment: "content", message: "accounts", user: "accounts" };
-
 /** Reports with `status`; `types` limits them to some kinds (a team's), or null for all (admins). */
 export async function fetchReports(status = "open", types = null) {
   const q = types

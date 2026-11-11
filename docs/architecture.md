@@ -124,7 +124,38 @@ Composite indexes are declared in `firestore.indexes.json`.
 - **Feed state** is kept per feed for the session so returning restores the
   scroll position without refetching.
 - **Updates.** `UpdateBanner` compares the deployed entry chunk with the
-  running one and offers a reload; stale-chunk import errors reload once.
+  running one and offers a reload. A page whose code has gone from the server
+  (a deploy while the tab was open) reloads into the new build by itself, at
+  most once a minute so a file that's really missing can't loop.
+- **Builds are repeatable.** The same code builds to the same file names
+  every time: the build time shown under Settings is written into the HTML
+  (`<meta name="mesh-built">`, read by `lib/built.js`), not into the scripts.
+  So a deploy only makes people download what changed, and the reload banner
+  only appears when something did. `MESH_SALT=x npm run build` renames every
+  built file, for when a cache is holding something wrong under the current
+  names.
+- **Before the app starts** (`src/boot.js`, `scripts/prerender.mjs`,
+  `lib/firstVisit.js`). The HTML arrives holding two things, drawn at build
+  time from the app's own components so they can't drift from it: the welcome
+  page and the loading logo. `boot.js`, a small classic script in `<head>`
+  (the only one; `vite.config.js` emits it), runs before the first paint and
+  shows the logo unless the app is about to open on the welcome page, which
+  is when nobody has signed in on this device and the address is `/` (not yet
+  past the welcome page) or `/welcome`. It also applies a saved theme and
+  text size. So someone new sees the real welcome page from the first paint,
+  and someone coming back sees the logo, never a flash of the welcome page.
+  The app then draws the welcome page without waiting for the sign-in check
+  (it's the same for anyone signed out), and `main.jsx` holds off starting
+  until that page's code is in, so the copy in the HTML is replaced in one
+  step. The HTML also preloads that code and the two fonts every page uses.
+  Everything on the welcome page that goes somewhere is a real link, so it
+  works before the app has loaded. Components drawn at build time (`Welcome`,
+  `ui/LogoMark`, and what they import) must load without a browser; the build
+  fails with the reason if one stops doing so.
+- **Crashes** (`components/ErrorBoundary.jsx`). An error while a page is
+  being drawn shows "Something went wrong" in that page's area, and the menus
+  keep working; moving to another page clears it. One around the whole app
+  offers a reload instead of leaving a blank page.
 
 ## Creating
 

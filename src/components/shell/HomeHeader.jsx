@@ -3,7 +3,7 @@ import IconButton from "../ui/IconButton";
 import { sectionById } from "../../lib/surfaces";
 import { authPath, navigate } from "../../lib/router";
 import { useShell } from "./ShellContext";
-import { LogoMark } from "./Sidebar";
+import { LogoMark } from "../ui/LogoMark";
 
 // Home section header. Mobile adds drawer, search and create buttons;
 // `children` renders below on both (e.g. feed tabs).

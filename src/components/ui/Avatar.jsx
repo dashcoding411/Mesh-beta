@@ -29,7 +29,7 @@ export default function Avatar({ profile, size = 40, ring = false, className = "
   const text = size >= 56 ? "text-title-3" : size >= 36 ? "text-callout" : "text-label";
 
   const face = src && !broken ? (
-    <img src={src} alt="" onError={() => setBrokenSrc(src)} style={style}
+    <img src={src} alt="" decoding="async" onError={() => setBrokenSrc(src)} style={style}
       className="shrink-0 rounded-full bg-surface-2 object-cover" />
   ) : (
     <span aria-hidden="true" style={style}

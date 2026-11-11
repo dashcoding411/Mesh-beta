@@ -259,12 +259,6 @@ const seenKey = (id) => `mesh:roll-seen:${id}`;
 export function rollSeen(id) { try { return !!localStorage.getItem(seenKey(id)); } catch { return true; } }
 export function markRollSeen(id) { try { localStorage.setItem(seenKey(id), "1"); } catch { /* storage blocked */ } }
 
-/** Your rolls that developed in the last three days and you haven't opened since. */
-export async function fetchFreshlyDeveloped(now = Date.now()) {
-  const mine = await fetchMyRolls().catch(() => []);
-  return mine.filter((r) => isDeveloped(r, now) && now - tsMillis(r.developAt) < 3 * DAY && !rollSeen(r.id) && (r.photoCount || 0) > 0);
-}
-
 // The develop time in a calendar, so a phone reminds you at 9am.
 
 const icsTime = (ms) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");

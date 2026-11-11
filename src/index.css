@@ -70,6 +70,13 @@
   }
 }
 
+/* Before the app starts, the HTML holds the welcome page (for search engines
+   and someone's first visit) and the loading logo. boot.js picks the logo
+   whenever the app is about to show something else. */
+[data-boot="splash"] { display: none; }
+.app-boot [data-boot="splash"] { display: block; }
+.app-boot [data-boot="welcome"] { display: none; }
+
 /* Girlfriend privilege: a pink profile. Re-tints the surfaces inside it;
    text tokens are unchanged and keep their contrast. */
 .theme-pink {

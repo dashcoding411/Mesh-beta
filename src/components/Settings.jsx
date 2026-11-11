@@ -58,6 +58,7 @@ import { Field, Input, Checkbox } from "./ui/Field";
 import { InlineMessage } from "./ui/States";
 import { useToast } from "./ui/toast-context";
 import { BUSINESS } from "../legal/business";
+import { BUILT } from "../lib/built";
 const ContactSync = lazy(() => import("./ContactSync"));
 
 const PROVIDERS = { password: "Email and password", "google.com": "Google", "apple.com": "Apple", phone: "Phone" };
@@ -294,7 +295,7 @@ export default function Settings() {
             <Row icon={LogOut} label="Sign out" onClick={() => setDialog("signout")} />
             <Row icon={Trash2} label="Delete account" danger onClick={() => setDialog("delete")} />
           </Group>
-          <p className="pb-2 text-center text-caption text-fg-subtle">Version {import.meta.env.VITE_BUILT || "development"}</p>
+          <p className="pb-2 text-center text-caption text-fg-subtle">Version {BUILT}</p>
           </>)}
         </div>
       </div>

@@ -2,7 +2,7 @@ import { LogIn, Plus, UserPlus } from "lucide-react";
 import Dialog from "../ui/Dialog";
 import Avatar from "../ui/Avatar";
 import { authPath, navigate } from "../../lib/router";
-import { LogoMark } from "./Sidebar";
+import { LogoMark } from "../ui/LogoMark";
 import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 
 // Mobile counterpart of Sidebar, driven by the same nav items.

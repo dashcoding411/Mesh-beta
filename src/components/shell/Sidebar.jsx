@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Menu, LogIn, UserPlus } from "lucide-react";
 import { authPath, navigate } from "../../lib/router";
 import { MAIN_NAV, MORE_NAV, activeNavId, navFor } from "./navItems";
 import Avatar from "../ui/Avatar";
+import { LogoMark } from "../ui/LogoMark";
 import { scrollOrRefresh } from "./scrollOrRefresh";
 
 // Desktop nav, on the right: icon rail at md, labelled column at xl.
@@ -117,26 +118,5 @@ function MoreMenu({ page, guest, work }) {
         <span className="sr-only xl:hidden">More</span>
       </button>
     </div>
-  );
-}
-
-export function LogoMark({ size = 28 }) {
-  // Unique gradient id per instance: a shared id breaks every copy when the
-  // first one is inside a display:none subtree.
-  const gradient = `mesh-mark-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
-      <defs>
-        <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#a78bfa" />
-          <stop offset="1" stopColor="#e879f9" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="16" fill="#18181c" />
-      <g stroke={`url(#${gradient})`} strokeWidth="4" strokeLinecap="round" fill="none">
-        <path d="M16 22h32M16 32h32M16 42h32" />
-        <path d="M22 16v32M32 16v32M42 16v32" />
-      </g>
-    </svg>
   );
 }

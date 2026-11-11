@@ -21,16 +21,18 @@ const SIZES = {
 const Button = forwardRef(function Button(
   {
     variant = "secondary", size = "md", loading = false, disabled = false,
-    icon: Icon, iconRight: IconRight, full = false, className = "", children, type = "button", ...rest
+    icon: Icon, iconRight: IconRight, full = false, className = "", children, type = "button", href, ...rest
   },
   ref
 ) {
   const iconSize = size === "sm" ? 16 : 18;
+  // With an href it's a real link that looks the same: it works before the
+  // app has loaded, opens in a new tab, and search engines can follow it.
+  const Tag = href ? "a" : "button";
   return (
-    <button
+    <Tag
       ref={ref}
-      type={type}
-      disabled={disabled || loading}
+      {...(href ? { href } : { type, disabled: disabled || loading })}
       aria-busy={loading || undefined}
       className={`press relative inline-flex select-none items-center justify-center font-semibold
         disabled:cursor-not-allowed disabled:opacity-50
@@ -48,7 +50,7 @@ const Button = forwardRef(function Button(
           <Spinner size={iconSize} />
         </span>
       )}
-    </button>
+    </Tag>
   );
 });
 

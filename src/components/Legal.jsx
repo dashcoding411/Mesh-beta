@@ -28,7 +28,8 @@ export default function Legal({ doc = "privacy" }) {
 
   return (
     <>
-      <TopBar title="Policies" back backTo={guest ? "/" : "/account/settings"} />
+      {/* Not a heading here: the page's own "Policies" below is the h1 at every width. */}
+      <TopBar title={<p className="truncate text-title-3">Policies</p>} back backTo={guest ? "/" : "/account/settings"} />
 
       <div data-scroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-4 pb-16 pt-6 md:px-6">

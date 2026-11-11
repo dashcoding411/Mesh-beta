@@ -2,7 +2,7 @@ import { authPath, navigate } from "../lib/router";
 import Dialog from "./ui/Dialog";
 import Button from "./ui/Button";
 import { EmptyState } from "./ui/States";
-import { LogoMark } from "./shell/Sidebar";
+import { LogoMark } from "./ui/LogoMark";
 
 const Mark = () => <LogoMark size={30} />;
 
@@ -20,7 +20,7 @@ function AuthButtons({ onPick }) {
 export function JoinPage({ title, body }) {
   return (
     <div className="flex flex-1 items-center justify-center">
-      <EmptyState icon={Mark} title={title} body={body} action={<AuthButtons />} />
+      <EmptyState heading icon={Mark} title={title} body={body} action={<AuthButtons />} />
     </div>
   );
 }
